@@ -398,7 +398,7 @@ public sealed partial class SettingsView : UserControl
     private void OnSaveKeybindingsClick(object? sender, RoutedEventArgs e) =>
         SaveKeybindingsRequested?.Invoke(sender, e);
 
-    private void OnSaveQuickTerminalSettingsClick(object? sender, RoutedEventArgs e) =>
+    private void OnQuickTerminalSettingsSaveRequested(object? sender, RoutedEventArgs e) =>
         SaveQuickTerminalSettingsRequested?.Invoke(sender, e);
 
     private void OnSaveTerminalProfileClick(object? sender, RoutedEventArgs e) =>

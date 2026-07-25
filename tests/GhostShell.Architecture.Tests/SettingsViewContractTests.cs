@@ -137,6 +137,19 @@ public sealed class SettingsViewContractTests
             "OnAppearanceSaveRequested",
             AttributeValue(appearancePage, "SaveRequested"));
 
+        var quickTerminalPage = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "QuickTerminalSettingsPageView");
+        Assert.Equal(
+            "QuickTerminalSettingsPage",
+            AttributeValue(quickTerminalPage, "Name"));
+        Assert.Equal(
+            "{Binding IsQuickTerminalSettingsVisible}",
+            AttributeValue(quickTerminalPage, "IsVisible"));
+        Assert.Equal(
+            "OnQuickTerminalSettingsSaveRequested",
+            AttributeValue(quickTerminalPage, "SaveRequested"));
+
         var pageHeaders = root.Descendants()
             .Where(element => element.Name.LocalName == "SettingsPageHeader")
             .ToArray();
@@ -311,6 +324,56 @@ public sealed class SettingsViewContractTests
     }
 
     [Fact]
+    public void Quick_terminal_settings_page_owns_layout_and_save_relay()
+    {
+        var quickTerminal = LoadSettingsPage("QuickTerminalSettingsPageView");
+        var root = Assert.IsType<XElement>(quickTerminal.Root);
+
+        Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
+        Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
+
+        var content = Assert.Single(
+            root.Elements(),
+            element => element.Name.LocalName == "StackPanel");
+        Assert.Equal("18", AttributeValue(content, "Spacing"));
+        Assert.Null(AttributeValue(content, "Margin"));
+        Assert.Null(AttributeValue(content, "IsVisible"));
+
+        var header = Assert.Single(
+            content.Descendants(),
+            element => element.Name.LocalName == "SettingsPageHeader");
+        Assert.Equal("Quick Terminal", AttributeValue(header, "Heading"));
+
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "Content"),
+                    "Save settings",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Click"),
+                    "OnSaveQuickTerminalSettingsClick",
+                    StringComparison.Ordinal));
+
+        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
+            "public sealed partial class QuickTerminalSettingsPageView");
+        Assert.Contains(
+            "SaveRequested?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("StorageProvider", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SaveQuickTerminalSettingsAsync",
+            codeBehind,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Settings_page_header_is_a_passive_shared_component()
     {
         var header = LoadComponent("SettingsPageHeader");
@@ -422,7 +485,6 @@ public sealed class SettingsViewContractTests
         "IsKeybindingSettingsVisible",
         "IsFilesSettingsVisible",
         "IsTerminalSettingsVisible",
-        "IsQuickTerminalSettingsVisible",
         "IsSecretsSettingsVisible",
         "IsAgentSettingsVisible",
         "IsMcpSettingsVisible",
