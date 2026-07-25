@@ -1,0 +1,32 @@
+<UserControl
+    x:Class="GhostShell.App.Views.SettingsPages.AppearanceSettingsPageView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:GhostShell.App.Views.Components"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+  <StackPanel Spacing="22">
+    <components:SettingsPageHeader
+        Heading="Appearance"
+        Description="Follow the host automatically or select an explicit cross-platform profile." />
+    <Border Classes="SettingsCard">
+      <StackPanel Margin="18" Spacing="16">
+        <Grid ColumnDefinitions="*,280" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="14">
+          <StackPanel Spacing="3"><TextBlock FontWeight="SemiBold" Text="Color mode" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Automatic updates when the host color scheme changes." /></StackPanel>
+          <ComboBox x:Name="AppearanceModePicker" Grid.Column="1" AutomationProperties.Name="Color mode"><ComboBoxItem Content="System" /><ComboBoxItem Content="Dark" /><ComboBoxItem Content="Light" /></ComboBox>
+          <StackPanel Grid.Row="1" Spacing="3"><TextBlock FontWeight="SemiBold" Text="Platform profile" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Automatic selects the closest host-native treatment. Custom preserves imported profiles with the default metrics." TextWrapping="Wrap" /></StackPanel>
+          <ComboBox x:Name="PlatformProfilePicker" Grid.Row="1" Grid.Column="1" AutomationProperties.Name="Platform profile" />
+          <StackPanel Grid.Row="2" Spacing="3"><TextBlock FontWeight="SemiBold" Text="Accent" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Use the host accent when available, with bronze fallback." /></StackPanel>
+          <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,96" ColumnSpacing="8"><ComboBox x:Name="AccentModePicker" SelectionChanged="OnAccentModeSelectionChanged" AutomationProperties.Name="Accent mode"><ComboBoxItem Content="Follow host" /><ComboBoxItem Content="GhostSHELL bronze" /><ComboBoxItem Content="Custom" /></ComboBox><TextBox x:Name="CustomAccentText" Grid.Column="1" AutomationProperties.Name="Custom accent color" AutomationProperties.HelpText="Hex color, for example #B8793A." /></Grid>
+          <StackPanel Grid.Row="3" Spacing="3"><TextBlock FontWeight="SemiBold" Text="Application text size" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Follow the host or enlarge every GhostSHELL window. Saved changes apply live." TextWrapping="Wrap" /></StackPanel>
+          <ComboBox x:Name="ApplicationTextScalePicker" Grid.Row="3" Grid.Column="1" AutomationProperties.Name="Application text size"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+        </Grid>
+        <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="3"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="CURRENT STORED PROFILE" /><TextBlock Classes="Monospace" Text="{Binding ThemeMode, StringFormat={}Mode: {0}}" /><TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeProfile, StringFormat={}Platform: {0}}" /><TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeTextScale, StringFormat={}Text size: {0}}" /><TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAppearanceStatus}" /><TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAccentStatus}" /></StackPanel>
+          <Button Grid.Column="1" Classes="PrimaryButton" Click="OnSaveAppearanceClick" Content="Save appearance" />
+        </Grid>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

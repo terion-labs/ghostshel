@@ -12,7 +12,6 @@ public sealed class SettingsViewContractTests
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["AboutSettingsRequested"] = "OnAboutSettingsClick",
-            ["AccentModeSelectionChangedRequested"] = "OnAccentModeSelectionChanged",
             ["AddAiProviderRequested"] = "OnAddAiProviderClick",
             ["AddFileProviderRequested"] = "OnAddFileProviderClick",
             ["AddMcpServerRequested"] = "OnAddMcpServerClick",
@@ -125,10 +124,23 @@ public sealed class SettingsViewContractTests
                 && string.Equals(AttributeValue(element, "Grid.Row"), "1", StringComparison.Ordinal));
         Assert.Equal("244,*", AttributeValue(body, "ColumnDefinitions"));
 
+        var appearancePage = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "AppearanceSettingsPageView");
+        Assert.Equal(
+            "AppearanceSettingsPage",
+            AttributeValue(appearancePage, "Name"));
+        Assert.Equal(
+            "{Binding IsAppearanceSettingsVisible}",
+            AttributeValue(appearancePage, "IsVisible"));
+        Assert.Equal(
+            "OnAppearanceSaveRequested",
+            AttributeValue(appearancePage, "SaveRequested"));
+
         var pageHeaders = root.Descendants()
             .Where(element => element.Name.LocalName == "SettingsPageHeader")
             .ToArray();
-        Assert.Equal(SettingsPageVisibilityBindings.Length, pageHeaders.Length);
+        Assert.Equal(InlineSettingsPageVisibilityBindings.Length, pageHeaders.Length);
         Assert.All(pageHeaders, header =>
         {
             Assert.False(string.IsNullOrWhiteSpace(AttributeValue(header, "Heading")));
@@ -141,7 +153,7 @@ public sealed class SettingsViewContractTests
                 "Headless mode and ACP will use these same definitions in a later milestone.",
                 StringComparison.Ordinal));
 
-        foreach (var pageVisibility in SettingsPageVisibilityBindings)
+        foreach (var pageVisibility in InlineSettingsPageVisibilityBindings)
         {
             Assert.Contains(
                 root.Descendants(),
@@ -151,7 +163,7 @@ public sealed class SettingsViewContractTests
                     StringComparison.Ordinal));
         }
 
-        foreach (var extractedName in ExtractedControlNames)
+        foreach (var extractedName in SettingsControlNames)
         {
             Assert.Single(
                 root.Descendants(),
@@ -185,6 +197,117 @@ public sealed class SettingsViewContractTests
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "DiagnosticsExportView");
+    }
+
+    [Fact]
+    public void Appearance_settings_page_owns_layout_local_behavior_and_typed_seams()
+    {
+        var appearance = LoadSettingsPage("AppearanceSettingsPageView");
+        var root = Assert.IsType<XElement>(appearance.Root);
+
+        Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
+        Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
+
+        var content = Assert.Single(
+            root.Elements(),
+            element => element.Name.LocalName == "StackPanel");
+        Assert.Equal("22", AttributeValue(content, "Spacing"));
+        Assert.Null(AttributeValue(content, "Margin"));
+        Assert.Null(AttributeValue(content, "IsVisible"));
+
+        var header = Assert.Single(
+            content.Descendants(),
+            element => element.Name.LocalName == "SettingsPageHeader");
+        Assert.Equal("Appearance", AttributeValue(header, "Heading"));
+        Assert.Equal(
+            "Follow the host automatically or select an explicit cross-platform profile.",
+            AttributeValue(header, "Description"));
+
+        foreach (var controlName in AppearanceControlNames)
+        {
+            Assert.Single(
+                root.Descendants(),
+                element => string.Equals(
+                    AttributeValue(element, "Name"),
+                    controlName,
+                    StringComparison.Ordinal));
+        }
+
+        foreach (var (controlName, automationName) in new[]
+                 {
+                     ("AppearanceModePicker", "Color mode"),
+                     ("PlatformProfilePicker", "Platform profile"),
+                     ("AccentModePicker", "Accent mode"),
+                     ("CustomAccentText", "Custom accent color"),
+                     ("ApplicationTextScalePicker", "Application text size"),
+                 })
+        {
+            Assert.Equal(
+                automationName,
+                AttributeValue(
+                    FindNamedElement(root, controlName),
+                    "AutomationProperties.Name"));
+        }
+
+        var appearanceMode = FindNamedElement(root, "AppearanceModePicker");
+        Assert.Equal(
+            new[] { "System", "Dark", "Light" },
+            appearanceMode.Elements()
+                .Where(element => element.Name.LocalName == "ComboBoxItem")
+                .Select(element => AttributeValue(element, "Content"))
+                .ToArray());
+
+        var accentMode = FindNamedElement(root, "AccentModePicker");
+        Assert.Equal(
+            "OnAccentModeSelectionChanged",
+            AttributeValue(accentMode, "SelectionChanged"));
+        Assert.Equal(
+            new[] { "Follow host", "GhostSHELL bronze", "Custom" },
+            accentMode.Elements()
+                .Where(element => element.Name.LocalName == "ComboBoxItem")
+                .Select(element => AttributeValue(element, "Content"))
+                .ToArray());
+
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "Content"),
+                    "Save appearance",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Click"),
+                    "OnSaveAppearanceClick",
+                    StringComparison.Ordinal));
+        foreach (var binding in new[] { "ThemeMode", "ThemeProfile", "ThemeTextScale" })
+        {
+            Assert.Contains(
+                root.Descendants(),
+                element => (AttributeValue(element, "Text") ?? string.Empty)
+                    .Contains(binding, StringComparison.Ordinal));
+        }
+
+        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
+            "public sealed partial class AppearanceSettingsPageView");
+        Assert.Contains(
+            "SaveRequested?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UpdateCustomAccentAvailability();",
+            codeBehind,
+            StringComparison.Ordinal);
+        foreach (var typedSeam in AppearancePageTypedSeams)
+        {
+            Assert.Contains(typedSeam, codeBehind, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("StorageProvider", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("SaveThemeAsync", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -283,11 +406,18 @@ public sealed class SettingsViewContractTests
         Assert.Contains("recoveryDataControlViewModel.Start();", mainWindowCode);
         Assert.Contains("localArtifactControlViewModel.Start();", mainWindowCode);
         Assert.Contains("ShowDialog<", mainWindowCode, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "OnAccentModeSelectionChanged",
+            mainWindowCode,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AccentModeSelectionChangedRequested",
+            mainWindowCode,
+            StringComparison.Ordinal);
     }
 
-    private static readonly string[] SettingsPageVisibilityBindings =
+    private static readonly string[] InlineSettingsPageVisibilityBindings =
     [
-        "IsAppearanceSettingsVisible",
         "IsWorkspaceSettingsVisible",
         "IsKeybindingSettingsVisible",
         "IsFilesSettingsVisible",
@@ -298,6 +428,15 @@ public sealed class SettingsViewContractTests
         "IsMcpSettingsVisible",
         "IsDiagnosticsSettingsVisible",
         "IsAboutSettingsVisible",
+    ];
+
+    private static readonly string[] AppearanceControlNames =
+    [
+        "AccentModePicker",
+        "AppearanceModePicker",
+        "ApplicationTextScalePicker",
+        "CustomAccentText",
+        "PlatformProfilePicker",
     ];
 
     private static readonly string[] PasswordInputNames =
@@ -313,7 +452,6 @@ public sealed class SettingsViewContractTests
         "ConfigureAppearanceControls(",
         "ApplyAppearance(",
         "CaptureAppearance()",
-        "UpdateCustomAccentAvailability()",
         "CaptureKeybindingPrefixOptions()",
         "CaptureConnectionSecretForm()",
         "CaptureFileProviderSecretForm()",
@@ -322,6 +460,13 @@ public sealed class SettingsViewContractTests
         "BindOperationalViewModels(",
         "FocusBackButton()",
         "FocusSavedScreenUndo()",
+    ];
+
+    private static readonly string[] AppearancePageTypedSeams =
+    [
+        "ConfigureAppearanceControls(",
+        "ApplyAppearance(",
+        "CaptureAppearance()",
     ];
 
     private static readonly string[] MainWindowTypedCalls =
@@ -339,15 +484,11 @@ public sealed class SettingsViewContractTests
         "settings.FocusSavedScreenUndo()",
     ];
 
-    private static readonly string[] ExtractedControlNames =
+    private static readonly string[] SettingsControlNames =
     [
-        "AccentModePicker",
         "AiProviderSecretLabelInput",
         "AiProviderSecretProfilePicker",
         "AiProviderSecretValueInput",
-        "AppearanceModePicker",
-        "ApplicationTextScalePicker",
-        "CustomAccentText",
         "DiagnosticsExportView",
         "FileProviderSecretKindPicker",
         "FileProviderSecretLabelInput",
@@ -361,7 +502,6 @@ public sealed class SettingsViewContractTests
         "McpServerSecretLabelInput",
         "McpServerSecretValueInput",
         "McpSettingsSection",
-        "PlatformProfilePicker",
         "RecoveryDataControlView",
         "SavedScreenDeleteUndoNotice",
         "SecretConnectionPicker",
@@ -371,6 +511,12 @@ public sealed class SettingsViewContractTests
         "SecretValueInput",
         "SettingsBackButton",
         "UndoDeletedSavedScreenButton",
+    ];
+
+    private static readonly string[] ExtractedControlNames =
+    [
+        .. AppearanceControlNames,
+        .. SettingsControlNames,
     ];
 
     private static XElement FindNamedElement(XElement root, string name) =>
@@ -397,6 +543,15 @@ public sealed class SettingsViewContractTests
             "Views",
             "Components",
             $"{component}.axaml"));
+
+    private static XDocument LoadSettingsPage(string page) =>
+        XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "SettingsPages",
+            $"{page}.axaml"));
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()

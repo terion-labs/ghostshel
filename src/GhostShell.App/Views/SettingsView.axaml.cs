@@ -1,17 +1,12 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using GhostShell.App.Views.SettingsPages;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.App.Views;
-
-internal sealed record AppearanceSelection(
-    AppearanceMode Appearance,
-    PlatformProfile PlatformProfile,
-    AccentPreference Accent,
-    double? TextScale);
 
 internal sealed record KeybindingPrefixOptionsSelection(
     double TimeoutMilliseconds,
@@ -43,16 +38,12 @@ internal sealed record McpServerSecretFormInput(
 
 public sealed partial class SettingsView : UserControl
 {
-    private IReadOnlyList<AppearanceTextScaleOption> _appearanceTextScaleOptions = [];
-
     public SettingsView()
     {
         InitializeComponent();
     }
 
     public event EventHandler<RoutedEventArgs>? AboutSettingsRequested;
-
-    public event EventHandler<SelectionChangedEventArgs>? AccentModeSelectionChangedRequested;
 
     public event EventHandler<RoutedEventArgs>? AddAiProviderRequested;
 
@@ -171,75 +162,18 @@ public sealed partial class SettingsView : UserControl
 
     internal void ConfigureAppearanceControls(
         IReadOnlyList<PlatformProfile> platformProfiles,
-        IReadOnlyList<AppearanceTextScaleOption> textScaleOptions)
-    {
-        ArgumentNullException.ThrowIfNull(platformProfiles);
-        ArgumentNullException.ThrowIfNull(textScaleOptions);
-
-        _appearanceTextScaleOptions = textScaleOptions;
-        PlatformProfilePicker.ItemsSource = platformProfiles;
-        ApplicationTextScalePicker.ItemsSource = textScaleOptions;
-    }
+        IReadOnlyList<AppearanceTextScaleOption> textScaleOptions) =>
+        AppearanceSettingsPage.ConfigureAppearanceControls(
+            platformProfiles,
+            textScaleOptions);
 
     internal void ApplyAppearance(
         ThemePreference theme,
-        AppearanceTextScaleOption selectedTextScale)
-    {
-        ArgumentNullException.ThrowIfNull(theme);
-        ArgumentNullException.ThrowIfNull(selectedTextScale);
+        AppearanceTextScaleOption selectedTextScale) =>
+        AppearanceSettingsPage.ApplyAppearance(theme, selectedTextScale);
 
-        SelectComboBoxItem(
-            AppearanceModePicker,
-            nameof(AppearanceModePicker),
-            theme.Appearance.ToString());
-        PlatformProfilePicker.SelectedItem = theme.PlatformProfile;
-        SelectComboBoxItem(
-            AccentModePicker,
-            nameof(AccentModePicker),
-            theme.Accent.Kind switch
-            {
-                AccentPreferenceKind.Custom => "Custom",
-                AccentPreferenceKind.GhostShellBronze => "GhostSHELL bronze",
-                _ => "Follow host",
-            });
-
-        ApplicationTextScalePicker.ItemsSource =
-            _appearanceTextScaleOptions.Contains(selectedTextScale)
-                ? _appearanceTextScaleOptions
-                : [.. _appearanceTextScaleOptions, selectedTextScale];
-        ApplicationTextScalePicker.SelectedItem = selectedTextScale;
-        CustomAccentText.Text = theme.Accent.CustomColor?.ToString()
-            ?? ThemePreference.BronzeFallback.ToString();
-        UpdateCustomAccentAvailability();
-    }
-
-    internal AppearanceSelection CaptureAppearance()
-    {
-        var appearance = Enum.Parse<AppearanceMode>(
-            SelectedText(AppearanceModePicker, nameof(AppearanceModePicker)));
-        var profile = PlatformProfilePicker.SelectedItem is PlatformProfile selectedProfile
-            ? selectedProfile
-            : throw new InvalidOperationException(
-                "The platform-profile selection is unavailable.");
-        var accent = SelectedText(AccentModePicker, nameof(AccentModePicker)) switch
-        {
-            "Custom" => AccentPreference.Custom(
-                RgbColor.Parse(CustomAccentText.Text ?? "#B8793A")),
-            "GhostSHELL bronze" => AccentPreference.GhostShellBronze,
-            _ => AccentPreference.FollowHost,
-        };
-        var textScale =
-            ApplicationTextScalePicker.SelectedItem is AppearanceTextScaleOption selectedTextScale
-                ? selectedTextScale.Scale
-                : throw new InvalidOperationException(
-                    "The application text-scale selection is unavailable.");
-
-        return new(appearance, profile, accent, textScale);
-    }
-
-    internal void UpdateCustomAccentAvailability() =>
-        CustomAccentText.IsEnabled =
-            SelectedTextOrDefault(AccentModePicker) == "Custom";
+    internal AppearanceSelection CaptureAppearance() =>
+        AppearanceSettingsPage.CaptureAppearance();
 
     internal KeybindingPrefixOptionsSelection? CaptureKeybindingPrefixOptions()
     {
@@ -324,34 +258,11 @@ public sealed partial class SettingsView : UserControl
     internal void FocusSavedScreenUndo() =>
         UndoDeletedSavedScreenButton.Focus(NavigationMethod.Tab);
 
-    private static string SelectedText(ComboBox comboBox, string controlName) =>
-        (comboBox.SelectedItem as ComboBoxItem)?.Content?.ToString()
-        ?? throw new InvalidOperationException(
-            $"The {controlName} selection is unavailable.");
-
-    private static string? SelectedTextOrDefault(ComboBox comboBox) =>
-        (comboBox.SelectedItem as ComboBoxItem)?.Content?.ToString();
-
-    private static void SelectComboBoxItem(
-        ComboBox comboBox,
-        string controlName,
-        string content)
-    {
-        comboBox.SelectedItem = comboBox.Items
-            .OfType<ComboBoxItem>()
-            .FirstOrDefault(item => string.Equals(
-                item.Content?.ToString(),
-                content,
-                StringComparison.Ordinal))
-            ?? throw new InvalidOperationException(
-                $"The {controlName} control has no '{content}' option.");
-    }
-
     private void OnAboutSettingsClick(object? sender, RoutedEventArgs e) =>
         AboutSettingsRequested?.Invoke(sender, e);
 
-    private void OnAccentModeSelectionChanged(object? sender, SelectionChangedEventArgs e) =>
-        AccentModeSelectionChangedRequested?.Invoke(sender, e);
+    private void OnAppearanceSaveRequested(object? sender, RoutedEventArgs e) =>
+        SaveAppearanceRequested?.Invoke(sender, e);
 
     private void OnAddAiProviderClick(object? sender, RoutedEventArgs e) =>
         AddAiProviderRequested?.Invoke(sender, e);
@@ -483,9 +394,6 @@ public sealed partial class SettingsView : UserControl
 
     private void OnReviewOnboardingClick(object? sender, RoutedEventArgs e) =>
         ReviewOnboardingRequested?.Invoke(sender, e);
-
-    private void OnSaveAppearanceClick(object? sender, RoutedEventArgs e) =>
-        SaveAppearanceRequested?.Invoke(sender, e);
 
     private void OnSaveKeybindingsClick(object? sender, RoutedEventArgs e) =>
         SaveKeybindingsRequested?.Invoke(sender, e);

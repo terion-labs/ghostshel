@@ -162,7 +162,6 @@
     <views:SettingsView
         x:Name="SettingsRouteView"
         AboutSettingsRequested="OnAboutSettingsClick"
-        AccentModeSelectionChangedRequested="OnAccentModeSelectionChanged"
         AddAiProviderRequested="OnAddAiProviderClick"
         AddFileProviderRequested="OnAddFileProviderClick"
         AddMcpServerRequested="OnAddMcpServerClick"
