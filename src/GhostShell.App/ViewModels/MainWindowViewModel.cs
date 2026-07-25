@@ -49,10 +49,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ShellOverlay Overlay,
         long OverlayRevision);
 
-    public sealed record SavedScreenDeleteUndoReceipt(
-        ScreenId ScreenId,
-        string ScreenName);
-
     private const int WorkspaceMutationAttemptCount = 2;
     private static readonly TimeSpan WorkspaceGraphReceiptReconciliationTimeout =
         TimeSpan.FromSeconds(1);
@@ -150,10 +146,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private bool _hasAgentTerminalSelectionError;
     private string _agentTerminalSelectionStatus =
         $"Choose between 1 and {AgentTarget.SelectedPanels.MaximumPanelCount} live terminals from this workspace.";
-    private PendingSavedScreenDeleteState? _pendingSavedScreenDelete;
-    private bool _isSavedScreenDeleteUndoInFlight;
-    private string _savedScreenDeleteUndoStatus =
-        "No saved-screen deletion is available to undo. Running instances are not changed by saved-definition deletion.";
     private volatile bool _shutdownStarted;
     private bool _disposed;
 
@@ -184,6 +176,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
         _filePanelClient = filePanelClient ?? throw new ArgumentNullException(nameof(filePanelClient));
@@ -255,6 +248,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public OnboardingViewModel? Onboarding { get; }
 
     public AgentChatViewModel? AgentChat { get; }
+
+    public SavedScreenDeleteUndoViewModel SavedScreenDeleteUndo { get; }
 
     public ClientId ClientId { get; }
 
@@ -473,32 +468,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasScreens => Screens.Count > 0;
 
     public bool HasNoScreens => !HasScreens;
-
-    public SavedScreenDeleteUndoReceipt? PendingSavedScreenDelete =>
-        _pendingSavedScreenDelete?.Receipt;
-
-    public bool HasPendingSavedScreenDeleteUndo => PendingSavedScreenDelete is not null;
-
-    public bool CanUndoSavedScreenDelete =>
-        HasPendingSavedScreenDeleteUndo && !IsSavedScreenDeleteUndoInFlight;
-
-    public bool IsSavedScreenDeleteUndoInFlight
-    {
-        get => _isSavedScreenDeleteUndoInFlight;
-        private set
-        {
-            if (SetProperty(ref _isSavedScreenDeleteUndoInFlight, value))
-            {
-                OnPropertyChanged(nameof(CanUndoSavedScreenDelete));
-            }
-        }
-    }
-
-    public string SavedScreenDeleteUndoStatus
-    {
-        get => _savedScreenDeleteUndoStatus;
-        private set => SetProperty(ref _savedScreenDeleteUndoStatus, value);
-    }
 
     public bool HasRecentSessions => RecentSessions.Count > 0;
 
@@ -3307,7 +3276,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ApplyError(result.Error);
         if (result.IsSuccess)
         {
-            PublishSavedScreenDeleteUndo(deleted);
+            SavedScreenDeleteUndo.Publish(deleted);
         }
 
         return result;
@@ -3317,72 +3286,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         UndoSavedScreenDeleteAsync(CancellationToken cancellationToken)
     {
         ClearError();
-        if (_pendingSavedScreenDelete is not { } pending)
-        {
-            return Fail<StoredDefinition<ScreenDefinition>>(
-                "No saved-screen deletion is available to undo.");
-        }
-
-        if (IsSavedScreenDeleteUndoInFlight)
-        {
-            return Fail<StoredDefinition<ScreenDefinition>>(
-                "The saved screen is already being restored.");
-        }
-
-        IsSavedScreenDeleteUndoInFlight = true;
-        if (ReferenceEquals(_pendingSavedScreenDelete, pending))
-        {
-            SavedScreenDeleteUndoStatus = $"Restoring “{pending.Receipt.ScreenName}”…";
-        }
-
-        try
-        {
-            var result = await _catalog.SaveScreenAsync(
-                pending.Stored.Value,
-                expectedRevision: null,
-                cancellationToken);
-            ApplyError(result.Error);
-            if (result.IsSuccess)
-            {
-                ClearSavedScreenDeleteUndo(
-                    pending,
-                    $"Restored “{pending.Receipt.ScreenName}”.");
-            }
-            else if (ReferenceEquals(_pendingSavedScreenDelete, pending))
-            {
-                SavedScreenDeleteUndoStatus =
-                    $"Could not restore “{pending.Receipt.ScreenName}”. Retry or dismiss this undo.";
-            }
-
-            return result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            if (ReferenceEquals(_pendingSavedScreenDelete, pending))
-            {
-                SavedScreenDeleteUndoStatus =
-                    $"Restore cancelled for “{pending.Receipt.ScreenName}”. Retry or dismiss this undo.";
-            }
-
-            throw;
-        }
-        finally
-        {
-            IsSavedScreenDeleteUndoInFlight = false;
-        }
+        var result = await SavedScreenDeleteUndo.UndoAsync(cancellationToken);
+        ApplyError(result.Error);
+        return result;
     }
 
-    public void DismissSavedScreenDeleteUndo()
-    {
-        if (IsSavedScreenDeleteUndoInFlight)
-        {
-            return;
-        }
-
-        _pendingSavedScreenDelete = null;
-        SavedScreenDeleteUndoStatus = "Saved-screen delete undo dismissed.";
-        NotifySavedScreenDeleteUndoChanged();
-    }
+    public void DismissSavedScreenDeleteUndo() => SavedScreenDeleteUndo.Dismiss();
 
     public bool IsDefinitionOpen(DefinitionKey key) =>
         RuntimeWorkspace is not null && _runtimeHistorySource?.SourceDefinition == key;
@@ -8506,39 +8415,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void PublishSavedScreenDeleteUndo(
-        StoredDefinition<ScreenDefinition> deleted)
-    {
-        var receipt = new SavedScreenDeleteUndoReceipt(
-            deleted.Value.Id,
-            deleted.Value.Name);
-        _pendingSavedScreenDelete = new PendingSavedScreenDeleteState(deleted, receipt);
-        SavedScreenDeleteUndoStatus =
-            $"Deleted “{receipt.ScreenName}”. Running instances were not changed. Undo restores this saved screen.";
-        NotifySavedScreenDeleteUndoChanged();
-    }
-
-    private void ClearSavedScreenDeleteUndo(
-        PendingSavedScreenDeleteState expected,
-        string status)
-    {
-        if (!ReferenceEquals(_pendingSavedScreenDelete, expected))
-        {
-            return;
-        }
-
-        _pendingSavedScreenDelete = null;
-        SavedScreenDeleteUndoStatus = status;
-        NotifySavedScreenDeleteUndoChanged();
-    }
-
-    private void NotifySavedScreenDeleteUndoChanged()
-    {
-        OnPropertyChanged(nameof(PendingSavedScreenDelete));
-        OnPropertyChanged(nameof(HasPendingSavedScreenDeleteUndo));
-        OnPropertyChanged(nameof(CanUndoSavedScreenDelete));
-    }
-
     private DefinitionStoreResult<T> Fail<T>(string message)
     {
         SetError(message);
@@ -8554,9 +8430,5 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private sealed record RuntimeSessionIdentity(
         SessionId SessionId,
         PanelKind Kind);
-
-    private sealed record PendingSavedScreenDeleteState(
-        StoredDefinition<ScreenDefinition> Stored,
-        SavedScreenDeleteUndoReceipt Receipt);
 
 }

@@ -2612,14 +2612,14 @@
               <Border
                   x:Name="SavedScreenDeleteUndoNotice"
                   Classes="NoticeCard"
-                  IsVisible="{Binding HasPendingSavedScreenDeleteUndo}"
+                  IsVisible="{Binding SavedScreenDeleteUndo.HasPending}"
                   AutomationProperties.LiveSetting="Polite"
-                  AutomationProperties.Name="{Binding SavedScreenDeleteUndoStatus}"
+                  AutomationProperties.Name="{Binding SavedScreenDeleteUndo.Status}"
                   AutomationProperties.HelpText="Undo restores the exact saved definition that was deleted. Running screen instances are not changed.">
                 <Grid Margin="14,11" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                   <TextBlock
                       VerticalAlignment="Center"
-                      Text="{Binding SavedScreenDeleteUndoStatus}"
+                      Text="{Binding SavedScreenDeleteUndo.Status}"
                       TextWrapping="Wrap" />
                   <Button
                       x:Name="UndoDeletedSavedScreenButton"
@@ -2627,7 +2627,7 @@
                       Classes="SecondaryButton"
                       Click="OnUndoDeletedSavedScreenClick"
                       Content="Undo"
-                      IsEnabled="{Binding CanUndoSavedScreenDelete}"
+                      IsEnabled="{Binding SavedScreenDeleteUndo.CanUndo}"
                       AutomationProperties.Name="Undo deleted saved screen"
                       AutomationProperties.HelpText="Restore the exact saved screen definition that was just deleted." />
                   <Button
@@ -2635,7 +2635,7 @@
                       Classes="TextButton"
                       Click="OnDismissSavedScreenDeleteUndoClick"
                       Content="Dismiss"
-                      IsEnabled="{Binding CanUndoSavedScreenDelete}"
+                      IsEnabled="{Binding SavedScreenDeleteUndo.CanUndo}"
                       AutomationProperties.Name="Dismiss saved screen delete notice" />
                 </Grid>
               </Border>
