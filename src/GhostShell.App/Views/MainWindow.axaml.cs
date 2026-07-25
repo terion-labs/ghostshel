@@ -60,10 +60,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        this.FindControl<ComboBox>("PlatformProfilePicker")!.ItemsSource =
-            AppearancePlatformProfiles;
-        this.FindControl<ComboBox>("ApplicationTextScalePicker")!.ItemsSource =
-            AppearanceTextScaleOptions;
+        SettingsRoute.ConfigureAppearanceControls(
+            AppearancePlatformProfiles,
+            AppearanceTextScaleOptions);
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
         Activated += OnWindowActivated;
     }
@@ -86,21 +85,18 @@ public sealed partial class MainWindow : Window
         _historyExport = new RecentSessionHistoryExportController(
             recentSessionHistoryExporter,
             new AvaloniaRecentSessionHistoryPathPicker(this));
-        this.FindControl<RecoveryDataControlView>("RecoveryDataControlView")!.DataContext =
-            recoveryDataControlViewModel
-            ?? throw new ArgumentNullException(nameof(recoveryDataControlViewModel));
+        var diagnosticsExportViewModel = new DiagnosticsExportViewModel(
+            diagnosticsExporter,
+            diagnosticsRequestSource,
+            new AvaloniaDiagnosticsBundleDestinationPicker(this),
+            diagnosticsArtifactPresenter,
+            TimeProvider.System);
+        SettingsRoute.BindOperationalViewModels(
+            recoveryDataControlViewModel,
+            localArtifactControlViewModel,
+            diagnosticsExportViewModel);
         recoveryDataControlViewModel.Start();
-        this.FindControl<LocalArtifactControlView>("LocalArtifactControlView")!.DataContext =
-            localArtifactControlViewModel
-            ?? throw new ArgumentNullException(nameof(localArtifactControlViewModel));
         localArtifactControlViewModel.Start();
-        this.FindControl<DiagnosticsExportView>("DiagnosticsExportView")!.DataContext =
-            new DiagnosticsExportViewModel(
-                diagnosticsExporter,
-                diagnosticsRequestSource,
-                new AvaloniaDiagnosticsBundleDestinationPicker(this),
-                diagnosticsArtifactPresenter,
-                TimeProvider.System);
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -134,6 +130,11 @@ public sealed partial class MainWindow : Window
 
     private MainWindowViewModel ViewModel => DataContext as MainWindowViewModel
         ?? throw new InvalidOperationException("The main window view model is unavailable.");
+
+    private SettingsView SettingsRoute =>
+        this.FindControl<SettingsView>("SettingsRouteView")
+        ?? throw new InvalidOperationException(
+            "The settings route view is unavailable.");
 
     public void ShowCommandPalette()
     {
@@ -177,7 +178,7 @@ public sealed partial class MainWindow : Window
         ViewModel.ShowSettings(page);
         if (ViewModel.IsSettingsVisible && !ViewModel.HasOverlay)
         {
-            FocusControlWhenReady("SettingsBackButton");
+            FocusSettingsWhenReady(static settings => settings.FocusBackButton());
         }
     }
 
@@ -1059,26 +1060,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        SelectComboBoxItem("AppearanceModePicker", theme.Appearance.ToString());
-        this.FindControl<ComboBox>("PlatformProfilePicker")!.SelectedItem =
-            theme.PlatformProfile;
-        SelectComboBoxItem(
-            "AccentModePicker",
-            theme.Accent.Kind switch
-            {
-                AccentPreferenceKind.Custom => "Custom",
-                AccentPreferenceKind.GhostShellBronze => "GhostSHELL bronze",
-                _ => "Follow host",
-            });
-        SelectApplicationTextScale(theme.TextScaleOverride);
-        if (this.FindControl<TextBox>("CustomAccentText") is { } customAccent)
-        {
-            customAccent.Text = theme.Accent.CustomColor?.ToString()
-                ?? ThemePreference.BronzeFallback.ToString();
-        }
-
+        SettingsRoute.ApplyAppearance(
+            theme,
+            ResolveApplicationTextScaleOption(theme.TextScaleOverride));
         _appearanceControlsSource = theme;
-        UpdateCustomAccentAvailability();
     }
 
     internal static AppearanceTextScaleOption ResolveApplicationTextScaleOption(
@@ -1091,45 +1076,11 @@ public sealed partial class MainWindow : Window
             textScale);
     }
 
-    private void SelectApplicationTextScale(double? textScale)
-    {
-        var picker = this.FindControl<ComboBox>("ApplicationTextScalePicker")
-            ?? throw new InvalidOperationException(
-                "The application text-scale control is unavailable.");
-        var selected = ResolveApplicationTextScaleOption(textScale);
-        picker.ItemsSource = AppearanceTextScaleOptions.Contains(selected)
-            ? AppearanceTextScaleOptions
-            : [.. AppearanceTextScaleOptions, selected];
-        picker.SelectedItem = selected;
-    }
-
     private void OnAccentModeSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         _ = sender;
         _ = e;
-        UpdateCustomAccentAvailability();
-    }
-
-    private void UpdateCustomAccentAvailability()
-    {
-        if (this.FindControl<TextBox>("CustomAccentText") is { } customAccent)
-        {
-            customAccent.IsEnabled = SelectedTextOrDefault("AccentModePicker") == "Custom";
-        }
-    }
-
-    private void SelectComboBoxItem(string controlName, string content)
-    {
-        var comboBox = this.FindControl<ComboBox>(controlName)
-            ?? throw new InvalidOperationException($"The {controlName} control is unavailable.");
-        comboBox.SelectedItem = comboBox.Items
-            .OfType<ComboBoxItem>()
-            .FirstOrDefault(item => string.Equals(
-                item.Content?.ToString(),
-                content,
-                StringComparison.Ordinal))
-            ?? throw new InvalidOperationException(
-                $"The {controlName} control has no '{content}' option.");
+        SettingsRoute.UpdateCustomAccentAvailability();
     }
 
     private async void OnKeybindingProfileSelectionChanged(
@@ -1251,17 +1202,16 @@ public sealed partial class MainWindow : Window
                 CanEditPrefix: true,
                 HasPrefix: true,
             } editor
-            || this.FindControl<NumericUpDown>("KeybindingPrefixTimeout")?.Value
-                is not { } timeout
-            || this.FindControl<CheckBox>("KeybindingPrefixRepeatable")?.IsChecked
-                is not { } repeatable
-            || this.FindControl<ComboBox>("KeybindingPrefixFailure")?.SelectedItem
-                is not FailedSequenceBehavior behavior)
+            || SettingsRoute.CaptureKeybindingPrefixOptions()
+                is not { } options)
         {
             return;
         }
 
-        editor.UpdatePrefixOptions((double)timeout, repeatable, behavior);
+        editor.UpdatePrefixOptions(
+            options.TimeoutMilliseconds,
+            options.Repeatable,
+            options.FailureBehavior);
     }
 
     private void OnResetAllKeybindingsClick(object? sender, RoutedEventArgs e)
@@ -3068,7 +3018,8 @@ public sealed partial class MainWindow : Window
                 _lifetime.Token);
             if (result.IsSuccess)
             {
-                FocusControlWhenReady("UndoDeletedSavedScreenButton");
+                FocusSettingsWhenReady(static settings =>
+                    settings.FocusSavedScreenUndo());
             }
         }
     }
@@ -3098,30 +3049,12 @@ public sealed partial class MainWindow : Window
         _ = e;
         try
         {
-            var appearance = Enum.Parse<AppearanceMode>(SelectedText("AppearanceModePicker"));
-            var profile = this.FindControl<ComboBox>("PlatformProfilePicker")?.SelectedItem
-                is PlatformProfile selectedProfile
-                ? selectedProfile
-                : throw new InvalidOperationException(
-                    "The platform-profile selection is unavailable.");
-            var accentText = SelectedText("AccentModePicker");
-            var accent = accentText switch
-            {
-                "Custom" => AccentPreference.Custom(RgbColor.Parse(
-                    this.FindControl<TextBox>("CustomAccentText")?.Text ?? "#B8793A")),
-                "GhostSHELL bronze" => AccentPreference.GhostShellBronze,
-                _ => AccentPreference.FollowHost,
-            };
-            var textScale = this.FindControl<ComboBox>("ApplicationTextScalePicker")?.SelectedItem
-                is AppearanceTextScaleOption selectedTextScale
-                ? selectedTextScale.Scale
-                : throw new InvalidOperationException(
-                    "The application text-scale selection is unavailable.");
+            var selection = SettingsRoute.CaptureAppearance();
             var result = await ViewModel.SaveThemeAsync(
-                appearance,
-                profile,
-                accent,
-                textScale,
+                selection.Appearance,
+                selection.PlatformProfile,
+                selection.Accent,
+                selection.TextScale,
                 _lifetime.Token);
             if (result.IsSuccess)
             {
@@ -3154,30 +3087,23 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        var connection = this.FindControl<ComboBox>("SecretConnectionPicker")?.SelectedItem
-            as LauncherConnectionViewModel;
-        var kind = this.FindControl<ComboBox>("SecretKindPicker")?.SelectedItem;
-        var valueInput = this.FindControl<TextBox>("SecretValueInput");
-        if (connection is null || kind is not SecretKind secretKind)
+        var input = SettingsRoute.CaptureConnectionSecretForm();
+        if (input.Connection is null || input.Kind is not { } secretKind)
         {
             ViewModel.SetError("Choose a connection and credential kind.");
             return;
         }
 
         var created = await ViewModel.CreateConnectionSecretAsync(
-            connection.Id,
-            this.FindControl<TextBox>("SecretLabelInput")?.Text ?? string.Empty,
+            input.Connection.Id,
+            input.Label,
             secretKind,
-            valueInput?.Text ?? string.Empty,
+            input.Value,
             _lifetime.Token);
-        if (valueInput is not null)
+        SettingsRoute.ClearConnectionSecretValue();
+        if (created)
         {
-            valueInput.Text = string.Empty;
-        }
-
-        if (created && this.FindControl<TextBox>("SecretLabelInput") is { } labelInput)
-        {
-            labelInput.Text = string.Empty;
+            SettingsRoute.ClearConnectionSecretLabel();
         }
     }
 
@@ -3185,31 +3111,23 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        var profile = this.FindControl<ComboBox>("SecretFileProviderPicker")?.SelectedItem
-            as FileProviderProfileItemViewModel;
-        var kind = this.FindControl<ComboBox>("FileProviderSecretKindPicker")?.SelectedItem;
-        var valueInput = this.FindControl<TextBox>("FileProviderSecretValueInput");
-        if (profile is null || kind is not SecretKind secretKind)
+        var input = SettingsRoute.CaptureFileProviderSecretForm();
+        if (input.Profile is null || input.Kind is not { } secretKind)
         {
             ViewModel.SetError("Choose a file provider and credential kind.");
             return;
         }
 
         var created = await ViewModel.CreateFileProviderSecretAsync(
-            profile.Id,
-            this.FindControl<TextBox>("FileProviderSecretLabelInput")?.Text ?? string.Empty,
+            input.Profile.Id,
+            input.Label,
             secretKind,
-            valueInput?.Text ?? string.Empty,
+            input.Value,
             _lifetime.Token);
-        if (valueInput is not null)
+        SettingsRoute.ClearFileProviderSecretValue();
+        if (created)
         {
-            valueInput.Text = string.Empty;
-        }
-
-        if (created
-            && this.FindControl<TextBox>("FileProviderSecretLabelInput") is { } labelInput)
-        {
-            labelInput.Text = string.Empty;
+            SettingsRoute.ClearFileProviderSecretLabel();
         }
     }
 
@@ -3217,29 +3135,22 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        var profile = this.FindControl<ComboBox>("AiProviderSecretProfilePicker")?.SelectedItem
-            as AiProviderProfileItemViewModel;
-        var valueInput = this.FindControl<TextBox>("AiProviderSecretValueInput");
-        if (profile is null)
+        var input = SettingsRoute.CaptureAiProviderSecretForm();
+        if (input.Profile is null)
         {
             ViewModel.SetError("Choose an AI-provider profile.");
             return;
         }
 
         var created = await ViewModel.CreateAiProviderSecretAsync(
-            profile.Id,
-            this.FindControl<TextBox>("AiProviderSecretLabelInput")?.Text ?? string.Empty,
-            valueInput?.Text ?? string.Empty,
+            input.Profile.Id,
+            input.Label,
+            input.Value,
             _lifetime.Token);
-        if (valueInput is not null)
+        SettingsRoute.ClearAiProviderSecretValue();
+        if (created)
         {
-            valueInput.Text = string.Empty;
-        }
-
-        if (created
-            && this.FindControl<TextBox>("AiProviderSecretLabelInput") is { } labelInput)
-        {
-            labelInput.Text = string.Empty;
+            SettingsRoute.ClearAiProviderSecretLabel();
         }
     }
 
@@ -3247,31 +3158,23 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        var target = this.FindControl<ComboBox>("McpEnvironmentSecretTargetPicker")
-            ?.SelectedItem as McpEnvironmentSecretTargetViewModel;
-        var kind = this.FindControl<ComboBox>("McpServerSecretKindPicker")?.SelectedItem;
-        var valueInput = this.FindControl<TextBox>("McpServerSecretValueInput");
-        if (target is null || kind is not SecretKind secretKind)
+        var input = SettingsRoute.CaptureMcpServerSecretForm();
+        if (input.Target is null || input.Kind is not { } secretKind)
         {
             ViewModel.SetError("Choose an MCP environment binding and credential kind.");
             return;
         }
 
         var created = await ViewModel.CreateMcpServerSecretAsync(
-            target,
-            this.FindControl<TextBox>("McpServerSecretLabelInput")?.Text ?? string.Empty,
+            input.Target,
+            input.Label,
             secretKind,
-            valueInput?.Text ?? string.Empty,
+            input.Value,
             _lifetime.Token);
-        if (valueInput is not null)
+        SettingsRoute.ClearMcpServerSecretValue();
+        if (created)
         {
-            valueInput.Text = string.Empty;
-        }
-
-        if (created
-            && this.FindControl<TextBox>("McpServerSecretLabelInput") is { } labelInput)
-        {
-            labelInput.Text = string.Empty;
+            SettingsRoute.ClearMcpServerSecretLabel();
         }
     }
 
@@ -3340,13 +3243,6 @@ public sealed partial class MainWindow : Window
             _ = await ViewModel.RetryFileTransferAsync(transfer.Id, _lifetime.Token);
         }
     }
-
-    private string SelectedText(string controlName) =>
-        (this.FindControl<ComboBox>(controlName)?.SelectedItem as ComboBoxItem)?.Content?.ToString()
-        ?? throw new InvalidOperationException($"The {controlName} selection is unavailable.");
-
-    private string? SelectedTextOrDefault(string controlName) =>
-        (this.FindControl<ComboBox>(controlName)?.SelectedItem as ComboBoxItem)?.Content?.ToString();
 
     private void OnClearErrorClick(object? sender, RoutedEventArgs e)
     {
@@ -3960,7 +3856,8 @@ public sealed partial class MainWindow : Window
         }
         else if (ViewModel.IsSettingsVisible)
         {
-            FocusControlWhenReady("SettingsBackButton");
+            FocusSettingsWhenReady(static settings =>
+                settings.FocusBackButton());
         }
     }
 
@@ -3976,6 +3873,10 @@ public sealed partial class MainWindow : Window
                 focus(launcher);
             }
         });
+
+    private void FocusSettingsWhenReady(Action<SettingsView> focus) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            focus(SettingsRoute));
 
     private void FocusOverlayControl(string controlName, bool isOverlayVisible)
     {
