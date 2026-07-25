@@ -335,7 +335,7 @@ public sealed class SettingsViewContractTests
         var content = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "StackPanel");
-        Assert.Equal("18", AttributeValue(content, "Spacing"));
+        Assert.Equal("20", AttributeValue(content, "Spacing"));
         Assert.Null(AttributeValue(content, "Margin"));
         Assert.Null(AttributeValue(content, "IsVisible"));
 
@@ -343,6 +343,9 @@ public sealed class SettingsViewContractTests
             content.Descendants(),
             element => element.Name.LocalName == "SettingsPageHeader");
         Assert.Equal("Quick Terminal", AttributeValue(header, "Heading"));
+        Assert.Equal(
+            "A global drop-down terminal that stays one keystroke away. Configure where it appears and how it behaves.",
+            AttributeValue(header, "Description"));
 
         Assert.Contains(
             root.Descendants(),
@@ -354,6 +357,43 @@ public sealed class SettingsViewContractTests
                 && string.Equals(
                     AttributeValue(element, "Click"),
                     "OnSaveQuickTerminalSettingsClick",
+                    StringComparison.Ordinal));
+
+        foreach (var automationName in QuickTerminalAutomationNames)
+        {
+            Assert.Single(
+                root.Descendants(),
+                element => string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    automationName,
+                    StringComparison.Ordinal));
+        }
+
+        var toggles = root.Descendants()
+            .Where(element => element.Name.LocalName == "ToggleSwitch")
+            .ToArray();
+        Assert.Equal(4, toggles.Length);
+        Assert.Equal(
+            new[]
+            {
+                "{Binding QuickTerminalSettingsEditor.AnimateSlide}",
+                "{Binding QuickTerminalSettingsEditor.ReduceMotion}",
+                "{Binding QuickTerminalSettingsEditor.HideOnFocusLoss}",
+                "{Binding QuickTerminalSettingsEditor.RestoreLastSession}",
+            },
+            toggles
+                .Select(toggle => AttributeValue(toggle, "IsChecked"))
+                .ToArray());
+
+        Assert.Contains(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "AutomationProperties.LiveSetting"),
+                "Polite",
+                StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "{Binding QuickTerminalSettingsEditor.RegistrationStatus}",
                     StringComparison.Ordinal));
 
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
@@ -499,6 +539,21 @@ public sealed class SettingsViewContractTests
         "ApplicationTextScalePicker",
         "CustomAccentText",
         "PlatformProfilePicker",
+    ];
+
+    private static readonly string[] QuickTerminalAutomationNames =
+    [
+        "Save Quick Terminal settings",
+        "Quick Terminal global hotkey",
+        "Quick Terminal display",
+        "Quick Terminal panel height",
+        "Quick Terminal window opacity",
+        "Quick Terminal background blur",
+        "Animate Quick Terminal",
+        "Reduce Quick Terminal motion",
+        "Quick Terminal animation duration",
+        "Hide Quick Terminal on focus loss",
+        "Keep Quick Terminal session",
     ];
 
     private static readonly string[] PasswordInputNames =

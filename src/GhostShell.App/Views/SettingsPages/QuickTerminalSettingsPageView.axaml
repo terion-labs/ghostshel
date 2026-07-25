@@ -5,163 +5,286 @@
     xmlns:components="using:GhostShell.App.Views.Components"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <StackPanel Spacing="18">
+  <StackPanel Spacing="20">
     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
       <components:SettingsPageHeader
           Heading="Quick Terminal"
-          Description="Configure the global drop-down independently from normal workspace windows." />
+          Description="A global drop-down terminal that stays one keystroke away. Configure where it appears and how it behaves." />
       <Button
           Grid.Column="1"
           VerticalAlignment="Bottom"
           Classes="PrimaryButton"
           Click="OnSaveQuickTerminalSettingsClick"
-          Content="Save settings" />
+          Content="Save settings"
+          AutomationProperties.Name="Save Quick Terminal settings" />
     </Grid>
 
-    <Border Classes="SettingsCard">
-      <StackPanel Margin="18" Spacing="14">
-        <TextBlock Classes="SectionHeading" Text="ACTIVATION" />
-        <Grid ColumnDefinitions="*,280" ColumnSpacing="18">
-          <StackPanel Spacing="3">
-            <TextBlock FontWeight="SemiBold" Text="Global hotkey" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                Text="{Binding QuickTerminalSettingsEditor.HotkeyHelpText}" />
-          </StackPanel>
-          <TextBox
-              Grid.Column="1"
-              Classes="Monospace"
-              Text="{Binding QuickTerminalSettingsEditor.HotkeyText}" />
-        </Grid>
-        <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-          <Ellipse
-              Width="8"
-              Height="8"
-              VerticalAlignment="Center"
-              Fill="{Binding QuickTerminalSettingsEditor.RegistrationStatusBrush}" />
-          <TextBlock
-              Grid.Column="1"
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize10}"
-              Text="{Binding QuickTerminalSettingsEditor.RegistrationStatus}"
-              TextWrapping="Wrap" />
-        </Grid>
-      </StackPanel>
-    </Border>
-
-    <Border Classes="SettingsCard">
-      <StackPanel Margin="18" Spacing="14">
-        <TextBlock Classes="SectionHeading" Text="DISPLAY &amp; SIZE" />
-        <Grid
-            ColumnDefinitions="*,280"
-            RowDefinitions="Auto,Auto"
-            RowSpacing="14"
-            ColumnSpacing="18">
-          <StackPanel Spacing="3">
-            <TextBlock FontWeight="SemiBold" Text="Show on display" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                Text="Follow the GhostSHELL window or always use the primary display." />
-          </StackPanel>
-          <ComboBox
-              Grid.Column="1"
-              ItemsSource="{Binding QuickTerminalSettingsEditor.MonitorPolicies}"
-              SelectedItem="{Binding QuickTerminalSettingsEditor.MonitorPolicy}" />
-          <StackPanel Grid.Row="1" Spacing="3">
-            <TextBlock FontWeight="SemiBold" Text="Panel height" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                Text="Percentage of the selected display's working area." />
-          </StackPanel>
-          <Grid
-              Grid.Row="1"
-              Grid.Column="1"
-              ColumnDefinitions="*,Auto"
-              ColumnSpacing="8">
-            <NumericUpDown
-                Minimum="25"
-                Maximum="90"
-                Increment="1"
-                Value="{Binding QuickTerminalSettingsEditor.HeightPercent}" />
-            <TextBlock
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Classes="Monospace Muted"
-                Text="%" />
-          </Grid>
-        </Grid>
-      </StackPanel>
-    </Border>
-
-    <Border Classes="SettingsCard">
-      <StackPanel Margin="18" Spacing="14">
-        <TextBlock Classes="SectionHeading" Text="BACKGROUND" />
-        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-          <StackPanel Spacing="4">
-            <TextBlock FontWeight="SemiBold" Text="Window opacity (%)" />
-            <NumericUpDown
-                Minimum="30"
-                Maximum="100"
-                Increment="1"
-                Value="{Binding QuickTerminalSettingsEditor.OpacityPercent}" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="4">
-            <TextBlock FontWeight="SemiBold" Text="Background blur (px)" />
-            <NumericUpDown
-                Minimum="0"
-                Maximum="100"
-                Increment="1"
-                Value="{Binding QuickTerminalSettingsEditor.BlurRadius}" />
-          </StackPanel>
-        </Grid>
-        <Border Classes="NoticeCard">
-          <TextBlock
-              Margin="14"
-              Classes="Muted"
-              Text="Blur is requested from the desktop compositor. Some platforms expose only on/off blur, so the stored radius is applied at the nearest supported level."
-              TextWrapping="Wrap" />
-        </Border>
-      </StackPanel>
-    </Border>
-
-    <Border Classes="SettingsCard">
-      <StackPanel Margin="18" Spacing="14">
-        <TextBlock Classes="SectionHeading" Text="MOTION &amp; BEHAVIOR" />
-        <Grid ColumnDefinitions="*,*" ColumnSpacing="18">
-          <StackPanel Spacing="10">
-            <CheckBox
-                IsChecked="{Binding QuickTerminalSettingsEditor.AnimateSlide}"
-                Content="Animate the drop-down" />
-            <CheckBox
-                IsChecked="{Binding QuickTerminalSettingsEditor.ReduceMotion}"
-                Content="Reduce motion (overrides animation)" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="4">
-            <TextBlock FontWeight="SemiBold" Text="Animation duration (ms)" />
-            <NumericUpDown
-                Minimum="0"
-                Maximum="1000"
-                Increment="10"
-                Value="{Binding QuickTerminalSettingsEditor.AnimationDurationMilliseconds}" />
-          </StackPanel>
-        </Grid>
-        <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
-        <CheckBox
-            IsChecked="{Binding QuickTerminalSettingsEditor.HideOnFocusLoss}"
-            Content="Hide when focus moves to another application" />
-        <CheckBox
-            IsChecked="{Binding QuickTerminalSettingsEditor.RestoreLastSession}"
-            Content="Keep the terminal session and scrollback between openings" />
+    <StackPanel Spacing="8">
+      <StackPanel Spacing="3">
+        <TextBlock FontWeight="SemiBold" Text="Activation" />
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="Escape always hides the panel. Turning session restore off closes the hidden Quick Terminal session and starts a fresh shell next time."
-            TextWrapping="Wrap" />
+            Text="Choose the global shortcut used to summon or dismiss the panel." />
       </StackPanel>
-    </Border>
+      <Border Classes="SettingsCard">
+        <StackPanel>
+          <Grid Margin="16,12" ColumnDefinitions="*,300" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Global hotkey" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="{Binding QuickTerminalSettingsEditor.HotkeyHelpText}" />
+            </StackPanel>
+            <TextBox
+                Grid.Column="1"
+                Classes="Monospace"
+                Text="{Binding QuickTerminalSettingsEditor.HotkeyText}"
+                AutomationProperties.Name="Quick Terminal global hotkey" />
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <Grid
+              Margin="16,10"
+              ColumnDefinitions="Auto,*"
+              ColumnSpacing="9"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="{Binding QuickTerminalSettingsEditor.RegistrationStatus}">
+            <Ellipse
+                Width="8"
+                Height="8"
+                VerticalAlignment="Center"
+                Fill="{Binding QuickTerminalSettingsEditor.RegistrationStatusBrush}" />
+            <TextBlock
+                Grid.Column="1"
+                Classes="Muted"
+                FontSize="{DynamicResource ShellFontSize10}"
+                Text="{Binding QuickTerminalSettingsEditor.RegistrationStatus}"
+                TextWrapping="Wrap" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <StackPanel Spacing="3">
+        <TextBlock FontWeight="SemiBold" Text="Display &amp; size" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="Choose which display receives the panel and how much of its working area it covers." />
+      </StackPanel>
+      <Border Classes="SettingsCard">
+        <StackPanel>
+          <Grid Margin="16,12" ColumnDefinitions="*,280" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Show on display" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Follow the GhostSHELL window or always use the primary display." />
+            </StackPanel>
+            <ComboBox
+                Grid.Column="1"
+                ItemsSource="{Binding QuickTerminalSettingsEditor.MonitorPolicies}"
+                SelectedItem="{Binding QuickTerminalSettingsEditor.MonitorPolicy}"
+                AutomationProperties.Name="Quick Terminal display" />
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <Grid Margin="16,12" ColumnDefinitions="*,280" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Panel height" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Percentage of the selected display's working area." />
+            </StackPanel>
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <NumericUpDown
+                  Minimum="25"
+                  Maximum="90"
+                  Increment="1"
+                  Value="{Binding QuickTerminalSettingsEditor.HeightPercent}"
+                  AutomationProperties.Name="Quick Terminal panel height" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  Classes="Monospace Muted"
+                  Text="%" />
+            </Grid>
+          </Grid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <StackPanel Spacing="3">
+        <TextBlock FontWeight="SemiBold" Text="Background" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="Tune translucency and the compositor-backed blur treatment." />
+      </StackPanel>
+      <Border Classes="SettingsCard">
+        <StackPanel>
+          <Grid Margin="16,12" ColumnDefinitions="*,280" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Window opacity" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Opacity of the Quick Terminal window, from 30 to 100 percent." />
+            </StackPanel>
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <NumericUpDown
+                  Minimum="30"
+                  Maximum="100"
+                  Increment="1"
+                  Value="{Binding QuickTerminalSettingsEditor.OpacityPercent}"
+                  AutomationProperties.Name="Quick Terminal window opacity" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  Classes="Monospace Muted"
+                  Text="%" />
+            </Grid>
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <Grid Margin="16,12" ColumnDefinitions="*,280" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Background blur" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Requested blur radius before platform capability fallback." />
+            </StackPanel>
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <NumericUpDown
+                  Minimum="0"
+                  Maximum="100"
+                  Increment="1"
+                  Value="{Binding QuickTerminalSettingsEditor.BlurRadius}"
+                  AutomationProperties.Name="Quick Terminal background blur" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  Classes="Monospace Muted"
+                  Text="px" />
+            </Grid>
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <TextBlock
+              Margin="16,10"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="Some platforms expose only on/off blur, so GhostSHELL applies the stored radius at the nearest supported level."
+              TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <StackPanel Spacing="3">
+        <TextBlock FontWeight="SemiBold" Text="Motion &amp; behavior" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="Control how the panel enters, leaves, and retains its terminal session." />
+      </StackPanel>
+      <Border Classes="SettingsCard">
+        <StackPanel>
+          <Grid Margin="16,12" ColumnDefinitions="*,Auto" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Animate the drop-down" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Slide the panel in and out instead of snapping." />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                IsChecked="{Binding QuickTerminalSettingsEditor.AnimateSlide}"
+                AutomationProperties.Name="Animate Quick Terminal" />
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <Grid Margin="16,12" ColumnDefinitions="*,Auto" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Reduce motion" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Disable slide animation even when animation is enabled." />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                IsChecked="{Binding QuickTerminalSettingsEditor.ReduceMotion}"
+                AutomationProperties.Name="Reduce Quick Terminal motion" />
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <Grid Margin="16,12" ColumnDefinitions="*,280" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Animation duration" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Slide duration in milliseconds when motion is enabled." />
+            </StackPanel>
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <NumericUpDown
+                  Minimum="0"
+                  Maximum="1000"
+                  Increment="10"
+                  Value="{Binding QuickTerminalSettingsEditor.AnimationDurationMilliseconds}"
+                  AutomationProperties.Name="Quick Terminal animation duration" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  Classes="Monospace Muted"
+                  Text="ms" />
+            </Grid>
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <Grid Margin="16,12" ColumnDefinitions="*,Auto" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Hide on focus loss" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Dismiss the panel when focus moves to another application." />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                IsChecked="{Binding QuickTerminalSettingsEditor.HideOnFocusLoss}"
+                AutomationProperties.Name="Hide Quick Terminal on focus loss" />
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <Grid Margin="16,12" ColumnDefinitions="*,Auto" ColumnSpacing="18">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Keep terminal session" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Retain the terminal and scrollback between openings. Turning this off starts a fresh shell next time."
+                  TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                IsChecked="{Binding QuickTerminalSettingsEditor.RestoreLastSession}"
+                AutomationProperties.Name="Keep Quick Terminal session" />
+          </Grid>
+          <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+          <TextBlock
+              Margin="16,10"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="Escape always hides the Quick Terminal panel."
+              TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
   </StackPanel>
 </UserControl>
