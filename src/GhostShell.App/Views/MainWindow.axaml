@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:panelViews="using:GhostShell.App.Views.RuntimePanels"
     xmlns:views="using:GhostShell.App.Views"
     xmlns:vm="using:GhostShell.App.ViewModels"
     Title="GhostSHELL"
@@ -605,300 +606,24 @@
     </DataTemplate>
 
     <DataTemplate DataType="vm:StatisticsRuntimePanelViewModel">
-      <Border
-          Classes="PanelCard"
-          Classes.active="{Binding IsActive}"
-          Focusable="True"
+      <panelViews:StatisticsRuntimePanelView
+          CloseRequested="OnCloseRuntimePanelClick"
           GotFocus="OnRuntimePanelGotFocus"
-          IsVisible="{Binding IsVisibleInLayout}"
-          PointerPressed="OnRuntimePanelPointerPressed"
-          AutomationProperties.Name="Local host statistics panel">
-        <Grid RowDefinitions="36,*,25">
-          <Border Classes="PanelHeader">
-            <Grid Margin="11,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-              <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{Binding StatusColor}" />
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-                <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
-                <TextBlock Classes="Eyebrow Accent" Text="LOCAL HOST" />
-                <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
-              </StackPanel>
-              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Classes="Muted Monospace"
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    Text="{Binding StatusText}"
-                    AutomationProperties.LiveSetting="Polite"
-                    AutomationProperties.Name="Statistics state" />
-                <Button
-                    Classes="IconButton"
-                    Command="{Binding RefreshCommand}"
-                    ToolTip.Tip="Refresh statistics"
-                    AutomationProperties.Name="Refresh local host statistics">
-                  <icons:SymbolIcon Symbol="ArrowClockwise" FontSize="12" />
-                </Button>
-                <Button
-                    Classes="IconButton"
-                    Click="OnCloseRuntimePanelClick"
-                    ToolTip.Tip="Close Statistics"
-                    AutomationProperties.Name="Close Statistics panel">
-                  <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-                </Button>
-              </StackPanel>
-            </Grid>
-          </Border>
-
-          <Grid Grid.Row="1">
-            <ScrollViewer Margin="16" IsVisible="{Binding ShowContent}">
-              <StackPanel Spacing="12">
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-                  <Border Classes="SettingsCard">
-                    <StackPanel Margin="16,13" Spacing="5">
-                      <TextBlock Classes="Eyebrow" Text="OBSERVED CPU" />
-                      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding CpuText}" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Across readable processes · normalized by logical CPUs" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Border>
-                  <Border Grid.Column="1" Classes="SettingsCard">
-                    <StackPanel Margin="16,13" Spacing="5">
-                      <TextBlock Classes="Eyebrow" Text="OBSERVED MEMORY" />
-                      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding MemoryText}" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Working set across readable processes" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Border>
-                </Grid>
-
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-                  <Border Classes="SettingsCard">
-                    <StackPanel Margin="16,13" Spacing="5">
-                      <TextBlock Classes="Eyebrow" Text="PROCESSES" />
-                      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding ProcessCountText}" TextWrapping="Wrap" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Protected process details remain excluded" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Border>
-                  <Border Grid.Column="1" Classes="SettingsCard">
-                    <StackPanel Margin="16,13" Spacing="5">
-                      <TextBlock Classes="Eyebrow" Text="HOST UPTIME" />
-                      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding UptimeText}" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessorCountText, StringFormat={}{0} logical processors}" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Border>
-                </Grid>
-
-                <Border Classes="SettingsCard">
-                  <Grid Margin="16,13" ColumnDefinitions="*,*" ColumnSpacing="18">
-                    <StackPanel Spacing="5">
-                      <TextBlock Classes="Eyebrow" Text="GHOSTSHELL CPU" />
-                      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding GhostShellCpuText}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="5">
-                      <TextBlock Classes="Eyebrow" Text="GHOSTSHELL MEMORY" />
-                      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding GhostShellMemoryText}" />
-                    </StackPanel>
-                  </Grid>
-                </Border>
-
-                <Border Padding="12" Classes="NoticeCard" IsVisible="{Binding HasIssue}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Statistics refresh status">
-                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                    <icons:SymbolIcon Symbol="Warning" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" />
-                    <StackPanel Grid.Column="1" Spacing="3">
-                      <TextBlock FontWeight="SemiBold" Text="{Binding IssueTitle}" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding IssueMessage}" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry statistics capture" />
-                  </Grid>
-                </Border>
-              </StackPanel>
-            </ScrollViewer>
-
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" IsVisible="{Binding ShowLoading}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Statistics loading">
-              <ProgressBar Width="180" IsIndeterminate="True" />
-              <TextBlock FontWeight="SemiBold" Text="Waiting for first local-host sample…" />
-              <TextBlock MaxWidth="420" Classes="Muted" TextAlignment="Center" Text="Only bounded resource counters are collected; commands and terminal content are excluded." TextWrapping="Wrap" />
-            </StackPanel>
-
-            <Border Margin="20" Padding="18" Classes="NoticeCard" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowTerminalError}" AutomationProperties.LiveSetting="Assertive" AutomationProperties.Name="Statistics unavailable">
-              <StackPanel MaxWidth="430" Spacing="8">
-                <icons:SymbolIcon HorizontalAlignment="Center" Symbol="ErrorCircle" FontSize="24" Foreground="{DynamicResource ShellDangerBrush}" />
-                <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="{Binding IssueTitle}" />
-                <TextBlock Classes="Muted" Text="{Binding IssueMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-                <Button HorizontalAlignment="Center" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry statistics capture" />
-              </StackPanel>
-            </Border>
-          </Grid>
-
-          <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-            <Grid Margin="10,0" ColumnDefinitions="*,Auto">
-              <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Local counters only · no commands, environment, or terminal content" />
-              <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
-            </Grid>
-          </Border>
-        </Grid>
-      </Border>
+          PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
 
     <DataTemplate DataType="vm:ProcessMonitorRuntimePanelViewModel">
-      <Border
-          Classes="PanelCard"
-          Classes.active="{Binding IsActive}"
-          Focusable="True"
+      <panelViews:ProcessMonitorRuntimePanelView
+          CloseRequested="OnCloseRuntimePanelClick"
           GotFocus="OnRuntimePanelGotFocus"
-          IsVisible="{Binding IsVisibleInLayout}"
-          PointerPressed="OnRuntimePanelPointerPressed"
-          AutomationProperties.Name="Local process monitor panel">
-        <Grid RowDefinitions="36,46,28,*,25">
-          <Border Classes="PanelHeader">
-            <Grid Margin="11,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-              <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{Binding StatusColor}" />
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-                <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
-                <TextBlock Classes="Eyebrow Accent" Text="LOCAL HOST" />
-                <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
-              </StackPanel>
-              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Classes="Muted Monospace"
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    Text="{Binding StatusText}"
-                    AutomationProperties.LiveSetting="Polite"
-                    AutomationProperties.Name="Process monitor state" />
-                <Button
-                    Classes="IconButton"
-                    Command="{Binding RefreshCommand}"
-                    ToolTip.Tip="Refresh processes"
-                    AutomationProperties.Name="Refresh local processes">
-                  <icons:SymbolIcon Symbol="ArrowClockwise" FontSize="12" />
-                </Button>
-                <Button
-                    Classes="IconButton"
-                    Click="OnCloseRuntimePanelClick"
-                    ToolTip.Tip="Close Process Monitor"
-                    AutomationProperties.Name="Close Process Monitor panel">
-                  <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-                </Button>
-              </StackPanel>
-            </Grid>
-          </Border>
-
-          <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-            <Grid Margin="9,6" ColumnDefinitions="*,190,Auto" ColumnSpacing="8">
-              <TextBox Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter local processes" />
-              <ComboBox Grid.Column="1" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding Sort}" AutomationProperties.Name="Process sort order" />
-              <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Refresh" AutomationProperties.Name="Refresh local process list" />
-            </Grid>
-          </Border>
-
-          <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-            <Grid Height="28" Margin="12,0" ColumnDefinitions="70,*,90,110,145" ColumnSpacing="10">
-              <TextBlock VerticalAlignment="Center" Classes="Eyebrow" Text="PID" />
-              <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Eyebrow" Text="NAME" />
-              <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="CPU" />
-              <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Eyebrow" Text="MEMORY" />
-              <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="Eyebrow" Text="STARTED" />
-            </Grid>
-          </Border>
-
-          <Grid Grid.Row="3">
-            <ListBox
-                Margin="4"
-                ItemsSource="{Binding Processes}"
-                SelectedItem="{Binding SelectedProcess}"
-                IsVisible="{Binding ShowContent}"
-                AutomationProperties.Name="Bounded local process list">
-              <ListBox.ItemTemplate>
-                <DataTemplate>
-                  <Grid
-                      MinHeight="34"
-                      Margin="8,0"
-                      ColumnDefinitions="70,*,90,110,145"
-                      ColumnSpacing="10"
-                      AutomationProperties.Name="{Binding AccessibleSummary}">
-                    <TextBlock VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessId}" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsGhostShell}" Text="GHOSTSHELL" />
-                    </StackPanel>
-                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Cpu}" />
-                    <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Memory}" />
-                    <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Started}" />
-                  </Grid>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" IsVisible="{Binding ShowLoading}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Process monitor loading">
-              <ProgressBar Width="180" IsIndeterminate="True" />
-              <TextBlock FontWeight="SemiBold" Text="Waiting for first local-host sample…" />
-              <TextBlock MaxWidth="430" Classes="Muted" TextAlignment="Center" Text="Process names and resource counters are bounded. Command lines, users, environments, and open files are excluded." TextWrapping="Wrap" />
-            </StackPanel>
-
-            <Border Margin="20" Padding="18" Classes="NoticeCard" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowTerminalError}" AutomationProperties.LiveSetting="Assertive" AutomationProperties.Name="Process monitor unavailable">
-              <StackPanel MaxWidth="430" Spacing="8">
-                <icons:SymbolIcon HorizontalAlignment="Center" Symbol="ErrorCircle" FontSize="24" Foreground="{DynamicResource ShellDangerBrush}" />
-                <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="{Binding IssueTitle}" />
-                <TextBlock Classes="Muted" Text="{Binding IssueMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-                <Button HorizontalAlignment="Center" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry process capture" />
-              </StackPanel>
-            </Border>
-
-            <Border Margin="12" Padding="11" Classes="NoticeCard" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" IsVisible="{Binding ShowInlineIssue}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Process refresh status">
-              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                <icons:SymbolIcon Symbol="Warning" FontSize="15" Foreground="{DynamicResource ShellWarningBrush}" />
-                <StackPanel Grid.Column="1" Spacing="2">
-                  <TextBlock FontWeight="SemiBold" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding IssueTitle}" />
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding IssueMessage}" TextWrapping="Wrap" />
-                </StackPanel>
-                <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry local process list" />
-              </Grid>
-            </Border>
-          </Grid>
-
-          <Border Grid.Row="4" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-            <Grid Margin="10,0" ColumnDefinitions="*,Auto">
-              <TextBlock VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ShowingText}" />
-              <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
-            </Grid>
-          </Border>
-        </Grid>
-      </Border>
+          PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
 
     <DataTemplate DataType="vm:UnavailableRuntimePanelViewModel">
-      <Border
-          Classes="PanelCard"
-          Classes.active="{Binding IsActive}"
-          Focusable="True"
+      <panelViews:UnavailableRuntimePanelView
+          CloseRequested="OnCloseRuntimePanelClick"
           GotFocus="OnRuntimePanelGotFocus"
-          IsVisible="{Binding IsVisibleInLayout}"
-          PointerPressed="OnRuntimePanelPointerPressed">
-        <Grid RowDefinitions="36,*">
-          <Border Classes="PanelHeader">
-            <Grid ColumnDefinitions="*,Auto" Margin="11,0">
-              <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-                <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
-                <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
-              </StackPanel>
-              <Button
-                  Grid.Column="1"
-                  Classes="IconButton"
-                  Click="OnCloseRuntimePanelClick"
-                  ToolTip.Tip="Close panel"
-                  AutomationProperties.Name="Close panel">
-                <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-              </Button>
-            </Grid>
-          </Border>
-          <StackPanel Grid.Row="1" MaxWidth="460" Margin="34" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
-            <icons:SymbolIcon Symbol="Warning" FontSize="28" Foreground="#D79B57" />
-            <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Adapter unavailable" TextAlignment="Center" />
-            <TextBlock Classes="Muted" Text="{Binding CapabilityMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-          </StackPanel>
-        </Grid>
-      </Border>
+          PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
   </Window.DataTemplates>
 
