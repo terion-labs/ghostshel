@@ -166,3 +166,51 @@ The capability-decision card was rendered through the same isolated native Avalo
 The live run-local capability card passes the bounded native containment, exact-copy, command-routing, prompt-lock, Stop-availability, and supplied-design-language checks. Exact same-state fidelity remains unverifiable until an authoritative capability-request source state is available.
 
 final result: blocked
+
+## Quick Terminal settings shell — updated 2026-07-25
+
+### Comparison setup
+
+| Surface | Pencil/export reference | Running implementation | Combined comparison |
+| --- | --- | --- | --- |
+| Quick Terminal settings | `design/screen-settings-quick-terminal.png` | `design/qa/quick-terminal-polished.png` | `design/qa/quick-terminal-comparison.png` |
+
+The reference is a 2880 × 4190 pixel full-page export. The implementation was
+captured from a live isolated macOS profile at a 1440 × 900 logical viewport
+(3016 × 1936 capture pixels). The combined artifact normalizes the reference's
+top viewport against the complete live application viewport.
+
+### Visual and interaction checks
+
+- [x] The implemented global hotkey, registration state, display policy, panel
+  height, opacity, blur, animation, reduced-motion, animation-duration,
+  focus-loss, session-retention, and explicit-save controls are present.
+- [x] The implementation follows the source's page introduction, sentence-case
+  section labels, compact grouped rows, right-aligned controls, dividers, and
+  orange state accents.
+- [x] Boolean behavior settings use toggle switches instead of checkbox-form
+  controls.
+- [x] All editable controls expose explicit automation names, and registration
+  feedback is a polite live region.
+- [x] The captured shortcut conflict is truthful: the user's already-running
+  GhostSHELL instance owns the default global shortcut.
+- [x] No P0, P1, or P2 visual issue remained after the final comparison.
+
+### Intentional differences and remaining product work
+
+- Launch at login, origin, tab placement, workspace-panel placement, and desktop
+  dimming exist only in the forward-looking reference and remain future product
+  scope. This pass does not simulate them.
+- The application keeps its current cross-platform settings sidebar and uses
+  denser rows so more implemented controls remain visible in a 900 px-high
+  viewport.
+- The reference is a long-form design export, while the desktop implementation
+  uses the shell's scrolling settings route.
+
+### Result
+
+**passed for the implemented Quick Terminal settings surface** — the live page
+is coherent with the supplied design language and preserves the behavior and
+save flow of every existing Quick Terminal setting.
+
+final result: passed
