@@ -1,0 +1,18 @@
+<UserControl
+    x:Class="GhostShell.App.Views.Components.SettingsPageHeader"
+    x:Name="Root"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Focusable="False"
+    HorizontalContentAlignment="Stretch">
+  <StackPanel Spacing="5">
+    <TextBlock
+        FontSize="{DynamicResource ShellFontSize25}"
+        FontWeight="SemiBold"
+        Text="{Binding Heading, ElementName=Root}" />
+    <TextBlock
+        Classes="Muted"
+        Text="{Binding Description, ElementName=Root}"
+        TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

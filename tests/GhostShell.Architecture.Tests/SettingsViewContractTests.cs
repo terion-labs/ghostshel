@@ -115,9 +115,31 @@ public sealed class SettingsViewContractTests
             root.Elements(),
             element => element.Name.LocalName == "Grid");
 
-        Assert.Equal("56,*", AttributeValue(surface, "RowDefinitions"));
+        Assert.Equal("44,*", AttributeValue(surface, "RowDefinitions"));
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
+
+        var body = Assert.Single(
+            surface.Elements(),
+            element => element.Name.LocalName == "Grid"
+                && string.Equals(AttributeValue(element, "Grid.Row"), "1", StringComparison.Ordinal));
+        Assert.Equal("244,*", AttributeValue(body, "ColumnDefinitions"));
+
+        var pageHeaders = root.Descendants()
+            .Where(element => element.Name.LocalName == "SettingsPageHeader")
+            .ToArray();
+        Assert.Equal(SettingsPageVisibilityBindings.Length, pageHeaders.Length);
+        Assert.All(pageHeaders, header =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(AttributeValue(header, "Heading")));
+            Assert.False(string.IsNullOrWhiteSpace(AttributeValue(header, "Description")));
+        });
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Text"),
+                "Headless mode and ACP will use these same definitions in a later milestone.",
+                StringComparison.Ordinal));
 
         foreach (var pageVisibility in SettingsPageVisibilityBindings)
         {
@@ -163,6 +185,33 @@ public sealed class SettingsViewContractTests
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "DiagnosticsExportView");
+    }
+
+    [Fact]
+    public void Settings_page_header_is_a_passive_shared_component()
+    {
+        var header = LoadComponent("SettingsPageHeader");
+        var root = Assert.IsType<XElement>(header.Root);
+
+        Assert.Equal("Root", AttributeValue(root, "Name"));
+        Assert.Equal("False", AttributeValue(root, "Focusable"));
+
+        var textBlocks = root.Descendants()
+            .Where(element => element.Name.LocalName == "TextBlock")
+            .ToArray();
+        Assert.Equal(2, textBlocks.Length);
+        Assert.Contains(
+            textBlocks,
+            element => string.Equals(
+                AttributeValue(element, "Text"),
+                "{Binding Heading, ElementName=Root}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            textBlocks,
+            element => string.Equals(
+                AttributeValue(element, "Text"),
+                "{Binding Description, ElementName=Root}",
+                StringComparison.Ordinal));
     }
 
     [Fact]
@@ -340,6 +389,15 @@ public sealed class SettingsViewContractTests
             "GhostShell.App",
             "Views",
             $"{view}.axaml"));
+
+    private static XDocument LoadComponent(string component) =>
+        XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "Components",
+            $"{component}.axaml"));
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
