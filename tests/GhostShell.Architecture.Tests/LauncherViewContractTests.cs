@@ -90,11 +90,12 @@ public sealed class LauncherViewContractTests
         }
 
         var home = FindNamedElement(root, "LauncherHomeButton");
-        Assert.Equal("Launcher home", AttributeValue(home, "AutomationProperties.Name"));
+        Assert.Equal("ShellNavigationItem", home.Name.LocalName);
+        Assert.Equal("Launcher home", AttributeValue(home, "AutomationName"));
         Assert.Equal("OnLauncherHomeClick", AttributeValue(home, "Click"));
         Assert.Equal(
             "{Binding IsLauncherOverviewVisible}",
-            AttributeValue(home, "Classes.active"));
+            AttributeValue(home, "IsActive"));
 
         var historySearch = FindNamedElement(root, "HistorySearchBox");
         Assert.Equal(

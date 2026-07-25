@@ -43,21 +43,40 @@
           </StackPanel>
   
           <StackPanel Grid.Row="1" Margin="12,8" Spacing="2">
-            <Button x:Name="LauncherHomeButton" Classes="NavButton" Classes.active="{Binding IsLauncherOverviewVisible}" Click="OnLauncherHomeClick" AutomationProperties.Name="Launcher home">
-              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Home" FontSize="16" /><TextBlock Text="Home" /></StackPanel>
-            </Button>
-            <Button Classes="NavButton" Click="OnLauncherConnectionsClick" AutomationProperties.Name="Saved connections">
-              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="16" /><TextBlock Text="Saved Connections" /></StackPanel>
-            </Button>
-            <Button Classes="NavButton" Click="OnLauncherScreensClick" AutomationProperties.Name="Saved screens">
-              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Grid" FontSize="16" /><TextBlock Text="Screens" /></StackPanel>
-            </Button>
-            <Button x:Name="LauncherHistoryButton" Classes="NavButton" Classes.active="{Binding IsLauncherHistoryVisible}" Click="OnLauncherHistoryClick" AutomationProperties.Name="Session history">
-              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="History" FontSize="16" /><TextBlock Text="History" /></StackPanel>
-            </Button>
-            <Button Classes="NavButton" Click="OnShowSettingsClick" AutomationProperties.Name="Open settings">
-              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Settings" FontSize="16" /><TextBlock Text="Settings" /></StackPanel>
-            </Button>
+            <components:ShellNavigationItem
+                x:Name="LauncherHomeButton"
+                AutomationName="Launcher home"
+                Click="OnLauncherHomeClick"
+                Icon="Home"
+                IconSize="16"
+                IsActive="{Binding IsLauncherOverviewVisible}"
+                Label="Home" />
+            <components:ShellNavigationItem
+                AutomationName="Saved connections"
+                Click="OnLauncherConnectionsClick"
+                Icon="WindowConsole"
+                IconSize="16"
+                Label="Saved Connections" />
+            <components:ShellNavigationItem
+                AutomationName="Saved screens"
+                Click="OnLauncherScreensClick"
+                Icon="Grid"
+                IconSize="16"
+                Label="Screens" />
+            <components:ShellNavigationItem
+                x:Name="LauncherHistoryButton"
+                AutomationName="Session history"
+                Click="OnLauncherHistoryClick"
+                Icon="History"
+                IconSize="16"
+                IsActive="{Binding IsLauncherHistoryVisible}"
+                Label="History" />
+            <components:ShellNavigationItem
+                AutomationName="Open settings"
+                Click="OnShowSettingsClick"
+                Icon="Settings"
+                IconSize="16"
+                Label="Settings" />
           </StackPanel>
         </Grid>
       </Border>

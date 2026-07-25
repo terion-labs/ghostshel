@@ -1,0 +1,23 @@
+<UserControl
+    x:Class="GhostShell.App.Views.Components.ShellNavigationItem"
+    x:Name="Root"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    Focusable="False"
+    HorizontalContentAlignment="Stretch">
+  <Button
+      x:Name="NavigationButton"
+      HorizontalAlignment="Stretch"
+      Classes="NavButton"
+      Classes.active="{Binding IsActive, ElementName=Root}"
+      Click="OnClick"
+      AutomationProperties.Name="{Binding AutomationName, ElementName=Root}">
+    <StackPanel Orientation="Horizontal" Spacing="10">
+      <icons:SymbolIcon
+          Symbol="{Binding Icon, ElementName=Root}"
+          FontSize="{Binding IconSize, ElementName=Root}" />
+      <TextBlock Text="{Binding Label, ElementName=Root}" />
+    </StackPanel>
+  </Button>
+</UserControl>

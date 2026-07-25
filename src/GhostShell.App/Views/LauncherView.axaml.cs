@@ -73,10 +73,10 @@ public sealed partial class LauncherView : UserControl
     public event EventHandler<RoutedEventArgs>? ShowSettingsRequested;
 
     internal void FocusHomeNavigation() =>
-        LauncherHomeButton.Focus(NavigationMethod.Tab);
+        LauncherHomeButton.FocusItem();
 
     internal void FocusHistoryNavigation() =>
-        LauncherHistoryButton.Focus(NavigationMethod.Tab);
+        LauncherHistoryButton.FocusItem();
 
     internal void FocusHistorySearch() =>
         HistorySearchBox.Focus(NavigationMethod.Tab);

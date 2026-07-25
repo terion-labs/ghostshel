@@ -413,10 +413,12 @@ public sealed class McpServerProfileEditorViewModelTests
             "{Binding IsMcpSettingsVisible}",
             section.Attribute("IsVisible")?.Value);
         Assert.Contains(
-            mainWindow.Descendants(view + "Button"),
-            button => button.Attribute("Click")?.Value == "OnMcpSettingsClick"
+            mainWindow.Descendants(),
+            navigationItem =>
+                navigationItem.Name.LocalName == "ShellNavigationItem"
+                && navigationItem.Attribute("Click")?.Value == "OnMcpSettingsClick"
                 && !string.IsNullOrWhiteSpace(
-                    button.Attribute("AutomationProperties.Name")?.Value));
+                    navigationItem.Attribute("AutomationName")?.Value));
         Assert.Contains(
             section.Descendants(view + "TextBlock"),
             element => element.Attribute("Text")?.Value == "No MCP server configured");
