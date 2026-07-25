@@ -9,7 +9,9 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <Grid RowDefinitions="44,*">
-      <Border Classes="TopChrome">
+      <Border
+          Classes="TopChrome"
+          WindowDecorationProperties.ElementRole="TitleBar">
         <Grid>
           <Button
               x:Name="SettingsBackButton"
@@ -19,6 +21,7 @@
               Classes="IconButton"
               Click="OnSettingsBackClick"
               ToolTip.Tip="Back"
+              WindowDecorationProperties.ElementRole="User"
               AutomationProperties.Name="Leave settings">
             <icons:SymbolIcon Symbol="ArrowLeft" FontSize="15" />
           </Button>

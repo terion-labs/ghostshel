@@ -302,6 +302,14 @@
             SaveRequested="OnWorkspaceEditorSaveRequested"
             CancelRequested="OnWorkspaceEditorCancelRequested" />
       </Border>
+
+      <Border
+          x:Name="OverlayTitleBarDragRegion"
+          Height="44"
+          HorizontalAlignment="Stretch"
+          VerticalAlignment="Top"
+          Background="Transparent"
+          WindowDecorationProperties.ElementRole="TitleBar" />
     </Grid>
 
     <Border

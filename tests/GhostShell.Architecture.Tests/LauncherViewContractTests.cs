@@ -78,6 +78,7 @@ public sealed class LauncherViewContractTests
         Assert.Equal("UserControl", root.Name.LocalName);
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
+        AssertTitleBarDragRegion(root);
 
         foreach (var extractedName in ExtractedControlNames)
         {
@@ -157,6 +158,19 @@ public sealed class LauncherViewContractTests
                     AttributeValue(element, "ItemsSource"),
                     "{Binding RecentSessions}",
                     StringComparison.Ordinal));
+    }
+
+    private static void AssertTitleBarDragRegion(XElement root)
+    {
+        var titleBar = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Classes"),
+                "TopChrome",
+                StringComparison.Ordinal));
+        Assert.Equal(
+            "TitleBar",
+            AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
     }
 
     [Fact]

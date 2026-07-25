@@ -117,6 +117,20 @@ public sealed class SettingsViewContractTests
         Assert.Equal("44,*", AttributeValue(surface, "RowDefinitions"));
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
+        var titleBar = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Classes"),
+                "TopChrome",
+                StringComparison.Ordinal));
+        Assert.Equal(
+            "TitleBar",
+            AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
+        Assert.Equal(
+            "User",
+            AttributeValue(
+                FindNamedElement(root, "SettingsBackButton"),
+                "WindowDecorationProperties.ElementRole"));
 
         var body = Assert.Single(
             surface.Elements(),
