@@ -48,17 +48,72 @@
             <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="12,0,12,16" Spacing="2">
                 <TextBlock Margin="10,4,0,8" Classes="SectionHeading" Text="PREFERENCES" />
-                <Button Classes="NavButton" Classes.active="{Binding IsAppearanceSettingsVisible}" Click="OnAppearanceSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Color" FontSize="15" /><TextBlock Text="Appearance" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsWorkspaceSettingsVisible}" Click="OnWorkspaceSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Window" FontSize="15" /><TextBlock Text="Workspaces &amp; screens" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsKeybindingSettingsVisible}" Click="OnKeybindingSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Keyboard" FontSize="15" /><TextBlock Text="Keybindings" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsFilesSettingsVisible}" Click="OnFilesSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Folder" FontSize="15" /><TextBlock Text="Files &amp; transfers" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsTerminalSettingsVisible}" Click="OnTerminalSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="15" /><TextBlock Text="Terminal" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsQuickTerminalSettingsVisible}" Click="OnQuickTerminalSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="15" /><TextBlock Text="Quick Terminal" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsSecretsSettingsVisible}" Click="OnSecretsSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Key" FontSize="15" /><TextBlock Text="Secrets" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsDiagnosticsSettingsVisible}" Click="OnDiagnosticsSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="DocumentBulletList" FontSize="15" /><TextBlock Text="Data &amp; diagnostics" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsAgentSettingsVisible}" Click="OnAgentSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Bot" FontSize="15" /><TextBlock Text="AI providers" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsMcpSettingsVisible}" Click="OnMcpSettingsClick" AutomationProperties.Name="MCP server settings"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Code" FontSize="15" /><TextBlock Text="MCP servers" /></StackPanel></Button>
-                <Button Classes="NavButton" Classes.active="{Binding IsAboutSettingsVisible}" Click="OnAboutSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="BookInformation" FontSize="15" /><TextBlock Text="About" /></StackPanel></Button>
+                <components:ShellNavigationItem
+                    AutomationName="Appearance settings"
+                    Click="OnAppearanceSettingsClick"
+                    Icon="Color"
+                    IsActive="{Binding IsAppearanceSettingsVisible}"
+                    Label="Appearance" />
+                <components:ShellNavigationItem
+                    AutomationName="Workspace and saved screen settings"
+                    Click="OnWorkspaceSettingsClick"
+                    Icon="Window"
+                    IsActive="{Binding IsWorkspaceSettingsVisible}"
+                    Label="Workspaces &amp; screens" />
+                <components:ShellNavigationItem
+                    AutomationName="Keybinding settings"
+                    Click="OnKeybindingSettingsClick"
+                    Icon="Keyboard"
+                    IsActive="{Binding IsKeybindingSettingsVisible}"
+                    Label="Keybindings" />
+                <components:ShellNavigationItem
+                    AutomationName="File and transfer settings"
+                    Click="OnFilesSettingsClick"
+                    Icon="Folder"
+                    IsActive="{Binding IsFilesSettingsVisible}"
+                    Label="Files &amp; transfers" />
+                <components:ShellNavigationItem
+                    AutomationName="Terminal settings"
+                    Click="OnTerminalSettingsClick"
+                    Icon="WindowConsole"
+                    IsActive="{Binding IsTerminalSettingsVisible}"
+                    Label="Terminal" />
+                <components:ShellNavigationItem
+                    AutomationName="Quick Terminal settings"
+                    Click="OnQuickTerminalSettingsClick"
+                    Icon="WindowConsole"
+                    IsActive="{Binding IsQuickTerminalSettingsVisible}"
+                    Label="Quick Terminal" />
+                <components:ShellNavigationItem
+                    AutomationName="Secret settings"
+                    Click="OnSecretsSettingsClick"
+                    Icon="Key"
+                    IsActive="{Binding IsSecretsSettingsVisible}"
+                    Label="Secrets" />
+                <components:ShellNavigationItem
+                    AutomationName="Data and diagnostic settings"
+                    Click="OnDiagnosticsSettingsClick"
+                    Icon="DocumentBulletList"
+                    IsActive="{Binding IsDiagnosticsSettingsVisible}"
+                    Label="Data &amp; diagnostics" />
+                <components:ShellNavigationItem
+                    AutomationName="AI provider settings"
+                    Click="OnAgentSettingsClick"
+                    Icon="Bot"
+                    IsActive="{Binding IsAgentSettingsVisible}"
+                    Label="AI providers" />
+                <components:ShellNavigationItem
+                    AutomationName="MCP server settings"
+                    Click="OnMcpSettingsClick"
+                    Icon="Code"
+                    IsActive="{Binding IsMcpSettingsVisible}"
+                    Label="MCP servers" />
+                <components:ShellNavigationItem
+                    AutomationName="About GhostSHELL"
+                    Click="OnAboutSettingsClick"
+                    Icon="BookInformation"
+                    IsActive="{Binding IsAboutSettingsVisible}"
+                    Label="About" />
               </StackPanel>
             </ScrollViewer>
           </Grid>
