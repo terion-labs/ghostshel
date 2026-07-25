@@ -1,12 +1,15 @@
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using GhostShell.Testing;
 
 namespace GhostShell.Architecture.Tests;
 
 public sealed partial class RepositoryConventionTests
 {
     private static readonly string RepositoryRoot = FindRepositoryRoot();
+    private static readonly ApplicationViewCatalog ApplicationViews =
+        ApplicationViewCatalog.Load();
 
     [Fact]
     public void ProductSourceUsesPanelTerminology()
@@ -131,9 +134,11 @@ public sealed partial class RepositoryConventionTests
             "src",
             "GhostShell.App",
             "Views");
-        var mainWindow = XDocument.Load(
-            Path.Combine(views, "MainWindow.axaml"),
-            LoadOptions.SetLineInfo);
+        var mainWindow = ApplicationViews.FindUniqueOwnerDocument(
+            "the agent authorization panel",
+            element => element.Name.LocalName == "Border"
+                && HasClass(element, "AgentPanel"))
+            .Document;
         var agentPanel = Assert.Single(
             mainWindow.Descendants(),
             element => element.Name.LocalName == "Border"
@@ -340,14 +345,14 @@ public sealed partial class RepositoryConventionTests
     [Fact]
     public void AgentSelectedTerminalScopeUsesAnAccessibleExactChoiceList()
     {
-        var mainWindow = XDocument.Load(
-            Path.Combine(
-                RepositoryRoot,
-                "src",
-                "GhostShell.App",
-                "Views",
-                "MainWindow.axaml"),
-            LoadOptions.SetLineInfo);
+        var mainWindow = ApplicationViews.FindUniqueOwnerDocument(
+            "the selected-terminal agent scope chooser",
+            element => element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "IsVisible"),
+                    "{Binding IsAgentSelectedPanelsScope}",
+                    StringComparison.Ordinal))
+            .Document;
         var chooser = Assert.Single(
             mainWindow.Descendants(),
             element => element.Name.LocalName == "Border"
@@ -417,22 +422,11 @@ public sealed partial class RepositoryConventionTests
     [Fact]
     public void SavedScreenDeleteUndoIsVisibleAndKeyboardReachable()
     {
-        var views = Path.Combine(
-            RepositoryRoot,
-            "src",
-            "GhostShell.App",
-            "Views");
-        var mainWindow = XDocument.Load(
-            Path.Combine(views, "MainWindow.axaml"),
-            LoadOptions.SetLineInfo);
-        var notice = Assert.Single(
-            mainWindow.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "Name"),
-                    "SavedScreenDeleteUndoNotice",
-                    StringComparison.Ordinal));
+        var notice = ApplicationViews
+            .FindUniqueNamedElement("SavedScreenDeleteUndoNotice")
+            .Element;
 
+        Assert.Equal("Border", notice.Name.LocalName);
         Assert.Equal(
             "{Binding HasPendingSavedScreenDeleteUndo}",
             AttributeValue(notice, "IsVisible"));
@@ -482,21 +476,12 @@ public sealed partial class RepositoryConventionTests
     [Fact]
     public void RuntimeTabReorderingHasPointerFeedbackAndKeyboardParity()
     {
-        var views = Path.Combine(
-            RepositoryRoot,
-            "src",
-            "GhostShell.App",
-            "Views");
-        var mainWindowPath = Path.Combine(views, "MainWindow.axaml");
-        var mainWindow = XDocument.Load(mainWindowPath, LoadOptions.SetLineInfo);
-        var tabStrip = Assert.Single(
-            mainWindow.Descendants(),
-            element => element.Name.LocalName == "ScrollViewer"
-                && string.Equals(
-                    AttributeValue(element, "Name"),
-                    "RuntimeTabStrip",
-                    StringComparison.Ordinal));
+        var ownedTabStrip = ApplicationViews.FindUniqueNamedElement(
+            "RuntimeTabStrip");
+        var mainWindow = ownedTabStrip.Owner.Document;
+        var tabStrip = ownedTabStrip.Element;
 
+        Assert.Equal("ScrollViewer", tabStrip.Name.LocalName);
         Assert.Equal("Auto", AttributeValue(tabStrip, "HorizontalScrollBarVisibility"));
         Assert.Equal("Disabled", AttributeValue(tabStrip, "VerticalScrollBarVisibility"));
         Assert.False(
@@ -609,8 +594,8 @@ public sealed partial class RepositoryConventionTests
             AttributeValue(status, "AutomationProperties.Name"),
             StringComparison.Ordinal);
 
-        var codeBehind = File.ReadAllText(
-            Path.Combine(views, "MainWindow.axaml.cs"));
+        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
+            "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>");
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
             codeBehind,

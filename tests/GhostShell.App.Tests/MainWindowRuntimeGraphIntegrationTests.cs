@@ -654,6 +654,168 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Shell_routes_and_subroutes_expose_exactly_one_visible_surface()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+
+        Assert.Equal(1, VisibleRouteCount(viewModel));
+        Assert.True(viewModel.IsLauncherOverviewVisible);
+        Assert.False(viewModel.IsLauncherHistoryVisible);
+
+        viewModel.ShowLauncherHistory();
+
+        Assert.Equal(1, VisibleRouteCount(viewModel));
+        Assert.False(viewModel.IsLauncherOverviewVisible);
+        Assert.True(viewModel.IsLauncherHistoryVisible);
+
+        foreach (var page in Enum.GetValues<SettingsPage>())
+        {
+            viewModel.ShowSettings(page);
+
+            Assert.Equal(1, VisibleRouteCount(viewModel));
+            Assert.True(viewModel.IsSettingsVisible);
+            Assert.Equal(1, VisibleSettingsPageCount(viewModel));
+        }
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.Equal(1, VisibleRouteCount(viewModel));
+        Assert.True(viewModel.IsWorkspaceVisible);
+
+        foreach (var overlay in Enum.GetValues<ShellOverlay>())
+        {
+            viewModel.ShowOverlay(overlay);
+
+            Assert.Equal(
+                overlay == ShellOverlay.None ? 0 : 1,
+                VisibleOverlayCount(viewModel));
+        }
+    }
+
+    [Theory]
+    [InlineData(ShellOverlay.CommandPalette)]
+    [InlineData(ShellOverlay.NewItem)]
+    [InlineData(ShellOverlay.NewPanel)]
+    public async Task Navigation_dismisses_clean_transient_overlays(
+        ShellOverlay overlay)
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        viewModel.ShowOverlay(overlay);
+
+        viewModel.ShowSettings(SettingsPage.Files);
+
+        Assert.Equal(ShellRoute.Settings, viewModel.Route);
+        Assert.Equal(SettingsPage.Files, viewModel.SettingsPage);
+        Assert.Equal(ShellOverlay.None, viewModel.Overlay);
+        Assert.Equal(1, VisibleRouteCount(viewModel));
+        Assert.Equal(0, VisibleOverlayCount(viewModel));
+    }
+
+    [Fact]
+    public async Task Dirty_layout_designer_blocks_navigation_and_preserves_its_surface()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var layout = Assert.Single(snapshot.Layouts).Value;
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, snapshot);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        viewModel.BeginEditLayout(layout.Id);
+        var editor = Assert.IsType<LayoutDesignerViewModel>(
+            viewModel.LayoutDesignerEditor);
+        editor.Name = $"{editor.Name} revised";
+
+        viewModel.ShowSettings(SettingsPage.Appearance);
+
+        Assert.True(editor.IsDirty);
+        Assert.Same(editor, viewModel.LayoutDesignerEditor);
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
+        Assert.Equal(ShellOverlay.LayoutDesigner, viewModel.Overlay);
+        Assert.Contains("discard", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(ShellOverlay.CommandPalette)]
+    [InlineData(ShellOverlay.NewItem)]
+    public async Task Saved_tab_completion_closes_its_initiating_overlay_and_shows_workspace(
+        ShellOverlay overlay)
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateTabAppendCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        viewModel.ShowSettings(SettingsPage.Files);
+        viewModel.ShowOverlay(overlay);
+
+        Assert.True(await viewModel.LaunchConnectionAsync(AppendedConnectionId));
+
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
+        Assert.Equal(ShellOverlay.None, viewModel.Overlay);
+        Assert.Equal(1, VisibleRouteCount(viewModel));
+        Assert.Equal(0, VisibleOverlayCount(viewModel));
+    }
+
+    [Fact]
+    public async Task New_panel_completion_closes_its_initiating_overlay_and_shows_workspace()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        viewModel.ShowOverlay(ShellOverlay.NewPanel);
+
+        Assert.True(await viewModel.AddFilePanelAsync());
+
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
+        Assert.Equal(ShellOverlay.None, viewModel.Overlay);
+        Assert.Equal(1, VisibleRouteCount(viewModel));
+        Assert.Equal(0, VisibleOverlayCount(viewModel));
+    }
+
+    [Fact]
+    public async Task Delayed_saved_tab_completion_does_not_steal_newer_settings_route()
+    {
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateTabAppendCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        viewModel.ShowOverlay(ShellOverlay.CommandPalette);
+        recorder.DelayNextRegistration = true;
+
+        var append = viewModel.LaunchConnectionAsync(AppendedConnectionId);
+        await recorder.DelayedRegistrationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        viewModel.ShowSettings(SettingsPage.Files);
+
+        recorder.AllowDelayedRegistration.TrySetResult();
+        Assert.True(await append);
+
+        Assert.Equal(ShellRoute.Settings, viewModel.Route);
+        Assert.Equal(SettingsPage.Files, viewModel.SettingsPage);
+        Assert.Equal(ShellOverlay.None, viewModel.Overlay);
+        Assert.Equal("Secondary local", viewModel.RuntimeWorkspace?.ActiveTab?.Title);
+    }
+
+    [Fact]
+    public async Task Delayed_saved_tab_completion_does_not_close_a_newer_overlay()
+    {
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateTabAppendCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        viewModel.ShowOverlay(ShellOverlay.CommandPalette);
+        recorder.DelayNextRegistration = true;
+
+        var append = viewModel.LaunchScreenAsync(AppendedScreenId);
+        await recorder.DelayedRegistrationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        viewModel.ShowOverlay(ShellOverlay.NewPanel);
+
+        recorder.AllowDelayedRegistration.TrySetResult();
+        Assert.True(await append);
+
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
+        Assert.Equal(ShellOverlay.NewPanel, viewModel.Overlay);
+        Assert.True(viewModel.IsNewPanelVisible);
+        Assert.Equal("Operations screen", viewModel.RuntimeWorkspace?.ActiveTab?.Title);
+    }
+
+    [Fact]
     public async Task Saved_connection_and_screen_launches_append_host_registered_tabs()
     {
         var (client, recorder) = CreateSessionClient();
@@ -2327,6 +2489,40 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var client = DispatchProxy.Create<ISessionHostClient, RecordingSessionClient>();
         return (client, (RecordingSessionClient)(object)client);
     }
+
+    private static int VisibleRouteCount(MainWindowViewModel viewModel) =>
+        new[]
+        {
+            viewModel.IsLauncherVisible,
+            viewModel.IsWorkspaceVisible,
+            viewModel.IsSettingsVisible,
+        }.Count(isVisible => isVisible);
+
+    private static int VisibleSettingsPageCount(MainWindowViewModel viewModel) =>
+        new[]
+        {
+            viewModel.IsAppearanceSettingsVisible,
+            viewModel.IsWorkspaceSettingsVisible,
+            viewModel.IsKeybindingSettingsVisible,
+            viewModel.IsFilesSettingsVisible,
+            viewModel.IsTerminalSettingsVisible,
+            viewModel.IsQuickTerminalSettingsVisible,
+            viewModel.IsSecretsSettingsVisible,
+            viewModel.IsDiagnosticsSettingsVisible,
+            viewModel.IsAgentSettingsVisible,
+            viewModel.IsMcpSettingsVisible,
+            viewModel.IsAboutSettingsVisible,
+        }.Count(isVisible => isVisible);
+
+    private static int VisibleOverlayCount(MainWindowViewModel viewModel) =>
+        new[]
+        {
+            viewModel.IsCommandPaletteVisible,
+            viewModel.IsNewItemVisible,
+            viewModel.IsNewPanelVisible,
+            viewModel.IsLayoutDesignerVisible,
+            viewModel.IsDefinitionEditorVisible,
+        }.Count(isVisible => isVisible);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,

@@ -24,6 +24,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile
+      Include="..\GhostShell.App.Tests\ApplicationViewCatalog.cs"
+      Link="ApplicationViewCatalog.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\GhostShell.Agent\GhostShell.Agent.csproj" />
     <ProjectReference Include="..\..\src\GhostShell.Agent.Providers\GhostShell.Agent.Providers.csproj" />
     <ProjectReference Include="..\..\src\GhostShell.Agent.Runtime\GhostShell.Agent.Runtime.csproj" />

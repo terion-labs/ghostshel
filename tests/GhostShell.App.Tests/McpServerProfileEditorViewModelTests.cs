@@ -3,11 +3,15 @@ using System.Xml.Linq;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Testing;
 
 namespace GhostShell.App.Tests;
 
 public sealed class McpServerProfileEditorViewModelTests
 {
+    private static readonly ApplicationViewCatalog ApplicationViews =
+        ApplicationViewCatalog.Load();
+
     [Fact]
     public void New_profile_keeps_direct_command_arguments_and_vault_references_separate()
     {
@@ -327,17 +331,16 @@ public sealed class McpServerProfileEditorViewModelTests
     [Fact]
     public void Editor_and_trust_review_are_keyboard_and_screen_reader_accessible()
     {
-        var repositoryRoot = FindRepositoryRoot();
         XNamespace view = "https://github.com/avaloniaui";
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var editor = XDocument.Load(Path.Combine(
-            repositoryRoot,
+            ApplicationViews.RepositoryRoot,
             "src",
             "GhostShell.App",
             "Views",
             "McpServerProfileEditorDialog.axaml"));
         var confirmation = XDocument.Load(Path.Combine(
-            repositoryRoot,
+            ApplicationViews.RepositoryRoot,
             "src",
             "GhostShell.App",
             "Views",
@@ -398,19 +401,14 @@ public sealed class McpServerProfileEditorViewModelTests
     [Fact]
     public void Settings_surface_has_navigation_empty_state_health_and_credential_controls()
     {
-        var repositoryRoot = FindRepositoryRoot();
         XNamespace view = "https://github.com/avaloniaui";
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var mainWindow = XDocument.Load(Path.Combine(
-            repositoryRoot,
-            "src",
-            "GhostShell.App",
-            "Views",
-            "MainWindow.axaml"));
+        var ownedSection = ApplicationViews.FindUniqueNamedElement(
+            "McpSettingsSection");
+        var mainWindow = ownedSection.Owner.Document;
+        var section = ownedSection.Element;
 
-        var section = Assert.Single(
-            mainWindow.Descendants(view + "StackPanel"),
-            element => element.Attribute(x + "Name")?.Value == "McpSettingsSection");
+        Assert.Equal(view + "StackPanel", section.Name);
         Assert.Equal(
             "{Binding IsMcpSettingsVisible}",
             section.Attribute("IsVisible")?.Value);
@@ -986,19 +984,4 @@ public sealed class McpServerProfileEditorViewModelTests
             throw new NotSupportedException();
     }
 
-    private static string FindRepositoryRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
-             directory is not null;
-             directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "GhostShell.slnx")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new DirectoryNotFoundException(
-            "Could not locate the GhostSHELL repository root.");
-    }
 }

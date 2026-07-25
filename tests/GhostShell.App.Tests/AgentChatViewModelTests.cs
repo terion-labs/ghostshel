@@ -4,11 +4,15 @@ using GhostShell.App;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Testing;
 
 namespace GhostShell.App.Tests;
 
 public sealed class AgentChatViewModelTests
 {
+    private static readonly ApplicationViewCatalog ApplicationViews =
+        ApplicationViewCatalog.Load();
+
     [Fact]
     public void Constructor_projects_enabled_providers_and_pending_capability_state()
     {
@@ -149,23 +153,12 @@ public sealed class AgentChatViewModelTests
     [Fact]
     public void Progress_card_has_keyboard_and_polite_live_accessibility_bindings()
     {
-        var repositoryRoot = FindRepositoryRoot();
-        var document = XDocument.Load(
-            Path.Combine(
-                repositoryRoot,
-                "src",
-                "GhostShell.App",
-                "Views",
-                "MainWindow.axaml"));
         XNamespace viewNamespace = "https://github.com/avaloniaui";
-        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var card = Assert.Single(
-            document.Descendants(viewNamespace + "Border"),
-            element => string.Equals(
-                element.Attribute(x + "Name")?.Value,
-                "AgentCurrentProgress",
-                StringComparison.Ordinal));
+        var card = ApplicationViews
+            .FindUniqueNamedElement("AgentCurrentProgress")
+            .Element;
 
+        Assert.Equal(viewNamespace + "Border", card.Name);
         Assert.Equal("True", card.Attribute("Focusable")?.Value);
         Assert.Equal(
             "True",
@@ -204,7 +197,7 @@ public sealed class AgentChatViewModelTests
 
         var theme = XDocument.Load(
             Path.Combine(
-                repositoryRoot,
+                ApplicationViews.RepositoryRoot,
                 "src",
                 "GhostShell.App",
                 "Styles",
@@ -416,23 +409,13 @@ public sealed class AgentChatViewModelTests
     [Fact]
     public void Question_card_is_assertive_single_line_and_keyboard_accessible()
     {
-        var repositoryRoot = FindRepositoryRoot();
-        var document = XDocument.Load(
-            Path.Combine(
-                repositoryRoot,
-                "src",
-                "GhostShell.App",
-                "Views",
-                "MainWindow.axaml"));
         XNamespace viewNamespace = "https://github.com/avaloniaui";
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var card = Assert.Single(
-            document.Descendants(viewNamespace + "Border"),
-            element => string.Equals(
-                element.Attribute(x + "Name")?.Value,
-                "AgentPendingQuestion",
-                StringComparison.Ordinal));
+        var card = ApplicationViews
+            .FindUniqueNamedElement("AgentPendingQuestion")
+            .Element;
 
+        Assert.Equal(viewNamespace + "Border", card.Name);
         Assert.Equal("True", card.Attribute("Focusable")?.Value);
         Assert.Equal(
             "True",
@@ -507,7 +490,7 @@ public sealed class AgentChatViewModelTests
 
         var theme = XDocument.Load(
             Path.Combine(
-                repositoryRoot,
+                ApplicationViews.RepositoryRoot,
                 "src",
                 "GhostShell.App",
                 "Styles",
@@ -756,23 +739,12 @@ public sealed class AgentChatViewModelTests
     [Fact]
     public void Capability_request_card_uses_trusted_bindings_and_does_not_take_focus()
     {
-        var repositoryRoot = FindRepositoryRoot();
-        var document = XDocument.Load(
-            Path.Combine(
-                repositoryRoot,
-                "src",
-                "GhostShell.App",
-                "Views",
-                "MainWindow.axaml"));
         XNamespace viewNamespace = "https://github.com/avaloniaui";
-        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var card = Assert.Single(
-            document.Descendants(viewNamespace + "Border"),
-            element => string.Equals(
-                element.Attribute(x + "Name")?.Value,
-                "AgentPendingCapabilityRequest",
-                StringComparison.Ordinal));
+        var card = ApplicationViews
+            .FindUniqueNamedElement("AgentPendingCapabilityRequest")
+            .Element;
 
+        Assert.Equal(viewNamespace + "Border", card.Name);
         Assert.Equal("True", card.Attribute("Focusable")?.Value);
         Assert.Equal(
             "True",
@@ -1031,23 +1003,13 @@ public sealed class AgentChatViewModelTests
     [Fact]
     public void Agent_composer_binds_dynamic_steering_copy_and_primary_action()
     {
-        var repositoryRoot = FindRepositoryRoot();
         var viewNamespace = (XNamespace)"https://github.com/avaloniaui";
-        var x = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml";
-        var document = XDocument.Load(
-            Path.Combine(
-                repositoryRoot,
-                "src",
-                "GhostShell.App",
-                "Views",
-                "MainWindow.axaml"));
+        var ownedInput = ApplicationViews.FindUniqueNamedElement(
+            "AgentChatPromptInput");
+        var document = ownedInput.Owner.Document;
+        var input = ownedInput.Element;
 
-        var input = Assert.Single(
-            document.Descendants(viewNamespace + "TextBox"),
-            element => string.Equals(
-                element.Attribute(x + "Name")?.Value,
-                "AgentChatPromptInput",
-                StringComparison.Ordinal));
+        Assert.Equal(viewNamespace + "TextBox", input.Name);
         Assert.Equal(
             "{Binding AgentChat.PromptPlaceholder}",
             input.Attribute("PlaceholderText")?.Value);
@@ -2626,22 +2588,6 @@ public sealed class AgentChatViewModelTests
             pendingCapabilityRequest,
             steeringAvailable,
             steeringGeneration);
-
-    private static string FindRepositoryRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
-             directory is not null;
-             directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "GhostShell.slnx")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new DirectoryNotFoundException(
-            "Could not locate the GhostSHELL repository root.");
-    }
 
     private static GovernedAgentContextItem ContextItem(
         string panelId,
