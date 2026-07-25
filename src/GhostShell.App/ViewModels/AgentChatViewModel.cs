@@ -1377,12 +1377,18 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var previousState = State;
         var previousQuestionId = PendingQuestion?.Id;
         var selectedId = snapshot.ProviderId ?? SelectedProvider?.Id;
+        var hadProvider = HasProvider;
         Replace(
             Providers,
             _profiles.Profiles
                 .Where(profile => profile.IsEnabled)
                 .OrderBy(profile => profile.Order)
                 .ThenBy(profile => profile.Name, StringComparer.OrdinalIgnoreCase));
+        if (hadProvider != HasProvider)
+        {
+            OnPropertyChanged(nameof(HasProvider));
+            OnPropertyChanged(nameof(HasNoProvider));
+        }
 
         var selectedProvider = Providers.FirstOrDefault(profile => profile.Id == selectedId);
         var isRunBound = snapshot.RunId is not null

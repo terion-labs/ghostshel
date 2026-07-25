@@ -70,6 +70,32 @@ public sealed class AgentWorkspaceViewContractTests
             "AI agent activity",
             AttributeValue(transcript, "AutomationProperties.Name"),
             StringComparison.Ordinal);
+
+        var providerSettings = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "Content"),
+                    "Open provider settings",
+                    StringComparison.Ordinal));
+        Assert.Equal("PrimaryButton", AttributeValue(providerSettings, "Classes"));
+        Assert.Equal(
+            "Open AI provider settings",
+            AttributeValue(providerSettings, "AutomationProperties.Name"));
+        Assert.False(string.IsNullOrWhiteSpace(
+            AttributeValue(providerSettings, "AutomationProperties.HelpText")));
+
+        var prompt = FindNamedElement(root, "AgentChatPromptInput");
+        var composer = Assert.Single(
+            prompt.Ancestors(),
+            element => element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "Grid.Row"),
+                    "3",
+                    StringComparison.Ordinal));
+        Assert.Equal(
+            "{Binding AgentChat.HasProvider}",
+            AttributeValue(composer, "IsVisible"));
     }
 
     [Fact]

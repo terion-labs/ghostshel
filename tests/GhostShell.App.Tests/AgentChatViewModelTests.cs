@@ -1016,6 +1016,15 @@ public sealed class AgentChatViewModelTests
         Assert.Equal(
             "{Binding AgentChat.CanEnterPrompt}",
             input.Attribute("IsEnabled")?.Value);
+        var composer = Assert.Single(
+            input.Ancestors(viewNamespace + "Border"),
+            border => string.Equals(
+                border.Attribute("Grid.Row")?.Value,
+                "3",
+                StringComparison.Ordinal));
+        Assert.Equal(
+            "{Binding AgentChat.HasProvider}",
+            composer.Attribute("IsVisible")?.Value);
 
         var action = Assert.Single(
             document.Descendants(viewNamespace + "Button"),
@@ -2217,6 +2226,36 @@ public sealed class AgentChatViewModelTests
             provider => Assert.Equal(replacement.Id, provider.Id),
             provider => Assert.Equal(selected.Id, provider.Id));
         Assert.Equal(selected.Id, viewModel.SelectedProvider?.Id);
+    }
+
+    [Fact]
+    public void Profile_change_notifies_provider_setup_visibility()
+    {
+        var provider = Provider("provider", "Provider", order: 0);
+        using var runtime = new StubGovernedRuntime();
+        using var profiles = new StubProfileRuntime();
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance);
+        var notifications = new List<string>();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is { } propertyName)
+            {
+                notifications.Add(propertyName);
+            }
+        };
+
+        Assert.True(viewModel.HasNoProvider);
+
+        profiles.Profiles = [provider];
+        profiles.RaiseProfilesChanged();
+
+        Assert.True(viewModel.HasProvider);
+        Assert.False(viewModel.HasNoProvider);
+        Assert.Contains(nameof(AgentChatViewModel.HasProvider), notifications);
+        Assert.Contains(nameof(AgentChatViewModel.HasNoProvider), notifications);
     }
 
     [Fact]

@@ -384,7 +384,12 @@
           <Border Width="54" Height="54" Background="{DynamicResource ShellAccentSoftBrush}" CornerRadius="16"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Bot" FontSize="27" Foreground="{DynamicResource ShellAccentBrush}" /></Border>
           <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Connect an AI provider" TextAlignment="Center" />
           <TextBlock MaxWidth="270" Classes="Muted" Text="Add an Anthropic, OpenAI, or compatible endpoint. Credentials stay in the OS vault and panel actions remain broker-governed." TextAlignment="Center" TextWrapping="Wrap" />
-          <Button Classes="SecondaryButton" Click="OnShowAgentSettingsClick" Content="Open provider settings" />
+          <Button
+              Classes="PrimaryButton"
+              Click="OnShowAgentSettingsClick"
+              Content="Open provider settings"
+              AutomationProperties.Name="Open AI provider settings"
+              AutomationProperties.HelpText="Configure an AI service for this local GhostSHELL profile. Credentials remain in the operating-system vault." />
         </StackPanel>
         <StackPanel
             Margin="18,28"
@@ -659,7 +664,15 @@
           </Grid>
         </StackPanel>
       </ScrollViewer>
-      <Border Grid.Row="3" Margin="10,7" Padding="9" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="9">
+      <Border
+          Grid.Row="3"
+          Margin="10,7"
+          Padding="9"
+          Background="{DynamicResource ShellSurfaceRaisedBrush}"
+          BorderBrush="{DynamicResource ShellBorderBrush}"
+          BorderThickness="1"
+          CornerRadius="9"
+          IsVisible="{Binding AgentChat.HasProvider}">
         <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
           <TextBox
               x:Name="AgentChatPromptInput"
