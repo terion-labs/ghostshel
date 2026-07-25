@@ -821,27 +821,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static void OnAgentChatTranscriptScrollChanged(
-        object? sender,
-        ScrollChangedEventArgs e)
-    {
-        if (sender is not ScrollViewer transcript || e.ExtentDelta.Y <= 0)
-        {
-            return;
-        }
-
-        var previousExtentHeight = transcript.Extent.Height - e.ExtentDelta.Y;
-        var previousEndOffset = Math.Max(
-            0,
-            previousExtentHeight - transcript.Viewport.Height);
-        if (transcript.Offset.Y < previousEndOffset - 12)
-        {
-            return;
-        }
-
-        Avalonia.Threading.Dispatcher.UIThread.Post(transcript.ScrollToEnd);
-    }
-
     private async void OnExportDefinitionsClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
