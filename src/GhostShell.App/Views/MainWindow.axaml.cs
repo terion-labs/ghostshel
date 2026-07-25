@@ -137,6 +137,11 @@ public sealed partial class MainWindow : Window
         ?? throw new InvalidOperationException(
             "The command palette overlay view is unavailable.");
 
+    private NewItemLauncherView NewItemLauncherOverlay =>
+        this.FindControl<NewItemLauncherView>("NewItemLauncherOverlayView")
+        ?? throw new InvalidOperationException(
+            "The new item launcher overlay view is unavailable.");
+
     private NewPanelChooserView NewPanelChooserOverlay =>
         this.FindControl<NewPanelChooserView>("NewPanelChooserOverlayView")
         ?? throw new InvalidOperationException(
@@ -171,8 +176,13 @@ public sealed partial class MainWindow : Window
             TimeSpan.FromMilliseconds(100));
     }
 
-    private void FocusNewTerminalButton() =>
-        FocusOverlayControl("NewTerminalButton", ViewModel.IsNewItemVisible);
+    private void FocusNewTerminalButton()
+    {
+        if (ViewModel.IsNewItemVisible)
+        {
+            NewItemLauncherOverlay.FocusInitialAction();
+        }
+    }
 
     public void NavigateToLauncher()
     {
@@ -2646,17 +2656,12 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        var input = this.FindControl<TextBox>("NewWorkspaceName");
         var result = await ViewModel.CreateWorkspaceAsync(
-            input?.Text ?? string.Empty,
+            NewItemLauncherOverlay.WorkspaceName,
             _lifetime.Token);
         if (result.IsSuccess)
         {
-            if (input is not null)
-            {
-                input.Text = string.Empty;
-            }
-
+            NewItemLauncherOverlay.ClearWorkspaceName();
             ViewModel.CloseOverlay();
         }
     }
@@ -2665,10 +2670,10 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        var input = this.FindControl<TextBox>("NewScreenName");
         try
         {
-            var editor = ViewModel.CreateNewSavedScreenEditor(input?.Text ?? string.Empty);
+            var editor = ViewModel.CreateNewSavedScreenEditor(
+                NewItemLauncherOverlay.ScreenName);
             var saved = await new SavedScreenEditorDialog(
                     editor,
                     ViewModel.SaveSavedScreenAsync)
@@ -2678,11 +2683,7 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            if (input is not null)
-            {
-                input.Text = string.Empty;
-            }
-
+            NewItemLauncherOverlay.ClearScreenName();
             ViewModel.CloseOverlay();
         }
         catch (InvalidOperationException exception)
