@@ -129,17 +129,22 @@ public sealed class AgentWorkspaceViewContractTests
         "AgentChatTranscript",
         "AgentContextInspector",
         "AgentCurrentProgress",
-        "AgentPendingQuestion",
-        "AgentQuestionResponseInput",
-        "AgentPendingCapabilityRequest",
         "AgentRunAudit",
         "AgentChatPromptInput",
     ];
 
     private static string InteractionAttribute(string interaction) =>
-        interaction == "AgentQuestionResponseKeyDownRequested"
-            ? "KeyDown"
-            : "Click";
+        interaction switch
+        {
+            "AgentQuestionResponseKeyDownRequested" => "ResponseKeyDownRequested",
+            "ApproveAgentActionRequested" => "ApproveRequested",
+            "DeclineAgentQuestionRequested" => "DeclineRequested",
+            "DenyAgentActionRequested" => "DenyRequested",
+            "EnableAgentCapabilityAskRequested" => "EnableAskRequested",
+            "KeepAgentCapabilityOffRequested" => "KeepOffRequested",
+            "SubmitAgentQuestionRequested" => "SubmitRequested",
+            _ => "Click",
+        };
 
     private static XElement FindNamedElement(XElement root, string name) =>
         Assert.Single(
