@@ -122,6 +122,26 @@ public sealed partial class MainWindow : Window
         ?? throw new InvalidOperationException(
             "The new panel chooser overlay view is unavailable.");
 
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _ = sender;
+        if (!e.Pointer.IsPrimary)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(this);
+        if (!point.Properties.IsLeftButtonPressed
+            && e.Pointer.Type != PointerType.Touch)
+        {
+            return;
+        }
+
+        // Avalonia's native TitleBar role is not consistently honored on macOS.
+        // Keep the role for native hit-testing and use this client event as a fallback.
+        BeginMoveDrag(e);
+        e.Handled = true;
+    }
 
     public void ShowCommandPalette()
     {

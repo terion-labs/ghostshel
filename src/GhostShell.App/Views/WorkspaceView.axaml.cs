@@ -76,6 +76,8 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? SubmitAgentQuestionRequested;
 
+    public event EventHandler<PointerPressedEventArgs>? TitleBarPointerPressedRequested;
+
     public event EventHandler<RoutedEventArgs>? ToggleAgentRequested;
 
     private void OnActivateTabClick(object? sender, RoutedEventArgs e) =>
@@ -179,6 +181,9 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnSubmitAgentQuestionClick(object? sender, RoutedEventArgs e) =>
         SubmitAgentQuestionRequested?.Invoke(sender, e);
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) =>
+        TitleBarPointerPressedRequested?.Invoke(sender, e);
 
     private void OnToggleAgentClick(object? sender, RoutedEventArgs e) =>
         ToggleAgentRequested?.Invoke(sender, e);

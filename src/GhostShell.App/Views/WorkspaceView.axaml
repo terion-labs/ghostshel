@@ -10,6 +10,7 @@
   <Grid RowDefinitions="44,34,*,26">
     <Border
         Classes="TopChrome"
+        PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
       <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding WindowTitleBarContentMargin}" ColumnSpacing="8">
         <Button

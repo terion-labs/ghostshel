@@ -38,6 +38,7 @@ public sealed class LauncherViewContractTests
             ["ShowCommandPaletteRequested"] = "OnShowCommandPaletteClick",
             ["ShowNewItemRequested"] = "OnShowNewItemClick",
             ["ShowSettingsRequested"] = "OnShowSettingsClick",
+            ["TitleBarPointerPressedRequested"] = "OnTitleBarPointerPressed",
         };
 
     [Fact]
@@ -171,6 +172,9 @@ public sealed class LauncherViewContractTests
         Assert.Equal(
             "TitleBar",
             AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
+        Assert.Equal(
+            "OnTitleBarPointerPressed",
+            AttributeValue(titleBar, "PointerPressed"));
     }
 
     [Fact]
@@ -198,6 +202,21 @@ public sealed class LauncherViewContractTests
         Assert.DoesNotContain("Process.Start", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("_lifetime", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Main_window_owns_the_titlebar_move_fallback()
+    {
+        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
+            "public sealed partial class MainWindow : Window");
+
+        Assert.Contains(
+            "private void OnTitleBarPointerPressed(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains("e.Pointer.IsPrimary", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BeginMoveDrag(e);", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("e.Handled = true;", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]

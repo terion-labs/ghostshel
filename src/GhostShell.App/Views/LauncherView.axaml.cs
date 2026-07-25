@@ -72,6 +72,8 @@ public sealed partial class LauncherView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ShowSettingsRequested;
 
+    public event EventHandler<PointerPressedEventArgs>? TitleBarPointerPressedRequested;
+
     internal void FocusHomeNavigation() =>
         LauncherHomeButton.FocusItem();
 
@@ -148,6 +150,9 @@ public sealed partial class LauncherView : UserControl
 
     private void OnLauncherScreensClick(object? sender, RoutedEventArgs e) =>
         LauncherScreensRequested?.Invoke(sender, e);
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) =>
+        TitleBarPointerPressedRequested?.Invoke(sender, e);
 
     private void OnOpenConnectionClick(object? sender, RoutedEventArgs e) =>
         OpenConnectionRequested?.Invoke(sender, e);

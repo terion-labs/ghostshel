@@ -283,6 +283,7 @@ public sealed partial class MainWindow
                 ViewModel.WindowId,
                 workspace.Id,
                 tab.Id));
+        e.Handled = true;
     }
 
     private async void OnRuntimeTabDragPointerMoved(

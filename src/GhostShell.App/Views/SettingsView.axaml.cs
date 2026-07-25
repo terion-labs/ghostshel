@@ -154,6 +154,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? TestMcpServerRequested;
 
+    public event EventHandler<PointerPressedEventArgs>? TitleBarPointerPressedRequested;
+
     public event EventHandler<RoutedEventArgs>? UnbindKeybindingRequested;
 
     public event EventHandler<RoutedEventArgs>? UndoDeletedSavedScreenRequested;
@@ -424,6 +426,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnTestMcpServerClick(object? sender, RoutedEventArgs e) =>
         TestMcpServerRequested?.Invoke(sender, e);
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) =>
+        TitleBarPointerPressedRequested?.Invoke(sender, e);
 
     private void OnUnbindKeybindingClick(object? sender, RoutedEventArgs e) =>
         UnbindKeybindingRequested?.Invoke(sender, e);

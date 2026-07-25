@@ -11,6 +11,7 @@
   <Grid RowDefinitions="44,*">
       <Border
           Classes="TopChrome"
+          PointerPressed="OnTitleBarPointerPressed"
           WindowDecorationProperties.ElementRole="TitleBar">
         <Grid>
           <Button

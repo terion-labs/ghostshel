@@ -554,6 +554,20 @@ public sealed partial class RepositoryConventionTests
                     "ReOrderDotsVertical",
                     StringComparison.Ordinal));
 
+        var mainWindowCodeBehind = ApplicationViews.FindPartialClassSources("MainWindow");
+        var pointerPressedStart = mainWindowCodeBehind.IndexOf(
+            "private void OnRuntimeTabDragPointerPressed(",
+            StringComparison.Ordinal);
+        var pointerMovedStart = mainWindowCodeBehind.IndexOf(
+            "private async void OnRuntimeTabDragPointerMoved(",
+            StringComparison.Ordinal);
+        Assert.True(pointerPressedStart >= 0);
+        Assert.True(pointerMovedStart > pointerPressedStart);
+        Assert.Contains(
+            "e.Handled = true;",
+            mainWindowCodeBehind[pointerPressedStart..pointerMovedStart],
+            StringComparison.Ordinal);
+
         var activator = Assert.Single(
             dropTarget.Elements(),
             element => element.Name.LocalName == "Button"
