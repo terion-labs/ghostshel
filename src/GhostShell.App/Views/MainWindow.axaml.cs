@@ -4141,62 +4141,12 @@ public sealed partial class MainWindow : Window
 
     private async Task<bool> RunCloseFlowAsync(
         Func<CloseDecision, CancellationToken, ValueTask<HostResult<CloseScopeResult>>> close)
-    {
-        try
-        {
-            var initial = await close(CloseDecision.Request, _lifetime.Token);
-            if (initial is HostResult<CloseScopeResult>.Failure initialFailure)
-            {
-                await ShowErrorAsync(initialFailure.Error.Message);
-                return false;
-            }
-
-            var result = ((HostResult<CloseScopeResult>.Success)initial).Value;
-            if (result is CloseScopeResult.ConfirmationRequired confirmation)
-            {
-                var approved = await new CloseConfirmationDialog(confirmation).ShowDialog<bool>(this);
-                if (!approved)
-                {
-                    // Return keyboard ownership as soon as the modal intent is known.
-                    // The cancellation roundtrip may still snapshot live sessions and
-                    // must not hold focus behind that asynchronous host work.
-                    RestoreFocusAfterCancelledClose();
-                    _ = await close(CloseDecision.Cancel, _lifetime.Token);
-                    return false;
-                }
-
-                var confirmed = await close(CloseDecision.Confirm, _lifetime.Token);
-                if (confirmed is HostResult<CloseScopeResult>.Failure confirmationFailure)
-                {
-                    await ShowErrorAsync(confirmationFailure.Error.Message);
-                    return false;
-                }
-
-                result = ((HostResult<CloseScopeResult>.Success)confirmed).Value;
-            }
-
-            if (result is not CloseScopeResult.Completed completed)
-            {
-                await ShowErrorAsync("The session still requires confirmation.");
-                return false;
-            }
-
-            var failure = completed.Sessions.FirstOrDefault(item =>
-                item.Outcome is SessionCloseOutcome.EngineFailed
-                    or SessionCloseOutcome.ConfirmationRequired);
-            if (failure is not null)
-            {
-                await ShowErrorAsync(failure.Detail);
-                return false;
-            }
-
-            return completed.Sessions.All(item => item.Outcome != SessionCloseOutcome.Cancelled);
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-        {
-            return false;
-        }
-    }
+        => await MainWindowCloseFlow.RunAsync(
+            close,
+            confirmation => new CloseConfirmationDialog(confirmation).ShowDialog<bool>(this),
+            ShowErrorAsync,
+            RestoreFocusAfterCancelledClose,
+            _lifetime.Token);
 
     private Task ShowErrorAsync(string message) =>
         new OperationErrorDialog(message).ShowDialog(this);
