@@ -3,13 +3,12 @@ using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using GhostShell.App;
+using GhostShell.App.Views.SettingsPages;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.App.Views;
-
-internal sealed record AppearanceTextScaleOption(string DisplayName, double? Scale);
 
 public sealed partial class MainWindow
 {
@@ -162,13 +161,6 @@ public sealed partial class MainWindow
         return standard ?? new(
             textScale!.Value.ToString("0.##%", CultureInfo.InvariantCulture),
             textScale);
-    }
-
-    private void OnAccentModeSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        SettingsRoute.UpdateCustomAccentAvailability();
     }
 
     private async void OnKeybindingProfileSelectionChanged(
