@@ -65,7 +65,7 @@ public sealed class WorkspaceViewContractTests
             Assert.Equal(handler, AttributeValue(workspace, interaction));
         }
 
-        foreach (var extractedName in ExtractedControlNames)
+        foreach (var extractedName in RouteControlNames)
         {
             Assert.DoesNotContain(
                 mainWindow.Descendants(),
@@ -98,7 +98,7 @@ public sealed class WorkspaceViewContractTests
             element => element.Name.LocalName == "Grid");
         Assert.Equal("44,34,*,26", AttributeValue(surface, "RowDefinitions"));
 
-        foreach (var extractedName in ExtractedControlNames)
+        foreach (var extractedName in WorkspaceControlNames)
         {
             Assert.Single(
                 root.Descendants(),
@@ -131,13 +131,35 @@ public sealed class WorkspaceViewContractTests
                     StringComparison.Ordinal));
         Assert.Equal("0,0,1,0", AttributeValue(rail, "BorderThickness"));
 
-        var agentPanel = Assert.Single(
+        var agentWorkspace = Assert.Single(
             root.Descendants(),
-            element => HasClass(element, "AgentPanel"));
-        Assert.Equal("Right", AttributeValue(agentPanel, "DockPanel.Dock"));
+            element => element.Name.LocalName == "AgentWorkspaceView");
+        Assert.Equal("AgentWorkspaceSurface", AttributeValue(agentWorkspace, "Name"));
+        Assert.Equal("Right", AttributeValue(agentWorkspace, "DockPanel.Dock"));
+        Assert.Equal("352", AttributeValue(agentWorkspace, "Width"));
+        Assert.Equal("0,8,8,8", AttributeValue(agentWorkspace, "Margin"));
         Assert.Equal(
             "{Binding IsAgentPanelVisible}",
-            AttributeValue(agentPanel, "IsVisible"));
+            AttributeValue(agentWorkspace, "IsVisible"));
+        foreach (var interaction in AgentInteractionNames)
+        {
+            Assert.Equal(
+                ShellInteractions[interaction],
+                AttributeValue(agentWorkspace, interaction));
+        }
+
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => HasClass(element, "AgentPanel"));
+        foreach (var controlName in AgentControlNames)
+        {
+            Assert.DoesNotContain(
+                root.Descendants(),
+                element => string.Equals(
+                    AttributeValue(element, "Name"),
+                    controlName,
+                    StringComparison.Ordinal));
+        }
 
         var panelItems = Assert.Single(
             root.Descendants(),
@@ -155,15 +177,6 @@ public sealed class WorkspaceViewContractTests
         Assert.Contains(
             panelItems.Descendants(),
             element => element.Name.LocalName == "RuntimePanelLayoutPanel");
-
-        var transcript = FindNamedElement(root, "AgentChatTranscript");
-        Assert.Equal(
-            "OnAgentChatTranscriptScrollChanged",
-            AttributeValue(transcript, "ScrollChanged"));
-        Assert.Contains(
-            "AI agent activity",
-            AttributeValue(transcript, "AutomationProperties.Name"),
-            StringComparison.Ordinal);
 
         Assert.Contains(
             root.Descendants(),
@@ -201,15 +214,11 @@ public sealed class WorkspaceViewContractTests
         }
 
         Assert.Contains(
-            "private static void OnAgentChatTranscriptScrollChanged(",
-            codeBehind,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Dispatcher.UIThread.Post(transcript.ScrollToEnd);",
+            "event EventHandler<KeyEventArgs>? AgentQuestionResponseKeyDownRequested;",
             codeBehind,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "AgentChatTranscriptScrollChangedRequested",
+            "OnAgentChatTranscriptScrollChanged",
             codeBehind,
             StringComparison.Ordinal);
 
@@ -253,9 +262,33 @@ public sealed class WorkspaceViewContractTests
         Assert.Contains(".OfType<BrowserPresentationHost>()", mainWindowCode, StringComparison.Ordinal);
     }
 
-    private static readonly string[] ExtractedControlNames =
+    private static readonly string[] AgentInteractionNames =
+    [
+        "AgentQuestionResponseKeyDownRequested",
+        "ApproveAgentActionRequested",
+        "CancelAgentActionRequested",
+        "CancelAgentChatRequested",
+        "ClearAgentChatRequested",
+        "DeclineAgentQuestionRequested",
+        "DenyAgentActionRequested",
+        "DisableAgentYoloRequested",
+        "EnableAgentCapabilityAskRequested",
+        "EnableAgentYoloRequested",
+        "KeepAgentCapabilityOffRequested",
+        "LoadOlderAgentAuditRequested",
+        "RefreshAgentAuditRequested",
+        "SendAgentChatRequested",
+        "ShowAgentSettingsRequested",
+        "SubmitAgentQuestionRequested",
+    ];
+
+    private static readonly string[] WorkspaceControlNames =
     [
         "RuntimeTabStrip",
+    ];
+
+    private static readonly string[] AgentControlNames =
+    [
         "AgentChatTranscript",
         "AgentContextInspector",
         "AgentCurrentProgress",
@@ -264,6 +297,12 @@ public sealed class WorkspaceViewContractTests
         "AgentPendingCapabilityRequest",
         "AgentRunAudit",
         "AgentChatPromptInput",
+    ];
+
+    private static readonly string[] RouteControlNames =
+    [
+        .. WorkspaceControlNames,
+        .. AgentControlNames,
     ];
 
     private static XElement FindNamedElement(XElement root, string name) =>
