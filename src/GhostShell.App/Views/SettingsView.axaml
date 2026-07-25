@@ -2,50 +2,74 @@
     x:Class="GhostShell.App.Views.SettingsView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:views="using:GhostShell.App.Views"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Grid RowDefinitions="56,*">
+  <Grid RowDefinitions="44,*">
       <Border Classes="TopChrome">
-        <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding WindowTitleBarContentMargin}" ColumnSpacing="10">
-          <Button x:Name="SettingsBackButton" Classes="IconButton Large" Click="OnSettingsBackClick" ToolTip.Tip="Back" AutomationProperties.Name="Leave settings"><icons:SymbolIcon Symbol="ArrowLeft" FontSize="16" /></Button>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-            <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Settings" />
-            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Stored locally for this profile" />
+        <Grid>
+          <Button
+              x:Name="SettingsBackButton"
+              Margin="{Binding WindowTitleBarContentMargin}"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center"
+              Classes="IconButton"
+              Click="OnSettingsBackClick"
+              ToolTip.Tip="Back"
+              AutomationProperties.Name="Leave settings">
+            <icons:SymbolIcon Symbol="ArrowLeft" FontSize="15" />
+          </Button>
+          <StackPanel
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Orientation="Horizontal"
+              Spacing="7">
+            <icons:SymbolIcon Symbol="Settings" FontSize="13" />
+            <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Settings" />
           </StackPanel>
-          <Button Grid.Column="2" Classes="TextButton" Click="OnShowCommandPaletteClick" Content="{Binding CommandPaletteSettingsAction}" />
         </Grid>
       </Border>
-      <Grid Grid.Row="1" ColumnDefinitions="236,*">
+      <Grid Grid.Row="1" ColumnDefinitions="244,*">
         <Border Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
-          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="14,20" Spacing="6">
-              <TextBlock Margin="10,0,0,8" Classes="SectionHeading" Text="PREFERENCES" />
-              <Button Classes="NavButton" Classes.active="{Binding IsAppearanceSettingsVisible}" Click="OnAppearanceSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Color" FontSize="15" /><TextBlock Text="Appearance" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsWorkspaceSettingsVisible}" Click="OnWorkspaceSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Window" FontSize="15" /><TextBlock Text="Workspaces &amp; screens" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsKeybindingSettingsVisible}" Click="OnKeybindingSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Keyboard" FontSize="15" /><TextBlock Text="Keybindings" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsFilesSettingsVisible}" Click="OnFilesSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Folder" FontSize="15" /><TextBlock Text="Files &amp; transfers" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsTerminalSettingsVisible}" Click="OnTerminalSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="15" /><TextBlock Text="Terminal" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsQuickTerminalSettingsVisible}" Click="OnQuickTerminalSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="15" /><TextBlock Text="Quick Terminal" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsSecretsSettingsVisible}" Click="OnSecretsSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Key" FontSize="15" /><TextBlock Text="Secrets" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsDiagnosticsSettingsVisible}" Click="OnDiagnosticsSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="DocumentBulletList" FontSize="15" /><TextBlock Text="Data &amp; diagnostics" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsAgentSettingsVisible}" Click="OnAgentSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Bot" FontSize="15" /><TextBlock Text="AI providers" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsMcpSettingsVisible}" Click="OnMcpSettingsClick" AutomationProperties.Name="MCP server settings"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Code" FontSize="15" /><TextBlock Text="MCP servers" /></StackPanel></Button>
-              <Button Classes="NavButton" Classes.active="{Binding IsAboutSettingsVisible}" Click="OnAboutSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="BookInformation" FontSize="15" /><TextBlock Text="About" /></StackPanel></Button>
-              <Border Height="1" Margin="4,12" Background="{DynamicResource ShellBorderBrush}" />
-              <TextBlock Margin="10,0" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Headless mode and ACP will use these same definitions in a later milestone." TextWrapping="Wrap" />
-            </StackPanel>
-          </ScrollViewer>
+          <Grid RowDefinitions="Auto,*">
+            <Button
+                Margin="12,16,12,8"
+                Classes="SearchButton"
+                Click="OnShowCommandPaletteClick"
+                AutomationProperties.Name="Search commands and settings">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <icons:SymbolIcon Symbol="Search" FontSize="14" />
+                <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Search &amp; commands" />
+                <TextBlock Grid.Column="2" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CommandPaletteShortcut}" />
+              </Grid>
+            </Button>
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="12,0,12,16" Spacing="2">
+                <TextBlock Margin="10,4,0,8" Classes="SectionHeading" Text="PREFERENCES" />
+                <Button Classes="NavButton" Classes.active="{Binding IsAppearanceSettingsVisible}" Click="OnAppearanceSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Color" FontSize="15" /><TextBlock Text="Appearance" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsWorkspaceSettingsVisible}" Click="OnWorkspaceSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Window" FontSize="15" /><TextBlock Text="Workspaces &amp; screens" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsKeybindingSettingsVisible}" Click="OnKeybindingSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Keyboard" FontSize="15" /><TextBlock Text="Keybindings" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsFilesSettingsVisible}" Click="OnFilesSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Folder" FontSize="15" /><TextBlock Text="Files &amp; transfers" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsTerminalSettingsVisible}" Click="OnTerminalSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="15" /><TextBlock Text="Terminal" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsQuickTerminalSettingsVisible}" Click="OnQuickTerminalSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="15" /><TextBlock Text="Quick Terminal" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsSecretsSettingsVisible}" Click="OnSecretsSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Key" FontSize="15" /><TextBlock Text="Secrets" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsDiagnosticsSettingsVisible}" Click="OnDiagnosticsSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="DocumentBulletList" FontSize="15" /><TextBlock Text="Data &amp; diagnostics" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsAgentSettingsVisible}" Click="OnAgentSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Bot" FontSize="15" /><TextBlock Text="AI providers" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsMcpSettingsVisible}" Click="OnMcpSettingsClick" AutomationProperties.Name="MCP server settings"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Code" FontSize="15" /><TextBlock Text="MCP servers" /></StackPanel></Button>
+                <Button Classes="NavButton" Classes.active="{Binding IsAboutSettingsVisible}" Click="OnAboutSettingsClick"><StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="BookInformation" FontSize="15" /><TextBlock Text="About" /></StackPanel></Button>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
         </Border>
 
         <ScrollViewer Grid.Column="1">
-          <Grid Margin="44,34,56,60">
+          <Grid Margin="40,20,40,48">
             <StackPanel Spacing="22" IsVisible="{Binding IsAppearanceSettingsVisible}">
-              <StackPanel Spacing="5">
-                <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Appearance" />
-                <TextBlock Classes="Muted" Text="Follow the host automatically or select an explicit cross-platform profile." />
-              </StackPanel>
+              <components:SettingsPageHeader
+                  Heading="Appearance"
+                  Description="Follow the host automatically or select an explicit cross-platform profile." />
               <Border Classes="SettingsCard">
                 <StackPanel Margin="18" Spacing="16">
                   <Grid ColumnDefinitions="*,280" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="14">
@@ -69,7 +93,9 @@
 
             <StackPanel Spacing="22" IsVisible="{Binding IsWorkspaceSettingsVisible}">
               <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Spacing="5"><TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Workspaces &amp; saved screens" /><TextBlock Classes="Muted" Text="Edit persistent launch definitions. Runtime terminal instances remain independent." /></StackPanel>
+                <components:SettingsPageHeader
+                    Heading="Workspaces &amp; saved screens"
+                    Description="Edit persistent launch definitions. Runtime terminal instances remain independent." />
                 <Button Grid.Column="1" Classes="PrimaryButton" Click="OnShowNewItemClick" Content="New definition" />
               </Grid>
               <Border
@@ -152,9 +178,10 @@
             </StackPanel>
 
             <StackPanel Spacing="18" IsVisible="{Binding IsKeybindingSettingsVisible}">
-              <StackPanel Spacing="5">
-                <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Keybindings" />
-                <TextBlock Classes="Muted" Text="Record, unbind, reset, and validate application or terminal shortcuts. Blocking conflicts cannot be saved." />
+              <StackPanel Spacing="7">
+                <components:SettingsPageHeader
+                    Heading="Keybindings"
+                    Description="Record, unbind, reset, and validate application or terminal shortcuts. Blocking conflicts cannot be saved." />
                 <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ActiveApplicationKeymapName, StringFormat={}ACTIVE APPLICATION PROFILE · {0}}" />
               </StackPanel>
 
@@ -253,7 +280,9 @@
             </StackPanel>
 
             <StackPanel Spacing="18" IsVisible="{Binding IsFilesSettingsVisible}">
-              <StackPanel Spacing="5"><TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Files &amp; transfers" /><TextBlock Classes="Muted" Text="Provider capabilities stay explicit; queued copies and moves are bounded, cancellable, and conflict-aware." /></StackPanel>
+              <components:SettingsPageHeader
+                  Heading="Files &amp; transfers"
+                  Description="Provider capabilities stay explicit; queued copies and moves are bounded, cancellable, and conflict-aware." />
               <StackPanel Spacing="9">
                 <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="CONFIGURED PROVIDERS" /><Button Grid.Column="1" Classes="PrimaryButton" Click="OnAddFileProviderClick" Content="Add provider" /></Grid>
                 <ItemsControl ItemsSource="{Binding FileProviderDefinitions}">
@@ -302,10 +331,9 @@
 
             <StackPanel Spacing="18" IsVisible="{Binding IsTerminalSettingsVisible}">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
-                <StackPanel Spacing="5">
-                  <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Terminal" />
-                  <TextBlock Classes="Muted" Text="Tune the stored renderer profile. Existing sessions keep the snapshot they launched with." />
-                </StackPanel>
+                <components:SettingsPageHeader
+                    Heading="Terminal"
+                    Description="Tune the stored renderer profile. Existing sessions keep the snapshot they launched with." />
                 <Button Grid.Column="1" VerticalAlignment="Bottom" Classes="PrimaryButton" Click="OnSaveTerminalProfileClick" Content="Save profile" />
               </Grid>
 
@@ -369,10 +397,9 @@
 
             <StackPanel Spacing="18" IsVisible="{Binding IsQuickTerminalSettingsVisible}">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
-                <StackPanel Spacing="5">
-                  <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Quick Terminal" />
-                  <TextBlock Classes="Muted" Text="Configure the global drop-down independently from normal workspace windows." />
-                </StackPanel>
+                <components:SettingsPageHeader
+                    Heading="Quick Terminal"
+                    Description="Configure the global drop-down independently from normal workspace windows." />
                 <Button Grid.Column="1" VerticalAlignment="Bottom" Classes="PrimaryButton" Click="OnSaveQuickTerminalSettingsClick" Content="Save settings" />
               </Grid>
 
@@ -436,7 +463,9 @@
             </StackPanel>
 
             <StackPanel Spacing="18" IsVisible="{Binding IsSecretsSettingsVisible}">
-              <StackPanel Spacing="5"><TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Secrets" /><TextBlock Classes="Muted" Text="Credential values live only in the operating-system vault. GhostSHELL stores opaque references in definitions." /></StackPanel>
+              <components:SettingsPageHeader
+                  Heading="Secrets"
+                  Description="Credential values live only in the operating-system vault. GhostSHELL stores opaque references in definitions." />
               <Border Classes="NoticeCard"><Grid Margin="14" ColumnDefinitions="Auto,*" ColumnSpacing="10"><icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" /><TextBlock Grid.Column="1" Classes="Muted" Text="{Binding SecretVaultStatus}" TextWrapping="Wrap" /></Grid></Border>
               <Border Classes="SettingsCard">
                 <StackPanel Margin="18" Spacing="13">
@@ -495,10 +524,9 @@
 
             <StackPanel Spacing="18" IsVisible="{Binding IsAgentSettingsVisible}">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
-                <StackPanel Spacing="5">
-                  <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="AI providers" />
-                  <TextBlock Classes="Muted" Text="Native Anthropic and OpenAI-compatible adapters. Credentials resolve from the OS vault only for a bounded request." TextWrapping="Wrap" />
-                </StackPanel>
+                <components:SettingsPageHeader
+                    Heading="AI providers"
+                    Description="Native Anthropic and OpenAI-compatible adapters. Credentials resolve from the OS vault only for a bounded request." />
                 <Button Grid.Column="1" VerticalAlignment="Center" Classes="PrimaryButton" Click="OnAddAiProviderClick" Content="Add provider" AutomationProperties.Name="Add AI provider" />
               </Grid>
 
@@ -585,13 +613,9 @@
 
             <StackPanel x:Name="McpSettingsSection" Spacing="18" IsVisible="{Binding IsMcpSettingsVisible}">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
-                <StackPanel Spacing="5">
-                  <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="MCP servers" />
-                  <TextBlock
-                      Classes="Muted"
-                      Text="Native .NET stdio integrations for governed agent runs. Each server is a direct local process; no agent is installed on connected remote machines."
-                      TextWrapping="Wrap" />
-                </StackPanel>
+                <components:SettingsPageHeader
+                    Heading="MCP servers"
+                    Description="Native .NET stdio integrations for governed agent runs. Each server is a direct local process; no agent is installed on connected remote machines." />
                 <Button
                     Grid.Column="1"
                     VerticalAlignment="Center"
@@ -768,10 +792,9 @@
             </StackPanel>
 
             <StackPanel Spacing="18" IsVisible="{Binding IsDiagnosticsSettingsVisible}">
-              <StackPanel Spacing="5">
-                <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="Data &amp; diagnostics" />
-                <TextBlock Classes="Muted" Text="Export bounded support information without terminal content, commands, credentials, or environment values." TextWrapping="Wrap" />
-              </StackPanel>
+              <components:SettingsPageHeader
+                  Heading="Data &amp; diagnostics"
+                  Description="Export bounded support information without terminal content, commands, credentials, or environment values." />
               <Border Classes="SettingsCard">
                 <Grid Margin="16" ColumnDefinitions="*,Auto" ColumnSpacing="16">
                   <StackPanel Spacing="4">
@@ -791,10 +814,9 @@
             </StackPanel>
 
             <StackPanel Spacing="18" IsVisible="{Binding IsAboutSettingsVisible}">
-              <StackPanel Spacing="5">
-                <TextBlock FontSize="{DynamicResource ShellFontSize25}" FontWeight="SemiBold" Text="About GhostSHELL" />
-                <TextBlock Classes="Muted" Text="The native .NET agent can operate governed terminal, browser, and File Viewer panels. Actions stay scoped to exact live targets; risky mutations require explicit one-time approval." TextWrapping="Wrap" />
-              </StackPanel>
+              <components:SettingsPageHeader
+                  Heading="About GhostSHELL"
+                  Description="The native .NET agent can operate governed terminal, browser, and File Viewer panels. Actions stay scoped to exact live targets; risky mutations require explicit one-time approval." />
 
               <Border Classes="SettingsCard">
                 <Grid Margin="18" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="15" ColumnSpacing="24">
