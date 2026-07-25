@@ -3,6 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
@@ -164,7 +165,7 @@
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Connections" />
-                <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Connections.Count}" /></Border>
+                <components:CountPill Value="{Binding Connections.Count}" />
               </StackPanel>
               <Button Grid.Column="1" Classes="TextButton" Click="OnAddConnectionClick" Content="Add connection" />
             </Grid>
@@ -213,7 +214,7 @@
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Screens" />
-                <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Screens.Count}" /></Border>
+                <components:CountPill Value="{Binding Screens.Count}" />
               </StackPanel>
               <Button Grid.Column="1" Classes="TextButton" Click="OnShowNewItemClick" Content="Add screen" />
             </Grid>
@@ -359,7 +360,7 @@
               <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
                 <Grid Margin="14,0" ColumnDefinitions="*,Auto">
                   <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="RETAINED SESSIONS" />
-                  <Border Grid.Column="1" VerticalAlignment="Center" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding HistoryResultCount}" /></Border>
+                  <components:CountPill Grid.Column="1" VerticalAlignment="Center" Value="{Binding HistoryResultCount}" />
                 </Grid>
               </Border>
               <ListBox

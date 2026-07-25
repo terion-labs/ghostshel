@@ -119,16 +119,20 @@
   </Style>
 
   <Style Selector="Button.NavButton">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
     <Setter Property="Padding" Value="11,9" />
+    <Setter Property="AutomationProperties.ItemStatus" Value="" />
   </Style>
 
   <Style Selector="Button.NavButton.active">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="AutomationProperties.ItemStatus" Value="Current page" />
   </Style>
 
   <Style Selector="Button.ChooserButton">

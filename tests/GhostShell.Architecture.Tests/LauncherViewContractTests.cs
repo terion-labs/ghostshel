@@ -192,6 +192,93 @@ public sealed class LauncherViewContractTests
         Assert.Contains("FocusOverviewSection(section, resetScroll)", mainWindowCode, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Launcher_collection_counts_use_a_shared_noninteractive_component()
+    {
+        var launcher = LoadView("LauncherView");
+        var root = Assert.IsType<XElement>(launcher.Root);
+        var countPills = root.Descendants()
+            .Where(element => element.Name.LocalName == "CountPill")
+            .ToArray();
+
+        Assert.Equal(3, countPills.Length);
+        Assert.Contains(
+            countPills,
+            element => string.Equals(
+                AttributeValue(element, "Value"),
+                "{Binding Connections.Count}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            countPills,
+            element => string.Equals(
+                AttributeValue(element, "Value"),
+                "{Binding Screens.Count}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            countPills,
+            element => string.Equals(
+                AttributeValue(element, "Value"),
+                "{Binding HistoryResultCount}",
+                StringComparison.Ordinal));
+
+        var countPill = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "Components",
+            "CountPill.axaml"));
+        var countRoot = Assert.IsType<XElement>(countPill.Root);
+        Assert.Equal("False", AttributeValue(countRoot, "Focusable"));
+        Assert.Equal("False", AttributeValue(countRoot, "IsHitTestVisible"));
+    }
+
+    [Fact]
+    public void Navigation_style_stretches_items_and_exposes_selection_state()
+    {
+        var theme = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "GhostShellTheme.axaml"));
+        var navigationStyle = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Button.NavButton",
+                    StringComparison.Ordinal));
+        AssertStyleSetter(
+            navigationStyle,
+            "HorizontalAlignment",
+            "Stretch");
+        AssertStyleSetter(
+            navigationStyle,
+            "Foreground",
+            "{DynamicResource ShellMutedBrush}");
+        AssertStyleSetter(
+            navigationStyle,
+            "AutomationProperties.ItemStatus",
+            string.Empty);
+
+        var activeNavigationStyle = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Button.NavButton.active",
+                    StringComparison.Ordinal));
+        AssertStyleSetter(
+            activeNavigationStyle,
+            "Foreground",
+            "{DynamicResource ShellTextBrush}");
+        AssertStyleSetter(
+            activeNavigationStyle,
+            "AutomationProperties.ItemStatus",
+            "Current page");
+    }
+
     private static readonly string[] ExtractedControlNames =
     [
         "LauncherHomeButton",
@@ -224,6 +311,22 @@ public sealed class LauncherViewContractTests
                 AttributeValue(element, "AutomationProperties.Name"),
                 accessibleName,
                 StringComparison.Ordinal));
+
+    private static void AssertStyleSetter(
+        XElement style,
+        string property,
+        string value) =>
+        Assert.Contains(
+            style.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && string.Equals(
+                    AttributeValue(element, "Property"),
+                    property,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Value"),
+                    value,
+                    StringComparison.Ordinal));
 
     private static XDocument LoadView(string view) =>
         XDocument.Load(Path.Combine(
