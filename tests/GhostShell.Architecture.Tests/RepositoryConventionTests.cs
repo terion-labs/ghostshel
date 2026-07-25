@@ -428,11 +428,11 @@ public sealed partial class RepositoryConventionTests
 
         Assert.Equal("Border", notice.Name.LocalName);
         Assert.Equal(
-            "{Binding HasPendingSavedScreenDeleteUndo}",
+            "{Binding SavedScreenDeleteUndo.HasPending}",
             AttributeValue(notice, "IsVisible"));
         Assert.Equal("Polite", AttributeValue(notice, "AutomationProperties.LiveSetting"));
         Assert.Equal(
-            "{Binding SavedScreenDeleteUndoStatus}",
+            "{Binding SavedScreenDeleteUndo.Status}",
             AttributeValue(notice, "AutomationProperties.Name"));
         Assert.False(
             string.IsNullOrWhiteSpace(
@@ -449,7 +449,7 @@ public sealed partial class RepositoryConventionTests
             "OnUndoDeletedSavedScreenClick",
             AttributeValue(undo, "Click"));
         Assert.Equal(
-            "{Binding CanUndoSavedScreenDelete}",
+            "{Binding SavedScreenDeleteUndo.CanUndo}",
             AttributeValue(undo, "IsEnabled"));
         Assert.False(
             string.IsNullOrWhiteSpace(
@@ -466,7 +466,7 @@ public sealed partial class RepositoryConventionTests
                     "OnDismissSavedScreenDeleteUndoClick",
                     StringComparison.Ordinal));
         Assert.Equal(
-            "{Binding CanUndoSavedScreenDelete}",
+            "{Binding SavedScreenDeleteUndo.CanUndo}",
             AttributeValue(dismiss, "IsEnabled"));
         Assert.False(
             string.IsNullOrWhiteSpace(

@@ -8,6 +8,43 @@ namespace GhostShell.App.Tests;
 public sealed class MainWindowSavedScreenDeleteUndoTests
 {
     [Fact]
+    public void Undo_surface_notifies_pending_status_and_availability()
+    {
+        var screen = Screen("screen-alpha", "Alpha");
+        var surface = new SavedScreenDeleteUndoViewModel(
+            new SavedScreenCatalog([Store(screen, 7)]));
+        var changed = new List<string>();
+        surface.PropertyChanged += (_, args) =>
+            changed.Add(Assert.IsType<string>(args.PropertyName));
+
+        surface.Publish(Store(screen, 7));
+
+        var receipt = Assert.IsType<SavedScreenDeleteUndoReceipt>(
+            surface.Pending);
+        Assert.Equal(screen.Id, receipt.ScreenId);
+        Assert.True(surface.HasPending);
+        Assert.True(surface.CanUndo);
+        Assert.False(surface.IsRestoring);
+        Assert.Contains("Running instances were not changed", surface.Status);
+        Assert.Contains(nameof(surface.Pending), changed);
+        Assert.Contains(nameof(surface.HasPending), changed);
+        Assert.Contains(nameof(surface.CanUndo), changed);
+        Assert.Contains(nameof(surface.Status), changed);
+
+        changed.Clear();
+        surface.Dismiss();
+
+        Assert.Null(surface.Pending);
+        Assert.False(surface.HasPending);
+        Assert.False(surface.CanUndo);
+        Assert.Equal("Saved-screen delete undo dismissed.", surface.Status);
+        Assert.Contains(nameof(surface.Pending), changed);
+        Assert.Contains(nameof(surface.HasPending), changed);
+        Assert.Contains(nameof(surface.CanUndo), changed);
+        Assert.Contains(nameof(surface.Status), changed);
+    }
+
+    [Fact]
     public async Task Create_screen_remains_a_draft_until_the_editor_request_is_saved()
     {
         var layout = new LayoutDefinition(
@@ -73,14 +110,14 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
             CancellationToken.None);
 
         Assert.True(deleted.IsSuccess, deleted.Error?.Message);
-        var receipt = Assert.IsType<MainWindowViewModel.SavedScreenDeleteUndoReceipt>(
-            viewModel.PendingSavedScreenDelete);
+        var receipt = Assert.IsType<SavedScreenDeleteUndoReceipt>(
+            viewModel.SavedScreenDeleteUndo.Pending);
         Assert.Equal(screen.Id, receipt.ScreenId);
         Assert.Equal(screen.Name, receipt.ScreenName);
-        Assert.True(viewModel.CanUndoSavedScreenDelete);
+        Assert.True(viewModel.SavedScreenDeleteUndo.CanUndo);
         Assert.Contains(
             "Running instances were not changed",
-            viewModel.SavedScreenDeleteUndoStatus,
+            viewModel.SavedScreenDeleteUndo.Status,
             StringComparison.Ordinal);
 
         var restored = await viewModel.UndoSavedScreenDeleteAsync(CancellationToken.None);
@@ -90,10 +127,10 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         Assert.Null(catalog.LastExpectedScreenRevision);
         Assert.Same(screen, restored.Value!.Value);
         Assert.Same(screen, Assert.Single(catalog.Snapshot.Screens).Value);
-        Assert.Null(viewModel.PendingSavedScreenDelete);
-        Assert.False(viewModel.HasPendingSavedScreenDeleteUndo);
-        Assert.False(viewModel.CanUndoSavedScreenDelete);
-        Assert.Equal("Restored “Alpha”.", viewModel.SavedScreenDeleteUndoStatus);
+        Assert.Null(viewModel.SavedScreenDeleteUndo.Pending);
+        Assert.False(viewModel.SavedScreenDeleteUndo.HasPending);
+        Assert.False(viewModel.SavedScreenDeleteUndo.CanUndo);
+        Assert.Equal("Restored “Alpha”.", viewModel.SavedScreenDeleteUndo.Status);
     }
 
     [Fact]
@@ -117,14 +154,14 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         Assert.Equal(DefinitionStoreErrorCode.RevisionConflict, stale.Error!.Code);
         Assert.Equal(5, stale.Error.CurrentRevision);
         Assert.Equal(0, catalog.DeleteAttempts);
-        Assert.Null(viewModel.PendingSavedScreenDelete);
+        Assert.Null(viewModel.SavedScreenDeleteUndo.Pending);
 
         Assert.True((await viewModel.DeleteSavedScreenAsync(
             alpha.Key,
             revision: 3,
             CancellationToken.None)).IsSuccess);
-        var alphaReceipt = Assert.IsType<MainWindowViewModel.SavedScreenDeleteUndoReceipt>(
-            viewModel.PendingSavedScreenDelete);
+        var alphaReceipt = Assert.IsType<SavedScreenDeleteUndoReceipt>(
+            viewModel.SavedScreenDeleteUndo.Pending);
 
         catalog.NextDeleteError = new DefinitionStoreError(
             DefinitionStoreErrorCode.StorageFailure,
@@ -135,7 +172,7 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
             CancellationToken.None);
 
         Assert.False(failed.IsSuccess);
-        Assert.Same(alphaReceipt, viewModel.PendingSavedScreenDelete);
+        Assert.Same(alphaReceipt, viewModel.SavedScreenDeleteUndo.Pending);
 
         catalog.NextDeleteError = new DefinitionStoreError(
             DefinitionStoreErrorCode.Cancelled,
@@ -147,7 +184,7 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
 
         Assert.False(cancelled.IsSuccess);
         Assert.Equal(DefinitionStoreErrorCode.Cancelled, cancelled.Error!.Code);
-        Assert.Same(alphaReceipt, viewModel.PendingSavedScreenDelete);
+        Assert.Same(alphaReceipt, viewModel.SavedScreenDeleteUndo.Pending);
     }
 
     [Fact]
@@ -160,7 +197,7 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
             deletedScreen.Key,
             revision: 9,
             CancellationToken.None)).IsSuccess);
-        var receipt = viewModel.PendingSavedScreenDelete;
+        var receipt = viewModel.SavedScreenDeleteUndo.Pending;
         var replacement = Screen("screen-alpha", "Replacement");
         catalog.Add(replacement, revision: 12);
 
@@ -171,20 +208,20 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         Assert.Same(deletedScreen, catalog.LastSavedScreen);
         Assert.Null(catalog.LastExpectedScreenRevision);
         Assert.Same(replacement, Assert.Single(catalog.Snapshot.Screens).Value);
-        Assert.Same(receipt, viewModel.PendingSavedScreenDelete);
-        Assert.True(viewModel.CanUndoSavedScreenDelete);
+        Assert.Same(receipt, viewModel.SavedScreenDeleteUndo.Pending);
+        Assert.True(viewModel.SavedScreenDeleteUndo.CanUndo);
         Assert.Contains(
             "Retry or dismiss",
-            viewModel.SavedScreenDeleteUndoStatus,
+            viewModel.SavedScreenDeleteUndo.Status,
             StringComparison.Ordinal);
 
         viewModel.DismissSavedScreenDeleteUndo();
 
-        Assert.Null(viewModel.PendingSavedScreenDelete);
-        Assert.False(viewModel.CanUndoSavedScreenDelete);
+        Assert.Null(viewModel.SavedScreenDeleteUndo.Pending);
+        Assert.False(viewModel.SavedScreenDeleteUndo.CanUndo);
         Assert.Equal(
             "Saved-screen delete undo dismissed.",
-            viewModel.SavedScreenDeleteUndoStatus);
+            viewModel.SavedScreenDeleteUndo.Status);
     }
 
     [Fact]
@@ -202,7 +239,7 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
             alpha.Key,
             revision: 2,
             CancellationToken.None)).IsSuccess);
-        var receipt = viewModel.PendingSavedScreenDelete;
+        var receipt = viewModel.SavedScreenDeleteUndo.Pending;
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -213,17 +250,17 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
                     cancellation.Token)
                 .AsTask());
 
-        Assert.Same(receipt, viewModel.PendingSavedScreenDelete);
+        Assert.Same(receipt, viewModel.SavedScreenDeleteUndo.Pending);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => viewModel.UndoSavedScreenDeleteAsync(cancellation.Token).AsTask());
 
-        Assert.Same(receipt, viewModel.PendingSavedScreenDelete);
-        Assert.False(viewModel.IsSavedScreenDeleteUndoInFlight);
-        Assert.True(viewModel.CanUndoSavedScreenDelete);
+        Assert.Same(receipt, viewModel.SavedScreenDeleteUndo.Pending);
+        Assert.False(viewModel.SavedScreenDeleteUndo.IsRestoring);
+        Assert.True(viewModel.SavedScreenDeleteUndo.CanUndo);
         Assert.Contains(
             "Restore cancelled",
-            viewModel.SavedScreenDeleteUndoStatus,
+            viewModel.SavedScreenDeleteUndo.Status,
             StringComparison.Ordinal);
     }
 
@@ -243,18 +280,18 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
             alpha.Key,
             revision: 1,
             CancellationToken.None)).IsSuccess);
-        var first = viewModel.PendingSavedScreenDelete;
+        var first = viewModel.SavedScreenDeleteUndo.Pending;
         Assert.True((await viewModel.DeleteSavedScreenAsync(
             beta.Key,
             revision: 6,
             CancellationToken.None)).IsSuccess);
 
-        var second = Assert.IsType<MainWindowViewModel.SavedScreenDeleteUndoReceipt>(
-            viewModel.PendingSavedScreenDelete);
+        var second = Assert.IsType<SavedScreenDeleteUndoReceipt>(
+            viewModel.SavedScreenDeleteUndo.Pending);
         Assert.NotSame(first, second);
         Assert.Equal(beta.Id, second.ScreenId);
         Assert.Equal(beta.Name, second.ScreenName);
-        Assert.Contains("Beta", viewModel.SavedScreenDeleteUndoStatus, StringComparison.Ordinal);
+        Assert.Contains("Beta", viewModel.SavedScreenDeleteUndo.Status, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -273,17 +310,17 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         await catalog.SaveStarted.WaitAsync(TimeSpan.FromSeconds(5));
         try
         {
-            Assert.True(viewModel.IsSavedScreenDeleteUndoInFlight);
-            Assert.False(viewModel.CanUndoSavedScreenDelete);
+            Assert.True(viewModel.SavedScreenDeleteUndo.IsRestoring);
+            Assert.False(viewModel.SavedScreenDeleteUndo.CanUndo);
 
             var duplicate = await viewModel.UndoSavedScreenDeleteAsync(CancellationToken.None);
 
             Assert.False(duplicate.IsSuccess);
             Assert.Contains("already being restored", duplicate.Error!.Message);
-            var receipt = viewModel.PendingSavedScreenDelete;
+            var receipt = viewModel.SavedScreenDeleteUndo.Pending;
             viewModel.DismissSavedScreenDeleteUndo();
-            Assert.Same(receipt, viewModel.PendingSavedScreenDelete);
-            Assert.NotNull(viewModel.PendingSavedScreenDelete);
+            Assert.Same(receipt, viewModel.SavedScreenDeleteUndo.Pending);
+            Assert.NotNull(viewModel.SavedScreenDeleteUndo.Pending);
         }
         finally
         {
@@ -291,8 +328,8 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         }
 
         Assert.True((await restore).IsSuccess);
-        Assert.False(viewModel.IsSavedScreenDeleteUndoInFlight);
-        Assert.Null(viewModel.PendingSavedScreenDelete);
+        Assert.False(viewModel.SavedScreenDeleteUndo.IsRestoring);
+        Assert.Null(viewModel.SavedScreenDeleteUndo.Pending);
     }
 
     private static MainWindowViewModel CreateViewModel(IDefinitionCatalog catalog) =>
