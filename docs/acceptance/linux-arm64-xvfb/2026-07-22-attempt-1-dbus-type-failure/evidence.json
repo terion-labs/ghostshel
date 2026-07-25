@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "declaredSystemName": "docker-linux-arm64-xvfb",
+  "actualHostName": "bf44871e2be9",
+  "executionEnvironment": "Docker Linux arm64 under Xvfb (no window manager)",
+  "containerImage": "sha256:927989b59ab634d7d5f2e780c3cafc8d83806d074355772927f6c93a6f889cfc",
+  "osDescription": "Linux-7.0.11-orbstack-00360-gc9bc4d96ac70-aarch64-with-glibc2.39",
+  "osArchitecture": "aarch64",
+  "kernel": "7.0.11-orbstack-00360-gc9bc4d96ac70",
+  "xdgSessionType": "x11",
+  "display": ":99",
+  "packageExecutable": "/work/package/GhostShell",
+  "packageSha256": "3b8e05a44d575277c3195b1ecb7f64598ab2963ac1c01e5c6edb73fb7961fac5",
+  "sourceSnapshotSha256": "b0fb4ca774285870cbd4e2fef6e44c903a8ecb129fd65aba8517e15fbec5445f",
+  "startedAtUtc": "2026-07-22T15:41:45.526898+00:00",
+  "completedAtUtc": "2026-07-22T15:42:05.603690+00:00",
+  "overallResult": "NOT_PASSING",
+  "checks": [
+    {
+      "id": "desktop-startup",
+      "title": "Packaged Avalonia desktop startup",
+      "result": "FAIL",
+      "notes": "No visible X11 window matched '^GhostSHELL$'.",
+      "evidence": [
+        "ghostshell.log"
+      ]
+    },
+    {
+      "id": "ime-composition",
+      "title": "IME preedit, candidate placement, and committed composition",
+      "result": "NOT_PROVEN",
+      "notes": "Xvfb has no desktop input-method compositor. Unicode clipboard/input coverage does not prove IME composition.",
+      "evidence": []
+    },
+    {
+      "id": "physical-x11-compositor",
+      "title": "Physical X11 desktop and compositor behavior",
+      "result": "NOT_PROVEN",
+      "notes": "This named system is an Xvfb server inside an arm64 Docker VM, not a physical/self-hosted X11 desktop. Window-manager focus, compositor effects, and human interaction remain unproven.",
+      "evidence": []
+    },
+    {
+      "id": "sleep-wake",
+      "title": "Host sleep and wake recovery",
+      "result": "NOT_PROVEN",
+      "notes": "A Docker/Xvfb container cannot suspend and resume the named physical host.",
+      "evidence": []
+    }
+  ]
+}

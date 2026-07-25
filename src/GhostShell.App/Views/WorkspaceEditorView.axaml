@@ -1,0 +1,403 @@
+<UserControl
+    x:Class="GhostShell.App.Views.WorkspaceEditorView"
+    x:Name="WorkspaceEditorRoot"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    MinWidth="820"
+    MinHeight="580">
+  <Grid RowDefinitions="68,*,70">
+    <Border Classes="TopChrome">
+      <Grid Margin="22,0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <StackPanel VerticalAlignment="Center" Spacing="2">
+          <TextBlock FontSize="{DynamicResource ShellFontSize19}" FontWeight="SemiBold" Text="Edit workspace" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Compose reusable connections, saved screens, and workspace-only tabs in launch order." />
+        </StackPanel>
+        <Border Grid.Column="1" VerticalAlignment="Center" Classes="StatusPill" Classes.Warning="{Binding IsDirty}">
+          <TextBlock Text="{Binding DirtyStatus}" />
+        </Border>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="20,16" ColumnDefinitions="350,*" ColumnSpacing="16">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="0,0,6,8" Spacing="14">
+          <Border Classes="SettingsCard">
+            <StackPanel Margin="15" Spacing="11">
+              <TextBlock Classes="SectionHeading" Text="WORKSPACE IDENTITY" />
+              <StackPanel Spacing="4">
+                <TextBlock FontWeight="SemiBold" Text="Name" />
+                <TextBox x:Name="WorkspaceNameInput" Text="{Binding Name, Mode=TwoWay}" PlaceholderText="Operations" />
+              </StackPanel>
+              <Grid ColumnDefinitions="*,132" ColumnSpacing="9">
+                <StackPanel Spacing="4">
+                  <TextBlock FontWeight="SemiBold" Text="Icon" />
+                  <ComboBox
+                      x:Name="IconPicker"
+                      SelectionChanged="OnIconSelectionChanged"
+                      AutomationProperties.Name="Workspace icon">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Name}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock FontWeight="SemiBold" Text="Accent" />
+                  <TextBox Classes="Monospace" Text="{Binding Accent, Mode=TwoWay}" PlaceholderText="#FF8400" />
+                </StackPanel>
+              </Grid>
+              <StackPanel Spacing="4">
+                <TextBlock FontWeight="SemiBold" Text="Description" />
+                <TextBox
+                    MinHeight="66"
+                    AcceptsReturn="True"
+                    Text="{Binding Description, Mode=TwoWay}"
+                    TextWrapping="Wrap"
+                    PlaceholderText="What this workspace is for" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="SettingsCard">
+            <StackPanel Margin="15" Spacing="12">
+              <TextBlock Classes="SectionHeading" Text="ADD TO WORKSPACE" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="CONNECTION REFERENCE" />
+                  <ComboBox x:Name="AddConnectionPicker" AutomationProperties.Name="Connection to add">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <Button
+                    Grid.Column="1"
+                    MinWidth="70"
+                    VerticalAlignment="Bottom"
+                    Classes="SecondaryButton"
+                    Click="OnAddConnectionClick"
+                    Content="Add"
+                    AutomationProperties.Name="Add connection reference" />
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="SAVED SCREEN" />
+                  <ComboBox x:Name="AddScreenPicker" AutomationProperties.Name="Saved screen to add">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <Button
+                    Grid.Column="1"
+                    MinWidth="64"
+                    VerticalAlignment="Bottom"
+                    Classes="SecondaryButton"
+                    Click="OnAddSavedScreenClick"
+                    Content="Link"
+                    AutomationProperties.Name="Add saved screen reference" />
+                <Button
+                    Grid.Column="2"
+                    MinWidth="64"
+                    VerticalAlignment="Bottom"
+                    Classes="SecondaryButton"
+                    Click="OnCopySavedScreenClick"
+                    Content="Copy"
+                    ToolTip.Tip="Copy the screen into an independent workspace-only tab"
+                    AutomationProperties.Name="Copy saved screen as workspace tab" />
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="EMPTY WORKSPACE TAB" />
+                  <ComboBox x:Name="AddLayoutPicker" AutomationProperties.Name="Layout for new workspace tab">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <Button
+                    Grid.Column="1"
+                    MinWidth="70"
+                    VerticalAlignment="Bottom"
+                    Classes="SecondaryButton"
+                    Click="OnAddWorkspaceTabClick"
+                    Content="Add tab"
+                    AutomationProperties.Name="Add workspace-only tab" />
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Grid ColumnDefinitions="*,Auto" Margin="2,0">
+            <TextBlock Classes="SectionHeading" Text="LAUNCH ORDER" />
+            <TextBlock Grid.Column="1" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Entries.Count, StringFormat={}{0} ITEMS}" />
+          </Grid>
+
+          <ListBox
+              x:Name="EntryList"
+              MinHeight="160"
+              ItemsSource="{Binding Entries}"
+              SelectionChanged="OnEntrySelectionChanged"
+              AutomationProperties.Name="Workspace launch order">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid MinHeight="66" Margin="10,6" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <StackPanel Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="Eyebrow Accent" Text="{Binding KindLabel}" />
+                    </StackPanel>
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Classes="Eyebrow"
+                        Foreground="#FF8577"
+                        IsVisible="{Binding HasMissingReference}"
+                        Text="{Binding ReferenceStatus}" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="1">
+                    <Button Classes="IconButton" Click="OnMoveEntryEarlierClick" ToolTip.Tip="Move earlier" AutomationProperties.Name="Move entry earlier"><icons:SymbolIcon Symbol="ArrowUp" FontSize="11" /></Button>
+                    <Button Classes="IconButton" Click="OnMoveEntryLaterClick" ToolTip.Tip="Move later" AutomationProperties.Name="Move entry later"><icons:SymbolIcon Symbol="ArrowDown" FontSize="11" /></Button>
+                    <Button Classes="IconButton" Click="OnRemoveEntryClick" ToolTip.Tip="Remove from workspace" AutomationProperties.Name="Remove workspace entry"><icons:SymbolIcon Symbol="Delete" FontSize="11" Foreground="{DynamicResource ShellDangerBrush}" /></Button>
+                  </StackPanel>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <Border Classes="NoticeCard" IsVisible="{Binding HasMissingReferences}">
+            <Grid Margin="12" ColumnDefinitions="Auto,*" ColumnSpacing="9">
+              <icons:SymbolIcon Symbol="Warning" FontSize="15" Foreground="#E1A45F" />
+              <TextBlock
+                  Grid.Column="1"
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="{Binding MissingReferenceCount, StringFormat={}{0} missing reference(s). Select each item and choose an available replacement.}"
+                  TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+
+          <Border Classes="NoticeCard" IsVisible="{Binding HasOperationError}">
+            <Grid Margin="12" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LastOperationError}" TextWrapping="Wrap" />
+              <Button Grid.Column="1" Classes="IconButton" Click="OnClearOperationErrorClick" AutomationProperties.Name="Dismiss workspace editor error"><icons:SymbolIcon Symbol="Dismiss" FontSize="11" /></Button>
+            </Grid>
+          </Border>
+
+          <Border x:Name="InteractionErrorCard" Classes="NoticeCard" IsVisible="False">
+            <TextBlock x:Name="InteractionErrorText" Margin="12" Foreground="#FF8577" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Grid Grid.Column="1">
+        <Border x:Name="NoEntrySelection" Classes="SettingsCard">
+          <StackPanel MaxWidth="360" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+            <Border Width="48" Height="48" HorizontalAlignment="Center" Classes="IconTile">
+              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Window" FontSize="22" />
+            </Border>
+            <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Select a workspace item" TextAlignment="Center" />
+            <TextBlock Classes="Muted" Text="Choose an item from the launch order to edit its reference or configure an independent tab." TextAlignment="Center" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <ScrollViewer
+            x:Name="SelectedEntryEditor"
+            Margin="0,0,5,0"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            IsVisible="False">
+          <StackPanel Margin="0,0,7,8" Spacing="14">
+            <Border Classes="SettingsCard">
+              <StackPanel Margin="16" Spacing="11">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="Eyebrow Accent" Text="{Binding KindLabel}" />
+                    <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <Border Grid.Column="1" VerticalAlignment="Top" Classes="StatusPill" Classes.Warning="{Binding HasMissingReference}"><TextBlock Text="{Binding ReferenceStatus}" /></Border>
+                </Grid>
+
+                <StackPanel Spacing="4" IsVisible="{Binding CanEditAlias}">
+                  <TextBlock FontWeight="SemiBold" Text="Workspace alias" />
+                  <TextBox Text="{Binding Alias, Mode=TwoWay}" PlaceholderText="Optional label used only in this workspace" />
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding IsConnection}">
+                  <TextBlock FontWeight="SemiBold" Text="Connection" />
+                  <ComboBox
+                      x:Name="EntryConnectionPicker"
+                      SelectedItem="{Binding SelectedConnection, Mode=TwoWay}"
+                      AutomationProperties.Name="Workspace entry connection">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Choose any available connection to repair a missing reference." />
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding IsSavedScreen}">
+                  <TextBlock FontWeight="SemiBold" Text="Saved screen" />
+                  <ComboBox
+                      x:Name="EntryScreenPicker"
+                      SelectedItem="{Binding SelectedScreen, Mode=TwoWay}"
+                      AutomationProperties.Name="Workspace entry saved screen">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="The linked screen stays reusable; future screen edits apply when this workspace opens." TextWrapping="Wrap" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <Border IsVisible="{Binding IsWorkspaceTab}" Classes="SettingsCard">
+              <StackPanel DataContext="{Binding Tab}" Margin="16" Spacing="13">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="SectionHeading" Text="WORKSPACE-ONLY TAB" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="This panel snapshot belongs only to the workspace." />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Foreground="#FF8577" FontSize="{DynamicResource ShellFontSize9}" IsVisible="{Binding HasMissingDefinition}" Text="REPAIR REQUIRED" />
+                </Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="9">
+                  <StackPanel Spacing="4">
+                    <TextBlock FontWeight="SemiBold" Text="Tab name" />
+                    <TextBox Text="{Binding Name, Mode=TwoWay}" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock FontWeight="SemiBold" Text="Layout" />
+                    <ComboBox ItemsSource="{Binding LayoutOptions}" SelectedItem="{Binding SelectedLayout, Mode=TwoWay}">
+                      <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="PANELS" />
+                  <WrapPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Classes="TextButton Accent" Click="OnAddTerminalPanelClick" Content="+ Terminal" IsEnabled="{Binding CanAddPanel}" />
+                    <Button Classes="TextButton Accent" Click="OnAddFilePanelClick" Content="+ Files" IsEnabled="{Binding CanAddPanel}" />
+                    <Button Classes="TextButton Accent" Click="OnAddBrowserPanelClick" Content="+ Browser" IsEnabled="{Binding CanAddPanel}" />
+                    <Button Classes="TextButton Accent" Click="OnAddStatisticsPanelClick" Content="+ Statistics" IsEnabled="{Binding CanAddPanel}" />
+                    <Button Classes="TextButton Accent" Click="OnAddProcessMonitorPanelClick" Content="+ Processes" IsEnabled="{Binding CanAddPanel}" />
+                  </WrapPanel>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Panels}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Margin="0,0,0,10" Classes="PanelCard">
+                        <StackPanel Margin="13" Spacing="10">
+                          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                            <Border Width="28" Height="28" Classes="IconTile"><TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="#" /></Border>
+                            <StackPanel Grid.Column="1" Spacing="1">
+                              <TextBlock Classes="Eyebrow Accent" Text="{Binding KindLabel}" />
+                              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Id.Value}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="1">
+                              <Button Classes="IconButton" Click="OnMovePanelEarlierClick" ToolTip.Tip="Move panel earlier" AutomationProperties.Name="Move panel earlier"><icons:SymbolIcon Symbol="ArrowUp" FontSize="10" /></Button>
+                              <Button Classes="IconButton" Click="OnMovePanelLaterClick" ToolTip.Tip="Move panel later" AutomationProperties.Name="Move panel later"><icons:SymbolIcon Symbol="ArrowDown" FontSize="10" /></Button>
+                              <Button Classes="IconButton" Click="OnRemovePanelClick" ToolTip.Tip="Remove panel" AutomationProperties.Name="Remove panel"><icons:SymbolIcon Symbol="Delete" FontSize="10" Foreground="{DynamicResource ShellDangerBrush}" /></Button>
+                            </StackPanel>
+                          </Grid>
+
+                          <Border Classes="NoticeCard" IsVisible="{Binding HasMissingDefinition}">
+                            <TextBlock Margin="10,8" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Choose an available slot and required definition before saving." TextWrapping="Wrap" />
+                          </Border>
+
+                          <Grid ColumnDefinitions="*,*" ColumnSpacing="9">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold" Text="Title" />
+                              <TextBox Text="{Binding Title, Mode=TwoWay}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                              <TextBlock FontWeight="SemiBold" Text="Layout slot" />
+                              <ComboBox ItemsSource="{Binding SlotOptions}" SelectedItem="{Binding SelectedSlot, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                              </ComboBox>
+                            </StackPanel>
+                          </Grid>
+
+                          <StackPanel Spacing="4" IsVisible="{Binding IsTerminal}">
+                            <TextBlock FontWeight="SemiBold" Text="Connection" />
+                            <ComboBox ItemsSource="{Binding ConnectionOptions}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}">
+                              <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
+                          </StackPanel>
+
+                          <StackPanel Spacing="4" IsVisible="{Binding IsFileViewer}">
+                            <TextBlock FontWeight="SemiBold" Text="File provider" />
+                            <ComboBox ItemsSource="{Binding FileProviderOptions}" SelectedItem="{Binding SelectedFileProvider, Mode=TwoWay}">
+                              <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
+                          </StackPanel>
+
+                          <StackPanel Spacing="4" IsVisible="{Binding SupportsLocation}">
+                            <TextBlock FontWeight="SemiBold" Text="Startup location" />
+                            <TextBox Classes="Monospace" Text="{Binding StartupLocation, Mode=TwoWay}" PlaceholderText="Optional working directory or URL" />
+                          </StackPanel>
+
+                          <Grid
+                              ColumnDefinitions="*,Auto"
+                              ColumnSpacing="12"
+                              IsVisible="{Binding IsTerminal}">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold" Text="Startup commands" />
+                              <TextBox
+                                  MinHeight="76"
+                                  AcceptsReturn="True"
+                                  Classes="Monospace"
+                                  Text="{Binding StartupCommands, Mode=TwoWay}"
+                                  TextWrapping="NoWrap"
+                                  PlaceholderText="One command per line"
+                                  AutomationProperties.Name="{Binding KindLabel, StringFormat=Startup commands for {0} workspace tab panel}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" MinWidth="260" Spacing="4">
+                              <TextBlock FontWeight="SemiBold" Text="On delivery failure" />
+                              <ComboBox
+                                  MinWidth="260"
+                                  ItemsSource="{Binding DeliveryFailurePolicyOptions}"
+                                  SelectedItem="{Binding SelectedDeliveryFailurePolicy, Mode=TwoWay}"
+                                  AutomationProperties.Name="{Binding KindLabel, StringFormat=Startup command delivery failure policy for {0} workspace tab panel}"
+                                  AutomationProperties.HelpText="Governs delivery or acknowledgement failures while the terminal is live, not a shell command's exit status.">
+                                <ComboBox.ItemTemplate>
+                                  <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                  </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                              </ComboBox>
+                              <TextBlock
+                                  Classes="Muted"
+                                  FontSize="{DynamicResource ShellFontSize9}"
+                                  Text="This governs delivery or acknowledgement failures while the terminal is live, not a shell command's exit status."
+                                  TextWrapping="Wrap" />
+                            </StackPanel>
+                          </Grid>
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Classes="NoticeCard" IsVisible="{Binding HasMissingDefinition}">
+                  <TextBlock Margin="11" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The tab layout or one of its panels has a missing durable dependency." TextWrapping="Wrap" />
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="SettingsCard" IsVisible="{Binding !IsWorkspaceTab}">
+              <StackPanel Margin="16" Spacing="6">
+                <TextBlock Classes="SectionHeading" Text="REFERENCE BEHAVIOR" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="References resolve when the workspace opens. Running sessions keep their own independent runtime state." TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+
+    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid Margin="20,0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+        <StackPanel VerticalAlignment="Center" Spacing="2">
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ValidationSummary}" TextWrapping="Wrap" />
+          <TextBlock Classes="Eyebrow" Foreground="#FF8577" IsVisible="{Binding !IsValid}" Text="SAVE BLOCKED UNTIL VALID" />
+        </StackPanel>
+        <Button Grid.Column="1" VerticalAlignment="Center" Classes="TextButton" Click="OnResetClick" Content="Reset" IsEnabled="{Binding IsDirty}" />
+        <Button Grid.Column="2" MinWidth="88" VerticalAlignment="Center" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />
+        <Button Grid.Column="3" MinWidth="128" VerticalAlignment="Center" Classes="PrimaryButton" Click="OnSaveClick" Content="Save workspace" IsEnabled="{Binding CanSave}" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

@@ -1,0 +1,1339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      tailwind = { config: { corePlugins: { preflight: false } } };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono%3Awght%40100..800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *, ::before, ::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-pencil-name="Screen · Layout Designer (Popover)"
+      class="box-border w-[1440px] h-[900px] bg-[#111111] overflow-hidden relative"
+    >
+      <div
+        data-pencil-name="Backdrop · Edit saved screen"
+        class="box-border w-[1440px] h-[900px] opacity-[0.6] absolute left-0 top-0 flex flex-col gap-0 justify-start items-start bg-[#111111] overflow-hidden [z-index:0]"
+      >
+        <div
+          data-pencil-name="Titlebar"
+          class="box-border w-full h-[44px] shrink-0 flex flex-row gap-[12px] p-[0px_14px] justify-start items-center bg-[#18181b] [border-width:0px_0px_1px_0px] [border-style:solid] [border-color:#ffffff1a]"
+        >
+          <div
+            data-pencil-name="Traffic Lights"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-[8px] p-[0px_6px_0px_0px] justify-start items-center"
+          >
+            <div
+              data-pencil-name="L"
+              class="box-border w-[12px] shrink-0 h-[12px] bg-[#FF5F57] rounded-full"
+            ></div>
+            <div
+              data-pencil-name="L"
+              class="box-border w-[12px] shrink-0 h-[12px] bg-[#FEBC2E] rounded-full"
+            ></div>
+            <div
+              data-pencil-name="L"
+              class="box-border w-[12px] shrink-0 h-[12px] bg-[#28C840] rounded-full"
+            ></div>
+          </div>
+          <div
+            data-pencil-name="Title"
+            class="box-border [flex:1_1_0] h-full flex flex-row gap-[8px] justify-center items-center"
+          >
+            <svg
+              data-pencil-name="Ic"
+              data-icon-name="layout-panel-left"
+              data-icon-set="lucide"
+              viewBox="0 0 13.99993896484375 14"
+              preserveAspectRatio="xMidYMid meet"
+              xmlns="http://www.w3.org/2000/svg"
+              class="box-border w-[13px] shrink-0 h-[13px]"
+            >
+              <path
+                d="M2.03027 1.20313q-0.22559 0.07178-0.42724 0.23242-0.20166 0.16064-0.30078 0.36914l-0.02735 0.0581q-0.05811 0.08203-0.07177 0.25293-0.02734 0.23584-0.02735 1.03565l0 7.69726q0 0.79981 0.02735 1.03907 0.01367 0.16748 0.07177 0.24951l0.02735 0.0581q0.09912 0.22217 0.30761 0.38282 0.2085 0.16065 0.44776 0.21875 0.11279 0.04102 1.72949 0.03417 1.6167-0.00684 1.74316-0.03417 0.29395-0.07178 0.53321-0.30762 0.12305-0.12646 0.1914-0.23242 0.07178-0.10596 0.11621-0.27344l0.04102-0.12647 0-9.71386-0.04102-0.12647q-0.04443-0.16748-0.11621-0.27344-0.06836-0.10596-0.1914-0.23242-0.15381-0.15381-0.29395-0.22217l-0.01709-0.01367q-0.12305-0.05811-0.22217-0.07177-0.12646-0.02734-0.47509-0.02735l-1.14844 0-1.52783 0q-0.24951 0.01367-0.34864 0.02735z m6.43946-0.00001q-0.28027 0.05811-0.53321 0.30762-0.12305 0.12646-0.19482 0.23242-0.06836 0.10596-0.11279 0.27344l-0.04102 0.12647 0 3.06591q0.01367 0.2666 0.02734 0.33497 0.08545 0.30762 0.30762 0.5332 0.22559 0.22217 0.5332 0.30762 0.06836 0.01367 0.33497 0.02734l3.06591 0 0.12647-0.04102q0.16748-0.04443 0.27344-0.11279 0.10596-0.07178 0.23242-0.19482 0.23584-0.23926 0.30761-0.53321 0.02734-0.12646 0.03418-1.74316 0.00684-1.6167-0.03418-1.72949-0.07178-0.30762-0.30419-0.53662-0.229-0.23242-0.53663-0.31788-0.09912-0.02734-0.33496-0.02734l-1.41504 0q-1.62354 0-1.73632 0.02734z m-3.21973 5.79688l0 4.67578-2.92578 0 0-9.35156 2.92578 0 0 4.67578z m6.42578-3.20605l0 1.45605-2.92578 0 0-2.92578 2.92578 0 0 1.46973z m-3.05224 3.79394q-0.22217 0.02734-0.37598 0.11279-0.23926 0.11279-0.3999 0.30762-0.16064 0.19482-0.23243 0.44775-0.01367 0.06836-0.02734 0.33497l0 3.06591 0.04102 0.12647q0.04443 0.16748 0.11279 0.27344 0.07178 0.10596 0.19482 0.23242 0.23926 0.23584 0.53321 0.30761 0.12646 0.02734 1.74316 0.03418 1.6167 0.00684 1.72949-0.03418 0.23926-0.0581 0.44776-0.21875 0.2085-0.16065 0.30761-0.38281l0.02735-0.03076q0.05811-0.12305 0.07178-0.2085 0.02734-0.12646 0.02734-0.44775l0-2.59082q0-0.33496-0.02734-0.46143-0.01367-0.08545-0.07178-0.20849l-0.01367-0.03076q-0.06836-0.12646-0.22217-0.28028-0.15381-0.15381-0.29395-0.22216l-0.03076-0.01368q-0.12305-0.07178-0.2085-0.08545-0.11279-0.01367-0.4204-0.02734l-1.23047 0q-1.56885 0-1.68164 0.01367l0-0.01367z m3.05224 2.61816l0 1.46973-2.92578 0 0-2.92578 2.92578 0 0 1.45605z"
+                fill="#B8B9B6"
+              ></path>
+            </svg>
+            <div
+              data-pencil-name="Label"
+              class="text-[12px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-medium text-left [white-space:nowrap]"
+            >
+              Edit Screen
+            </div>
+          </div>
+          <div
+            data-pencil-name="Spacer R"
+            class="box-border w-[52px] shrink-0 h-[1px] flex flex-row gap-0 justify-start items-start"
+          ></div>
+        </div>
+        <div
+          data-pencil-name="Action Bar"
+          class="box-border w-full h-[64px] shrink-0 flex flex-row gap-[14px] p-[0px_24px] justify-start items-center bg-[#111111] [border-width:0px_0px_1px_0px] [border-style:solid] [border-color:#2E2E2E]"
+        >
+          <div
+            data-pencil-name="Back"
+            class="box-border w-[34px] shrink-0 h-[34px] flex flex-row gap-0 justify-center items-center bg-[#00000000] [border:1px_solid_#2E2E2E] rounded-[8px]"
+          >
+            <svg
+              data-pencil-name="I"
+              data-icon-name="arrow-left"
+              data-icon-set="lucide"
+              viewBox="0 0 13.99993896484375 14"
+              preserveAspectRatio="xMidYMid meet"
+              xmlns="http://www.w3.org/2000/svg"
+              class="box-border w-[16px] shrink-0 h-[16px]"
+            >
+              <path
+                d="M6.90088 2.35156q-0.0957 0.01367-0.16748 0.05127-0.06836 0.03418-2.17725 2.13623-2.10547 2.09863-2.14648 2.16699-0.11279 0.18115-0.07178 0.40674 0.02734 0.0957 0.06836 0.17432 0.04443 0.0752 2.15674 2.17725l1.68164 1.67822q0.37598 0.36572 0.51611 0.46484 0.08545 0.05469 0.19824 0.05469l0.04102 0q0.23926 0 0.42041-0.18115 0.11279-0.11279 0.14697-0.28028 0.03418-0.16748-0.02051-0.32128-0.02734-0.08545-0.25976-0.3213-0.23242-0.23926-1.36377-1.37402-1.58252-1.58252-1.58252-1.59619 0-0.01367 3.42822-0.01367l3.01123 0q0.44775 0 0.52979-0.03418 0.08545-0.0376 0.16748-0.11963 0.08545-0.08545 0.1333-0.18799 0.05127-0.10596 0.05127-0.23242 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-3.44531 0q-3.45557 0-3.45557-0.01367 0-0.01367 1.58252-1.59619 1.13135-1.13477 1.36377-1.37061 0.23242-0.23926 0.25976-0.3247 0.06836-0.2085-0.00341-0.40332-0.06836-0.19824-0.24268-0.30079-0.17432-0.10596-0.3999-0.06494z"
+                fill="#FFFFFF"
+              ></path>
+            </svg>
+          </div>
+          <div
+            data-pencil-name="Titles"
+            class="box-border [flex:1_1_0] h-fit flex flex-col gap-[2px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="Crumb"
+              class="text-[11px]/[normal] box-border text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              Screens › Deploy Dashboard
+            </div>
+            <div
+              data-pencil-name="T"
+              class="text-[16px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+            >
+              Edit saved screen
+            </div>
+          </div>
+          <div
+            data-pencil-name="Cancel"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[8px_14px] justify-start items-center bg-[#00000000] [border:1px_solid_#2E2E2E] rounded-[8px]"
+          >
+            <div
+              data-pencil-name="T"
+              class="text-[13px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Cancel
+            </div>
+          </div>
+          <div
+            data-pencil-name="Save"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-[7px] p-[8px_15px] justify-start items-center bg-[#FF8400] rounded-[8px]"
+          >
+            <div
+              data-pencil-name="T"
+              class="text-[13px]/[normal] box-border text-[#111111] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Save screen
+            </div>
+          </div>
+        </div>
+        <div
+          data-pencil-name="Body"
+          class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+        >
+          <div
+            data-pencil-name="Form"
+            class="box-border [flex:1_1_0] h-full flex flex-col gap-[26px] p-[28px_40px_48px_40px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="Section Details"
+              class="box-border w-full h-fit shrink-0 flex flex-col gap-[12px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="ph"
+                class="box-border w-[140px] h-[14px] shrink-0 bg-[#FFFFFF26] rounded-[6px]"
+              ></div>
+              <div
+                data-pencil-name="Card"
+                class="box-border w-full h-fit shrink-0 flex flex-col gap-[14px] p-[18px] justify-start items-start bg-[#1A1A1A] [border:1px_solid_#2E2E2E] rounded-[12px]"
+              >
+                <div
+                  data-pencil-name="Row"
+                  class="box-border w-full h-fit shrink-0 flex flex-row gap-[12px] justify-start items-center"
+                >
+                  <div
+                    data-pencil-name="dot"
+                    class="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF14] rounded-[8px]"
+                  ></div>
+                  <div
+                    data-pencil-name="col"
+                    class="box-border [flex:1_1_0] h-fit flex flex-col gap-[7px] justify-start items-start"
+                  >
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[220px] h-[10px] shrink-0 bg-[#FFFFFF1F] rounded-[6px]"
+                    ></div>
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[360px] h-[8px] shrink-0 bg-[#FFFFFF12] rounded-[6px]"
+                    ></div>
+                  </div>
+                  <div
+                    data-pencil-name="pill"
+                    class="box-border w-[64px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[999px]"
+                  ></div>
+                </div>
+                <div
+                  data-pencil-name="Row"
+                  class="box-border w-full h-fit shrink-0 flex flex-row gap-[12px] justify-start items-center"
+                >
+                  <div
+                    data-pencil-name="dot"
+                    class="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF14] rounded-[8px]"
+                  ></div>
+                  <div
+                    data-pencil-name="col"
+                    class="box-border [flex:1_1_0] h-fit flex flex-col gap-[7px] justify-start items-start"
+                  >
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[220px] h-[10px] shrink-0 bg-[#FFFFFF1F] rounded-[6px]"
+                    ></div>
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[360px] h-[8px] shrink-0 bg-[#FFFFFF12] rounded-[6px]"
+                    ></div>
+                  </div>
+                  <div
+                    data-pencil-name="pill"
+                    class="box-border w-[64px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[999px]"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div
+              data-pencil-name="Section Layout"
+              class="box-border w-full h-fit shrink-0 flex flex-col gap-[12px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="ph"
+                class="box-border w-[140px] h-[14px] shrink-0 bg-[#FFFFFF26] rounded-[6px]"
+              ></div>
+              <div
+                data-pencil-name="Card"
+                class="box-border w-full h-fit shrink-0 flex flex-col gap-[14px] p-[18px] justify-start items-start bg-[#1A1A1A] [border:1px_solid_#2E2E2E] rounded-[12px]"
+              >
+                <div
+                  data-pencil-name="Row"
+                  class="box-border w-full h-fit shrink-0 flex flex-row gap-[12px] justify-start items-center"
+                >
+                  <div
+                    data-pencil-name="dot"
+                    class="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF14] rounded-[8px]"
+                  ></div>
+                  <div
+                    data-pencil-name="col"
+                    class="box-border [flex:1_1_0] h-fit flex flex-col gap-[7px] justify-start items-start"
+                  >
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[220px] h-[10px] shrink-0 bg-[#FFFFFF1F] rounded-[6px]"
+                    ></div>
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[360px] h-[8px] shrink-0 bg-[#FFFFFF12] rounded-[6px]"
+                    ></div>
+                  </div>
+                  <div
+                    data-pencil-name="pill"
+                    class="box-border w-[64px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[999px]"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div
+              data-pencil-name="Section Panels &amp; connections"
+              class="box-border w-full h-fit shrink-0 flex flex-col gap-[12px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="ph"
+                class="box-border w-[140px] h-[14px] shrink-0 bg-[#FFFFFF26] rounded-[6px]"
+              ></div>
+              <div
+                data-pencil-name="Card"
+                class="box-border w-full h-fit shrink-0 flex flex-col gap-[14px] p-[18px] justify-start items-start bg-[#1A1A1A] [border:1px_solid_#2E2E2E] rounded-[12px]"
+              >
+                <div
+                  data-pencil-name="Row"
+                  class="box-border w-full h-fit shrink-0 flex flex-row gap-[12px] justify-start items-center"
+                >
+                  <div
+                    data-pencil-name="dot"
+                    class="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF14] rounded-[8px]"
+                  ></div>
+                  <div
+                    data-pencil-name="col"
+                    class="box-border [flex:1_1_0] h-fit flex flex-col gap-[7px] justify-start items-start"
+                  >
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[220px] h-[10px] shrink-0 bg-[#FFFFFF1F] rounded-[6px]"
+                    ></div>
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[360px] h-[8px] shrink-0 bg-[#FFFFFF12] rounded-[6px]"
+                    ></div>
+                  </div>
+                  <div
+                    data-pencil-name="pill"
+                    class="box-border w-[64px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[999px]"
+                  ></div>
+                </div>
+                <div
+                  data-pencil-name="Row"
+                  class="box-border w-full h-fit shrink-0 flex flex-row gap-[12px] justify-start items-center"
+                >
+                  <div
+                    data-pencil-name="dot"
+                    class="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF14] rounded-[8px]"
+                  ></div>
+                  <div
+                    data-pencil-name="col"
+                    class="box-border [flex:1_1_0] h-fit flex flex-col gap-[7px] justify-start items-start"
+                  >
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[220px] h-[10px] shrink-0 bg-[#FFFFFF1F] rounded-[6px]"
+                    ></div>
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[360px] h-[8px] shrink-0 bg-[#FFFFFF12] rounded-[6px]"
+                    ></div>
+                  </div>
+                  <div
+                    data-pencil-name="pill"
+                    class="box-border w-[64px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[999px]"
+                  ></div>
+                </div>
+                <div
+                  data-pencil-name="Row"
+                  class="box-border w-full h-fit shrink-0 flex flex-row gap-[12px] justify-start items-center"
+                >
+                  <div
+                    data-pencil-name="dot"
+                    class="box-border w-[34px] shrink-0 h-[34px] bg-[#FFFFFF14] rounded-[8px]"
+                  ></div>
+                  <div
+                    data-pencil-name="col"
+                    class="box-border [flex:1_1_0] h-fit flex flex-col gap-[7px] justify-start items-start"
+                  >
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[220px] h-[10px] shrink-0 bg-[#FFFFFF1F] rounded-[6px]"
+                    ></div>
+                    <div
+                      data-pencil-name="ph"
+                      class="box-border w-[360px] h-[8px] shrink-0 bg-[#FFFFFF12] rounded-[6px]"
+                    ></div>
+                  </div>
+                  <div
+                    data-pencil-name="pill"
+                    class="box-border w-[64px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[999px]"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Preview"
+            class="box-border w-[520px] shrink-0 h-full flex flex-col gap-[18px] p-[28px] justify-start items-start bg-[#18181b] [border-width:0px_0px_0px_1px] [border-style:solid] [border-color:#ffffff1a]"
+          >
+            <div
+              data-pencil-name="ph"
+              class="box-border w-[120px] h-[14px] shrink-0 bg-[#FFFFFF26] rounded-[6px]"
+            ></div>
+            <div
+              data-pencil-name="PreviewWin"
+              class="box-border w-full h-[340px] shrink-0 bg-[#0D0D0D] [border:1px_solid_#2E2E2E] rounded-[11px]"
+            ></div>
+            <div
+              data-pencil-name="Meta"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-[10px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="ph"
+                class="box-border w-[90px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[6px]"
+              ></div>
+              <div
+                data-pencil-name="ph"
+                class="box-border w-[90px] shrink-0 h-[26px] bg-[#FFFFFF14] rounded-[6px]"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        data-pencil-name="Scrim"
+        class="box-border w-[1440px] h-[900px] [backdrop-filter:blur(2px)] absolute left-0 top-0 flex flex-row gap-0 justify-start items-start bg-[#08080BCC] [z-index:1]"
+      ></div>
+      <div
+        data-pencil-name="Modal · Layout Designer"
+        class="box-border w-[1000px] h-[648px] [box-shadow:0px_28px_64px_-12px_#000000B3] absolute left-[220px] top-[126px] flex flex-col gap-0 justify-start items-start bg-[#1A1A1A] [border:1px_solid_#2E2E2E] rounded-[16px] overflow-hidden [z-index:2]"
+      >
+        <div
+          data-pencil-name="Header"
+          class="box-border w-full h-[60px] shrink-0 flex flex-row gap-[12px] p-[0px_20px] justify-start items-center bg-[#1A1A1A] [border-width:0px_0px_1px_0px] [border-style:solid] [border-color:#2E2E2E]"
+        >
+          <div
+            data-pencil-name="HL"
+            class="box-border [flex:1_1_0] h-fit flex flex-row gap-[11px] justify-start items-center"
+          >
+            <div
+              data-pencil-name="IconWrap"
+              class="box-border w-[30px] shrink-0 h-[30px] flex flex-row gap-0 justify-center items-center bg-[#FF84001A] rounded-[8px]"
+            >
+              <svg
+                data-pencil-name="I"
+                data-icon-name="layout-grid"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[16px] shrink-0 h-[16px]"
+              >
+                <path
+                  d="M2.03027 1.20313q-0.22559 0.07178-0.42724 0.23242-0.20166 0.16064-0.30078 0.36914l-0.02735 0.03076q-0.05811 0.12305-0.07177 0.2085-0.02734 0.12646-0.02735 0.44775l0 1.04932 0 1.66796q0 0.24951 0.02735 0.34864 0.07178 0.28027 0.32128 0.51953 0.11279 0.10938 0.22559 0.18115 0.11279 0.06836 0.2666 0.11279l0.12647 0.04102 3.06591 0q0.24951-0.01367 0.33497-0.02734 0.30762-0.08545 0.52978-0.30762 0.22559-0.22559 0.31104-0.5332 0.01367-0.08545 0.02734-0.33497l0-3.06591-0.04102-0.12647q-0.04443-0.16748-0.11621-0.27344-0.06836-0.10596-0.1914-0.23242-0.15381-0.15381-0.29395-0.22217l-0.01709-0.01367q-0.12305-0.05811-0.22217-0.07178-0.12646-0.02734-0.47509-0.02734l-1.14844 0-1.52783 0q-0.24951 0.01367-0.34864 0.02734z m6.43946-0.00001q-0.28027 0.05811-0.53321 0.30762-0.12305 0.12646-0.19482 0.23242-0.06836 0.10596-0.11279 0.27344l-0.04102 0.12647 0 3.06591q0.01367 0.2666 0.02734 0.33497 0.08545 0.30762 0.30762 0.5332 0.22559 0.22217 0.5332 0.30762 0.06836 0.01367 0.33497 0.02734l3.06591 0 0.12647-0.04102q0.16748-0.04443 0.27344-0.11279 0.10596-0.07178 0.23242-0.19482 0.23584-0.23926 0.30761-0.53321 0.02734-0.12646 0.03418-1.74316 0.00684-1.6167-0.03418-1.72949-0.07178-0.30762-0.30419-0.53662-0.229-0.23242-0.53663-0.31788-0.09912-0.02734-0.33496-0.02734l-1.41504 0q-1.62354 0-1.73632 0.02734z m-3.21973 2.59083l0 1.45605-2.92578 0 0-2.92578 2.92578 0 0 1.46973z m6.42578 0l0 1.45605-2.92578 0 0-2.92578 2.92578 0 0 1.46973z m-9.47803 3.79394q-0.39307 0.04102-0.68701 0.34863-0.23584 0.22559-0.30761 0.50586-0.02734 0.09912-0.02735 0.34864l0 1.41503 0 1.30225q0 0.32129 0.02735 0.44775 0.01367 0.08545 0.07177 0.2085l0.02735 0.03076q0.09912 0.22217 0.30761 0.38281 0.2085 0.16065 0.44776 0.21875 0.11279 0.04102 1.72949 0.03418 1.6167-0.00684 1.74316-0.03418 0.29395-0.07178 0.53321-0.30761 0.12305-0.12646 0.1914-0.23242 0.07178-0.10596 0.11621-0.27344l0.04102-0.12647 0-3.06591q-0.01367-0.24951-0.02734-0.33497-0.08545-0.30762-0.31788-0.52978-0.229-0.22559-0.52294-0.31104-0.06836-0.01367-0.34864-0.02734l-1.31592 0q-1.55518-0.01367-1.68164 0z m6.42579 0q-0.22217 0.02734-0.37598 0.11279-0.23926 0.11279-0.3999 0.30762-0.16064 0.19482-0.23243 0.44775-0.01367 0.06836-0.02734 0.33497l0 3.06591 0.04102 0.12647q0.04443 0.16748 0.11279 0.27344 0.07178 0.10596 0.19482 0.23242 0.23926 0.23584 0.53321 0.30761 0.12646 0.02734 1.74316 0.03418 1.6167 0.00684 1.72949-0.03418 0.23926-0.0581 0.44776-0.21875 0.2085-0.16065 0.30761-0.38281l0.02735-0.03076q0.05811-0.12305 0.07178-0.2085 0.02734-0.12646 0.02734-0.44775l0-2.59082q0-0.33496-0.02734-0.46143-0.01367-0.08545-0.07178-0.20849l-0.01367-0.03076q-0.06836-0.12646-0.22217-0.28028-0.15381-0.15381-0.29395-0.22216l-0.03076-0.01368q-0.12305-0.07178-0.2085-0.08545-0.11279-0.01367-0.4204-0.02734l-1.23047 0q-1.56885 0-1.68164 0.01367l0-0.01367z m-3.37354 2.61816l0 1.46973-2.92578 0 0-2.92578 2.92578 0 0 1.45605z m6.42578 0l0 1.46973-2.92578 0 0-2.92578 2.92578 0 0 1.45605z"
+                  fill="#FF8400"
+                ></path>
+              </svg>
+            </div>
+            <div
+              data-pencil-name="Titles"
+              class="box-border w-fit shrink-0 h-fit flex flex-col gap-[1px] justify-start items-start"
+            >
+              <div
+                data-pencil-name="T"
+                class="text-[16px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                Design custom layout
+              </div>
+              <div
+                data-pencil-name="Sub"
+                class="text-[11.5px]/[normal] box-border text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Paint panels onto the grid
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Close"
+            class="box-border w-[32px] shrink-0 h-[32px] flex flex-row gap-0 justify-center items-center bg-[#00000000] [border:1px_solid_#2E2E2E] rounded-[8px]"
+          >
+            <svg
+              data-pencil-name="I"
+              data-icon-name="x"
+              data-icon-set="lucide"
+              viewBox="0 0 13.99993896484375 14"
+              preserveAspectRatio="xMidYMid meet"
+              xmlns="http://www.w3.org/2000/svg"
+              class="box-border w-[16px] shrink-0 h-[16px]"
+            >
+              <path
+                d="M3.34619 2.93945q-0.25293 0.08545-0.37939 0.30762-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.25293 0.04443 0.08203 1.62353 1.66455l1.58252 1.58252-1.58252 1.58252q-1.5791 1.58252-1.62353 1.66797-0.04102 0.08203-0.04102 0.23584 0 0.15381 0.03418 0.23926 0.0376 0.08203 0.1333 0.18115 0.09912 0.0957 0.18115 0.1333 0.08545 0.03418 0.23926 0.03418 0.15381 0 0.23584-0.04102 0.08545-0.04443 1.66797-1.62353l1.58252-1.58252 1.58252 1.58252q1.58252 1.5791 1.66455 1.62353 0.08545 0.04102 0.23926 0.04102 0.15381 0 0.23584-0.03418 0.08545-0.0376 0.18115-0.1333 0.09912-0.09912 0.1333-0.18115 0.0376-0.08545 0.0376-0.23926 0-0.15381-0.04443-0.23584-0.04101-0.08545-1.62012-1.66797l-1.58252-1.58252 1.58252-1.58252q1.5791-1.58252 1.62012-1.66455 0.04443-0.08545 0.04443-0.25293 0-0.16748-0.04102-0.25293-0.09912-0.16748-0.28027-0.2666-0.05811-0.02734-0.09912-0.04102-0.04102-0.01367-0.15381-0.01367-0.11279 0-0.15381 0.01367-0.04101 0.01367-0.11279 0.04102-0.09912 0.05811-1.66455 1.62695l-1.56885 1.56543-2.82666-2.81299q-0.31104-0.29395-0.42041-0.37939-0.08545-0.05469-0.19824-0.05469l-0.02735 0q-0.14014 0-0.18115 0.01367z"
+                fill="#B8B9B6"
+              ></path>
+            </svg>
+          </div>
+        </div>
+        <div
+          data-pencil-name="Controls"
+          class="box-border w-full h-fit shrink-0 flex flex-col gap-[14px] p-[16px_20px] justify-start items-start bg-[#1A1A1A] [border-width:0px_0px_1px_0px] [border-style:solid] [border-color:#2E2E2E]"
+        >
+          <div
+            data-pencil-name="Name Field"
+            class="box-border w-full h-fit shrink-0 flex flex-col gap-[6px] justify-start items-start"
+          >
+            <div
+              data-pencil-name="L"
+              class="text-[11.5px]/[normal] box-border text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Layout name
+            </div>
+            <div
+              data-pencil-name="Input"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-[9px] p-[10px_12px] justify-start items-center bg-[#0E0E0E] [border:1px_solid_#2E2E2E] rounded-[9px]"
+            >
+              <div
+                data-pencil-name="V"
+                class="text-[13.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Custom layout 1
+              </div>
+              <svg
+                data-pencil-name="I"
+                data-icon-name="pencil"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M11.00244 0.60156q-0.61523 0.04102-1.14502 0.43408-0.15381 0.09912-4.13232 4.0879-3.9751 3.98877-4.08789 4.1289-0.14014 0.19824-0.23242 0.45801-0.08887 0.25635-0.44776 1.46289-0.35547 1.20313-0.36914 1.28516-0.01367 0.12646 0.02051 0.27343 0.03418 0.14697 0.08887 0.2461 0.05811 0.09912 0.17089 0.20507 0.11279 0.10254 0.2085 0.14698 0.09912 0.04102 0.22559 0.06836 0.12646 0.02734 0.229 0.01367 0.10596-0.01367 1.38086-0.39307l1.24756-0.38964q0.26318-0.08545 0.3623-0.12647l0.01367-0.01367q0.14014-0.07178 0.32129-0.22559 0.25293-0.23926 1.08008-1.04932l2.92578-2.92578q3.98877-3.99219 4.10156-4.14599 0.18115-0.24951 0.29395-0.51612 0.23926-0.60156 0.11963-1.23046-0.11963-0.63232-0.56738-1.10743-0.35205-0.36572-0.81348-0.54687-0.46143-0.18115-0.99463-0.14014z m0.42041 1.17578q0.28027 0.05811 0.50928 0.29053 0.23242 0.229 0.29053 0.50928 0.08203 0.37598-0.08545 0.71435-0.04102 0.08203-0.1333 0.18116-0.08887 0.0957-0.42725 0.44775l-0.50244 0.50244-1.49707-1.49707 0.50244-0.50244q0.35205-0.33838 0.44775-0.42725 0.09912-0.09229 0.18116-0.1333 0.33838-0.16748 0.71435-0.08545z m-4.2417 6.53858q-3.07959 3.07959-3.14453 3.11719-0.06152 0.03418-1.0835 0.34863-1.02197 0.31445-1.03564 0.30762-0.01367-0.00683 0.29395-1.02881 0.30762-1.02197 0.33496-1.06983 0.03076-0.05127 3.12402-3.1582l3.09326-3.09326 1.4834 1.49707-3.06592 3.07959z"
+                  fill="#B8B9B6"
+                ></path>
+              </svg>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Toolbar"
+            class="box-border w-full h-fit shrink-0 flex flex-row gap-[12px] justify-start items-center"
+          >
+            <div
+              data-pencil-name="Step Columns"
+              class="box-border w-fit shrink-0 h-fit flex flex-row gap-[8px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="L"
+                class="text-[12px]/[normal] box-border text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Columns
+              </div>
+              <div
+                data-pencil-name="Box"
+                class="box-border w-fit shrink-0 h-fit flex flex-row gap-[2px] p-[2px] justify-start items-center bg-[#0E0E0E] [border:1px_solid_#2E2E2E] rounded-[8px]"
+              >
+                <div
+                  data-pencil-name="Minus"
+                  class="box-border w-[24px] shrink-0 h-[24px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="i"
+                    data-icon-name="minus"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[13px] shrink-0 h-[13px]"
+                  >
+                    <path
+                      d="M2.73096 6.45313q-0.23926 0.08545-0.34522 0.3247-0.10254 0.23584-0.00683 0.46143 0.05811 0.0957 0.14013 0.18115 0.08545 0.08203 0.18457 0.12647l0.09571 0.02734 8.40136 0 0.09571-0.02734q0.09912-0.04443 0.18115-0.12647 0.08545-0.08545 0.1333-0.18799 0.05127-0.10596 0.05127-0.23242 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-4.22803 0q-4.22803 0-4.28271 0.02735z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+                <div
+                  data-pencil-name="V"
+                  class="text-[13px]/[normal] box-border w-[26px] shrink-0 text-[#FFFFFF] font-['JetBrains_Mono',system-ui,sans-serif] font-semibold text-center"
+                >
+                  12
+                </div>
+                <div
+                  data-pencil-name="Plus"
+                  class="box-border w-[24px] shrink-0 h-[24px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="i"
+                    data-icon-name="plus"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[13px] shrink-0 h-[13px]"
+                  >
+                    <path
+                      d="M6.90088 2.35156q-0.0957 0.01367-0.17432 0.05127-0.0752 0.03418-0.15381 0.12647-0.0752 0.08887-0.11279 0.16748-0.03418 0.0752-0.03418 0.32812l0 3.40088-3.66748 0-0.08545 0.04102q-0.22217 0.11279-0.30078 0.33838-0.0752 0.22217 0.00684 0.43408 0.05811 0.0957 0.14013 0.18115 0.08545 0.08203 0.16748 0.11963 0.08545 0.03418 0.33838 0.03418l3.40088 0 0 3.40088q0 0.25293 0.03418 0.33838 0.0376 0.08203 0.11963 0.16748 0.08545 0.08203 0.18799 0.1333 0.10596 0.04785 0.23242 0.04785 0.12646 0 0.229-0.04785 0.10596-0.05127 0.18799-0.1333 0.08545-0.08545 0.11963-0.16748 0.0376-0.08545 0.0376-0.33838l0-3.40088 3.40088 0q0.25293 0 0.33496-0.03418 0.08545-0.0376 0.16748-0.11963 0.08545-0.08545 0.1333-0.18799 0.05127-0.10596 0.05127-0.23242 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-3.66748 0 0-3.38721q0-0.2666-0.02734-0.32128-0.07178-0.19824-0.25293-0.30079-0.18115-0.10596-0.39307-0.06494z"
+                      fill="#FFFFFF"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div
+              data-pencil-name="Step Rows"
+              class="box-border w-fit shrink-0 h-fit flex flex-row gap-[8px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="L"
+                class="text-[12px]/[normal] box-border text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Rows
+              </div>
+              <div
+                data-pencil-name="Box"
+                class="box-border w-fit shrink-0 h-fit flex flex-row gap-[2px] p-[2px] justify-start items-center bg-[#0E0E0E] [border:1px_solid_#2E2E2E] rounded-[8px]"
+              >
+                <div
+                  data-pencil-name="Minus"
+                  class="box-border w-[24px] shrink-0 h-[24px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="i"
+                    data-icon-name="minus"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[13px] shrink-0 h-[13px]"
+                  >
+                    <path
+                      d="M2.73096 6.45313q-0.23926 0.08545-0.34522 0.3247-0.10254 0.23584-0.00683 0.46143 0.05811 0.0957 0.14013 0.18115 0.08545 0.08203 0.18457 0.12647l0.09571 0.02734 8.40136 0 0.09571-0.02734q0.09912-0.04443 0.18115-0.12647 0.08545-0.08545 0.1333-0.18799 0.05127-0.10596 0.05127-0.23242 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-4.22803 0q-4.22803 0-4.28271 0.02735z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+                <div
+                  data-pencil-name="V"
+                  class="text-[13px]/[normal] box-border w-[26px] shrink-0 text-[#FFFFFF] font-['JetBrains_Mono',system-ui,sans-serif] font-semibold text-center"
+                >
+                  8
+                </div>
+                <div
+                  data-pencil-name="Plus"
+                  class="box-border w-[24px] shrink-0 h-[24px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="i"
+                    data-icon-name="plus"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[13px] shrink-0 h-[13px]"
+                  >
+                    <path
+                      d="M6.90088 2.35156q-0.0957 0.01367-0.17432 0.05127-0.0752 0.03418-0.15381 0.12647-0.0752 0.08887-0.11279 0.16748-0.03418 0.0752-0.03418 0.32812l0 3.40088-3.66748 0-0.08545 0.04102q-0.22217 0.11279-0.30078 0.33838-0.0752 0.22217 0.00684 0.43408 0.05811 0.0957 0.14013 0.18115 0.08545 0.08203 0.16748 0.11963 0.08545 0.03418 0.33838 0.03418l3.40088 0 0 3.40088q0 0.25293 0.03418 0.33838 0.0376 0.08203 0.11963 0.16748 0.08545 0.08203 0.18799 0.1333 0.10596 0.04785 0.23242 0.04785 0.12646 0 0.229-0.04785 0.10596-0.05127 0.18799-0.1333 0.08545-0.08545 0.11963-0.16748 0.0376-0.08545 0.0376-0.33838l0-3.40088 3.40088 0q0.25293 0 0.33496-0.03418 0.08545-0.0376 0.16748-0.11963 0.08545-0.08545 0.1333-0.18799 0.05127-0.10596 0.05127-0.23242 0-0.12646-0.04102-0.23926-0.09912-0.19482-0.29394-0.29394l-0.08545-0.04102-3.66748 0 0-3.38721q0-0.2666-0.02734-0.32128-0.07178-0.19824-0.25293-0.30079-0.18115-0.10596-0.39307-0.06494z"
+                      fill="#FFFFFF"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div
+              data-pencil-name="Div"
+              class="box-border w-[1px] shrink-0 h-[22px] bg-[#2E2E2E]"
+            ></div>
+            <div
+              data-pencil-name="Sp"
+              class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Clear"
+              class="box-border w-fit shrink-0 h-fit flex flex-row gap-[6px] p-[7px_11px] justify-start items-center bg-[#00000000] [border:1px_solid_#2E2E2E] rounded-[8px]"
+            >
+              <svg
+                data-pencil-name="I"
+                data-icon-name="rotate-ccw"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[13px] shrink-0 h-[13px]"
+              >
+                <path
+                  d="M1.59619 1.18945q-0.25293 0.08545-0.37939 0.30762l-0.04102 0.08545 0 3.26074 0.04102 0.07178q0.09912 0.19482 0.29394 0.28027l0.08545 0.04102 2.81299 0.01367q0.32129-0.01367 0.43408-0.02734 0.07178-0.01367 0.15381-0.07178l0.01367-0.01367q0.1709-0.12646 0.21875-0.31446 0.04785-0.18799-0.03076-0.37597-0.0752-0.19141-0.25635-0.28711-0.08545-0.05811-0.2666-0.07178-0.18115-0.01367-0.76904-0.01367l-0.7417 0 0.23584-0.22559q0.7417-0.72803 1.58252-1.09033 0.96729-0.42041 2.03027-0.42041 0.93994 0 1.76367 0.34863 1.17578 0.49219 1.93799 1.49366 0.76563 1.00146 0.91944 2.2456 0.02734 0.22559 0.02734 0.56738 0 0.3418-0.02734 0.56739-0.15381 1.2749-0.93995 2.29004-0.78271 1.01172-1.97216 1.49023-0.81348 0.32129-1.72266 0.32129-0.28027 0-0.46143-0.01367-0.18115-0.01367-0.46142-0.07178-0.88184-0.18115-1.64746-0.68359-0.76221-0.50586-1.28174-1.2544-0.51611-0.74854-0.71094-1.64404-0.08545-0.44775-0.09228-0.77588-0.00684-0.33154-0.0752-0.47168-0.08545-0.16748-0.2666-0.2666-0.05811-0.02734-0.09912-0.04102-0.04102-0.01367-0.15381-0.01367-0.11279 0-0.15381 0.01367-0.04102 0.01367-0.09912 0.04102-0.18115 0.09912-0.28027 0.2666-0.06836 0.15381-0.03418 0.65283 0.03418 0.49561 0.14697 0.9878 0.29395 1.18945 1.03564 2.15673 0.7417 0.96387 1.80469 1.5586 1.06641 0.59473 2.29688 0.70752 0.18457 0.01367 0.5332 0.01367 0.34863 0 0.5332-0.01367 1.38428-0.12646 2.54639-0.86817 1.14844-0.71436 1.86279-1.86279 0.7417-1.16211 0.86817-2.54639 0.01367-0.18457 0.01367-0.5332 0-0.34863-0.01367-0.5332-0.14014-1.52441-1.01514-2.78223-0.875-1.26123-2.2627-1.93457-0.58789-0.28027-1.14843-0.42041-0.55713-0.14014-1.2168-0.15381-1.09033-0.02734-2.1123 0.30762-0.71436 0.23926-1.30225 0.60498-0.58789 0.3623-1.14844 0.90918l-0.28027 0.26318 0-1.67822-0.04102-0.08545q-0.09912-0.18115-0.28027-0.2666-0.08545-0.04102-0.22559-0.04785-0.14014-0.00684-0.18115 0.00683z"
+                  fill="#B8B9B6"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="T"
+                class="text-[12px]/[normal] box-border text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Clear
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          data-pencil-name="Body"
+          class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+        >
+          <div
+            data-pencil-name="Stage Wrap"
+            class="box-border [flex:1_1_0] h-full flex flex-col gap-[14px] p-[20px] justify-center items-center bg-[#0A0A0A]"
+          >
+            <div
+              data-pencil-name="Grid Stage"
+              class="box-border w-[560px] h-[324px] shrink-0 bg-[#0D0D0D] [border:1px_solid_#2E2E2E] rounded-[10px] overflow-hidden relative"
+            >
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[46.667px] top-0 bg-[#FFFFFF0A] [z-index:0]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[93.333px] top-0 bg-[#FFFFFF0A] [z-index:1]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[140px] top-0 bg-[#FFFFFF0A] [z-index:2]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[186.667px] top-0 bg-[#FFFFFF0A] [z-index:3]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[233.333px] top-0 bg-[#FFFFFF0A] [z-index:4]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[280px] top-0 bg-[#FFFFFF0A] [z-index:5]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[326.667px] top-0 bg-[#FFFFFF0A] [z-index:6]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[373.333px] top-0 bg-[#FFFFFF0A] [z-index:7]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[420px] top-0 bg-[#FFFFFF0A] [z-index:8]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[466.667px] top-0 bg-[#FFFFFF0A] [z-index:9]"
+              ></div>
+              <div
+                data-pencil-name="gv"
+                class="box-border w-[1px] h-[324px] absolute left-[513.333px] top-0 bg-[#FFFFFF0A] [z-index:10]"
+              ></div>
+              <div
+                data-pencil-name="gh"
+                class="box-border w-[560px] h-[1px] absolute left-0 top-[40.5px] bg-[#FFFFFF0A] [z-index:11]"
+              ></div>
+              <div
+                data-pencil-name="gh"
+                class="box-border w-[560px] h-[1px] absolute left-0 top-[81px] bg-[#FFFFFF0A] [z-index:12]"
+              ></div>
+              <div
+                data-pencil-name="gh"
+                class="box-border w-[560px] h-[1px] absolute left-0 top-[121.5px] bg-[#FFFFFF0A] [z-index:13]"
+              ></div>
+              <div
+                data-pencil-name="gh"
+                class="box-border w-[560px] h-[1px] absolute left-0 top-[162px] bg-[#FFFFFF0A] [z-index:14]"
+              ></div>
+              <div
+                data-pencil-name="gh"
+                class="box-border w-[560px] h-[1px] absolute left-0 top-[202.5px] bg-[#FFFFFF0A] [z-index:15]"
+              ></div>
+              <div
+                data-pencil-name="gh"
+                class="box-border w-[560px] h-[1px] absolute left-0 top-[243px] bg-[#FFFFFF0A] [z-index:16]"
+              ></div>
+              <div
+                data-pencil-name="gh"
+                class="box-border w-[560px] h-[1px] absolute left-0 top-[283.5px] bg-[#FFFFFF0A] [z-index:17]"
+              ></div>
+              <div
+                data-pencil-name="Region 1"
+                class="box-border w-[274px] h-[318px] absolute left-[3px] top-[3px] flex flex-col gap-[2px] justify-center items-center bg-[#FF84001F] [border:1px_solid_#FF840080] rounded-[8px] overflow-hidden [z-index:18]"
+              >
+                <div
+                  data-pencil-name="Num"
+                  class="text-[60px]/[normal] box-border text-[#FF840066] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap] relative [z-index:0]"
+                >
+                  1
+                </div>
+                <div
+                  data-pencil-name="Frac"
+                  class="text-[11px]/[normal] box-border text-[#FFFFFFA6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap] relative [z-index:1]"
+                >
+                  ½ × 1
+                </div>
+                <div
+                  data-pencil-name="Tag"
+                  class="box-border w-fit h-fit absolute left-[8px] top-[8px] flex flex-row gap-[6px] p-[3px_7px] justify-start items-center bg-[#00000059] rounded-[6px] [z-index:2]"
+                >
+                  <div
+                    data-pencil-name="D"
+                    class="box-border w-[7px] shrink-0 h-[7px] bg-[#FF8400] rounded-full"
+                  ></div>
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                  >
+                    Panel 1
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Region 2"
+                class="box-border w-[274px] h-[156px] absolute left-[283px] top-[3px] flex flex-col gap-[2px] justify-center items-center bg-[#3B82F61F] [border:1px_solid_#3B82F680] rounded-[8px] overflow-hidden [z-index:19]"
+              >
+                <div
+                  data-pencil-name="Num"
+                  class="text-[48px]/[normal] box-border text-[#3B82F666] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap] relative [z-index:0]"
+                >
+                  2
+                </div>
+                <div
+                  data-pencil-name="Frac"
+                  class="text-[11px]/[normal] box-border text-[#FFFFFFA6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap] relative [z-index:1]"
+                >
+                  ½ × ½
+                </div>
+                <div
+                  data-pencil-name="Tag"
+                  class="box-border w-fit h-fit absolute left-[8px] top-[8px] flex flex-row gap-[6px] p-[3px_7px] justify-start items-center bg-[#00000059] rounded-[6px] [z-index:2]"
+                >
+                  <div
+                    data-pencil-name="D"
+                    class="box-border w-[7px] shrink-0 h-[7px] bg-[#3B82F6] rounded-full"
+                  ></div>
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                  >
+                    Panel 2
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Region 3"
+                class="box-border w-[134px] h-[156px] absolute left-[283px] top-[165px] flex flex-col gap-[2px] justify-center items-center bg-[#22C55E1F] [border:1px_solid_#22C55E80] rounded-[8px] overflow-hidden [z-index:20]"
+              >
+                <div
+                  data-pencil-name="Num"
+                  class="text-[40px]/[normal] box-border text-[#22C55E66] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap] relative [z-index:0]"
+                >
+                  3
+                </div>
+                <div
+                  data-pencil-name="Frac"
+                  class="text-[11px]/[normal] box-border text-[#FFFFFFA6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap] relative [z-index:1]"
+                >
+                  ¼ × ½
+                </div>
+                <div
+                  data-pencil-name="Tag"
+                  class="box-border w-fit h-fit absolute left-[8px] top-[8px] flex flex-row gap-[6px] p-[3px_7px] justify-start items-center bg-[#00000059] rounded-[6px] [z-index:2]"
+                >
+                  <div
+                    data-pencil-name="D"
+                    class="box-border w-[7px] shrink-0 h-[7px] bg-[#22C55E] rounded-full"
+                  ></div>
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                  >
+                    Panel 3
+                  </div>
+                </div>
+              </div>
+              <div
+                data-pencil-name="Region 4"
+                class="box-border w-[134px] h-[156px] absolute left-[423px] top-[165px] flex flex-col gap-[2px] justify-center items-center bg-[#EC48991F] [border:1px_solid_#EC489980] rounded-[8px] overflow-hidden [z-index:21]"
+              >
+                <div
+                  data-pencil-name="Num"
+                  class="text-[40px]/[normal] box-border text-[#EC489966] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap] relative [z-index:0]"
+                >
+                  4
+                </div>
+                <div
+                  data-pencil-name="Frac"
+                  class="text-[11px]/[normal] box-border text-[#FFFFFFA6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap] relative [z-index:1]"
+                >
+                  ¼ × ½
+                </div>
+                <div
+                  data-pencil-name="Tag"
+                  class="box-border w-fit h-fit absolute left-[8px] top-[8px] flex flex-row gap-[6px] p-[3px_7px] justify-start items-center bg-[#00000059] rounded-[6px] [z-index:2]"
+                >
+                  <div
+                    data-pencil-name="D"
+                    class="box-border w-[7px] shrink-0 h-[7px] bg-[#EC4899] rounded-full"
+                  ></div>
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+                  >
+                    Panel 4
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              data-pencil-name="Hint"
+              class="box-border w-fit h-fit shrink-0 flex flex-row gap-[8px] p-[7px_13px] justify-start items-center bg-[#FFFFFF0A] [border:1px_solid_#2E2E2E] rounded-[999px]"
+            >
+              <svg
+                data-pencil-name="I"
+                data-icon-name="mouse-pointer-2"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[13px] shrink-0 h-[13px]"
+              >
+                <path
+                  d="M2.40967 1.77734q-0.33838 0.08545-0.52637 0.39991-0.18799 0.31445-0.10596 0.64941 0.02734 0.09912 1.93116 4.79541 1.90381 4.69629 1.96191 4.78174 0.06836 0.14014 0.229 0.25293 0.16406 0.11279 0.31788 0.15381 0.08203 0.01367 0.20849 0.01367 0.12646 0 0.21192-0.02734 0.18115-0.04443 0.33496-0.16748 0.15381-0.12647 0.22216-0.29395 0.07178-0.12647 0.53321-1.94483 0.46143-1.82178 0.50244-1.90722 0.08545-0.16748 0.25293-0.25293 0.08545-0.04102 1.90381-0.50928 1.82178-0.46826 1.94824-0.52637 0.16748-0.06836 0.29053-0.22216 0.12646-0.15381 0.17089-0.33496 0.08203-0.29736-0.04443-0.56739-0.12305-0.27344-0.38965-0.41357-0.12646-0.07178-4.79541-1.96875-4.66895-1.89697-4.75439-1.91065-0.19482-0.05469-0.40332 0z m4.70312 2.98389q3.88965 1.5791 3.88965 1.58936 0 0.00684-1.3501 0.35546-1.3501 0.34863-1.44922 0.39307-0.34863 0.0957-0.6289 0.35547-0.28027 0.25977-0.43408 0.59473-0.05469 0.14014-0.42041 1.54834-0.3623 1.40478-0.37256 1.40478-0.00684 0-1.56885-3.83496-1.55859-3.83496-1.59961-3.9751-0.01367-0.02734 0.01367-0.01367l3.92041 1.58252z"
+                  fill="#B8B9B6"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="T"
+                class="text-[11.5px]/[normal] box-border text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+              >
+                Drag across empty cells to paint a panel · drag edges to resize
+              </div>
+            </div>
+          </div>
+          <div
+            data-pencil-name="Panels Rail"
+            class="box-border w-[300px] shrink-0 h-full flex flex-col gap-[14px] p-[18px] justify-start items-start bg-[#18181b] [border-width:0px_0px_0px_1px] [border-style:solid] [border-color:#ffffff1a]"
+          >
+            <div
+              data-pencil-name="RailHead"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-[8px] justify-start items-center"
+            >
+              <div
+                data-pencil-name="T"
+                class="text-[14px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+              >
+                Panels
+              </div>
+              <div
+                data-pencil-name="Count"
+                class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[2px_8px] justify-center items-center bg-[#2E2E2E] rounded-[999px]"
+              >
+                <div
+                  data-pencil-name="T"
+                  class="text-[11px]/[normal] box-border text-[#B8B9B6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                >
+                  4
+                </div>
+              </div>
+              <div
+                data-pencil-name="Sp"
+                class="box-border [flex:1_1_0] h-[1px] flex flex-row gap-0 justify-start items-start"
+              ></div>
+            </div>
+            <div
+              data-pencil-name="Panel List"
+              class="box-border w-full h-fit shrink-0 flex flex-col gap-0 justify-start items-start bg-[#1A1A1A] [border:1px_solid_#2E2E2E] rounded-[11px] overflow-hidden"
+            >
+              <div
+                data-pencil-name="P 1"
+                class="box-border w-full h-fit shrink-0 flex flex-row gap-[9px] p-[9px_10px] justify-start items-center bg-[#00000000]"
+              >
+                <div
+                  data-pencil-name="Idx"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center bg-[#FF8400] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="N"
+                    class="text-[11px]/[normal] box-border text-[#0A0A0A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+                  >
+                    1
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="NameInput"
+                  class="box-border [flex:1_1_0] h-fit flex flex-row gap-[7px] p-[6px_9px] justify-start items-center bg-[#0E0E0E] [border:1px_solid_#2E2E2E] rounded-[7px]"
+                >
+                  <div
+                    data-pencil-name="V"
+                    class="text-[12.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-medium text-left [white-space:nowrap]"
+                  >
+                    Panel 1
+                  </div>
+                  <svg
+                    data-pencil-name="E"
+                    data-icon-name="pencil"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[12px] shrink-0 h-[12px]"
+                  >
+                    <path
+                      d="M11.00244 0.60156q-0.61523 0.04102-1.14502 0.43408-0.15381 0.09912-4.13232 4.0879-3.9751 3.98877-4.08789 4.1289-0.14014 0.19824-0.23242 0.45801-0.08887 0.25635-0.44776 1.46289-0.35547 1.20313-0.36914 1.28516-0.01367 0.12646 0.02051 0.27343 0.03418 0.14697 0.08887 0.2461 0.05811 0.09912 0.17089 0.20507 0.11279 0.10254 0.2085 0.14698 0.09912 0.04102 0.22559 0.06836 0.12646 0.02734 0.229 0.01367 0.10596-0.01367 1.38086-0.39307l1.24756-0.38964q0.26318-0.08545 0.3623-0.12647l0.01367-0.01367q0.14014-0.07178 0.32129-0.22559 0.25293-0.23926 1.08008-1.04932l2.92578-2.92578q3.98877-3.99219 4.10156-4.14599 0.18115-0.24951 0.29395-0.51612 0.23926-0.60156 0.11963-1.23046-0.11963-0.63232-0.56738-1.10743-0.35205-0.36572-0.81348-0.54687-0.46143-0.18115-0.99463-0.14014z m0.42041 1.17578q0.28027 0.05811 0.50928 0.29053 0.23242 0.229 0.29053 0.50928 0.08203 0.37598-0.08545 0.71435-0.04102 0.08203-0.1333 0.18116-0.08887 0.0957-0.42725 0.44775l-0.50244 0.50244-1.49707-1.49707 0.50244-0.50244q0.35205-0.33838 0.44775-0.42725 0.09912-0.09229 0.18116-0.1333 0.33838-0.16748 0.71435-0.08545z m-4.2417 6.53858q-3.07959 3.07959-3.14453 3.11719-0.06152 0.03418-1.0835 0.34863-1.02197 0.31445-1.03564 0.30762-0.01367-0.00683 0.29395-1.02881 0.30762-1.02197 0.33496-1.06983 0.03076-0.05127 3.12402-3.1582l3.09326-3.09326 1.4834 1.49707-3.06592 3.07959z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+                <div
+                  data-pencil-name="Size"
+                  class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[3px_7px] justify-start items-center bg-[#FFFFFF0A] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#B8B9B6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                  >
+                    ½×1
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="Rm"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="I"
+                    data-icon-name="x"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[14px] shrink-0 h-[14px]"
+                  >
+                    <path
+                      d="M3.34619 2.93945q-0.25293 0.08545-0.37939 0.30762-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.25293 0.04443 0.08203 1.62353 1.66455l1.58252 1.58252-1.58252 1.58252q-1.5791 1.58252-1.62353 1.66797-0.04102 0.08203-0.04102 0.23584 0 0.15381 0.03418 0.23926 0.0376 0.08203 0.1333 0.18115 0.09912 0.0957 0.18115 0.1333 0.08545 0.03418 0.23926 0.03418 0.15381 0 0.23584-0.04102 0.08545-0.04443 1.66797-1.62353l1.58252-1.58252 1.58252 1.58252q1.58252 1.5791 1.66455 1.62353 0.08545 0.04102 0.23926 0.04102 0.15381 0 0.23584-0.03418 0.08545-0.0376 0.18115-0.1333 0.09912-0.09912 0.1333-0.18115 0.0376-0.08545 0.0376-0.23926 0-0.15381-0.04443-0.23584-0.04101-0.08545-1.62012-1.66797l-1.58252-1.58252 1.58252-1.58252q1.5791-1.58252 1.62012-1.66455 0.04443-0.08545 0.04443-0.25293 0-0.16748-0.04102-0.25293-0.09912-0.16748-0.28027-0.2666-0.05811-0.02734-0.09912-0.04102-0.04102-0.01367-0.15381-0.01367-0.11279 0-0.15381 0.01367-0.04101 0.01367-0.11279 0.04102-0.09912 0.05811-1.66455 1.62695l-1.56885 1.56543-2.82666-2.81299q-0.31104-0.29395-0.42041-0.37939-0.08545-0.05469-0.19824-0.05469l-0.02735 0q-0.14014 0-0.18115 0.01367z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+              <div
+                data-pencil-name="P 2"
+                class="box-border w-full h-fit shrink-0 flex flex-row gap-[9px] p-[9px_10px] justify-start items-center bg-[#00000000] [border-width:1px_0px_0px_0px] [border-style:solid] [border-color:#2E2E2E]"
+              >
+                <div
+                  data-pencil-name="Idx"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center bg-[#3B82F6] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="N"
+                    class="text-[11px]/[normal] box-border text-[#0A0A0A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+                  >
+                    2
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="NameInput"
+                  class="box-border [flex:1_1_0] h-fit flex flex-row gap-[7px] p-[6px_9px] justify-start items-center bg-[#0E0E0E] [border:1px_solid_#2E2E2E] rounded-[7px]"
+                >
+                  <div
+                    data-pencil-name="V"
+                    class="text-[12.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-medium text-left [white-space:nowrap]"
+                  >
+                    Panel 2
+                  </div>
+                  <svg
+                    data-pencil-name="E"
+                    data-icon-name="pencil"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[12px] shrink-0 h-[12px]"
+                  >
+                    <path
+                      d="M11.00244 0.60156q-0.61523 0.04102-1.14502 0.43408-0.15381 0.09912-4.13232 4.0879-3.9751 3.98877-4.08789 4.1289-0.14014 0.19824-0.23242 0.45801-0.08887 0.25635-0.44776 1.46289-0.35547 1.20313-0.36914 1.28516-0.01367 0.12646 0.02051 0.27343 0.03418 0.14697 0.08887 0.2461 0.05811 0.09912 0.17089 0.20507 0.11279 0.10254 0.2085 0.14698 0.09912 0.04102 0.22559 0.06836 0.12646 0.02734 0.229 0.01367 0.10596-0.01367 1.38086-0.39307l1.24756-0.38964q0.26318-0.08545 0.3623-0.12647l0.01367-0.01367q0.14014-0.07178 0.32129-0.22559 0.25293-0.23926 1.08008-1.04932l2.92578-2.92578q3.98877-3.99219 4.10156-4.14599 0.18115-0.24951 0.29395-0.51612 0.23926-0.60156 0.11963-1.23046-0.11963-0.63232-0.56738-1.10743-0.35205-0.36572-0.81348-0.54687-0.46143-0.18115-0.99463-0.14014z m0.42041 1.17578q0.28027 0.05811 0.50928 0.29053 0.23242 0.229 0.29053 0.50928 0.08203 0.37598-0.08545 0.71435-0.04102 0.08203-0.1333 0.18116-0.08887 0.0957-0.42725 0.44775l-0.50244 0.50244-1.49707-1.49707 0.50244-0.50244q0.35205-0.33838 0.44775-0.42725 0.09912-0.09229 0.18116-0.1333 0.33838-0.16748 0.71435-0.08545z m-4.2417 6.53858q-3.07959 3.07959-3.14453 3.11719-0.06152 0.03418-1.0835 0.34863-1.02197 0.31445-1.03564 0.30762-0.01367-0.00683 0.29395-1.02881 0.30762-1.02197 0.33496-1.06983 0.03076-0.05127 3.12402-3.1582l3.09326-3.09326 1.4834 1.49707-3.06592 3.07959z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+                <div
+                  data-pencil-name="Size"
+                  class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[3px_7px] justify-start items-center bg-[#FFFFFF0A] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#B8B9B6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                  >
+                    ½×½
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="Rm"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="I"
+                    data-icon-name="x"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[14px] shrink-0 h-[14px]"
+                  >
+                    <path
+                      d="M3.34619 2.93945q-0.25293 0.08545-0.37939 0.30762-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.25293 0.04443 0.08203 1.62353 1.66455l1.58252 1.58252-1.58252 1.58252q-1.5791 1.58252-1.62353 1.66797-0.04102 0.08203-0.04102 0.23584 0 0.15381 0.03418 0.23926 0.0376 0.08203 0.1333 0.18115 0.09912 0.0957 0.18115 0.1333 0.08545 0.03418 0.23926 0.03418 0.15381 0 0.23584-0.04102 0.08545-0.04443 1.66797-1.62353l1.58252-1.58252 1.58252 1.58252q1.58252 1.5791 1.66455 1.62353 0.08545 0.04102 0.23926 0.04102 0.15381 0 0.23584-0.03418 0.08545-0.0376 0.18115-0.1333 0.09912-0.09912 0.1333-0.18115 0.0376-0.08545 0.0376-0.23926 0-0.15381-0.04443-0.23584-0.04101-0.08545-1.62012-1.66797l-1.58252-1.58252 1.58252-1.58252q1.5791-1.58252 1.62012-1.66455 0.04443-0.08545 0.04443-0.25293 0-0.16748-0.04102-0.25293-0.09912-0.16748-0.28027-0.2666-0.05811-0.02734-0.09912-0.04102-0.04102-0.01367-0.15381-0.01367-0.11279 0-0.15381 0.01367-0.04101 0.01367-0.11279 0.04102-0.09912 0.05811-1.66455 1.62695l-1.56885 1.56543-2.82666-2.81299q-0.31104-0.29395-0.42041-0.37939-0.08545-0.05469-0.19824-0.05469l-0.02735 0q-0.14014 0-0.18115 0.01367z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+              <div
+                data-pencil-name="P 3"
+                class="box-border w-full h-fit shrink-0 flex flex-row gap-[9px] p-[9px_10px] justify-start items-center bg-[#00000000] [border-width:1px_0px_0px_0px] [border-style:solid] [border-color:#2E2E2E]"
+              >
+                <div
+                  data-pencil-name="Idx"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center bg-[#22C55E] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="N"
+                    class="text-[11px]/[normal] box-border text-[#0A0A0A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+                  >
+                    3
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="NameInput"
+                  class="box-border [flex:1_1_0] h-fit flex flex-row gap-[7px] p-[6px_9px] justify-start items-center bg-[#0E0E0E] [border:1px_solid_#2E2E2E] rounded-[7px]"
+                >
+                  <div
+                    data-pencil-name="V"
+                    class="text-[12.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-medium text-left [white-space:nowrap]"
+                  >
+                    Panel 3
+                  </div>
+                  <svg
+                    data-pencil-name="E"
+                    data-icon-name="pencil"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[12px] shrink-0 h-[12px]"
+                  >
+                    <path
+                      d="M11.00244 0.60156q-0.61523 0.04102-1.14502 0.43408-0.15381 0.09912-4.13232 4.0879-3.9751 3.98877-4.08789 4.1289-0.14014 0.19824-0.23242 0.45801-0.08887 0.25635-0.44776 1.46289-0.35547 1.20313-0.36914 1.28516-0.01367 0.12646 0.02051 0.27343 0.03418 0.14697 0.08887 0.2461 0.05811 0.09912 0.17089 0.20507 0.11279 0.10254 0.2085 0.14698 0.09912 0.04102 0.22559 0.06836 0.12646 0.02734 0.229 0.01367 0.10596-0.01367 1.38086-0.39307l1.24756-0.38964q0.26318-0.08545 0.3623-0.12647l0.01367-0.01367q0.14014-0.07178 0.32129-0.22559 0.25293-0.23926 1.08008-1.04932l2.92578-2.92578q3.98877-3.99219 4.10156-4.14599 0.18115-0.24951 0.29395-0.51612 0.23926-0.60156 0.11963-1.23046-0.11963-0.63232-0.56738-1.10743-0.35205-0.36572-0.81348-0.54687-0.46143-0.18115-0.99463-0.14014z m0.42041 1.17578q0.28027 0.05811 0.50928 0.29053 0.23242 0.229 0.29053 0.50928 0.08203 0.37598-0.08545 0.71435-0.04102 0.08203-0.1333 0.18116-0.08887 0.0957-0.42725 0.44775l-0.50244 0.50244-1.49707-1.49707 0.50244-0.50244q0.35205-0.33838 0.44775-0.42725 0.09912-0.09229 0.18116-0.1333 0.33838-0.16748 0.71435-0.08545z m-4.2417 6.53858q-3.07959 3.07959-3.14453 3.11719-0.06152 0.03418-1.0835 0.34863-1.02197 0.31445-1.03564 0.30762-0.01367-0.00683 0.29395-1.02881 0.30762-1.02197 0.33496-1.06983 0.03076-0.05127 3.12402-3.1582l3.09326-3.09326 1.4834 1.49707-3.06592 3.07959z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+                <div
+                  data-pencil-name="Size"
+                  class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[3px_7px] justify-start items-center bg-[#FFFFFF0A] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#B8B9B6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                  >
+                    ¼×½
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="Rm"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="I"
+                    data-icon-name="x"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[14px] shrink-0 h-[14px]"
+                  >
+                    <path
+                      d="M3.34619 2.93945q-0.25293 0.08545-0.37939 0.30762-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.25293 0.04443 0.08203 1.62353 1.66455l1.58252 1.58252-1.58252 1.58252q-1.5791 1.58252-1.62353 1.66797-0.04102 0.08203-0.04102 0.23584 0 0.15381 0.03418 0.23926 0.0376 0.08203 0.1333 0.18115 0.09912 0.0957 0.18115 0.1333 0.08545 0.03418 0.23926 0.03418 0.15381 0 0.23584-0.04102 0.08545-0.04443 1.66797-1.62353l1.58252-1.58252 1.58252 1.58252q1.58252 1.5791 1.66455 1.62353 0.08545 0.04102 0.23926 0.04102 0.15381 0 0.23584-0.03418 0.08545-0.0376 0.18115-0.1333 0.09912-0.09912 0.1333-0.18115 0.0376-0.08545 0.0376-0.23926 0-0.15381-0.04443-0.23584-0.04101-0.08545-1.62012-1.66797l-1.58252-1.58252 1.58252-1.58252q1.5791-1.58252 1.62012-1.66455 0.04443-0.08545 0.04443-0.25293 0-0.16748-0.04102-0.25293-0.09912-0.16748-0.28027-0.2666-0.05811-0.02734-0.09912-0.04102-0.04102-0.01367-0.15381-0.01367-0.11279 0-0.15381 0.01367-0.04101 0.01367-0.11279 0.04102-0.09912 0.05811-1.66455 1.62695l-1.56885 1.56543-2.82666-2.81299q-0.31104-0.29395-0.42041-0.37939-0.08545-0.05469-0.19824-0.05469l-0.02735 0q-0.14014 0-0.18115 0.01367z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+              <div
+                data-pencil-name="P 4"
+                class="box-border w-full h-fit shrink-0 flex flex-row gap-[9px] p-[9px_10px] justify-start items-center bg-[#00000000] [border-width:1px_0px_0px_0px] [border-style:solid] [border-color:#2E2E2E]"
+              >
+                <div
+                  data-pencil-name="Idx"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center bg-[#EC4899] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="N"
+                    class="text-[11px]/[normal] box-border text-[#0A0A0A] font-['JetBrains_Mono',system-ui,sans-serif] font-bold text-left [white-space:nowrap]"
+                  >
+                    4
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="NameInput"
+                  class="box-border [flex:1_1_0] h-fit flex flex-row gap-[7px] p-[6px_9px] justify-start items-center bg-[#0E0E0E] [border:1px_solid_#2E2E2E] rounded-[7px]"
+                >
+                  <div
+                    data-pencil-name="V"
+                    class="text-[12.5px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-medium text-left [white-space:nowrap]"
+                  >
+                    Panel 4
+                  </div>
+                  <svg
+                    data-pencil-name="E"
+                    data-icon-name="pencil"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[12px] shrink-0 h-[12px]"
+                  >
+                    <path
+                      d="M11.00244 0.60156q-0.61523 0.04102-1.14502 0.43408-0.15381 0.09912-4.13232 4.0879-3.9751 3.98877-4.08789 4.1289-0.14014 0.19824-0.23242 0.45801-0.08887 0.25635-0.44776 1.46289-0.35547 1.20313-0.36914 1.28516-0.01367 0.12646 0.02051 0.27343 0.03418 0.14697 0.08887 0.2461 0.05811 0.09912 0.17089 0.20507 0.11279 0.10254 0.2085 0.14698 0.09912 0.04102 0.22559 0.06836 0.12646 0.02734 0.229 0.01367 0.10596-0.01367 1.38086-0.39307l1.24756-0.38964q0.26318-0.08545 0.3623-0.12647l0.01367-0.01367q0.14014-0.07178 0.32129-0.22559 0.25293-0.23926 1.08008-1.04932l2.92578-2.92578q3.98877-3.99219 4.10156-4.14599 0.18115-0.24951 0.29395-0.51612 0.23926-0.60156 0.11963-1.23046-0.11963-0.63232-0.56738-1.10743-0.35205-0.36572-0.81348-0.54687-0.46143-0.18115-0.99463-0.14014z m0.42041 1.17578q0.28027 0.05811 0.50928 0.29053 0.23242 0.229 0.29053 0.50928 0.08203 0.37598-0.08545 0.71435-0.04102 0.08203-0.1333 0.18116-0.08887 0.0957-0.42725 0.44775l-0.50244 0.50244-1.49707-1.49707 0.50244-0.50244q0.35205-0.33838 0.44775-0.42725 0.09912-0.09229 0.18116-0.1333 0.33838-0.16748 0.71435-0.08545z m-4.2417 6.53858q-3.07959 3.07959-3.14453 3.11719-0.06152 0.03418-1.0835 0.34863-1.02197 0.31445-1.03564 0.30762-0.01367-0.00683 0.29395-1.02881 0.30762-1.02197 0.33496-1.06983 0.03076-0.05127 3.12402-3.1582l3.09326-3.09326 1.4834 1.49707-3.06592 3.07959z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+                <div
+                  data-pencil-name="Size"
+                  class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[3px_7px] justify-start items-center bg-[#FFFFFF0A] rounded-[6px]"
+                >
+                  <div
+                    data-pencil-name="T"
+                    class="text-[10.5px]/[normal] box-border text-[#B8B9B6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+                  >
+                    ¼×½
+                  </div>
+                </div>
+                <div
+                  data-pencil-name="Rm"
+                  class="box-border w-[22px] shrink-0 h-[22px] flex flex-row gap-0 justify-center items-center rounded-[6px]"
+                >
+                  <svg
+                    data-pencil-name="I"
+                    data-icon-name="x"
+                    data-icon-set="lucide"
+                    viewBox="0 0 13.99993896484375 14"
+                    preserveAspectRatio="xMidYMid meet"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="box-border w-[14px] shrink-0 h-[14px]"
+                  >
+                    <path
+                      d="M3.34619 2.93945q-0.25293 0.08545-0.37939 0.30762-0.04102 0.08545-0.04102 0.25293 0 0.16748 0.04102 0.25293 0.04443 0.08203 1.62353 1.66455l1.58252 1.58252-1.58252 1.58252q-1.5791 1.58252-1.62353 1.66797-0.04102 0.08203-0.04102 0.23584 0 0.15381 0.03418 0.23926 0.0376 0.08203 0.1333 0.18115 0.09912 0.0957 0.18115 0.1333 0.08545 0.03418 0.23926 0.03418 0.15381 0 0.23584-0.04102 0.08545-0.04443 1.66797-1.62353l1.58252-1.58252 1.58252 1.58252q1.58252 1.5791 1.66455 1.62353 0.08545 0.04102 0.23926 0.04102 0.15381 0 0.23584-0.03418 0.08545-0.0376 0.18115-0.1333 0.09912-0.09912 0.1333-0.18115 0.0376-0.08545 0.0376-0.23926 0-0.15381-0.04443-0.23584-0.04101-0.08545-1.62012-1.66797l-1.58252-1.58252 1.58252-1.58252q1.5791-1.58252 1.62012-1.66455 0.04443-0.08545 0.04443-0.25293 0-0.16748-0.04102-0.25293-0.09912-0.16748-0.28027-0.2666-0.05811-0.02734-0.09912-0.04102-0.04102-0.01367-0.15381-0.01367-0.11279 0-0.15381 0.01367-0.04101 0.01367-0.11279 0.04102-0.09912 0.05811-1.66455 1.62695l-1.56885 1.56543-2.82666-2.81299q-0.31104-0.29395-0.42041-0.37939-0.08545-0.05469-0.19824-0.05469l-0.02735 0q-0.14014 0-0.18115 0.01367z"
+                      fill="#B8B9B6"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div
+              data-pencil-name="Paint New"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-[8px] p-[11px_12px] justify-center items-center bg-[#FF84001A] [border:1px_solid_#FF8400] rounded-[9px]"
+            >
+              <svg
+                data-pencil-name="I"
+                data-icon-name="paintbrush"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[14px] shrink-0 h-[14px]"
+              >
+                <path
+                  d="M11.42285 0.60156q-0.50244 0.04102-0.92285 0.35205-0.11279 0.08203-1.23047 1.18946l-1.10742 1.104-0.2085-0.2085q-0.35205-0.35205-0.65966-0.50586-0.40674-0.19482-0.84083-0.20166-0.43408-0.00684-0.84082 0.17432-0.2085 0.08545-0.36914 0.21192-0.16064 0.12305-0.48535 0.44775-0.32129 0.32129-0.40674 0.43408-0.08203 0.10938-0.12988 0.30078-0.04785 0.18799 0.00684 0.3999 0.05469 0.2085 0.19482 0.36231l0.05811 0.05469-0.05811 0.08545q-0.08203 0.11279-0.29394 0.31445-0.2085 0.20166-0.32129 0.28711-0.44775 0.34863-0.96045 0.56738-0.50928 0.21533-1.32276 0.38623-0.34863 0.06836-0.44775 0.12305-0.2085 0.09912-0.33496 0.29053-0.12646 0.18799-0.15381 0.41015-0.01367 0.09912 0.01367 0.23242 0.02734 0.1333 0.0752 0.23926 0.05127 0.10254 0.54004 0.69043l2.18408 2.64551q1.70898 2.08838 1.82178 2.15674 0.25293 0.21191 0.58789 0.24609 0.33496 0.03418 0.61523-0.11963 0.16748-0.08545 0.50928-0.35547 0.34521-0.27344 0.70752-0.62548 0.61865-0.58789 1.12109-1.20997 0.50586-0.62207 0.79981-1.16894 0.06836-0.11279 0.08203-0.1333 0.01367-0.02051 0.0581-0.00684 0.2085 0.04102 0.39649 0 0.19141-0.04102 0.29394-0.11621 0.10596-0.07861 0.42725-0.40332 0.3794-0.37598 0.51953-0.5708 0.14014-0.19824 0.22217-0.46484 0.21191-0.61523 0.01367-1.20313-0.06836-0.28027-0.2085-0.48193-0.14014-0.20508-0.39306-0.45459l-0.22217-0.23926 1.13135-1.13476q0.85449-0.86816 1.04931-1.07667 0.19824-0.21191 0.2837-0.40673 0.15381-0.29395 0.18798-0.62207 0.03418-0.32813-0.04785-0.65284-0.03076-0.0957-0.09228-0.24951-0.06152-0.15381-0.11963-0.23926-0.28027-0.44775-0.73486-0.66992-0.45459-0.22559-0.9878-0.18457z m0.43408 1.20313q0.09912 0.05811 0.19483 0.15039 0.09912 0.08887 0.14014 0.19482 0.04443 0.10254 0.04443 0.25977l0 0.04101q0 0.12646-0.02735 0.19483-0.07178 0.09912-0.29394 0.35205-0.16748 0.16748-0.78613 0.79639l-0.23584 0.22558q-1.26123 1.27148-1.30225 1.35693-0.23926 0.40674-0.04443 0.84083 0.04443 0.08203 0.11279 0.16748 0.07178 0.08203 0.32129 0.33496 0.35205 0.36572 0.43408 0.49902 0.08545 0.12988 0.08545 0.36914 0 0.19482-0.07178 0.33496-0.06836 0.14014-0.29394 0.36572l-0.2085 0.22217-4.43652-4.43652 0.20849-0.19483q0.16748-0.18457 0.26661-0.24609 0.09912-0.06494 0.21533-0.09912 0.11963-0.03418 0.28711-0.03418 0.09912 0.01367 0.15381 0.02051 0.05811 0.00684 0.14697 0.0581 0.09229 0.04785 0.16748 0.11963 0.07861 0.06836 0.33838 0.32129 0.25977 0.24951 0.34179 0.32129 0.08545 0.06836 0.16748 0.11279 0.43408 0.19482 0.84083-0.04443 0.08545-0.04102 1.34326-1.29199 1.26123-1.25439 1.32959-1.29883 0.12647-0.05469 0.28027-0.06152 0.15381-0.00684 0.28027 0.04785z m-4.82959 5.44824l1.69532 1.70557-0.04102 0.08545q-0.09912 0.2666-0.29736 0.57421-0.06836 0.09912-0.08887 0.11963-0.02051 0.02051-0.04785 0.02051l-5.56104-1.51074q-0.05469-0.03076-0.37597-0.41358-0.32129-0.38623-0.30762-0.38623l0.14014-0.04101q0.43408-0.08545 0.92968-0.27344 0.49561-0.18799 0.80664-0.37256 0.34863-0.2085 0.58448-0.38965 0.23926-0.18457 0.54004-0.49218 0.30078-0.30762 0.31445-0.30762 0.01709 0 1.70898 1.68164z m-1.25781 3.03857q1.73291 0.4751 1.73975 0.48194 0.01025 0.00683-0.46826 0.46826-0.4751 0.46143-0.61524 0.58789-0.46143 0.37939-0.48877 0.39307-0.01367-0.01367-0.95361-1.14844-0.93652-1.13477-1.03565-1.26123l-0.01367 0q-0.01367-0.01367 0.04102 0l1.79443 0.47851z"
+                  fill="#FF8400"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="T"
+                class="text-[12.5px]/[normal] box-border text-[#FF8400] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+              >
+                Paint new panel
+              </div>
+            </div>
+            <div
+              data-pencil-name="Grow"
+              class="box-border w-full [flex:1_1_0] flex flex-row gap-0 justify-start items-start"
+            ></div>
+            <div
+              data-pencil-name="Tip"
+              class="box-border w-full h-fit shrink-0 flex flex-row gap-[9px] p-[12px] justify-start items-start bg-[#FFFFFF08] rounded-[9px]"
+            >
+              <svg
+                data-pencil-name="I"
+                data-icon-name="info"
+                data-icon-set="lucide"
+                viewBox="0 0 13.99993896484375 14"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                class="box-border w-[15px] shrink-0 h-[15px]"
+              >
+                <path
+                  d="M6.69238 0.60156q-1.16211 0.04102-2.22851 0.50586-1.06299 0.46143-1.90381 1.26807-0.8374 0.80322-1.34326 1.85254-0.48877 1.0083-0.60157 2.15674-0.02734 0.19482-0.02734 0.61523 0 0.42041 0.02734 0.61523 0.11279 1.14844 0.60157 2.15674 0.65967 1.40137 1.89697 2.33789 1.24072 0.93652 2.75146 1.20313 0.5332 0.09912 1.13477 0.09912 0.75537 0 1.43213-0.15381 0.68018-0.15381 1.35351-0.4751 1.26123-0.61865 2.16358-1.70215 0.90234-1.0835 1.25439-2.44384 0.29395-1.11768 0.18116-2.25244-0.11279-1.13477-0.60157-2.17041-0.58789-1.20313-1.62011-2.08497-1.02881-0.88184-2.31397-1.2749-1.0083-0.30762-2.15674-0.25293z m0.96729 1.18946q1.07666 0.14014 1.99267 0.68017 0.91602 0.54004 1.56201 1.4082 0.82715 1.104 1.00831 2.54639 0.01367 0.16748 0.01367 0.57422 0 0.40674-0.01367 0.57422-0.14014 1.16211-0.7212 2.12939-0.58105 0.96387-1.53466 1.62354-0.4751 0.33496-1.04932 0.56055-0.57422 0.22217-1.18945 0.30761-0.25293 0.04102-0.72803 0.04102-0.4751 0-0.72803-0.04102-1.07666-0.15381-1.95849-0.68701-0.88184-0.5332-1.52784-1.3877-0.82715-1.104-1.0083-2.54638-0.01367-0.16748-0.01367-0.57422 0-0.40674 0.01367-0.57422 0.14014-1.12109 0.66993-2.05078 0.5332-0.92969 1.43212-1.58936 0.54346-0.40674 1.20655-0.66992 0.6665-0.2666 1.32617-0.3247l0.25293-0.02735q0.0957-0.01367 0.4751 0 0.37939 0.01367 0.51953 0.02735z m-0.75879 2.31054q-0.18115 0.02734-0.32129 0.16748-0.2085 0.21191-0.15381 0.50586 0.05469 0.29395 0.32129 0.42041 0.09912 0.04102 0.25293 0.04102 0.25293 0 0.42041-0.16748 0.12646-0.12646 0.15381-0.30762 0.05469-0.29395-0.15723-0.50244-0.2085-0.21191-0.51611-0.15723z m-0.05469 2.33789q-0.25293 0.08545-0.37939 0.30762l-0.04102 0.08545 0 2.46436q0 0.18115 0.03418 0.2666 0.0376 0.08203 0.11963 0.16748 0.08545 0.08203 0.18799 0.1333 0.10596 0.04785 0.23242 0.04785 0.12646 0 0.229-0.04785 0.10596-0.05127 0.18799-0.1333 0.08545-0.08545 0.11963-0.16748 0.0376-0.08545 0.0376-0.2666l0-2.46436-0.04102-0.08545q-0.09912-0.18115-0.28027-0.2666-0.08545-0.04102-0.22559-0.04785-0.14014-0.00684-0.18115 0.00683z"
+                  fill="#B8B9B6"
+                ></path>
+              </svg>
+              <div
+                data-pencil-name="T"
+                class="text-[11px]/[16px] box-border [flex:1_1_0] text-[#B8B9B6] font-['SF_Pro_Text',system-ui,sans-serif] font-normal text-left"
+              >
+                Panels are generic regions — assign connections later when you open the screen.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          data-pencil-name="Footer"
+          class="box-border w-full h-[60px] shrink-0 flex flex-row gap-[12px] p-[0px_20px] justify-start items-center bg-[#1A1A1A] [border-width:1px_0px_0px_0px] [border-style:solid] [border-color:#2E2E2E]"
+        >
+          <div
+            data-pencil-name="FL"
+            class="box-border [flex:1_1_0] h-fit flex flex-row gap-[7px] justify-start items-center"
+          >
+            <svg
+              data-pencil-name="I"
+              data-icon-name="grid-2x2"
+              data-icon-set="lucide"
+              viewBox="0 0 13.99993896484375 14"
+              preserveAspectRatio="xMidYMid meet"
+              xmlns="http://www.w3.org/2000/svg"
+              class="box-border w-[14px] shrink-0 h-[14px]"
+            >
+              <path
+                d="M2.60449 1.20313q-0.50586 0.08545-0.87842 0.43749-0.36914 0.34863-0.50927 0.86475-0.02734 0.08545-0.02735 0.71436l-0.01367 3.78027 0.01367 3.78027q0 0.62891 0.02735 0.71436 0.14014 0.48877 0.46826 0.82031 0.33154 0.32813 0.82031 0.46826 0.08545 0.02734 0.71436 0.02735l3.78027 0.01367 3.78027-0.01367q0.62891 0 0.71436-0.02735 0.48877-0.14014 0.81689-0.46826 0.33154-0.33154 0.47168-0.82031 0.02734-0.08545 0.02735-0.71436l0.01367-3.78027-0.01367-3.78027q0-0.62891-0.02735-0.71436-0.12646-0.48877-0.458-0.81689-0.32813-0.33154-0.80323-0.47168l-0.14013-0.04102-4.32715 0q-4.3374 0-4.4502 0.02734z m3.82129 3.16503l0 2.05762-4.10156 0 0.01367-3.64014 0.04102-0.09912q0.07178-0.14014 0.18798-0.229 0.11963-0.09229 0.25977-0.11963 0.08545 0 1.83545-0.01367l1.76367 0 0 2.04394z m4.8877-1.98925q0.2085 0.09912 0.30761 0.30761l0.04102 0.09912 0.01367 3.64014-4.10156 0 0-4.10156 3.64013 0.01367 0.09913 0.04102z m-4.8877 7.23925l0 2.05762-1.76367 0q-1.75 0-1.84912-0.02734-0.29395-0.05811-0.43408-0.33496l-0.04102-0.09913-0.01367-3.64013 4.10156 0 0 2.04394z m5.25-0.22558l-0.01367 1.82177-0.04102 0.09913q-0.14014 0.27685-0.43408 0.33496-0.09912 0.02734-1.84912 0.02734l-1.76367 0 0-4.10156 4.10156 0 0 1.81836z"
+                fill="#B8B9B6"
+              ></path>
+            </svg>
+            <div
+              data-pencil-name="T"
+              class="text-[11.5px]/[normal] box-border text-[#B8B9B6] font-['JetBrains_Mono',system-ui,sans-serif] font-normal text-left [white-space:nowrap]"
+            >
+              12 × 8 grid · 4 panels
+            </div>
+          </div>
+          <div
+            data-pencil-name="Cancel"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-0 p-[9px_16px] justify-start items-center bg-[#00000000] [border:1px_solid_#2E2E2E] rounded-[8px]"
+          >
+            <div
+              data-pencil-name="T"
+              class="text-[13px]/[normal] box-border text-[#FFFFFF] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Cancel
+            </div>
+          </div>
+          <div
+            data-pencil-name="Save Layout"
+            class="box-border w-fit shrink-0 h-fit flex flex-row gap-[7px] p-[9px_17px] justify-start items-center bg-[#FF8400] rounded-[8px]"
+          >
+            <svg
+              data-pencil-name="I"
+              data-icon-name="check"
+              data-icon-set="lucide"
+              viewBox="0 0 13.99993896484375 14"
+              preserveAspectRatio="xMidYMid meet"
+              xmlns="http://www.w3.org/2000/svg"
+              class="box-border w-[15px] shrink-0 h-[15px]"
+            >
+              <path
+                d="M11.48096 2.95313q-0.07178 0.01367-0.12989 0.0581-0.05469 0.04102-3.07617 3.06592l-3.0249 3.00781-1.28857-1.28857q-1.28857-1.28516-1.38086-1.32618-0.08887-0.04443-0.22217-0.04443-0.1333 0-0.23242 0.0376-0.0957 0.03418-0.18799 0.11279-0.08887 0.0752-0.1333 0.1709-0.02734 0.07178-0.03418 0.11279-0.00684 0.04102-0.00684 0.14014l0 0.04102q-0.01367 0.11279 0.04102 0.19824 0.07178 0.10938 0.36572 0.40332 0.19482 0.21191 0.96729 0.98096l1.49707 1.48339q0.28027 0.2666 0.38964 0.33838 0.07178 0.05469 0.18457 0.04102l0.09571 0.01367q0.07178 0 0.14013-0.02734 0.08545-0.07178 0.32129-0.28711 0.23926-0.21875 0.79981-0.76221l2.2832-2.2832q2.08496-2.09863 2.7002-2.71387 0.61524-0.61865 0.64599-0.68701 0.04102-0.08545 0.04102-0.23926 0-0.09912-0.00684-0.14014-0.00684-0.04102-0.03418-0.11279-0.04443-0.08203-0.13672-0.16406-0.08887-0.08545-0.18115-0.11963-0.08887-0.0376-0.20849-0.0376-0.11963 0-0.18799 0.02734z"
+                fill="#111111"
+              ></path>
+            </svg>
+            <div
+              data-pencil-name="T"
+              class="text-[13px]/[normal] box-border text-[#111111] font-['SF_Pro_Text',system-ui,sans-serif] font-semibold text-left [white-space:nowrap]"
+            >
+              Save layout
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

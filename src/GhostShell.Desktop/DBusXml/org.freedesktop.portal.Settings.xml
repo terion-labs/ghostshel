@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<node name="/">
+  <interface name="org.freedesktop.portal.Settings">
+    <method name="Read">
+      <annotation name="org.freedesktop.DBus.Deprecated" value="true" />
+      <arg name="namespace" type="s" />
+      <arg name="key" type="s" />
+      <arg name="value" direction="out" type="v" />
+    </method>
+    <method name="ReadOne">
+      <arg name="namespace" type="s" />
+      <arg name="key" type="s" />
+      <arg name="value" direction="out" type="v" />
+    </method>
+    <signal name="SettingChanged">
+      <arg name="namespace" direction="out" type="s" />
+      <arg name="key" direction="out" type="s" />
+      <arg name="value" direction="out" type="v" />
+    </signal>
+    <property name="version" type="u" access="read" />
+  </interface>
+</node>

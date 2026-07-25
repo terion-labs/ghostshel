@@ -1,0 +1,2308 @@
+using System.Collections.ObjectModel;
+using System.Collections.Immutable;
+using GhostShell.App;
+using GhostShell.Application;
+using GhostShell.Core;
+using FluentIcons.Common;
+
+namespace GhostShell.App.ViewModels;
+
+public enum ShellRoute
+{
+    Launcher,
+    Workspace,
+    Settings,
+}
+
+public enum LauncherPage
+{
+    Overview,
+    History,
+}
+
+public enum HistoryExportScope
+{
+    AllRetained,
+    CurrentResults,
+}
+
+public sealed class AgentTerminalSelectionItemViewModel : ObservableObject
+{
+    private readonly Func<AgentTerminalSelectionItemViewModel, bool, bool>
+        _canApplySelection;
+    private readonly Action _selectionChanged;
+    private bool _isSelected;
+
+    public AgentTerminalSelectionItemViewModel(
+        TabInstanceId tabId,
+        string tabTitle,
+        PanelInstanceId panelId,
+        string panelTitle,
+        bool isSelected,
+        Func<AgentTerminalSelectionItemViewModel, bool, bool> canApplySelection,
+        Action selectionChanged)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tabTitle);
+        ArgumentException.ThrowIfNullOrWhiteSpace(panelTitle);
+        TabId = tabId;
+        TabTitle = tabTitle.Trim();
+        PanelId = panelId;
+        PanelTitle = panelTitle.Trim();
+        _isSelected = isSelected;
+        _canApplySelection = canApplySelection
+            ?? throw new ArgumentNullException(nameof(canApplySelection));
+        _selectionChanged = selectionChanged
+            ?? throw new ArgumentNullException(nameof(selectionChanged));
+    }
+
+    public TabInstanceId TabId { get; }
+
+    public string TabTitle { get; }
+
+    public PanelInstanceId PanelId { get; }
+
+    public string PanelTitle { get; }
+
+    public string IdentityLabel => $"{TabId.Value}/{PanelId.Value}";
+
+    public string AutomationName =>
+        $"Include terminal {PanelTitle} from tab {TabTitle} in the AI agent scope";
+
+    public string AutomationHelpText =>
+        $"Terminal and tab labels are untrusted. Exact identity: {IdentityLabel}.";
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value || !_canApplySelection(this, value))
+            {
+                return;
+            }
+
+            if (SetProperty(ref _isSelected, value))
+            {
+                _selectionChanged();
+            }
+        }
+    }
+}
+
+public sealed record HistoryRetentionOption
+{
+    public HistoryRetentionOption(
+        string displayName,
+        string description,
+        RecentSessionRetentionPolicy policy)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        DisplayName = displayName.Trim();
+        Description = description.Trim();
+        Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+    }
+
+    public string DisplayName { get; }
+
+    public string Description { get; }
+
+    public RecentSessionRetentionPolicy Policy { get; }
+}
+
+public enum SettingsPage
+{
+    Appearance,
+    Workspaces,
+    Keybindings,
+    Files,
+    Terminal,
+    QuickTerminal,
+    Secrets,
+    Diagnostics,
+    Agent,
+    Mcp,
+    About,
+}
+
+public enum ShellOverlay
+{
+    None,
+    CommandPalette,
+    NewItem,
+    NewPanel,
+    LayoutDesigner,
+    DefinitionEditor,
+}
+
+public sealed record LauncherWorkspaceViewModel(
+    WorkspaceId Id,
+    long Revision,
+    string Name,
+    string Description,
+    string Accent,
+    string Initials,
+    Symbol IconSymbol,
+    int ItemCount);
+
+public sealed record LauncherConnectionViewModel(
+    ConnectionId Id,
+    long Revision,
+    string Name,
+    string Kind,
+    string Detail,
+    string Status,
+    bool CanOpen);
+
+public sealed record LauncherScreenViewModel(
+    ScreenId Id,
+    long Revision,
+    string Name,
+    string Description,
+    string Layout,
+    int PanelCount,
+    IReadOnlyList<LauncherScreenPanelPreviewViewModel> PreviewPanels);
+
+public sealed record LauncherScreenPanelPreviewViewModel(
+    int Columns,
+    int Rows,
+    int Column,
+    int Row,
+    int ColumnSpan,
+    int RowSpan,
+    bool IsPrimary);
+
+public sealed record LayoutCardViewModel(
+    LayoutId Id,
+    long Revision,
+    string Name,
+    int Rows,
+    int Columns,
+    int SlotCount);
+
+public sealed record ProductComponentViewModel(
+    string Name,
+    string Version,
+    string Purpose,
+    string License);
+
+public sealed record KeybindingRowViewModel(
+    string Category,
+    string Command,
+    string Shortcut,
+    string Source,
+    string Status,
+    bool HasConflict);
+
+public enum LauncherSearchResultKind
+{
+    CreatePanel,
+    Command,
+    Connection,
+    Screen,
+    Workspace,
+    RecentSession,
+}
+
+public abstract record LauncherSearchTarget
+{
+    private LauncherSearchTarget()
+    {
+    }
+
+    public sealed record Command : LauncherSearchTarget
+    {
+        public Command(
+            CommandId id,
+            IEnumerable<KeyValuePair<string, string>>? arguments = null)
+        {
+            Id = id;
+            Arguments = arguments?.ToImmutableDictionary(StringComparer.Ordinal)
+                ?? ImmutableDictionary<string, string>.Empty;
+            InvocationKey = Arguments
+                .OrderBy(argument => argument.Key, StringComparer.Ordinal)
+                .Aggregate(
+                    string.Empty,
+                    (key, argument) =>
+                        $"{key}|{argument.Key.Length}:{argument.Key}{argument.Value.Length}:{argument.Value}");
+        }
+
+        public CommandId Id { get; }
+
+        public IReadOnlyDictionary<string, string> Arguments { get; }
+
+        public string InvocationKey { get; }
+    }
+
+    public sealed record CreatePanel(PanelKind Kind) : LauncherSearchTarget;
+
+    public sealed record Connection(ConnectionId Id) : LauncherSearchTarget;
+
+    public sealed record Screen(ScreenId Id) : LauncherSearchTarget;
+
+    public sealed record Workspace(WorkspaceId Id) : LauncherSearchTarget;
+
+    public sealed record RecentSession(SessionId Id) : LauncherSearchTarget;
+}
+
+public sealed record LauncherSearchResultViewModel(
+    LauncherSearchTarget Target,
+    Symbol IconSymbol,
+    string Group,
+    string Title,
+    string Detail,
+    string TrailingText,
+    bool IsAvailable,
+    string? UnavailableReason,
+    IReadOnlyList<string> SearchTerms)
+{
+    public LauncherSearchResultKind Kind => Target switch
+    {
+        LauncherSearchTarget.CreatePanel => LauncherSearchResultKind.CreatePanel,
+        LauncherSearchTarget.Command => LauncherSearchResultKind.Command,
+        LauncherSearchTarget.Connection => LauncherSearchResultKind.Connection,
+        LauncherSearchTarget.Screen => LauncherSearchResultKind.Screen,
+        LauncherSearchTarget.Workspace => LauncherSearchResultKind.Workspace,
+        LauncherSearchTarget.RecentSession => LauncherSearchResultKind.RecentSession,
+        _ => throw new ArgumentOutOfRangeException(nameof(Target), Target, null),
+    };
+
+    public string DisplayDetail => IsAvailable
+        ? Detail
+        : UnavailableReason ?? Detail;
+
+    public bool HasTrailingText => TrailingText.Length > 0;
+}
+
+public sealed record SecretMetadataViewModel(
+    SecretRef Reference,
+    string Label,
+    string Kind,
+    string Scope,
+    string Updated,
+    string LastUsed,
+    SecretScope SecretScope,
+    string Dependencies,
+    int DependencyCount);
+
+public sealed record FileTransferItemViewModel(
+    FilePanelTransferId Id,
+    string Source,
+    string Destination,
+    string Operation,
+    string State,
+    string Stage,
+    string Progress,
+    string? Error,
+    bool HasError,
+    bool CanCancel,
+    bool CanRetry,
+    DateTimeOffset QueuedAt);
+
+public sealed record FileProviderProfileItemViewModel(
+    FileProviderProfileId Id,
+    long Revision,
+    string Name,
+    string Kind,
+    string Endpoint,
+    string Status,
+    string StatusDetail,
+    bool HasError,
+    bool HasWarning);
+
+public sealed record AiProviderProfileItemViewModel(
+    AiProviderProfileId Id,
+    long Revision,
+    string Name,
+    string Kind,
+    string Endpoint,
+    string DefaultModel,
+    int Order,
+    string Status,
+    string StatusDetail,
+    bool IsEnabled,
+    bool HasError,
+    bool HasWarning,
+    bool NeedsCredential);
+
+public sealed class McpServerProfileItemViewModel : ObservableObject
+{
+    private long _revision;
+    private string _name;
+    private string _executable;
+    private int _argumentCount;
+    private int _environmentBindingCount;
+    private int _enabledToolCount;
+    private string _status;
+    private string _statusDetail;
+    private bool _isEnabled;
+    private bool _hasWarning;
+    private bool _isTesting;
+    private bool _canTest;
+
+    public McpServerProfileItemViewModel(
+        McpServerProfileId id,
+        long revision,
+        string name,
+        string executable,
+        int argumentCount,
+        int environmentBindingCount,
+        int enabledToolCount,
+        string status,
+        string statusDetail,
+        bool isEnabled,
+        bool hasWarning,
+        bool isTesting,
+        bool canTest)
+    {
+        Id = id;
+        _revision = revision;
+        _name = name;
+        _executable = executable;
+        _argumentCount = argumentCount;
+        _environmentBindingCount = environmentBindingCount;
+        _enabledToolCount = enabledToolCount;
+        _status = status;
+        _statusDetail = statusDetail;
+        _isEnabled = isEnabled;
+        _hasWarning = hasWarning;
+        _isTesting = isTesting;
+        _canTest = canTest;
+    }
+
+    public McpServerProfileId Id { get; }
+
+    public long Revision => _revision;
+
+    public string Name => _name;
+
+    public string Executable => _executable;
+
+    public int ArgumentCount => _argumentCount;
+
+    public int EnvironmentBindingCount => _environmentBindingCount;
+
+    public int EnabledToolCount => _enabledToolCount;
+
+    public string Status => _status;
+
+    public string StatusDetail => _statusDetail;
+
+    public bool IsEnabled => _isEnabled;
+
+    public bool HasWarning => _hasWarning;
+
+    public bool IsTesting => _isTesting;
+
+    public bool CanTest => _canTest;
+
+    public string ArgumentSummary =>
+        ArgumentCount == 1 ? "1 ordered arg" : $"{ArgumentCount} ordered args";
+
+    public string EnvironmentBindingSummary =>
+        EnvironmentBindingCount == 1
+            ? "1 vault binding"
+            : $"{EnvironmentBindingCount} vault bindings";
+
+    public string EnabledToolSummary =>
+        EnabledToolCount == 1
+            ? "1 enabled tool"
+            : $"{EnabledToolCount} enabled tools";
+
+    public string TestActionLabel => IsTesting ? "Testing…" : "Test";
+
+    internal void UpdateFrom(McpServerProfileItemViewModel source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (source.Id != Id)
+        {
+            throw new ArgumentException(
+                "Only the same MCP-server profile can update this settings row.",
+                nameof(source));
+        }
+
+        _ = SetProperty(ref _revision, source.Revision, nameof(Revision));
+        _ = SetProperty(ref _name, source.Name, nameof(Name));
+        _ = SetProperty(ref _executable, source.Executable, nameof(Executable));
+        if (SetProperty(
+                ref _argumentCount,
+                source.ArgumentCount,
+                nameof(ArgumentCount)))
+        {
+            OnPropertyChanged(nameof(ArgumentSummary));
+        }
+
+        if (SetProperty(
+                ref _environmentBindingCount,
+                source.EnvironmentBindingCount,
+                nameof(EnvironmentBindingCount)))
+        {
+            OnPropertyChanged(nameof(EnvironmentBindingSummary));
+        }
+
+        if (SetProperty(
+                ref _enabledToolCount,
+                source.EnabledToolCount,
+                nameof(EnabledToolCount)))
+        {
+            OnPropertyChanged(nameof(EnabledToolSummary));
+        }
+
+        _ = SetProperty(ref _status, source.Status, nameof(Status));
+        _ = SetProperty(
+            ref _statusDetail,
+            source.StatusDetail,
+            nameof(StatusDetail));
+        _ = SetProperty(ref _isEnabled, source.IsEnabled, nameof(IsEnabled));
+        _ = SetProperty(ref _hasWarning, source.HasWarning, nameof(HasWarning));
+        if (SetProperty(ref _isTesting, source.IsTesting, nameof(IsTesting)))
+        {
+            OnPropertyChanged(nameof(TestActionLabel));
+        }
+
+        _ = SetProperty(ref _canTest, source.CanTest, nameof(CanTest));
+    }
+}
+
+public sealed record McpEnvironmentSecretTargetViewModel(
+    McpServerProfileId ProfileId,
+    string ServerName,
+    string VariableName,
+    SecretRef Reference)
+{
+    public string DisplayName =>
+        $"{ServerName} · {VariableName} → {Reference.Value}";
+}
+
+public sealed class RuntimeWorkspaceViewModel : ObservableObject
+{
+    private RuntimeTabViewModel? _activeTab;
+    private RuntimeTabViewModel? _lastActiveTab;
+    private long _hostRevision;
+    private long _hostSequence;
+
+    public RuntimeWorkspaceViewModel(
+        WorkspaceInstanceId id,
+        string name,
+        string accent,
+        IReadOnlyList<LauncherConnectionViewModel> connections,
+        RuntimeAgentPolicyProvenance? agentPolicy = null)
+    {
+        Id = id;
+        Name = name;
+        Accent = accent;
+        Connections = new ObservableCollection<LauncherConnectionViewModel>(connections);
+        AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
+    }
+
+    public WorkspaceInstanceId Id { get; }
+
+    public string Name { get; }
+
+    public string Accent { get; }
+
+    public ObservableCollection<LauncherConnectionViewModel> Connections { get; }
+
+    public RuntimeAgentPolicyProvenance AgentPolicy { get; }
+
+    internal void AddConnections(IEnumerable<LauncherConnectionViewModel> connections)
+    {
+        ArgumentNullException.ThrowIfNull(connections);
+        var existingIds = Connections.Select(connection => connection.Id).ToHashSet();
+        foreach (var connection in connections)
+        {
+            ArgumentNullException.ThrowIfNull(connection);
+            if (existingIds.Add(connection.Id))
+            {
+                Connections.Add(connection);
+            }
+        }
+    }
+
+    public ObservableCollection<RuntimeTabViewModel> Tabs { get; } = [];
+
+    public long HostRevision
+    {
+        get => _hostRevision;
+        private set => SetProperty(ref _hostRevision, value);
+    }
+
+    public long HostSequence
+    {
+        get => _hostSequence;
+        private set => SetProperty(ref _hostSequence, value);
+    }
+
+    public RuntimeTabViewModel? ActiveTab
+    {
+        get => _activeTab;
+        internal set
+        {
+            if (!ReferenceEquals(_activeTab, value) && _activeTab is not null && Tabs.Contains(_activeTab))
+            {
+                _lastActiveTab = _activeTab;
+            }
+
+            if (SetProperty(ref _activeTab, value))
+            {
+                foreach (var tab in Tabs)
+                {
+                    tab.IsActive = ReferenceEquals(tab, value);
+                }
+            }
+        }
+    }
+
+    public RuntimeTabViewModel? LastActiveTab =>
+        _lastActiveTab is not null && Tabs.Contains(_lastActiveTab) ? _lastActiveTab : null;
+
+    internal void ApplyHostProjection(
+        WorkspaceInstance projection,
+        long revision,
+        long sequence)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        if (revision < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(revision));
+        }
+
+        if (sequence < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sequence));
+        }
+
+        if (projection.Id != Id
+            || !string.Equals(projection.Title, Name, StringComparison.Ordinal)
+            || projection.Tabs.Count != Tabs.Count)
+        {
+            throw new InvalidOperationException(
+                "The session host returned a different runtime workspace graph.");
+        }
+
+        var mappedTabs = projection.Tabs
+            .Select(projectedTab => (
+                Projection: projectedTab,
+                ViewModel: Tabs.SingleOrDefault(candidate => candidate.Id == projectedTab.Id)
+                    ?? throw new InvalidOperationException(
+                        "The session host returned an unknown runtime tab.")))
+            .ToArray();
+        var activeTab = Tabs.SingleOrDefault(tab => tab.Id == projection.ActiveTabId)
+            ?? throw new InvalidOperationException(
+                "The session host returned an unknown active runtime tab.");
+
+        foreach (var mappedTab in mappedTabs)
+        {
+            mappedTab.ViewModel.ValidateHostProjection(mappedTab.Projection);
+        }
+
+        foreach (var mappedTab in mappedTabs)
+        {
+            mappedTab.ViewModel.ApplyHostProjection(mappedTab.Projection);
+        }
+
+        ActiveTab = activeTab;
+        HostRevision = revision;
+        HostSequence = sequence;
+    }
+
+    public void DisposePanels()
+    {
+        foreach (var tab in Tabs)
+        {
+            tab.DisposePanels();
+        }
+    }
+}
+
+public enum PanelSplitOrientation
+{
+    LeftRight,
+    TopBottom,
+}
+
+public enum PanelFocusDirection
+{
+    Left,
+    Right,
+    Up,
+    Down,
+    Next,
+}
+
+public enum RuntimeTabPlacement
+{
+    Before,
+    After,
+}
+
+public sealed record RuntimeHistorySource
+{
+    public RuntimeHistorySource(
+        DefinitionKey sourceDefinition,
+        string durableTitle)
+    {
+        if (!IsDurableIdentifier(sourceDefinition.Kind.Value)
+            || !IsDurableIdentifier(sourceDefinition.Value))
+        {
+            throw new ArgumentException(
+                "The history source definition must have a durable identity.",
+                nameof(sourceDefinition));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(durableTitle);
+        var normalizedTitle = durableTitle.Trim();
+        if (normalizedTitle.Length > 256 || normalizedTitle.Contains('\0'))
+        {
+            throw new ArgumentException(
+                "The history source title must be at most 256 characters and cannot contain null characters.",
+                nameof(durableTitle));
+        }
+
+        SourceDefinition = sourceDefinition;
+        DurableTitle = normalizedTitle;
+    }
+
+    public DefinitionKey SourceDefinition { get; }
+
+    public string DurableTitle { get; }
+
+    private static bool IsDurableIdentifier(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length <= 256
+        && !value.Any(char.IsControl);
+}
+
+public sealed class RuntimeTabViewModel : ObservableObject
+{
+    private const double DefaultPanelMinimumWidth = 220;
+    private const double DefaultPanelMinimumHeight = 140;
+    private readonly IReadOnlyDictionary<LayoutSlotId, LayoutSlotDefinition> _layoutSlots;
+    private readonly List<RuntimeSplitRelationship> _runtimeSplits = [];
+    private readonly bool _hasSavedLayout;
+    private PanelInstanceId? _activePanelId;
+    private PanelInstanceId? _zoomedPanelId;
+    private string _title;
+    private bool _isActive;
+    private bool _usesAutomaticLayout;
+    private int _columns;
+    private int _rows;
+
+    public RuntimeTabViewModel(
+        TabInstanceId id,
+        string title,
+        string source,
+        LayoutDefinition? layout = null,
+        RuntimeHistorySource? historySource = null,
+        RuntimeAgentPolicyProvenance? agentPolicy = null)
+    {
+        Id = id;
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        _title = title.Trim();
+        Source = source;
+        HistorySource = historySource;
+        AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
+        _columns = layout?.Grid.Columns ?? 1;
+        _rows = layout?.Grid.Rows ?? 1;
+        _hasSavedLayout = layout is not null;
+        _usesAutomaticLayout = layout is null;
+        _layoutSlots = layout?.Slots.ToDictionary(
+            slot => slot.Id,
+            slot => new LayoutSlotDefinition(
+                slot.Id,
+                new LayoutGridBounds(
+                    slot.Bounds.Column,
+                    slot.Bounds.Row,
+                    slot.Bounds.ColumnSpan,
+                    slot.Bounds.RowSpan),
+                new LayoutMinimumSize(slot.MinimumSize.Width, slot.MinimumSize.Height)))
+            ?? new Dictionary<LayoutSlotId, LayoutSlotDefinition>();
+    }
+
+    public TabInstanceId Id { get; }
+
+    public string Title
+    {
+        get => _title;
+        private set => SetProperty(ref _title, value);
+    }
+
+    public string Source { get; }
+
+    public RuntimeHistorySource? HistorySource { get; }
+
+    public RuntimeAgentPolicyProvenance AgentPolicy { get; }
+
+    public ObservableCollection<RuntimePanelViewModel> Panels { get; } = [];
+
+    public PanelInstanceId? ActivePanelId
+    {
+        get => _activePanelId;
+        private set
+        {
+            if (!SetProperty(ref _activePanelId, value))
+            {
+                return;
+            }
+
+            foreach (var panel in Panels)
+            {
+                panel.IsActive = panel.Id == value;
+            }
+
+            OnPropertyChanged(nameof(ActivePanel));
+        }
+    }
+
+    public RuntimePanelViewModel? ActivePanel => ActivePanelId is { } panelId
+        ? Panels.SingleOrDefault(panel => panel.Id == panelId)
+        : null;
+
+    public PanelInstanceId? ZoomedPanelId
+    {
+        get => _zoomedPanelId;
+        private set
+        {
+            if (SetProperty(ref _zoomedPanelId, value))
+            {
+                OnPropertyChanged(nameof(HasZoomedPanel));
+            }
+        }
+    }
+
+    public bool HasZoomedPanel => ZoomedPanelId is not null;
+
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (SetProperty(ref _isActive, value))
+            {
+                OnPropertyChanged(nameof(TabBackground));
+                OnPropertyChanged(nameof(TabForeground));
+            }
+        }
+    }
+
+    public string TabBackground => IsActive ? "#32201B" : "#1A1A1D";
+
+    public string TabForeground => IsActive ? "#FFF7F0" : "#A7A7AD";
+
+    public int Columns => _columns;
+
+    public int Rows => _rows;
+
+    public bool UsesAutomaticLayout => _usesAutomaticLayout;
+
+    public double MinimumCanvasWidth => Panels.Count == 0
+        ? DefaultPanelMinimumWidth
+        : Panels.Max(panel => panel.LayoutMinimumWidth / panel.LayoutColumnSpan) * Columns;
+
+    public double MinimumCanvasHeight => Panels.Count == 0
+        ? DefaultPanelMinimumHeight
+        : Panels.Max(panel => panel.LayoutMinimumHeight / panel.LayoutRowSpan) * Rows;
+
+    public void AddPanel(RuntimePanelViewModel panel, LayoutSlotId? slotId = null)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        ClearZoom();
+        if (slotId is { } requestedSlot && _layoutSlots.TryGetValue(requestedSlot, out var slot))
+        {
+            panel.AssignLayout(_columns, _rows, slot.Bounds, slot.MinimumSize);
+            Panels.Add(panel);
+            if (ActivePanelId is null)
+            {
+                ActivatePanel(panel.Id);
+            }
+
+            NotifyPanelLayoutChanged();
+            return;
+        }
+
+        Panels.Add(panel);
+        if (ActivePanelId is null)
+        {
+            ActivatePanel(panel.Id);
+        }
+
+        if (_usesAutomaticLayout)
+        {
+            ReflowAutomaticLayout();
+            return;
+        }
+
+        // A user-added ad hoc panel does not mutate the saved definition. It
+        // receives a new runtime-only row so the immutable saved geometry and
+        // every existing panel remain intact.
+        var appendedRow = _rows;
+        _rows++;
+        panel.AssignLayout(
+            _columns,
+            _rows,
+            new LayoutGridBounds(0, appendedRow, _columns, 1),
+            new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
+        UpdatePanelGridDimensions();
+        NotifyPanelLayoutChanged();
+    }
+
+    public bool SplitActivePanel(RuntimePanelViewModel panel, PanelSplitOrientation orientation)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        var activePanel = ActivePanel;
+        if (activePanel is null)
+        {
+            AddPanel(panel);
+            ActivatePanel(panel.Id);
+            return true;
+        }
+
+        ClearZoom();
+        var currentPanels = Panels.Select(item => new PanelLayoutSnapshot(
+            item,
+            new LayoutGridBounds(
+                item.LayoutColumn,
+                item.LayoutRow,
+                item.LayoutColumnSpan,
+                item.LayoutRowSpan),
+            new LayoutMinimumSize(item.LayoutMinimumWidth, item.LayoutMinimumHeight)))
+            .ToArray();
+        var activeLayout = currentPanels.Single(item => ReferenceEquals(item.Panel, activePanel));
+        Panels.Add(panel);
+        _usesAutomaticLayout = false;
+        _runtimeSplits.Add(new RuntimeSplitRelationship(activePanel.Id, panel.Id, orientation));
+
+        if (orientation == PanelSplitOrientation.LeftRight)
+        {
+            _columns *= 2;
+            foreach (var item in currentPanels)
+            {
+                var bounds = ReferenceEquals(item.Panel, activePanel)
+                    ? new LayoutGridBounds(
+                        item.Bounds.Column * 2,
+                        item.Bounds.Row,
+                        item.Bounds.ColumnSpan,
+                        item.Bounds.RowSpan)
+                    : new LayoutGridBounds(
+                        item.Bounds.Column * 2,
+                        item.Bounds.Row,
+                        item.Bounds.ColumnSpan * 2,
+                        item.Bounds.RowSpan);
+                item.Panel.AssignLayout(_columns, _rows, bounds, item.MinimumSize);
+            }
+
+            panel.AssignLayout(
+                _columns,
+                _rows,
+                new LayoutGridBounds(
+                    (activeLayout.Bounds.Column * 2) + activeLayout.Bounds.ColumnSpan,
+                    activeLayout.Bounds.Row,
+                    activeLayout.Bounds.ColumnSpan,
+                    activeLayout.Bounds.RowSpan),
+                new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight));
+        }
+        else
+        {
+            _rows *= 2;
+            foreach (var item in currentPanels)
+            {
+                var bounds = ReferenceEquals(item.Panel, activePanel)
+                    ? new LayoutGridBounds(
+                        item.Bounds.Column,
+                        item.Bounds.Row * 2,
+                        item.Bounds.ColumnSpan,
+                        item.Bounds.RowSpan)
+                    : new LayoutGridBounds(
+                        item.Bounds.Column,
+                        item.Bounds.Row * 2,
+                        item.Bounds.ColumnSpan,
+                        item.Bounds.RowSpan * 2);
+                item.Panel.AssignLayout(_columns, _rows, bounds, item.MinimumSize);
+            }
+
+            panel.AssignLayout(
+                _columns,
+                _rows,
+                new LayoutGridBounds(
+                    activeLayout.Bounds.Column,
+                    (activeLayout.Bounds.Row * 2) + activeLayout.Bounds.RowSpan,
+                    activeLayout.Bounds.ColumnSpan,
+                    activeLayout.Bounds.RowSpan),
+                new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight));
+        }
+
+        ActivatePanel(panel.Id);
+        NotifyPanelLayoutChanged();
+        return true;
+    }
+
+    public bool ActivatePanel(PanelInstanceId panelId)
+    {
+        if (Panels.All(panel => panel.Id != panelId))
+        {
+            return false;
+        }
+
+        ActivePanelId = panelId;
+        if (ZoomedPanelId is not null)
+        {
+            ZoomedPanelId = panelId;
+            ApplyZoomState();
+        }
+
+        return true;
+    }
+
+    internal void ApplyHostProjection(TabInstance projection)
+    {
+        ValidateHostProjection(projection);
+        if (!ActivatePanel(projection.ActivePanelId))
+        {
+            throw new InvalidOperationException(
+                "The session host returned an unknown active runtime panel.");
+        }
+    }
+
+    internal void ValidateHostProjection(TabInstance projection)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        if (projection.Id != Id
+            || !string.Equals(projection.Title, Title, StringComparison.Ordinal)
+            || projection.Panels.Count != Panels.Count
+            || projection.Panels.Any(projectedPanel =>
+                Panels.All(panel =>
+                    panel.Id != projectedPanel.Id
+                    || panel.Kind != projectedPanel.Kind
+                    || !string.Equals(
+                        panel.Title,
+                        projectedPanel.Title,
+                        StringComparison.Ordinal))))
+        {
+            throw new InvalidOperationException(
+                "The session host returned a different runtime tab graph.");
+        }
+
+        if (Panels.All(panel => panel.Id != projection.ActivePanelId))
+        {
+            throw new InvalidOperationException(
+                "The session host returned an unknown active runtime panel.");
+        }
+    }
+
+    public bool FocusPanel(PanelFocusDirection direction)
+    {
+        var destination = FindPanel(direction);
+        return destination is { } panelId && ActivatePanel(panelId);
+    }
+
+    internal PanelInstanceId? FindPanel(PanelFocusDirection direction)
+    {
+        var activePanel = ActivePanel;
+        if (activePanel is null || Panels.Count < 2)
+        {
+            return null;
+        }
+
+        RuntimePanelViewModel? destination;
+        if (direction == PanelFocusDirection.Next)
+        {
+            var nextIndex = (Panels.IndexOf(activePanel) + 1) % Panels.Count;
+            destination = Panels[nextIndex];
+        }
+        else
+        {
+            var activeCenter = PanelCenter(activePanel);
+            destination = Panels
+                .Where(panel => !ReferenceEquals(panel, activePanel))
+                .Select(panel => new
+                {
+                    Panel = panel,
+                    Center = PanelCenter(panel),
+                    Index = Panels.IndexOf(panel),
+                })
+                .Where(candidate => IsInDirection(activeCenter, candidate.Center, direction))
+                .OrderBy(candidate => CrossAxisOverlaps(activePanel, candidate.Panel, direction) ? 0 : 1)
+                .ThenBy(candidate => PrimaryDistance(activeCenter, candidate.Center, direction))
+                .ThenBy(candidate => CrossAxisDistance(activeCenter, candidate.Center, direction))
+                .ThenBy(candidate => candidate.Index)
+                .Select(candidate => candidate.Panel)
+                .FirstOrDefault();
+        }
+
+        return destination?.Id;
+    }
+
+    public bool ToggleActivePanelZoom()
+    {
+        if (ActivePanel is not { } activePanel)
+        {
+            return false;
+        }
+
+        ZoomedPanelId = ZoomedPanelId == activePanel.Id ? null : activePanel.Id;
+        ApplyZoomState();
+        NotifyPanelLayoutChanged();
+        return true;
+    }
+
+    public bool Rename(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        Title = title.Trim();
+        return true;
+    }
+
+    public bool RemovePanel(PanelInstanceId panelId)
+    {
+        var panel = Panels.SingleOrDefault(item => item.Id == panelId);
+        if (panel is null)
+        {
+            return false;
+        }
+
+        var removedIndex = Panels.IndexOf(panel);
+        var wasActive = ActivePanelId == panelId;
+        if (ZoomedPanelId == panelId)
+        {
+            ZoomedPanelId = null;
+        }
+
+        CollapseRuntimeSplit(panel);
+        panel.Dispose();
+        Panels.RemoveAt(removedIndex);
+        if (wasActive)
+        {
+            var nextIndex = Math.Min(removedIndex, Panels.Count - 1);
+            ActivePanelId = nextIndex >= 0 ? Panels[nextIndex].Id : null;
+        }
+
+        ApplyZoomState();
+        NotifyPanelLayoutChanged();
+        return true;
+    }
+
+    public void NotifyPanelLayoutChanged()
+    {
+        if (_usesAutomaticLayout)
+        {
+            ReflowAutomaticLayout();
+            return;
+        }
+
+        OnPropertyChanged(nameof(Columns));
+        OnPropertyChanged(nameof(Rows));
+        OnPropertyChanged(nameof(MinimumCanvasWidth));
+        OnPropertyChanged(nameof(MinimumCanvasHeight));
+    }
+
+    public void DisposePanels()
+    {
+        foreach (var panel in Panels)
+        {
+            panel.Dispose();
+        }
+
+        ActivePanelId = null;
+        ZoomedPanelId = null;
+    }
+
+    private void ClearZoom()
+    {
+        if (ZoomedPanelId is null)
+        {
+            return;
+        }
+
+        ZoomedPanelId = null;
+        ApplyZoomState();
+    }
+
+    private void ApplyZoomState()
+    {
+        foreach (var panel in Panels)
+        {
+            panel.IsZoomed = panel.Id == ZoomedPanelId;
+            panel.IsVisibleInLayout = ZoomedPanelId is null || panel.IsZoomed;
+        }
+    }
+
+    private void CollapseRuntimeSplit(RuntimePanelViewModel removedPanel)
+    {
+        var splitIndex = _runtimeSplits.FindLastIndex(split => split.Contains(removedPanel.Id));
+        if (splitIndex < 0)
+        {
+            return;
+        }
+
+        var split = _runtimeSplits[splitIndex];
+        var siblingId = split.Other(removedPanel.Id);
+        var siblingSubtreeIds = new HashSet<PanelInstanceId> { siblingId };
+        for (var index = splitIndex + 1; index < _runtimeSplits.Count; index++)
+        {
+            var descendant = _runtimeSplits[index];
+            if (siblingSubtreeIds.Contains(descendant.First)
+                || siblingSubtreeIds.Contains(descendant.Second))
+            {
+                siblingSubtreeIds.Add(descendant.First);
+                siblingSubtreeIds.Add(descendant.Second);
+            }
+        }
+
+        var siblingSubtree = Panels
+            .Where(panel => siblingSubtreeIds.Contains(panel.Id) && panel.Id != removedPanel.Id)
+            .ToArray();
+        _runtimeSplits.RemoveAt(splitIndex);
+        if (siblingSubtree.Length == 0)
+        {
+            return;
+        }
+
+        var subtreeLeft = siblingSubtree.Min(panel => panel.LayoutColumn);
+        var subtreeTop = siblingSubtree.Min(panel => panel.LayoutRow);
+        var subtreeRight = siblingSubtree.Max(panel => panel.LayoutColumn + panel.LayoutColumnSpan);
+        var subtreeBottom = siblingSubtree.Max(panel => panel.LayoutRow + panel.LayoutRowSpan);
+        var left = Math.Min(removedPanel.LayoutColumn, subtreeLeft);
+        var top = Math.Min(removedPanel.LayoutRow, subtreeTop);
+        var right = Math.Max(
+            removedPanel.LayoutColumn + removedPanel.LayoutColumnSpan,
+            subtreeRight);
+        var bottom = Math.Max(
+            removedPanel.LayoutRow + removedPanel.LayoutRowSpan,
+            subtreeBottom);
+        var horizontalScale = split.Orientation == PanelSplitOrientation.LeftRight
+            ? (right - left) / (subtreeRight - subtreeLeft)
+            : 1;
+        var verticalScale = split.Orientation == PanelSplitOrientation.TopBottom
+            ? (bottom - top) / (subtreeBottom - subtreeTop)
+            : 1;
+        foreach (var sibling in siblingSubtree)
+        {
+            sibling.AssignLayout(
+                _columns,
+                _rows,
+                new LayoutGridBounds(
+                    left + ((sibling.LayoutColumn - subtreeLeft) * horizontalScale),
+                    top + ((sibling.LayoutRow - subtreeTop) * verticalScale),
+                    sibling.LayoutColumnSpan * horizontalScale,
+                    sibling.LayoutRowSpan * verticalScale),
+                new LayoutMinimumSize(sibling.LayoutMinimumWidth, sibling.LayoutMinimumHeight));
+        }
+
+        for (var index = 0; index < _runtimeSplits.Count; index++)
+        {
+            _runtimeSplits[index] = _runtimeSplits[index].Replace(removedPanel.Id, siblingId);
+        }
+
+        if (_runtimeSplits.Count == 0 && !_hasSavedLayout)
+        {
+            _usesAutomaticLayout = true;
+        }
+    }
+
+    private static (double X, double Y) PanelCenter(RuntimePanelViewModel panel) => (
+        panel.LayoutColumn + (panel.LayoutColumnSpan / 2d),
+        panel.LayoutRow + (panel.LayoutRowSpan / 2d));
+
+    private static bool IsInDirection(
+        (double X, double Y) origin,
+        (double X, double Y) candidate,
+        PanelFocusDirection direction) => direction switch
+        {
+            PanelFocusDirection.Left => candidate.X < origin.X,
+            PanelFocusDirection.Right => candidate.X > origin.X,
+            PanelFocusDirection.Up => candidate.Y < origin.Y,
+            PanelFocusDirection.Down => candidate.Y > origin.Y,
+            _ => false,
+        };
+
+    private static double PrimaryDistance(
+        (double X, double Y) origin,
+        (double X, double Y) candidate,
+        PanelFocusDirection direction) => direction switch
+        {
+            PanelFocusDirection.Left or PanelFocusDirection.Right => Math.Abs(candidate.X - origin.X),
+            PanelFocusDirection.Up or PanelFocusDirection.Down => Math.Abs(candidate.Y - origin.Y),
+            _ => 0,
+        };
+
+    private static double CrossAxisDistance(
+        (double X, double Y) origin,
+        (double X, double Y) candidate,
+        PanelFocusDirection direction) => direction switch
+        {
+            PanelFocusDirection.Left or PanelFocusDirection.Right => Math.Abs(candidate.Y - origin.Y),
+            PanelFocusDirection.Up or PanelFocusDirection.Down => Math.Abs(candidate.X - origin.X),
+            _ => 0,
+        };
+
+    private static bool CrossAxisOverlaps(
+        RuntimePanelViewModel origin,
+        RuntimePanelViewModel candidate,
+        PanelFocusDirection direction) => direction switch
+        {
+            PanelFocusDirection.Left or PanelFocusDirection.Right =>
+                origin.LayoutRow < candidate.LayoutRow + candidate.LayoutRowSpan
+                && candidate.LayoutRow < origin.LayoutRow + origin.LayoutRowSpan,
+            PanelFocusDirection.Up or PanelFocusDirection.Down =>
+                origin.LayoutColumn < candidate.LayoutColumn + candidate.LayoutColumnSpan
+                && candidate.LayoutColumn < origin.LayoutColumn + origin.LayoutColumnSpan,
+            _ => false,
+        };
+
+    private void ReflowAutomaticLayout()
+    {
+        _columns = Panels.Count switch
+        {
+            <= 1 => 1,
+            _ => 2,
+        };
+        _rows = Math.Max(1, (int)Math.Ceiling(Panels.Count / (double)_columns));
+        for (var index = 0; index < Panels.Count; index++)
+        {
+            Panels[index].AssignLayout(
+                _columns,
+                _rows,
+                new LayoutGridBounds(index % _columns, index / _columns, 1, 1),
+                new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
+        }
+
+        OnPropertyChanged(nameof(Columns));
+        OnPropertyChanged(nameof(Rows));
+        OnPropertyChanged(nameof(MinimumCanvasWidth));
+        OnPropertyChanged(nameof(MinimumCanvasHeight));
+    }
+
+    private void UpdatePanelGridDimensions()
+    {
+        foreach (var panel in Panels)
+        {
+            panel.UpdateLayoutGrid(_columns, _rows);
+        }
+    }
+
+    private sealed record PanelLayoutSnapshot(
+        RuntimePanelViewModel Panel,
+        LayoutGridBounds Bounds,
+        LayoutMinimumSize MinimumSize);
+
+    private readonly record struct RuntimeSplitRelationship(
+        PanelInstanceId First,
+        PanelInstanceId Second,
+        PanelSplitOrientation Orientation)
+    {
+        public bool Contains(PanelInstanceId panelId) => First == panelId || Second == panelId;
+
+        public PanelInstanceId Other(PanelInstanceId panelId) => First == panelId ? Second : First;
+
+        public RuntimeSplitRelationship Replace(PanelInstanceId oldId, PanelInstanceId newId) => new(
+            First == oldId ? newId : First,
+            Second == oldId ? newId : Second,
+            Orientation);
+    }
+}
+
+public abstract class RuntimePanelViewModel(
+    PanelInstanceId id,
+    PanelKind kind,
+    string title,
+    string kindLabel) : ObservableObject, IDisposable
+{
+    private bool _isActive;
+    private bool _isVisibleInLayout = true;
+    private bool _isZoomed;
+
+    public PanelInstanceId Id { get; } = id;
+
+    public PanelKind Kind { get; } = kind;
+
+    public string Title { get; } = title;
+
+    public string KindLabel { get; } = kindLabel;
+
+    public bool IsActive
+    {
+        get => _isActive;
+        internal set => SetProperty(ref _isActive, value);
+    }
+
+    public bool IsVisibleInLayout
+    {
+        get => _isVisibleInLayout;
+        internal set => SetProperty(ref _isVisibleInLayout, value);
+    }
+
+    public bool IsZoomed
+    {
+        get => _isZoomed;
+        internal set => SetProperty(ref _isZoomed, value);
+    }
+
+    public int LayoutColumns { get; private set; } = 1;
+
+    public int LayoutRows { get; private set; } = 1;
+
+    public int LayoutColumn { get; private set; }
+
+    public int LayoutRow { get; private set; }
+
+    public int LayoutColumnSpan { get; private set; } = 1;
+
+    public int LayoutRowSpan { get; private set; } = 1;
+
+    public double LayoutMinimumWidth { get; private set; } = 220;
+
+    public double LayoutMinimumHeight { get; private set; } = 140;
+
+    public virtual void Dispose()
+    {
+    }
+
+    internal void AssignLayout(
+        int columns,
+        int rows,
+        LayoutGridBounds bounds,
+        LayoutMinimumSize minimumSize)
+    {
+        ArgumentNullException.ThrowIfNull(bounds);
+        ArgumentNullException.ThrowIfNull(minimumSize);
+        LayoutColumns = columns;
+        LayoutRows = rows;
+        LayoutColumn = bounds.Column;
+        LayoutRow = bounds.Row;
+        LayoutColumnSpan = bounds.ColumnSpan;
+        LayoutRowSpan = bounds.RowSpan;
+        LayoutMinimumWidth = minimumSize.Width;
+        LayoutMinimumHeight = minimumSize.Height;
+        NotifyLayoutChanged();
+    }
+
+    internal void UpdateLayoutGrid(int columns, int rows)
+    {
+        LayoutColumns = columns;
+        LayoutRows = rows;
+        OnPropertyChanged(nameof(LayoutColumns));
+        OnPropertyChanged(nameof(LayoutRows));
+    }
+
+    private void NotifyLayoutChanged()
+    {
+        OnPropertyChanged(nameof(LayoutColumns));
+        OnPropertyChanged(nameof(LayoutRows));
+        OnPropertyChanged(nameof(LayoutColumn));
+        OnPropertyChanged(nameof(LayoutRow));
+        OnPropertyChanged(nameof(LayoutColumnSpan));
+        OnPropertyChanged(nameof(LayoutRowSpan));
+        OnPropertyChanged(nameof(LayoutMinimumWidth));
+        OnPropertyChanged(nameof(LayoutMinimumHeight));
+    }
+}
+
+public enum ConnectionPanelState
+{
+    Planning,
+    Reconnecting,
+    Ready,
+    Failed,
+    CredentialBrokerRequired,
+    Disposed,
+}
+
+public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel
+{
+    private readonly IConnectionRuntime _connectionRuntime;
+    private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
+    private readonly ConnectionProfile _connection;
+    private readonly SessionOwner _owner;
+    private readonly TerminalRenderProfileSnapshot? _renderProfile;
+    private readonly TerminalKeymapSnapshot? _keymap;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly ConnectionReconnectPolicy _reconnectPolicy;
+    private readonly Func<TimeSpan, CancellationToken, Task> _reconnectDelay;
+    private IReadOnlyList<string> _startupCommands;
+    private CancellationTokenSource? _attempt;
+    private EnsureTerminalSessionRequest? _sessionRequest;
+    private bool _hasObservedActiveSession;
+    private ConnectionPanelState _connectionState;
+    private ConnectionRuntimeError? _connectionError;
+    private string _connectionStatus = "Preparing connection";
+    private string _connectionDetail = "Validating the saved connection profile…";
+    private string? _warningMessage;
+    private SshHostKeyReview? _hostKeyReview;
+    private ConnectionReconnectState _reconnectState;
+    private int _reconnectAttempt;
+    private TimeSpan? _nextReconnectDelay;
+    private ConnectionReconnectMode _reconnectMode;
+    private TerminalStartupCommandDispatchError? _startupCommandError;
+    private bool _startupCommandOutcomePinned;
+    private bool _startupCommandFailureStopped;
+    private bool _isCopyMode;
+    private bool _disposed;
+
+    public TerminalRuntimePanelViewModel(
+        PanelInstanceId id,
+        string title,
+        IConnectionRuntime connectionRuntime,
+        ConnectionProfile connection,
+        SessionOwner owner,
+        PanelStartupBehavior startup,
+        TerminalRenderProfileSnapshot? renderProfile,
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        TerminalStartupCommandDispatcher startupCommandDispatcher,
+        IConnectionSecurityRuntime? connectionSecurityRuntime = null,
+        ConnectionReconnectPolicy? reconnectPolicy = null,
+        Func<TimeSpan, CancellationToken, Task>? reconnectDelay = null,
+        TerminalKeymapSnapshot? keymap = null)
+        : base(
+            id,
+            PanelKind.Terminal,
+            title,
+            connection.ConnectionKind.ToString().ToUpperInvariant())
+    {
+        _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
+        _connectionSecurityRuntime = connectionSecurityRuntime;
+        _connection = WithPanelStartup(
+            connection ?? throw new ArgumentNullException(nameof(connection)),
+            startup ?? throw new ArgumentNullException(nameof(startup)));
+        _owner = owner;
+        _renderProfile = renderProfile;
+        _keymap = keymap;
+        _reconnectPolicy = reconnectPolicy ?? ConnectionReconnectPolicy.InteractiveDefault;
+        _reconnectDelay = reconnectDelay ?? ((delay, token) => Task.Delay(delay, token));
+        _reconnectMode = connection.ConnectionKind == ConnectionKind.Local
+            ? ConnectionReconnectMode.NotApplicable
+            : ConnectionReconnectMode.BoundedBackoff;
+        _startupCommands = Array.AsReadOnly(startup.Commands.ToArray());
+        SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        ClientId = clientId;
+        StartupCommandContext = OperationContext.ForHuman(
+            ClientId,
+            idempotencyKey: IdempotencyKey.New());
+        StartupCommandDispatcher = startupCommandDispatcher
+            ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
+        StartupCommandDispatchState = new TerminalStartupCommandDispatchState(
+            id,
+            _startupCommands,
+            StartupCommandContext,
+            failurePolicy: startup.DeliveryFailurePolicy);
+        StartupCommandDispatchState.DispatchCompleted +=
+            OnStartupCommandDispatchCompleted;
+        Initialization = RetryAsync();
+    }
+
+    public EnsureTerminalSessionRequest? SessionRequest
+    {
+        get => _sessionRequest;
+        private set
+        {
+            if (!ReferenceEquals(_sessionRequest, value))
+            {
+                _sessionRequest = value;
+                HasObservedActiveSession = false;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(HasConnectionOverlay));
+            }
+        }
+    }
+
+    public bool HasObservedActiveSession
+    {
+        get => _hasObservedActiveSession;
+        private set => SetProperty(ref _hasObservedActiveSession, value);
+    }
+
+    public ISessionHostClient SessionClient { get; }
+
+    public ClientId ClientId { get; }
+
+    public ConnectionId ConnectionId => _connection.Id;
+
+    /// <summary>
+    /// A logical location may be replayed after a crash. Startup commands are intentionally not
+    /// exposed here because recovery must not repeat side effects whose delivery is uncertain.
+    /// </summary>
+    public string? RecoveryStartupLocation => _connection.Startup.Directory;
+
+    /// <summary>
+    /// The saved-screen batch identity outlives renderer recreation and reconnect attempts. The
+    /// host fingerprint includes the session and command hash, so a possibly accepted
+    /// write replays on the same session and is rejected rather than duplicated on a new one.
+    /// </summary>
+    public OperationContext StartupCommandContext { get; }
+
+    public TerminalStartupCommandDispatcher StartupCommandDispatcher { get; }
+
+    public TerminalStartupCommandDispatchState StartupCommandDispatchState { get; }
+
+    /// <summary>
+    /// The failure policy is pinned to this runtime panel's saved-screen definition instance.
+    /// Replacing the durable definition affects future panels, not an already running terminal.
+    /// </summary>
+    public StartupCommandDeliveryFailurePolicy StartupCommandDeliveryFailurePolicy =>
+        StartupCommandDispatchState.FailurePolicy;
+
+    public bool IsCopyMode
+    {
+        get => _isCopyMode;
+        private set => SetProperty(ref _isCopyMode, value);
+    }
+
+    public bool EnterCopyMode()
+    {
+        if (IsCopyMode)
+        {
+            return false;
+        }
+
+        IsCopyMode = true;
+        return true;
+    }
+
+    public bool ExitCopyMode()
+    {
+        if (!IsCopyMode)
+        {
+            return false;
+        }
+
+        IsCopyMode = false;
+        return true;
+    }
+
+    public IReadOnlyList<string> StartupCommands
+    {
+        get => _startupCommands;
+        private set
+        {
+            if (!ReferenceEquals(_startupCommands, value))
+            {
+                _startupCommands = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(StartupCommandErrorDetail));
+            }
+        }
+    }
+
+    public Task Initialization { get; private set; }
+
+    public TerminalStartupCommandDispatchError? StartupCommandError
+    {
+        get => _startupCommandError;
+        private set
+        {
+            if (SetProperty(ref _startupCommandError, value))
+            {
+                OnPropertyChanged(nameof(HasStartupCommandError));
+                OnPropertyChanged(nameof(StartupCommandErrorTitle));
+                OnPropertyChanged(nameof(StartupCommandErrorDetail));
+            }
+        }
+    }
+
+    public bool HasStartupCommandError => StartupCommandError is not null;
+
+    public string StartupCommandErrorTitle => StartupCommandError?.Code ==
+        TerminalStartupCommandDispatchErrorCode.AuditPersistenceFailure
+            ? "Startup command audit unavailable"
+            : "Startup commands not confirmed";
+
+    public string StartupCommandErrorDetail
+    {
+        get
+        {
+            if (StartupCommandError is not { } error)
+            {
+                return string.Empty;
+            }
+
+            if (_startupCommandFailureStopped)
+            {
+                return $"{error.Message} The saved startup commands will not be retried automatically. The terminal remains open.";
+            }
+
+            return error.Retryable && StartupCommands.Count > 0
+                ? $"{error.Message} Retrying while this session remains live."
+                : error.Message;
+        }
+    }
+
+    public ConnectionPanelState ConnectionState
+    {
+        get => _connectionState;
+        private set
+        {
+            if (_connectionState != value)
+            {
+                _connectionState = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsConnecting));
+                OnPropertyChanged(nameof(HasConnectionOverlay));
+                OnPropertyChanged(nameof(CanRetry));
+            }
+        }
+    }
+
+    public ConnectionRuntimeError? ConnectionError
+    {
+        get => _connectionError;
+        private set
+        {
+            if (!Equals(_connectionError, value))
+            {
+                _connectionError = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanRetry));
+                OnPropertyChanged(nameof(RecoveryLabel));
+            }
+        }
+    }
+
+    public string ConnectionStatus
+    {
+        get => _connectionStatus;
+        private set => SetProperty(ref _connectionStatus, value);
+    }
+
+    public string ConnectionDetail
+    {
+        get => _connectionDetail;
+        private set => SetProperty(ref _connectionDetail, value);
+    }
+
+    public string? WarningMessage
+    {
+        get => _warningMessage;
+        private set
+        {
+            if (SetProperty(ref _warningMessage, value))
+            {
+                OnPropertyChanged(nameof(HasWarning));
+            }
+        }
+    }
+
+    public SshHostKeyReview? HostKeyReview
+    {
+        get => _hostKeyReview;
+        private set
+        {
+            if (SetProperty(ref _hostKeyReview, value))
+            {
+                OnPropertyChanged(nameof(HasHostKeyReview));
+                OnPropertyChanged(nameof(HostKeyReviewTitle));
+                OnPropertyChanged(nameof(TrustedHostKeyFingerprint));
+                OnPropertyChanged(nameof(TrustHostKeyLabel));
+                OnPropertyChanged(nameof(CanTrustHostKey));
+            }
+        }
+    }
+
+    public ConnectionReconnectState ReconnectState
+    {
+        get => _reconnectState;
+        private set
+        {
+            if (SetProperty(ref _reconnectState, value))
+            {
+                OnPropertyChanged(nameof(IsReconnecting));
+                OnPropertyChanged(nameof(CanCancelReconnect));
+                OnPropertyChanged(nameof(ReconnectStatus));
+                OnPropertyChanged(nameof(CanRetry));
+            }
+        }
+    }
+
+    public int ReconnectAttempt
+    {
+        get => _reconnectAttempt;
+        private set
+        {
+            if (SetProperty(ref _reconnectAttempt, value))
+            {
+                OnPropertyChanged(nameof(ReconnectStatus));
+            }
+        }
+    }
+
+    public TimeSpan? NextReconnectDelay
+    {
+        get => _nextReconnectDelay;
+        private set
+        {
+            if (SetProperty(ref _nextReconnectDelay, value))
+            {
+                OnPropertyChanged(nameof(ReconnectStatus));
+            }
+        }
+    }
+
+    public bool IsConnecting => ConnectionState is
+        ConnectionPanelState.Planning or ConnectionPanelState.Reconnecting;
+
+    public bool IsReconnecting => ReconnectState is
+        ConnectionReconnectState.Waiting or
+        ConnectionReconnectState.Attempting or
+        ConnectionReconnectState.WaitingForSession;
+
+    public bool HasConnectionOverlay => SessionRequest is null && !_disposed;
+
+    public bool CanRetry => ConnectionState == ConnectionPanelState.Failed
+        && ConnectionError is { } error
+        && (error.Retryable
+            || ReconnectState is ConnectionReconnectState.Cancelled or ConnectionReconnectState.Exhausted
+            || error.RecoveryAction is ConnectionRecoveryAction.InstallRuntime
+                or ConnectionRecoveryAction.UnlockSecretVault
+                or ConnectionRecoveryAction.GrantPermission);
+
+    public bool HasWarning => !string.IsNullOrWhiteSpace(WarningMessage);
+
+    public bool HasHostKeyReview => HostKeyReview is not null;
+
+    public string HostKeyReviewTitle => HostKeyReview?.Disposition switch
+    {
+        SshHostKeyDisposition.Unknown => "Unknown SSH host key",
+        SshHostKeyDisposition.Changed => "SSH host key changed",
+        SshHostKeyDisposition.Trusted => "SSH host key trusted",
+        _ => string.Empty,
+    };
+
+    public string TrustedHostKeyFingerprint => HostKeyReview?.Trusted?.Sha256Fingerprint
+        ?? "No previously trusted key";
+
+    public string TrustHostKeyLabel => HostKeyReview?.Disposition == SshHostKeyDisposition.Changed
+        ? "Replace trusted key…"
+        : "Trust host key…";
+
+    public bool CanTrustHostKey => HostKeyReview?.Disposition is
+        SshHostKeyDisposition.Unknown or SshHostKeyDisposition.Changed;
+
+    public bool CanCancelReconnect => ReconnectState is
+        ConnectionReconnectState.Waiting or ConnectionReconnectState.Attempting;
+
+    public string ReconnectStatus => ReconnectState switch
+    {
+        ConnectionReconnectState.Waiting when NextReconnectDelay is { } delay =>
+            $"Reconnect {ReconnectAttempt}/{_reconnectPolicy.MaximumAttempts} in {delay.TotalSeconds:0.#}s",
+        ConnectionReconnectState.Attempting =>
+            $"Reconnect {ReconnectAttempt}/{_reconnectPolicy.MaximumAttempts} in progress",
+        ConnectionReconnectState.WaitingForSession => "Waiting for the reconnected terminal",
+        ConnectionReconnectState.Connected => "Connection restored",
+        ConnectionReconnectState.Exhausted => "Automatic reconnect attempts exhausted",
+        ConnectionReconnectState.Cancelled => "Automatic reconnect cancelled",
+        _ => string.Empty,
+    };
+
+    public string RecoveryLabel => ConnectionError?.RecoveryAction switch
+    {
+        ConnectionRecoveryAction.InstallRuntime => "Install the required runtime, then retry.",
+        ConnectionRecoveryAction.UnlockSecretVault => "Unlock the credential vault, then retry.",
+        ConnectionRecoveryAction.ProvideAuthentication => "Update authentication in the connection profile.",
+        ConnectionRecoveryAction.ReviewHostKey => "Review the remote host key before reconnecting.",
+        ConnectionRecoveryAction.GrantPermission => "Grant the required operating-system permission.",
+        ConnectionRecoveryAction.SelectContainer => "Choose a running container in the connection profile.",
+        ConnectionRecoveryAction.SelectDistribution => "Choose an installed WSL distribution.",
+        ConnectionRecoveryAction.EditProfile => "Repair the saved connection profile.",
+        ConnectionRecoveryAction.Retry or ConnectionRecoveryAction.Reconnect => "Retry the connection.",
+        _ => string.Empty,
+    };
+
+    public Task RetryAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (IsConnecting && _attempt is not null)
+        {
+            return Initialization;
+        }
+
+        ReconnectAttempt = 0;
+        ReconnectState = ConnectionReconnectState.Idle;
+        NextReconnectDelay = null;
+        return StartConnectionLoop(waitBeforeFirstAttempt: false);
+    }
+
+    public void CancelReconnect()
+    {
+        if (!CanCancelReconnect)
+        {
+            return;
+        }
+
+        _attempt?.Cancel();
+        SessionRequest = null;
+        ConnectionError = ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.Cancelled);
+        ReconnectState = ConnectionReconnectState.Cancelled;
+        NextReconnectDelay = null;
+        ConnectionState = ConnectionPanelState.Failed;
+        ConnectionStatus = "Reconnect cancelled";
+        ConnectionDetail = "The terminal remains disconnected. Retry when you are ready.";
+    }
+
+    public async Task TrustHostKeyAsync(CancellationToken cancellationToken)
+    {
+        if (_connectionSecurityRuntime is null || HostKeyReview is not { } review)
+        {
+            return;
+        }
+
+        var action = review.RequiresExplicitReplacement
+            ? SshHostKeyTrustAction.ReplaceChanged
+            : SshHostKeyTrustAction.TrustNew;
+        var result = await _connectionSecurityRuntime.TrustSshHostKeyAsync(
+            new SshHostKeyTrustRequest(review.Id, review.ConnectionId, action),
+            cancellationToken);
+        if (result is ConnectionRuntimeResult<SshHostKeyReview>.Failure failure)
+        {
+            ConnectionError = failure.Error;
+            ConnectionStatus = "Host key not trusted";
+            ConnectionDetail = failure.Error.Message;
+            return;
+        }
+
+        HostKeyReview = ((ConnectionRuntimeResult<SshHostKeyReview>.Success)result).Value;
+        await RetryAsync();
+    }
+
+    public void ObserveSessionSnapshot(SessionSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (_disposed || SessionRequest?.SessionId != snapshot.Descriptor.Id)
+        {
+            return;
+        }
+
+        var isExactActiveSession =
+            snapshot.Descriptor.Kind == PanelKind.Terminal
+            && snapshot.Descriptor.Owner == _owner
+            && snapshot.Descriptor.Lifecycle == SessionLifecycle.Active;
+        HasObservedActiveSession = isExactActiveSession;
+        if (isExactActiveSession
+            && snapshot.Descriptor.Health == SessionHealth.Healthy)
+        {
+            ReconnectAttempt = 0;
+            NextReconnectDelay = null;
+            ReconnectState = ConnectionReconnectState.Connected;
+            ConnectionState = ConnectionPanelState.Ready;
+            ConnectionStatus = "Connected";
+            ConnectionDetail = "The terminal session is live.";
+            return;
+        }
+
+        if (snapshot.Descriptor.Lifecycle == SessionLifecycle.Failed)
+        {
+            var error = ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed) with
+            {
+                Retryable = snapshot.Descriptor.Failure?.Retryable ?? true,
+            };
+            BeginAutomaticReconnect(error);
+            return;
+        }
+
+        if (snapshot.Descriptor.Lifecycle == SessionLifecycle.Closed)
+        {
+            SessionRequest = null;
+            ConnectionError = ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed);
+            ConnectionState = ConnectionPanelState.Failed;
+            ReconnectState = ConnectionReconnectState.Idle;
+            ConnectionStatus = "Session ended";
+            ConnectionDetail = "The terminal process exited. Reconnect manually to start a new session.";
+        }
+    }
+
+    public void ObserveSessionInitializationFailure(SessionFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+        if (_disposed)
+        {
+            return;
+        }
+
+        var error = ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed) with
+        {
+            Retryable = failure.Retryable,
+        };
+        BeginAutomaticReconnect(error);
+    }
+
+    public void ObserveStartupCommandDispatch(TerminalStartupCommandDispatchResult result)
+    {
+        ObserveStartupCommandDispatch(StartupCommandContext, result);
+    }
+
+    public void ObserveStartupCommandDispatch(
+        OperationContext context,
+        TerminalStartupCommandDispatchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(result);
+        if (_disposed
+            || context.RequestId != StartupCommandContext.RequestId
+            || context.IdempotencyKey != StartupCommandContext.IdempotencyKey)
+        {
+            return;
+        }
+
+        var mustStopAfterFailure = result.Error is { } error
+            && (!error.Retryable
+                || StartupCommandDeliveryFailurePolicy
+                    == StartupCommandDeliveryFailurePolicy.StopAfterFirstDeliveryFailure);
+        var outcomePinned = result.CommandsDelivered || mustStopAfterFailure;
+        if (outcomePinned)
+        {
+            // This VM outlives replaceable renderers. Withdrawing the batch here keeps a completed
+            // or terminally failed command delivery one-shot across reattach and reconnect.
+            _startupCommandOutcomePinned = true;
+            _startupCommandFailureStopped =
+                mustStopAfterFailure && !result.CommandsDelivered;
+            StartupCommands = [];
+        }
+
+        StartupCommandError = result.Error;
+    }
+
+    public override void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        StartupCommandDispatchState.DispatchCompleted -=
+            OnStartupCommandDispatchCompleted;
+        StartupCommandDispatchState.Dispose();
+        _lifetime.Cancel();
+        _attempt?.Cancel();
+        _attempt?.Dispose();
+        _lifetime.Dispose();
+        SessionRequest = null;
+        ConnectionState = ConnectionPanelState.Disposed;
+    }
+
+    private void OnStartupCommandDispatchCompleted(
+        object? sender,
+        TerminalStartupCommandDispatchEventArgs eventArgs)
+    {
+        _ = sender;
+        ObserveStartupCommandDispatch(eventArgs.Context, eventArgs.Result);
+    }
+
+    private Task StartConnectionLoop(bool waitBeforeFirstAttempt)
+    {
+        _attempt?.Cancel();
+        _attempt?.Dispose();
+        _attempt = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        SessionRequest = null;
+        ConnectionError = null;
+        if (!_startupCommandOutcomePinned)
+        {
+            StartupCommandError = null;
+        }
+
+        HostKeyReview = null;
+        WarningMessage = null;
+        ConnectionState = ConnectionPanelState.Planning;
+        ConnectionStatus = "Preparing connection";
+        ConnectionDetail = "Validating the saved connection profile…";
+        Initialization = RunConnectionLoopAsync(
+            _attempt,
+            waitBeforeFirstAttempt,
+            _attempt.Token);
+        return Initialization;
+    }
+
+    private async Task RunConnectionLoopAsync(
+        CancellationTokenSource attempt,
+        bool waitBeforeFirstAttempt,
+        CancellationToken cancellationToken)
+    {
+        var mustWait = waitBeforeFirstAttempt;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (mustWait)
+            {
+                if (ReconnectAttempt >= _reconnectPolicy.MaximumAttempts)
+                {
+                    ReconnectState = ConnectionReconnectState.Exhausted;
+                    NextReconnectDelay = null;
+                    ConnectionState = ConnectionPanelState.Failed;
+                    ConnectionStatus = "Connection unavailable";
+                    ConnectionDetail = "Automatic reconnect attempts were exhausted.";
+                    return;
+                }
+
+                ReconnectAttempt++;
+                NextReconnectDelay = _reconnectPolicy.DelayForAttempt(ReconnectAttempt);
+                ReconnectState = ConnectionReconnectState.Waiting;
+                ConnectionState = ConnectionPanelState.Reconnecting;
+                ConnectionStatus = "Waiting to reconnect";
+                ConnectionDetail = ReconnectStatus;
+                try
+                {
+                    await _reconnectDelay(NextReconnectDelay.Value, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                ReconnectState = ConnectionReconnectState.Attempting;
+                NextReconnectDelay = null;
+                ConnectionStatus = "Reconnecting";
+                ConnectionDetail = ReconnectStatus;
+            }
+
+            var outcome = await PrepareSessionAsync(attempt, cancellationToken);
+            if (!ReferenceEquals(_attempt, attempt) || _disposed || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (outcome.Request is { } request)
+            {
+                SessionRequest = request;
+                ConnectionState = ConnectionPanelState.Ready;
+                ReconnectState = ReconnectAttempt > 0
+                    ? ConnectionReconnectState.WaitingForSession
+                    : ConnectionReconnectState.Idle;
+                ConnectionStatus = ReconnectAttempt > 0 ? "Starting reconnected terminal" : "Starting terminal";
+                ConnectionDetail = "The connection plan is ready.";
+                return;
+            }
+
+            if (outcome.CredentialBrokerRequired)
+            {
+                ConnectionState = ConnectionPanelState.CredentialBrokerRequired;
+                ReconnectState = ConnectionReconnectState.Idle;
+                ConnectionStatus = "Credential delivery unavailable";
+                ConnectionDetail = "The saved credential passed vault preflight, but this build cannot deliver it to an SSH terminal process without exposing secret material. Diagnostics can still authenticate through the secure adapter boundary.";
+                return;
+            }
+
+            ConnectionError = outcome.Error;
+            ConnectionState = ConnectionPanelState.Failed;
+            ConnectionStatus = "Connection unavailable";
+            ConnectionDetail = outcome.Error?.Message ?? "The connection could not be prepared.";
+            if (outcome.Error is null || !ShouldReconnect(outcome.Error))
+            {
+                ReconnectState = ConnectionReconnectState.Idle;
+                return;
+            }
+
+            mustWait = true;
+        }
+    }
+
+    private async Task<ConnectionAttemptOutcome> PrepareSessionAsync(
+        CancellationTokenSource attempt,
+        CancellationToken cancellationToken)
+    {
+        var progress = new Progress<ConnectionProgress>(item =>
+        {
+            if (!ReferenceEquals(_attempt, attempt)
+                || _disposed
+                || ConnectionState is not (ConnectionPanelState.Planning or ConnectionPanelState.Reconnecting))
+            {
+                return;
+            }
+
+            ConnectionStatus = ProgressTitle(item.Stage);
+            ConnectionDetail = item.Message;
+        });
+
+        var hostKeyError = await PrepareHostKeyAsync(progress, cancellationToken);
+        if (hostKeyError is not null)
+        {
+            return ConnectionAttemptOutcome.Fail(hostKeyError);
+        }
+
+        ConnectionRuntimeResult<ConnectionOpenPlan> result;
+        try
+        {
+            result = await _connectionRuntime.PlanOpenAsync(
+                _connection,
+                progress,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return ConnectionAttemptOutcome.Fail(
+                ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.Cancelled));
+        }
+        catch (Exception)
+        {
+            result = ConnectionRuntimeResult<ConnectionOpenPlan>.Fail(
+                ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed));
+        }
+
+        if (result is ConnectionRuntimeResult<ConnectionOpenPlan>.Failure failure)
+        {
+            return ConnectionAttemptOutcome.Fail(failure.Error);
+        }
+
+        var plan = ((ConnectionRuntimeResult<ConnectionOpenPlan>.Success)result).Value;
+        _reconnectMode = plan.ReconnectMode;
+        WarningMessage = DescribeWarnings(plan.Warnings);
+        if (plan.RequiresSecretBroker)
+        {
+            return ConnectionAttemptOutcome.BrokerRequired();
+        }
+
+        var launch = plan.Launch.WithPresentationProfiles(
+            _renderProfile,
+            _keymap);
+        return ConnectionAttemptOutcome.Succeed(new EnsureTerminalSessionRequest(
+            SessionId.New(),
+            _owner,
+            Title,
+            launch));
+    }
+
+    private async Task<ConnectionRuntimeError?> PrepareHostKeyAsync(
+        IProgress<ConnectionProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        if (_connectionSecurityRuntime is null
+            || _connection.Endpoint is not ConnectionEndpoint.Ssh
+            || _connection.HostKeyPolicy == SshHostKeyPolicy.InsecureIgnore)
+        {
+            return null;
+        }
+
+        var inspected = await _connectionSecurityRuntime.InspectSshHostKeyAsync(
+            _connection,
+            progress,
+            cancellationToken);
+        if (inspected is ConnectionRuntimeResult<SshHostKeyReview>.Failure failure)
+        {
+            return failure.Error;
+        }
+
+        var review = ((ConnectionRuntimeResult<SshHostKeyReview>.Success)inspected).Value;
+        if (review.Disposition == SshHostKeyDisposition.Unknown
+            && _connection.HostKeyPolicy == SshHostKeyPolicy.AcceptNew)
+        {
+            var trusted = await _connectionSecurityRuntime.TrustSshHostKeyAsync(
+                new SshHostKeyTrustRequest(
+                    review.Id,
+                    review.ConnectionId,
+                    SshHostKeyTrustAction.TrustNew),
+                cancellationToken);
+            return trusted is ConnectionRuntimeResult<SshHostKeyReview>.Failure trustFailure
+                ? trustFailure.Error
+                : null;
+        }
+
+        HostKeyReview = review.Disposition is SshHostKeyDisposition.Unknown or SshHostKeyDisposition.Changed
+            ? review
+            : null;
+        return review.Disposition switch
+        {
+            SshHostKeyDisposition.Unknown =>
+                ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.UnknownHostKey),
+            SshHostKeyDisposition.Changed =>
+                ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.HostKeyChanged),
+            _ => null,
+        };
+    }
+
+    private void BeginAutomaticReconnect(ConnectionRuntimeError error)
+    {
+        SessionRequest = null;
+        ConnectionError = error;
+        if (!ShouldReconnect(error))
+        {
+            ConnectionState = ConnectionPanelState.Failed;
+            ConnectionStatus = "Connection unavailable";
+            ConnectionDetail = error.Message;
+            return;
+        }
+
+        _ = StartConnectionLoop(waitBeforeFirstAttempt: true);
+    }
+
+    private bool ShouldReconnect(ConnectionRuntimeError error) =>
+        _reconnectMode == ConnectionReconnectMode.BoundedBackoff
+        && error.Retryable
+        && error.RecoveryAction is ConnectionRecoveryAction.Retry or ConnectionRecoveryAction.Reconnect;
+
+    private static ConnectionProfile WithPanelStartup(
+        ConnectionProfile connection,
+        PanelStartupBehavior startup) =>
+        new(
+            connection.Id,
+            connection.SchemaVersion,
+            connection.Name,
+            connection.Endpoint,
+            connection.Authentication,
+            new ConnectionStartup(
+                startup.Location ?? connection.Startup.Directory,
+                connection.Startup.Environment),
+            connection.KeepAlive,
+            connection.HostKeyPolicy,
+            connection.Tags);
+
+    private static string ProgressTitle(ConnectionProgressStage stage) => stage switch
+    {
+        ConnectionProgressStage.ValidatingProfile => "Validating connection",
+        ConnectionProgressStage.DetectingRuntime => "Detecting runtime",
+        ConnectionProgressStage.ResolvingCredentials => "Checking credentials",
+        ConnectionProgressStage.BuildingLaunchPlan => "Preparing terminal",
+        ConnectionProgressStage.InspectingHostKey => "Inspecting host key",
+        ConnectionProgressStage.Authenticating => "Authenticating",
+        ConnectionProgressStage.ProbingEndpoint => "Testing endpoint",
+        ConnectionProgressStage.Reconnecting => "Reconnecting",
+        ConnectionProgressStage.Completed => "Connection prepared",
+        _ => "Preparing connection",
+    };
+
+    private static string? DescribeWarnings(IReadOnlyList<ConnectionPlanWarning> warnings)
+    {
+        if (warnings.Count == 0)
+        {
+            return null;
+        }
+
+        var messages = warnings.Select(warning => warning switch
+        {
+            ConnectionPlanWarning.HostKeyVerificationDisabled =>
+                "SSH host-key verification is disabled.",
+            ConnectionPlanWarning.SecretBrokerRequired =>
+                "This connection requires the secure credential broker.",
+            ConnectionPlanWarning.RemoteEnvironmentRequiresServerAcceptance =>
+                "SSH environment forwarding requires matching AcceptEnv rules on the remote server.",
+            ConnectionPlanWarning.SshStartupDirectoryRequiresPosixShell =>
+                "SSH startup directories require a POSIX-compatible remote target with /bin/sh; Windows OpenSSH targets are not supported for this option.",
+            _ => throw new ArgumentOutOfRangeException(nameof(warnings), warning, null),
+        });
+        return string.Join(' ', messages);
+    }
+
+    private sealed record ConnectionAttemptOutcome(
+        EnsureTerminalSessionRequest? Request,
+        ConnectionRuntimeError? Error,
+        bool CredentialBrokerRequired)
+    {
+        public static ConnectionAttemptOutcome Succeed(EnsureTerminalSessionRequest request) =>
+            new(request, null, false);
+
+        public static ConnectionAttemptOutcome Fail(ConnectionRuntimeError error) =>
+            new(null, error, false);
+
+        public static ConnectionAttemptOutcome BrokerRequired() => new(null, null, true);
+    }
+}
+
+public sealed class UnavailableRuntimePanelViewModel(
+    PanelInstanceId id,
+    PanelKind kind,
+    string title,
+    string kindLabel,
+    string capabilityMessage)
+    : RuntimePanelViewModel(id, kind, title, kindLabel)
+{
+    public string CapabilityMessage { get; } = capabilityMessage;
+}

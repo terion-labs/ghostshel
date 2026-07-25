@@ -1,0 +1,16 @@
+.DS_Store
+.dotnet/
+.dotnet-home/
+.deps/
+.nuget/
+.codex-audit/
+.test-results/
+native/artifacts/
+/artifacts/
+**/bin/
+**/obj/
+.idea/
+.vscode/
+.claude/settings.local.json
+/untitled.pen
+/SF-Pro-Text-*.otf

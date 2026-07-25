@@ -1,0 +1,8 @@
+	linux-vdso.so.1 (0x0000ffffadcda000)
+	libdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000ffffadc10000)
+	libpthread.so.0 => /lib/aarch64-linux-gnu/libpthread.so.0 (0x0000ffffadbe0000)
+	libstdc++.so.6 => /lib/aarch64-linux-gnu/libstdc++.so.6 (0x0000ffffad950000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000ffffad8a0000)
+	libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffffad860000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffffad6a0000)
+	/lib/ld-linux-aarch64.so.1 (0x0000ffffadc90000)

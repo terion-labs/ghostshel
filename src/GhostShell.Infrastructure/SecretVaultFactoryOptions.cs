@@ -1,0 +1,18 @@
+using GhostShell.Application;
+
+namespace GhostShell.Infrastructure;
+
+public sealed record SecretVaultFactoryOptions
+{
+    public string ServiceName { get; init; } = "app.ghostshell";
+
+    public string? DataDirectory { get; init; }
+
+    public string? LinuxSecretToolPath { get; init; }
+
+    public SecretVaultPlatform Platform { get; init; } = SecretVaultPlatform.Automatic;
+
+    public ISecretAccessPolicy? AccessPolicy { get; init; }
+
+    public ISecretAccessAuditSink? AuditSink { get; init; }
+}

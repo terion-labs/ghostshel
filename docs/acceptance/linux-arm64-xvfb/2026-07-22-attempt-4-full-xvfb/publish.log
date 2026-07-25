@@ -1,0 +1,20 @@
+  Determining projects to restore...
+  Restored /work/source/src/GhostShell.Core/GhostShell.Core.csproj (in 5.78 sec).
+  Restored /work/source/src/GhostShell.Application/GhostShell.Application.csproj (in 5.78 sec).
+  Restored /work/source/src/GhostShell.Protocol/GhostShell.Protocol.csproj (in 5.78 sec).
+  Restored /work/source/src/GhostShell.SessionHost/GhostShell.SessionHost.csproj (in 5.78 sec).
+  Restored /work/source/src/GhostShell.App/GhostShell.App.csproj (in 7.02 sec).
+  Restored /work/source/src/GhostShell.Files/GhostShell.Files.csproj (in 8.07 sec).
+  Restored /work/source/src/GhostShell.Infrastructure/GhostShell.Infrastructure.csproj (in 8.07 sec).
+  Restored /work/source/src/GhostShell.Terminal/GhostShell.Terminal.csproj (in 24.01 sec).
+  Restored /work/source/src/GhostShell.Desktop/GhostShell.Desktop.csproj (in 24.02 sec).
+  GhostShell.Core -> /work/source/src/GhostShell.Core/bin/Release/net10.0/GhostShell.Core.dll
+  GhostShell.Application -> /work/source/src/GhostShell.Application/bin/Release/net10.0/GhostShell.Application.dll
+  GhostShell.Protocol -> /work/source/src/GhostShell.Protocol/bin/Release/net10.0/GhostShell.Protocol.dll
+  GhostShell.SessionHost -> /work/source/src/GhostShell.SessionHost/bin/Release/net10.0/GhostShell.SessionHost.dll
+  GhostShell.Terminal -> /work/source/src/GhostShell.Terminal/bin/Release/net10.0/GhostShell.Terminal.dll
+  GhostShell.Infrastructure -> /work/source/src/GhostShell.Infrastructure/bin/Release/net10.0/GhostShell.Infrastructure.dll
+  GhostShell.Files -> /work/source/src/GhostShell.Files/bin/Release/net10.0/GhostShell.Files.dll
+  GhostShell.App -> /work/source/src/GhostShell.App/bin/Release/net10.0/GhostShell.App.dll
+  GhostShell.Desktop -> /work/source/src/GhostShell.Desktop/bin/Release/net10.0/linux-arm64/GhostShell.dll
+  GhostShell.Desktop -> /work/package/

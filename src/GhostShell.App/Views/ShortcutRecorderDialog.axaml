@@ -1,0 +1,48 @@
+<Window
+    x:Class="GhostShell.App.Views.ShortcutRecorderDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Record shortcut"
+    Width="560"
+    Height="330"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Classes="TopChrome">
+      <StackPanel Margin="18,12" Spacing="2">
+        <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Record shortcut" />
+        <TextBlock x:Name="RecorderHelpText" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Conflicts are checked before the profile can be saved." />
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="1" Margin="20" Spacing="12">
+      <Border
+          x:Name="CaptureArea"
+          MinHeight="118"
+          Padding="18"
+          Classes="NoticeCard"
+          Focusable="True"
+          KeyDown="OnCaptureKeyDown"
+          AutomationProperties.Name="Shortcut capture area">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+          <TextBlock Classes="Muted" Text="Focus here, then press the shortcut" TextAlignment="Center" />
+          <TextBlock x:Name="RecordedShortcutText" Classes="Monospace" FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="No keys recorded" TextAlignment="Center" TextWrapping="Wrap" />
+          <TextBlock x:Name="StrokeCountText" Classes="Eyebrow" Text="0 OF 8 STROKES" />
+        </StackPanel>
+      </Border>
+      <TextBlock x:Name="RecorderStatusText" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Tab moves to the controls; Escape cancels." TextAlignment="Center" />
+      <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="8">
+        <Button x:Name="RemoveLastButton" Classes="SecondaryButton" Click="OnRemoveLastClick" Content="Remove last" IsEnabled="False" />
+        <Button x:Name="ClearButton" Classes="TextButton" Click="OnClearClick" Content="Clear" IsEnabled="False" />
+      </StackPanel>
+    </StackPanel>
+
+    <Border Grid.Row="2" BorderBrush="#29292D" BorderThickness="0,1,0,0">
+      <Grid Margin="16,12" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
+        <Button x:Name="UseShortcutButton" Grid.Column="2" Classes="PrimaryButton" Click="OnUseShortcutClick" Content="Use shortcut" IsEnabled="False" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

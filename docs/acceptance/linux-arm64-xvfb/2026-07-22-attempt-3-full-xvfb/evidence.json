@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "declaredSystemName": "docker-linux-arm64-xvfb",
+  "actualHostName": "008f17add977",
+  "executionEnvironment": "Docker Linux arm64 under Xvfb (no window manager)",
+  "containerImage": "sha256:927989b59ab634d7d5f2e780c3cafc8d83806d074355772927f6c93a6f889cfc",
+  "osDescription": "Linux-7.0.11-orbstack-00360-gc9bc4d96ac70-aarch64-with-glibc2.39",
+  "osArchitecture": "aarch64",
+  "kernel": "7.0.11-orbstack-00360-gc9bc4d96ac70",
+  "xdgSessionType": "x11",
+  "display": ":99",
+  "packageExecutable": "/work/package/GhostShell",
+  "packageSha256": "3b8e05a44d575277c3195b1ecb7f64598ab2963ac1c01e5c6edb73fb7961fac5",
+  "sourceSnapshotSha256": "2a26756bc023de3a70bdf22b3410bb8452c358677d5b6e0048f2c1bcede4e84f",
+  "startedAtUtc": "2026-07-22T15:51:30.167961+00:00",
+  "completedAtUtc": "2026-07-22T15:52:16.301124+00:00",
+  "overallResult": "NOT_PASSING",
+  "checks": [
+    {
+      "id": "desktop-startup",
+      "title": "Packaged Avalonia desktop startup",
+      "result": "PASS",
+      "notes": "The self-contained package opened its real X11 launcher and remained alive.",
+      "evidence": [
+        "launcher.png",
+        "launcher-window-geometry.txt",
+        "ghostshell.log"
+      ]
+    },
+    {
+      "id": "real-pty",
+      "title": "Managed renderer to real PTY",
+      "result": "PASS",
+      "notes": "tty=/dev/pts/0; is_tty=yes",
+      "evidence": [
+        "terminal-pty.png",
+        "runtime/pty.txt"
+      ]
+    },
+    {
+      "id": "unicode-roundtrip",
+      "title": "Unicode input and output through the managed renderer",
+      "result": "PASS",
+      "notes": "UTF-8 Japanese, Ukrainian, emoji, and a combining accent round-tripped through X11 clipboard paste, the terminal input contract, the PTY, and shell output.",
+      "evidence": [
+        "terminal-unicode.png",
+        "runtime/unicode.txt"
+      ]
+    },
+    {
+      "id": "pty-resize",
+      "title": "X11 viewport to PTY grid resize",
+      "result": "PASS",
+      "notes": "stty size changed from 26x76 to 19x56.",
+      "evidence": [
+        "terminal-resized.png",
+        "runtime/size-before.txt",
+        "runtime/size-after.txt"
+      ]
+    },
+    {
+      "id": "interactive-tui",
+      "title": "Interactive less TUI through the packaged renderer",
+      "result": "PASS",
+      "notes": "less entered an interactive screen, accepted PageDown and q, then returned control to the shell.",
+      "evidence": [
+        "terminal-less-tui.png",
+        "runtime/tui.txt"
+      ]
+    },
+    {
+      "id": "alternate-screen",
+      "title": "Alternate-screen entry and restoration",
+      "result": "NOT_PROVEN",
+      "notes": "The real PTY fixture completed without crashing and before/after screenshots were captured, but this runner does not use OCR or a screen-snapshot API to assert restoration. Manual review is still required.",
+      "evidence": [
+        "terminal-alternate-active.png",
+        "terminal-alternate-restored.png",
+        "runtime/alternate-completed.txt"
+      ]
+    },
+    {
+      "id": "mouse-reporting",
+      "title": "SGR mouse reporting through X11 and the PTY",
+      "result": "PASS",
+      "notes": "Captured 5 SGR reports; required press, release, drag, and wheel reports were present.",
+      "evidence": [
+        "runtime/mouse-reporting.json"
+      ]
+    },
+    {
+      "id": "guarded-paste",
+      "title": "Unsafe multiline paste confirmation",
+      "result": "PASS",
+      "notes": "A multiline paste stayed pending, Escape cancelled it without execution, and an explicitly confirmed paste executed exactly once.",
+      "evidence": [
+        "terminal-paste-confirmation.png",
+        "runtime/paste-confirmed.txt"
+      ]
+    },
+    {
+      "id": "clipboard-write-policy",
+      "title": "Brokerless OSC 52 clipboard write policy",
+      "result": "PASS",
+      "notes": "The managed adapter has no safe process-originated clipboard broker; its documented contract discarded OSC 52 and preserved the existing clipboard.",
+      "evidence": [
+        "osc52-clipboard-observation.txt"
+      ]
+    },
+    {
+      "id": "clipboard-read-policy",
+      "title": "Brokerless OSC 52 clipboard read response",
+      "result": "NOT_PROVEN",
+      "notes": "Unit conformance covers the empty denial response, but this packaged run did not capture process-side bytes for an OSC 52 query.",
+      "evidence": []
+    },
+    {
+      "id": "quick-terminal-x11",
+      "title": "X11-global Quick Terminal registration and Escape dismissal",
+      "result": "FAIL",
+      "notes": "No visible X11 window matched '^GhostSHELL Acceptance Other Client$'.",
+      "evidence": []
+    },
+    {
+      "id": "desktop-lifecycle",
+      "title": "Normal desktop and child PTY lifecycle",
+      "result": "PASS",
+      "notes": "Desktop exit code: 0; surviving captured descendants: [].",
+      "evidence": [
+        "runtime/lifecycle.txt"
+      ]
+    },
+    {
+      "id": "ime-composition",
+      "title": "IME preedit, candidate placement, and committed composition",
+      "result": "NOT_PROVEN",
+      "notes": "Xvfb has no desktop input-method compositor. Unicode clipboard/input coverage does not prove IME composition.",
+      "evidence": []
+    },
+    {
+      "id": "physical-x11-compositor",
+      "title": "Physical X11 desktop and compositor behavior",
+      "result": "NOT_PROVEN",
+      "notes": "This named system is an Xvfb server inside an arm64 Docker VM, not a physical/self-hosted X11 desktop. Window-manager focus, compositor effects, and human interaction remain unproven.",
+      "evidence": []
+    },
+    {
+      "id": "sleep-wake",
+      "title": "Host sleep and wake recovery",
+      "result": "NOT_PROVEN",
+      "notes": "A Docker/Xvfb container cannot suspend and resume the named physical host.",
+      "evidence": []
+    }
+  ]
+}

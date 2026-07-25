@@ -1,0 +1,42 @@
+<Window
+    x:Class="GhostShell.App.Views.CloseConfirmationDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Confirm close"
+    Width="480"
+    SizeToContent="Height"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,Auto,Auto" Margin="24" RowSpacing="16">
+    <StackPanel Spacing="6">
+      <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="{Binding Heading}" />
+      <TextBlock
+          Classes="Muted"
+          Text="{Binding Detail}"
+          TextWrapping="Wrap" />
+    </StackPanel>
+    <Border Grid.Row="1" Padding="12" Background="#111112" BorderBrush="#303034" BorderThickness="1" CornerRadius="8">
+      <TextBlock
+          Classes="Monospace"
+          FontSize="{DynamicResource ShellFontSize10}"
+          Foreground="#FFB224"
+          Text="{Binding SessionSummary}"
+          TextWrapping="Wrap" />
+    </Border>
+    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+      <Button
+          MinWidth="88"
+          Click="OnCancelClick"
+          Content="Cancel"
+          IsCancel="True"
+          AutomationProperties.Name="Cancel close" />
+      <Button
+          MinWidth="126"
+          Background="#A43220"
+          Click="OnConfirmClick"
+          Content="Close anyway"
+          AutomationProperties.Name="Confirm force close" />
+    </StackPanel>
+  </Grid>
+</Window>

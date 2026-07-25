@@ -1,0 +1,875 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "ghostshell-native-macos-arm64-1",
+  "receiptGenerator": "GhostShell.Packaging-1.0.0",
+  "target": {
+    "os": "macos",
+    "architecture": "arm64",
+    "minimumVersion": "13.0"
+  },
+  "releaseReadiness": "BLOCKED",
+  "legalClearance": false,
+  "legalConclusion": "NOT_ASSERTED",
+  "releaseBlockers": [
+    {
+      "id": "dearbindings-license-missing",
+      "summary": "The selected DearBindings/dcimgui source has no independently retained license evidence."
+    },
+    {
+      "id": "dependency-source-archives-not-retained",
+      "summary": "Exact corresponding source archives for the selected static native closure are not packaged or retained as release evidence."
+    },
+    {
+      "id": "font-notices-incomplete",
+      "summary": "Complete notices and redistribution evidence for every embedded font byte sequence are not packaged."
+    },
+    {
+      "id": "gettext-lgpl-static-relink-source",
+      "summary": "Static gettext/libintl corresponding source, license, and relinking materials are not packaged."
+    },
+    {
+      "id": "ghostshell-shim-license-unresolved",
+      "summary": "The project distribution license covering the GhostSHELL native shim has not been selected."
+    },
+    {
+      "id": "license-set-not-packaged",
+      "summary": "The artifact tree contains the Ghostty root license but not the complete selected-component license set."
+    },
+    {
+      "id": "metallib-source-rebuild-evidence-missing",
+      "summary": "The embedded metallib is byte-bound to a release binary slice but has not been rebuilt from retained shader sources."
+    },
+    {
+      "id": "mixed-license-file-mapping-unverified",
+      "summary": "File-level license mapping for glslang and SPIRV-Cross has not been independently verified."
+    },
+    {
+      "id": "reproducible-build-not-demonstrated",
+      "summary": "Cross-host byte-for-byte reproducibility of the reviewed native outputs has not been demonstrated."
+    },
+    {
+      "id": "resource-tool-identities-missing",
+      "summary": "Build-time lipo and tic tool identities are not yet captured as byte-exact inputs."
+    },
+    {
+      "id": "shell-gpl-source-license-missing",
+      "summary": "GPL-covered shell integration license text and corresponding-source delivery evidence are incomplete."
+    },
+    {
+      "id": "simdutf-license-revision-missing",
+      "summary": "The selected simdutf revision lacks independently retained license evidence."
+    },
+    {
+      "id": "static-graph-review-incomplete",
+      "summary": "The selected native graph is a reviewed build inventory, not an independently reproduced complete static-link analysis."
+    },
+    {
+      "id": "stb-notice-not-packaged",
+      "summary": "The selected stb image and resize notices are not packaged."
+    },
+    {
+      "id": "themes-provenance-missing",
+      "summary": "The packaged Ghostty theme collection lacks complete per-theme provenance and license metadata."
+    },
+    {
+      "id": "uucode-third-party-notices-missing",
+      "summary": "Unicode and other third-party terms for both selected uucode revisions are not packaged."
+    },
+    {
+      "id": "z2d-mpl-license-source",
+      "summary": "The selected z2d source references MPL-2.0 but the release lacks its full license and source disclosure evidence."
+    },
+    {
+      "id": "zig-compiled-input-license-unpinned",
+      "summary": "Exact retained license evidence is incomplete for the Zig compiler_rt sources and libc++ headers observed as compilation inputs; binary inclusion beyond the recorded input closure is not asserted."
+    }
+  ],
+  "inputs": [
+    {
+      "id": "build-native-script",
+      "kind": "repository-file",
+      "repositoryRelativePath": "scripts/build-native-macos.sh",
+      "sha256": "848ab5b4440f881573cbb241e8b2bfb250ff6753caa2654e654251cdf6f5f0c5"
+    },
+    {
+      "id": "clang-compiler",
+      "kind": "clang-executable",
+      "buildHostLogicalPath": "xcrun:clang",
+      "sha256": "f30550eab15fdf5ab8c0dc54c52679711241e5d4b636b027e18c09fef531775d"
+    },
+    {
+      "id": "ghostshell-shim-header",
+      "kind": "repository-file",
+      "repositoryRelativePath": "native/macos/GhostShellGhostty.h",
+      "sha256": "e8fe95695334ef9150cf89cb7245464790668b08a76d42d886aaf938e2223ab2"
+    },
+    {
+      "id": "ghostshell-shim-source",
+      "kind": "repository-file",
+      "repositoryRelativePath": "native/macos/GhostShellGhostty.m",
+      "sha256": "cbd37c4464e543c43412ecedbdb3044940ee304248b9ddef7e61425bf8e3ecd5"
+    },
+    {
+      "id": "ghostshell-smoke-source",
+      "kind": "repository-file",
+      "repositoryRelativePath": "native/macos/GhostShellGhosttySmoke.m",
+      "sha256": "07e20e47c012db6153494fd7580a57be2f2dbc93f5a9219e033fd1872c63634a"
+    },
+    {
+      "id": "ghostty-build-script",
+      "kind": "ghostty-source-file",
+      "repositoryRelativePath": "build.zig",
+      "sha256": "171274764f6fd6adca965510f773a8b3a3d201ce983fe3c418472b4237d5bbc0"
+    },
+    {
+      "id": "ghostty-build-zon",
+      "kind": "ghostty-source-file",
+      "repositoryRelativePath": "build.zig.zon",
+      "sha256": "991e650ab7d334b9521d53816f528cb269bc92a3514edacb4ce0d73150ad6bbe"
+    },
+    {
+      "id": "ghostty-embedded-source",
+      "kind": "ghostty-source-file",
+      "repositoryRelativePath": "src/apprt/embedded.zig",
+      "sha256": "b1468cd772ccab4967be57da015298e9744a87d84706df227a1cfafd24fe42d1"
+    },
+    {
+      "id": "ghostty-final-build-evidence",
+      "kind": "observed-ghostty-build-evidence",
+      "repositoryRelativePath": "native/ghostty/provenance/macos-arm64-build-evidence.json",
+      "sha256": "79b782c2ea48a2db536664c6fee4eeaae763b2fedf63101e2ea99fe9922456b7"
+    },
+    {
+      "id": "ghostty-header",
+      "kind": "ghostty-source-file",
+      "repositoryRelativePath": "include/ghostty.h",
+      "sha256": "1dc70450ddf505d828cc2e874a73e1bcd2c66677530e9e13b93a3c4c7fe1b645"
+    },
+    {
+      "id": "ghostty-license-source",
+      "kind": "ghostty-source-file",
+      "repositoryRelativePath": "LICENSE",
+      "sha256": "386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1"
+    },
+    {
+      "id": "ghostty-metallib-step",
+      "kind": "ghostty-source-file",
+      "repositoryRelativePath": "src/build/MetallibStep.zig",
+      "sha256": "e44fbfe05fe97a012941b24ae98595dadf6c548f2934f28a058dabead4d8d7c6"
+    },
+    {
+      "id": "ghostty-release-archive",
+      "kind": "ghostty-release-archive",
+      "downloadLocation": "https://release.files.ghostty.org/1.3.1/ghostty-macos-universal.zip",
+      "sha256": "105f63ec2df9b53cd5dd1f685434d1924163fd4bcf23ecb1b07df343e79d2077"
+    },
+    {
+      "id": "ghostty-release-arm64",
+      "kind": "ghostty-release-arm64-binary",
+      "derivedFromInputId": "ghostty-release-archive",
+      "derivation": "mach-o-universal-slice:arm64",
+      "sha256": "5256fb2bee5744109c54c76e595c500137919baa650db55a215da870a2c7d3a5"
+    },
+    {
+      "id": "ghostty-resource-evidence",
+      "kind": "observed-ghostty-resource-evidence",
+      "repositoryRelativePath": "native/ghostty/provenance/macos-arm64-resource-evidence.json",
+      "sha256": "f473760477982558198ca57574bc59de3631c74e9dc40d9106d09871640d442f"
+    },
+    {
+      "id": "ghostty-shared-deps",
+      "kind": "ghostty-source-file",
+      "repositoryRelativePath": "src/build/SharedDeps.zig",
+      "sha256": "43aa5f61985b53e40e98ec6c20d49543ea4c9d585ee2943855fab71952a99a92"
+    },
+    {
+      "id": "metallib-extract",
+      "kind": "ghostty-metallib",
+      "derivedFromInputId": "ghostty-release-arm64",
+      "derivation": "byte-range:13283328:52333",
+      "sha256": "6893dea958b8d89b58c0ccefb1bfdb589ba4bb0c6fd1a0d73fe38a1715650918"
+    },
+    {
+      "id": "reviewed-patch",
+      "kind": "repository-file",
+      "repositoryRelativePath": "native/ghostty/patches/0001-macos-dynamic-embedding.patch",
+      "sha256": "84bd30325e39c742b26e45327670202f44928f4c10c3f59cf87218c8c66d2fe4"
+    },
+    {
+      "id": "sdk-settings",
+      "kind": "sdk-settings",
+      "buildHostLogicalPath": "sdk:MacOSX15.4.sdk/SDKSettings.json",
+      "sha256": "ef439bf972bb4b45310699d2a31cd08466cbb0c30642bc9a48985c22856d42f4"
+    },
+    {
+      "id": "xcrun-toolchain-shim",
+      "kind": "repository-file",
+      "repositoryRelativePath": "scripts/toolchain-shims/xcrun",
+      "sha256": "f10a42bfa49b78833bde3e824957ba246b2b845484a27ae2dd05872ac8266128"
+    },
+    {
+      "id": "zig-archive",
+      "kind": "zig-archive",
+      "downloadLocation": "https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz",
+      "sha256": "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b"
+    },
+    {
+      "id": "zig-executable",
+      "kind": "zig-executable",
+      "derivedFromInputId": "zig-archive",
+      "derivation": "tar-xz-entry:zig-aarch64-macos-0.15.2/zig",
+      "sha256": "c65cd34917923f575448cc0603dd7c2326da0af0e5c323043d090662dcdf351c"
+    }
+  ],
+  "toolchain": {
+    "zigVersion": "0.15.2",
+    "zigArchiveSha256": "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b",
+    "zigExecutableSha256": "c65cd34917923f575448cc0603dd7c2326da0af0e5c323043d090662dcdf351c",
+    "clangVersion": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "clangSha256": "f30550eab15fdf5ab8c0dc54c52679711241e5d4b636b027e18c09fef531775d",
+    "sdkVersion": "MacOSX15.4.sdk",
+    "sdkSettingsSha256": "ef439bf972bb4b45310699d2a31cd08466cbb0c30642bc9a48985c22856d42f4"
+  },
+  "build": {
+    "ghosttyCommit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+    "ghosttyTag": "v1.3.1",
+    "ghosttyOptions": [
+      "-Dapp-runtime=none",
+      "-Demit-docs=false",
+      "-Demit-themes=true",
+      "-Demit-xcframework=false",
+      "-Demit-macos-app=false",
+      "-Doptimize=ReleaseFast",
+      "-Dsentry=false"
+    ],
+    "shimCompilerOptions": [
+      "-fobjc-arc",
+      "-fblocks",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-mmacosx-version-min=13.0",
+      "-dynamiclib",
+      "-isysroot=MacOSX15.4.sdk",
+      "source=GhostShellGhostty.m",
+      "-I=ghostshell-native-macos",
+      "-I=ghostty-install-include",
+      "-L=ghostty-install-lib",
+      "-lghostty",
+      "-framework",
+      "AppKit",
+      "-framework",
+      "Foundation",
+      "-Wl,-rpath,@loader_path",
+      "-Wl,-install_name,@rpath/libghostshell-ghostty.dylib",
+      "smoke-isysroot=MacOSX15.4.sdk"
+    ],
+    "metallib": {
+      "releaseArchiveSha256": "105f63ec2df9b53cd5dd1f685434d1924163fd4bcf23ecb1b07df343e79d2077",
+      "arm64SliceSha256": "5256fb2bee5744109c54c76e595c500137919baa650db55a215da870a2c7d3a5",
+      "offset": 13283328,
+      "length": 52333,
+      "sha256": "6893dea958b8d89b58c0ccefb1bfdb589ba4bb0c6fd1a0d73fe38a1715650918"
+    }
+  },
+  "expectedArtifactManifestSha256": "7e220189aad7af7278ffe4e19a9b30e6e4a52d436290f89801a1f6562ea6487a",
+  "expectedPackagedPayloadManifestSha256": "c67769e5c1e0c4abd3f15c7310518c6deb4a98a6db419f3bc169714702d11b49",
+  "components": [
+    {
+      "id": "apple-sdk",
+      "name": "Apple macOS SDK",
+      "version": "15.4",
+      "inclusion": "build-tool",
+      "inclusionBasis": "Selected SDKSettings identity used by Zig, shim, and smoke compilation.",
+      "selectionEvidenceInputId": "sdk-settings",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "dearbindings-dcimgui",
+      "name": "DearBindings dcimgui",
+      "version": "0.17",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected by the pinned Ghostty build dependency graph.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "missing",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "dearbindings-license-missing"
+      ],
+      "dependsOnComponentIds": [
+        "freetype",
+        "imgui"
+      ]
+    },
+    {
+      "id": "freetype",
+      "name": "FreeType",
+      "version": "2.13.2",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "dependency-source-archives-not-retained",
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": [
+        "libpng",
+        "zlib"
+      ]
+    },
+    {
+      "id": "gettext-libintl",
+      "name": "GNU gettext libintl",
+      "version": "0.24",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected static libintl archive observed in the Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "gettext-lgpl-static-relink-source",
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "ghostshell-ghostty-shim",
+      "name": "GhostSHELL Ghostty shim",
+      "version": "0.1.0",
+      "inclusion": "packaged-native",
+      "inclusionBasis": "Compiled from the reviewed repository source and packaged as libghostshell-ghostty.dylib.",
+      "selectionEvidenceInputId": "ghostshell-shim-source",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "missing",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "ghostshell-shim-license-unresolved"
+      ],
+      "dependsOnComponentIds": [
+        "apple-sdk",
+        "ghostty"
+      ]
+    },
+    {
+      "id": "ghostty",
+      "name": "Ghostty",
+      "version": "1.3.1",
+      "inclusion": "packaged-native",
+      "inclusionBasis": "An isolated build trace binds the pinned source closure and semantic final link to the exact packaged aggregate libghostty dylib.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "packaged",
+      "licenseEvidenceInputIds": [
+        "ghostty-license-source"
+      ],
+      "blockerIds": [
+        "license-set-not-packaged",
+        "static-graph-review-incomplete"
+      ],
+      "dependsOnComponentIds": [
+        "apple-sdk",
+        "dearbindings-dcimgui",
+        "freetype",
+        "gettext-libintl",
+        "ghostty-macos-wrapper",
+        "ghostty-metallib",
+        "ghostty-shell-integration",
+        "ghostty-terminfo",
+        "ghostty-themes",
+        "glslang",
+        "highway",
+        "imgui",
+        "jetbrains-mono",
+        "libpng",
+        "libxev",
+        "nerd-fonts-symbols-only",
+        "oniguruma",
+        "simdutf",
+        "spirv-cross",
+        "stb-image",
+        "stb-image-resize",
+        "utfcpp",
+        "uucode-0.2",
+        "vaxis",
+        "wuffs",
+        "z2d",
+        "zf",
+        "zig-compiler-rt",
+        "zig-libcxx",
+        "zig-toolchain"
+      ]
+    },
+    {
+      "id": "ghostty-macos-wrapper",
+      "name": "Ghostty macOS wrapper",
+      "version": "1.3.1",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected macOS wrapper archive observed in the Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": [
+        "zig-objc"
+      ]
+    },
+    {
+      "id": "ghostty-metallib",
+      "name": "Ghostty Metal shader library",
+      "version": "1.3.1",
+      "inclusion": "embedded-binary",
+      "inclusionBasis": "Exact reviewed byte range from the pinned arm64 Ghostty release binary is embedded into libghostty.",
+      "selectionEvidenceInputId": "metallib-extract",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "unverified",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "metallib-source-rebuild-evidence-missing"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "ghostty-shell-integration",
+      "name": "Ghostty shell integration resources",
+      "version": "1.3.1",
+      "inclusion": "embedded-resource",
+      "inclusionBasis": "Seven regular shell integration files are packaged under ghostty/shell-integration.",
+      "selectionEvidenceInputId": "ghostty-resource-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "shell-gpl-source-license-missing"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "ghostty-terminfo",
+      "name": "Ghostty terminfo resources",
+      "version": "1.3.1",
+      "inclusion": "embedded-resource",
+      "inclusionBasis": "Two compiled terminfo files are packaged under terminfo.",
+      "selectionEvidenceInputId": "ghostty-resource-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "unverified",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "resource-tool-identities-missing"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "ghostty-themes",
+      "name": "Ghostty themes",
+      "version": "20260216",
+      "inclusion": "embedded-resource",
+      "inclusionBasis": "463 regular theme files are packaged under ghostty/themes.",
+      "selectionEvidenceInputId": "ghostty-resource-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "missing",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "themes-provenance-missing"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "glslang",
+      "name": "glslang",
+      "version": "14.2.0",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged",
+        "mixed-license-file-mapping-unverified"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "highway",
+      "name": "Highway",
+      "version": "1.2.0",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "Apache-2.0 OR BSD-3-Clause",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "imgui",
+      "name": "Dear ImGui",
+      "version": "1.92.5-docking",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected by the pinned Ghostty build dependency graph.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "jetbrains-mono",
+      "name": "JetBrains Mono",
+      "version": "2.304",
+      "inclusion": "embedded-binary",
+      "inclusionBasis": "Regular, variable, and variable italic font bytes were observed embedded in libghostty.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "OFL-1.1",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "font-notices-incomplete"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "libpng",
+      "name": "libpng",
+      "version": "1.6.43",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "Libpng",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": [
+        "zlib"
+      ]
+    },
+    {
+      "id": "libxev",
+      "name": "libxev",
+      "version": "0.0.0+34fa50878aec6e5fa8f532867001ab3c36fae23e",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected libxev module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "nerd-fonts-symbols-only",
+      "name": "Symbols Nerd Font",
+      "version": "3.4.0",
+      "inclusion": "embedded-binary",
+      "inclusionBasis": "SymbolsNerdFont-Regular bytes were observed embedded in libghostty.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "OFL-1.1",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "font-notices-incomplete"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "oniguruma",
+      "name": "Oniguruma",
+      "version": "6.9.9",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Archive is observed in the final link despite a generated terminal option disabling direct selection.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "BSD-2-Clause",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged",
+        "static-graph-review-incomplete"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "simdutf",
+      "name": "simdutf",
+      "version": "5.2.8",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "missing",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "simdutf-license-revision-missing"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "spirv-cross",
+      "name": "SPIRV-Cross",
+      "version": "13.1.1",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected wrapper archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged",
+        "mixed-license-file-mapping-unverified"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "stb-image",
+      "name": "stb image",
+      "version": "ghostty-1.3.1",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected single-header implementation.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT OR Unlicense",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "stb-notice-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "stb-image-resize",
+      "name": "stb image resize",
+      "version": "ghostty-1.3.1",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected single-header implementation.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT OR Unlicense",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "stb-notice-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "utfcpp",
+      "name": "utfcpp",
+      "version": "4.0.5",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "BSL-1.0",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "uucode-0.2",
+      "name": "uucode",
+      "version": "0.2.0",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected uucode module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "uucode-third-party-notices-missing"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "vaxis",
+      "name": "vaxis",
+      "version": "0.5.1+7dbb9fd3122e4ffad262dd7c151d80d863b68558",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected vaxis module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": [
+        "vaxis-uucode-0.1",
+        "vaxis-zigimg"
+      ]
+    },
+    {
+      "id": "vaxis-uucode-0.1",
+      "name": "vaxis transitive uucode",
+      "version": "0.1.0",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the vaxis-selected uucode 0.1 module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "static-graph-review-incomplete",
+        "uucode-third-party-notices-missing"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "vaxis-zigimg",
+      "name": "vaxis transitive zigimg",
+      "version": "0.1.0",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the vaxis-selected zigimg module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "static-graph-review-incomplete"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "wuffs",
+      "name": "Wuffs",
+      "version": "archive-122037b39d577ec2db3fd7b2130e7b69ef6cc1807d68607a7c232c958315d381b5cd",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the Wuffs implementation and resolved pixel fixtures.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "Apache-2.0 OR MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "z2d",
+      "name": "z2d",
+      "version": "0.10.0",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected z2d module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MPL-2.0",
+      "licenseEvidenceStatus": "missing",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "z2d-mpl-license-source"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "zf",
+      "name": "zf",
+      "version": "0.10.3+3c52637b7e937c5ae61fd679717da3e276765b23",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected zf module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "zig-compiler-rt",
+      "name": "Zig compiler runtime",
+      "version": "0.15.2",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The normalized isolated compilation closure observes compiler_rt sources as compiler inputs; separate binary inclusion is not asserted.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "zig-compiled-input-license-unpinned"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "zig-libcxx",
+      "name": "Zig libc++ material",
+      "version": "0.15.2",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The normalized isolated compilation closure observes libc++ headers as compiler inputs; libc++abi, libunwind, and separate binary inclusion are not asserted.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "Apache-2.0 WITH LLVM-exception",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "zig-compiled-input-license-unpinned"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "zig-objc",
+      "name": "zig-objc",
+      "version": "0.0.0+f356ed02833f0f1b8e84d50bed9e807bf7cdc0ae",
+      "inclusion": "compiled-input",
+      "inclusionBasis": "The isolated final compilation closure observes the selected zig-objc module sources.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "MIT",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "zig-toolchain",
+      "name": "Zig toolchain",
+      "version": "0.15.2",
+      "inclusion": "build-tool",
+      "inclusionBasis": "The pinned Zig archive and executable produce libghostty; packaged compiler runtime material is not inferred from the tool identity.",
+      "selectionEvidenceInputId": "zig-archive",
+      "licenseDeclared": "NOASSERTION",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "zig-compiled-input-license-unpinned"
+      ],
+      "dependsOnComponentIds": []
+    },
+    {
+      "id": "zlib",
+      "name": "zlib",
+      "version": "1.3.1",
+      "inclusion": "linked-static",
+      "inclusionBasis": "Selected archive observed in the pinned Ghostty link closure.",
+      "selectionEvidenceInputId": "ghostty-final-build-evidence",
+      "licenseDeclared": "Zlib",
+      "licenseEvidenceStatus": "not-packaged",
+      "licenseEvidenceInputIds": [],
+      "blockerIds": [
+        "license-set-not-packaged"
+      ],
+      "dependsOnComponentIds": []
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+if [ "${1-}" = "--sdk" ] && [ "${2-}" = "macosx" ] && [ "${3-}" = "--show-sdk-path" ]; then
+    if [ -n "${GHOSTSHELL_MACOS_SDK-}" ]; then
+        printf '%s\n' "$GHOSTSHELL_MACOS_SDK"
+        exit 0
+    fi
+fi
+
+exec /usr/bin/xcrun "$@"

@@ -1,0 +1,115 @@
+<UserControl
+    x:Class="GhostShell.App.Views.DiagnosticsExportView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    MinWidth="560">
+  <StackPanel Spacing="14">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel Spacing="3">
+        <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="Diagnostics bundle" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Create a bounded support archive after mandatory safety review." TextWrapping="Wrap" />
+      </StackPanel>
+      <Border Grid.Column="1" VerticalAlignment="Center" Classes="StatusPill" Classes.Warning="{Binding IsWarning}" IsVisible="{Binding HasStatus}">
+        <TextBlock Text="{Binding StatusLabel}" />
+      </Border>
+    </Grid>
+
+    <Border Classes="SettingsCard">
+      <StackPanel Margin="16" Spacing="12">
+        <TextBlock Classes="SectionHeading" Text="CONTENT AND REDACTION" />
+        <StackPanel Spacing="4">
+          <TextBlock FontWeight="SemiBold" Text="Diagnostic detail" />
+          <ComboBox
+              ItemsSource="{Binding RedactionOptions}"
+              SelectedItem="{Binding SelectedRedactionOption, Mode=TwoWay}"
+              IsEnabled="{Binding CanChooseRedactionLevel}"
+              AutomationProperties.Name="Diagnostics detail and redaction level">
+            <ComboBox.ItemTemplate>
+              <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedRedactionDescription}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Classes="NoticeCard">
+          <Grid Margin="12" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" />
+            <StackPanel Grid.Column="1" Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Secret-safe by construction" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding RedactionAvailabilityMessage}" TextWrapping="Wrap" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Terminal contents, commands, credentials, environment values, and secret material are never eligible artifacts." TextWrapping="Wrap" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
+          <Button
+              MinWidth="138"
+              Classes="PrimaryButton"
+              Click="OnExportClick"
+              Content="Create bundle…"
+              IsEnabled="{Binding CanExport}"
+              AutomationProperties.Name="Create diagnostics bundle" />
+          <Button
+              Grid.Column="1"
+              MinWidth="82"
+              Click="OnCancelClick"
+              Content="Cancel"
+              IsEnabled="{Binding CanCancel}"
+              IsVisible="{Binding CanCancel}"
+              AutomationProperties.Name="Cancel diagnostics export" />
+          <ProgressBar
+              Grid.Column="2"
+              MinWidth="120"
+              VerticalAlignment="Center"
+              IsIndeterminate="True"
+              IsVisible="{Binding IsExporting}"
+              AutomationProperties.Name="Diagnostics export progress" />
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <Border Classes="NoticeCard" IsVisible="{Binding HasStatus}">
+      <Grid Margin="13" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+        <icons:SymbolIcon Symbol="Info" FontSize="16" Foreground="{DynamicResource ShellAccentBrush}" />
+        <TextBlock
+            Grid.Column="1"
+            VerticalAlignment="Center"
+            Text="{Binding StatusMessage}"
+            TextWrapping="Wrap"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="{Binding StatusAutomationName}" />
+      </Grid>
+    </Border>
+
+    <Border Classes="SettingsCard" IsVisible="{Binding HasArtifact}">
+      <Grid Margin="16" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <StackPanel Spacing="3">
+          <TextBlock Classes="SectionHeading" Text="LAST EXPORTED BUNDLE" />
+          <TextBlock FontWeight="SemiBold" Text="{Binding ArtifactDisplayName}" TextWrapping="Wrap" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ReceiptSummary}" />
+          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DigestSummary}" TextWrapping="Wrap" />
+        </StackPanel>
+        <Button
+            Grid.Column="1"
+            MinWidth="82"
+            VerticalAlignment="Center"
+            Classes="SecondaryButton"
+            Click="OnOpenClick"
+            Content="Open"
+            IsEnabled="{Binding CanOpenArtifact}"
+            AutomationProperties.Name="Open last diagnostics bundle" />
+        <Button
+            Grid.Column="2"
+            MinWidth="112"
+            VerticalAlignment="Center"
+            Classes="SecondaryButton"
+            Click="OnRevealClick"
+            Content="Show in folder"
+            IsEnabled="{Binding CanRevealArtifact}"
+            AutomationProperties.Name="Reveal last diagnostics bundle in file manager" />
+      </Grid>
+    </Border>
+  </StackPanel>
+</UserControl>

@@ -1,0 +1,104 @@
+<UserControl
+    x:Class="GhostShell.App.Views.RecoveryDataControlView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:icons="using:FluentIcons.Avalonia">
+  <Border Classes="SettingsCard">
+    <StackPanel Margin="16" Spacing="12">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <StackPanel Spacing="3">
+          <TextBlock FontWeight="SemiBold" Text="Crash recovery data" />
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="Review bounded metadata for snapshots left by previous runs."
+              TextWrapping="Wrap" />
+        </StackPanel>
+        <Button
+            x:Name="RefreshRecoveryDataButton"
+            Grid.Column="1"
+            Classes="SecondaryButton"
+            Click="OnRefreshClick"
+            Content="Refresh"
+            IsEnabled="{Binding CanRefresh}"
+            AutomationProperties.Name="Refresh crash recovery data" />
+        <Button
+            Grid.Column="2"
+            Classes="DestructiveButton"
+            Click="OnClearAllClick"
+            Content="Clear all previous"
+            IsEnabled="{Binding CanClearAll}"
+            AutomationProperties.Name="Clear all previous crash recovery data" />
+      </Grid>
+
+      <Border Classes="NoticeCard">
+        <Grid Margin="12" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+          <icons:SymbolIcon Symbol="Shield" FontSize="16" />
+          <TextBlock
+              Grid.Column="1"
+              Classes="Muted"
+              Text="Only previous-run metadata is listed. The current run’s crash snapshot is hidden and protected. Snapshot payloads are never loaded into this screen."
+              TextWrapping="Wrap" />
+        </Grid>
+      </Border>
+
+      <TextBlock
+          Classes="Muted Monospace"
+          FontSize="{DynamicResource ShellFontSize9}"
+          Text="{Binding StatusMessage}"
+          TextWrapping="Wrap"
+          AutomationProperties.LiveSetting="Polite"
+          AutomationProperties.Name="{Binding StatusAutomationName}" />
+
+      <Border Classes="NoticeCard" IsVisible="{Binding HasNoRuns}">
+        <StackPanel Margin="14" HorizontalAlignment="Center" Spacing="5">
+          <TextBlock FontWeight="SemiBold" Text="No previous recovery data" />
+          <TextBlock
+              Classes="Muted"
+              Text="The protected snapshot for the current run is intentionally not shown."
+              TextAlignment="Center"
+              TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="NoticeCard" IsVisible="{Binding HasError}">
+        <StackPanel Margin="14" Spacing="5">
+          <TextBlock FontWeight="SemiBold" Text="Recovery metadata unavailable" />
+          <TextBlock
+              Classes="Muted"
+              Text="The current recovery inventory could not be loaded. No further data will be removed automatically; use Refresh to try again."
+              TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <ItemsControl
+          ItemsSource="{Binding Runs}"
+          IsEnabled="{Binding CanClearRuns}"
+          IsVisible="{Binding HasRuns}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Margin="0,0,0,8" Classes="NoticeCard">
+              <Grid Margin="12" ColumnDefinitions="*,Auto" ColumnSpacing="14">
+                <StackPanel Spacing="4">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                  <WrapPanel Orientation="Horizontal">
+                    <TextBlock Margin="0,0,14,0" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SnapshotLabel}" />
+                    <TextBlock Margin="0,0,14,0" Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SizeLabel}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding UpdatedLabel}" />
+                  </WrapPanel>
+                </StackPanel>
+                <Button
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Classes="DestructiveButton"
+                    Click="OnClearRunClick"
+                    Content="Clear"
+                    AutomationProperties.Name="{Binding ClearAutomationName}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </Border>
+</UserControl>

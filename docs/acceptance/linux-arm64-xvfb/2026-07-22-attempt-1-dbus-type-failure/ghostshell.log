@@ -1,0 +1,11 @@
+Unhandled exception. System.TypeLoadException: Could not load type 'Tmds.DBus.Protocol.Connection' from assembly 'Tmds.DBus.Protocol, Version=0.94.2.0, Culture=neutral, PublicKeyToken=9abd76e9812c1bca'.
+   at Avalonia.FreeDesktop.DBusIme.X11DBusImeHelper.DetectAndRegister()
+   at Avalonia.X11.AvaloniaX11Platform.Initialize(X11PlatformOptions options)
+   at Avalonia.AvaloniaX11PlatformExtensions.<>c.<UseX11>b__0_0()
+   at Avalonia.AppBuilder.SetupUnsafe()
+   at Avalonia.AppBuilder.Setup()
+   at Avalonia.AppBuilder.SetupWithLifetime(IApplicationLifetime lifetime)
+   at Avalonia.ClassicDesktopStyleApplicationLifetimeExtensions.StartWithClassicDesktopLifetime(AppBuilder builder, String[] args, ShutdownMode shutdownMode)
+   at GhostShell.Desktop.Program.Main(String[] args) in /work/source/src/GhostShell.Desktop/Program.cs:line 43
+   at GhostShell.Desktop.Program.Main(String[] args) in /work/source/src/GhostShell.Desktop/Program.cs:line 52
+   at GhostShell.Desktop.Program.<Main>(String[] args)

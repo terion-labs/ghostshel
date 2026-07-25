@@ -1,0 +1,160 @@
+using GhostShell.Application;
+
+namespace GhostShell.Monitoring.Tests;
+
+public sealed class ProcessResourceSamplerTests
+{
+    private static readonly DateTimeOffset FirstStart =
+        new(2026, 1, 2, 3, 4, 5, TimeSpan.Zero);
+
+    [Fact]
+    public async Task FirstSampleDoesNotInventCpuPercentages()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(41, "ghostshell", 128, TimeSpan.FromSeconds(2), FirstStart, true)));
+        var sampler = new ProcessResourceSampler(source, clock);
+
+        var result = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        var sample = Assert.IsType<ProcessResourceSample>(result.Value);
+        Assert.Null(Assert.Single(sample.Processes).CpuPercent);
+        Assert.Null(sample.Statistics.ObservedCpuPercent);
+        Assert.Null(sample.Statistics.GhostShellCpuPercent);
+        Assert.Equal(128, sample.Statistics.ObservedWorkingSetBytes);
+        Assert.Equal(128, sample.Statistics.GhostShellWorkingSetBytes);
+    }
+
+    [Fact]
+    public async Task SecondSampleUsesElapsedAndProcessorTimeDeltas()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(41, "ghostshell", 128, TimeSpan.FromSeconds(2), FirstStart, true)));
+        source.Enqueue(Capture(
+            Process(41, "ghostshell", 256, TimeSpan.FromSeconds(2.5), FirstStart, true)));
+        var sampler = new ProcessResourceSampler(source, clock);
+
+        _ = await sampler.CaptureAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var result = await sampler.CaptureAsync(CancellationToken.None);
+
+        var expected = 50d / Math.Max(1, Environment.ProcessorCount);
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        var sample = Assert.IsType<ProcessResourceSample>(result.Value);
+        Assert.Equal(expected, Assert.Single(sample.Processes).CpuPercent!.Value, 10);
+        Assert.Equal(expected, sample.Statistics.ObservedCpuPercent!.Value, 10);
+        Assert.Equal(expected, sample.Statistics.GhostShellCpuPercent!.Value, 10);
+    }
+
+    [Fact]
+    public async Task ReusedProcessIdDoesNotInheritPriorCpuTime()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(41, "old", 128, TimeSpan.FromSeconds(2), FirstStart)));
+        source.Enqueue(Capture(
+            Process(
+                41,
+                "new",
+                256,
+                TimeSpan.FromSeconds(200),
+                FirstStart.AddMinutes(1))));
+        var sampler = new ProcessResourceSampler(source, clock);
+
+        _ = await sampler.CaptureAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var result = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Null(Assert.Single(result.Value!.Processes).CpuPercent);
+        Assert.Null(result.Value.Statistics.ObservedCpuPercent);
+    }
+
+    [Fact]
+    public async Task UnknownStartTimeCannotCreateOrPreserveACpuIdentity()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(41, "known", 128, TimeSpan.FromSeconds(2), FirstStart)));
+        source.Enqueue(Capture(
+            Process(41, "unknown", 128, TimeSpan.FromSeconds(100), null)));
+        source.Enqueue(Capture(
+            Process(41, "known-again", 128, TimeSpan.FromSeconds(101), FirstStart)));
+        var sampler = new ProcessResourceSampler(source, clock);
+
+        _ = await sampler.CaptureAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var unknown = await sampler.CaptureAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var knownAgain = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.Null(Assert.Single(unknown.Value!.Processes).CpuPercent);
+        Assert.Null(Assert.Single(knownAgain.Value!.Processes).CpuPercent);
+        Assert.Null(knownAgain.Value.Statistics.ObservedCpuPercent);
+    }
+
+    [Fact]
+    public async Task CaptureFailureDoesNotExposeNativeExceptionText()
+    {
+        const string secret = "secret --password hunter2";
+        var source = new SequenceProcessSnapshotSource();
+        source.EnqueueFailure(new InvalidOperationException(secret));
+        var sampler = new ProcessResourceSampler(
+            source,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+
+        var result = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MonitorPanelErrorCode.CaptureFailed, result.Error!.Code);
+        Assert.Equal("monitor_capture_failed", result.Error.StableCode);
+        Assert.True(result.Error.Retryable);
+        Assert.DoesNotContain(secret, result.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PreCancelledCaptureReturnsAStableCancelledFailure()
+    {
+        var source = new SequenceProcessSnapshotSource();
+        var sampler = new ProcessResourceSampler(
+            source,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await sampler.CaptureAsync(cancellation.Token);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MonitorPanelErrorCode.Cancelled, result.Error!.Code);
+        Assert.Equal("monitor_cancelled", result.Error.StableCode);
+        Assert.Equal(0, source.CaptureCount);
+    }
+
+    private static RawProcessCapture Capture(params RawProcessObservation[] processes) =>
+        new(
+            TimeSpan.FromHours(3),
+            processes.Length,
+            Array.AsReadOnly(processes),
+            false);
+
+    private static RawProcessObservation Process(
+        int processId,
+        string name,
+        long? workingSetBytes,
+        TimeSpan? processorTime,
+        DateTimeOffset? startedAtUtc,
+        bool isGhostShell = false) =>
+        new(
+            processId,
+            name,
+            workingSetBytes,
+            processorTime,
+            startedAtUtc,
+            isGhostShell);
+}

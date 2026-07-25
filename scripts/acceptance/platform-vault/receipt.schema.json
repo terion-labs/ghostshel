@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostshell.local/schemas/platform-vault-acceptance-receipt-v1.json",
+  "title": "GhostSHELL platform vault acceptance receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "reason",
+    "startedAtUtc",
+    "completedAtUtc",
+    "durationMilliseconds",
+    "host",
+    "dotnet",
+    "provider",
+    "test",
+    "cleanup"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+    "reason": {
+      "enum": [
+        "accepted",
+        "provider_prerequisite_missing",
+        "unsupported_platform",
+        "dotnet_unavailable",
+        "test_failed",
+        "test_skipped",
+        "test_execution_failed",
+        "cleanup_unconfirmed",
+        "runner_failed"
+      ]
+    },
+    "startedAtUtc": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "completedAtUtc": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "durationMilliseconds": { "type": "integer", "minimum": 0 },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["osFamily", "osDescription", "architecture"],
+      "properties": {
+        "osFamily": { "enum": ["macOS", "Windows", "Linux", "Unsupported"] },
+        "osDescription": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "architecture": { "enum": ["x64", "arm64", "x86", "arm", "unknown"] }
+      }
+    },
+    "dotnet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sdkVersion"],
+      "properties": {
+        "sdkVersion": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+              "maxLength": 64
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "persistence"],
+      "properties": {
+        "adapter": {
+          "enum": ["macos-keychain", "windows-dpapi", "linux-secret-service", "unavailable"]
+        },
+        "persistence": { "enum": ["os-protected-persistent", "none"] }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["testId", "outcome", "exitCode", "durationMilliseconds"],
+      "properties": {
+        "testId": {
+          "const": "GhostShell.Infrastructure.Tests.PlatformSecretVaultIntegrationTests.Native_vault_round_trips_only_when_explicitly_enabled"
+        },
+        "outcome": { "enum": ["PASSED", "FAILED", "SKIPPED", "NOT_RUN"] },
+        "exitCode": { "type": ["integer", "null"] },
+        "durationMilliseconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "recovery"],
+      "properties": {
+        "state": { "enum": ["CONFIRMED", "NOT_STARTED", "RECOVERY_REQUIRED"] },
+        "recovery": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["serviceName", "secretReference", "metadataDirectory"],
+              "properties": {
+                "serviceName": {
+                  "type": "string",
+                  "pattern": "^app\\.ghostshell\\.integration-tests\\.[0-9a-f]{32}$",
+                  "maxLength": 128
+                },
+                "secretReference": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{32}$"
+                },
+                "metadataDirectory": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?:[A-Za-z]:)?[\\\\/](?:.*[\\\\/])?ghostshell-platform-vault-[0-9a-f]{32}[\\\\/]metadata$"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "PASS" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "reason": { "const": "accepted" },
+          "test": {
+            "properties": { "outcome": { "const": "PASSED" }, "exitCode": { "const": 0 } }
+          },
+          "cleanup": {
+            "properties": { "state": { "const": "CONFIRMED" }, "recovery": { "type": "null" } }
+          },
+          "host": {
+            "properties": { "osFamily": { "enum": ["macOS", "Windows", "Linux"] } }
+          },
+          "provider": {
+            "properties": {
+              "adapter": { "enum": ["macos-keychain", "windows-dpapi", "linux-secret-service"] },
+              "persistence": { "const": "os-protected-persistent" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "cleanup": { "properties": { "state": { "const": "RECOVERY_REQUIRED" } } } },
+        "required": ["cleanup"]
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "FAIL" },
+          "cleanup": { "properties": { "recovery": { "type": "object" } } }
+        }
+      }
+    }
+  ]
+}

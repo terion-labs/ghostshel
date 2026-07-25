@@ -1,0 +1,348 @@
+using GhostShell.Core;
+
+namespace GhostShell.Application;
+
+public interface ISessionHostClient
+{
+    ValueTask<HostResult<HostHello>> NegotiateAsync(
+        ClientHello request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<SessionSnapshot>> EnsureTerminalSessionAsync(
+        EnsureTerminalSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<SessionSnapshot>> EnsureBrowserSessionAsync(
+        EnsureBrowserSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<SessionSnapshot>("Browser sessions are not implemented by this client.");
+
+    ValueTask<HostResult<SessionSnapshot>> EnsureFilePanelSessionAsync(
+        EnsureFilePanelSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<SessionSnapshot>("File-panel sessions are not implemented by this client.");
+
+    ValueTask<HostResult<SessionSnapshot>> EnsureStatisticsSessionAsync(
+        EnsureStatisticsSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<SessionSnapshot>("Statistics sessions are not implemented by this client.");
+
+    ValueTask<HostResult<SessionSnapshot>> EnsureProcessMonitorSessionAsync(
+        EnsureProcessMonitorSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<SessionSnapshot>("Process-monitor sessions are not implemented by this client.");
+
+    ValueTask<HostResult<WorkspaceGraphSnapshot>> RegisterWorkspaceGraphAsync(
+        RegisterWorkspaceGraphRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<WorkspaceGraphSnapshot>("Workspace graph registration is not implemented by this client.");
+
+    ValueTask<HostResult<Unit>> UnregisterWorkspaceGraphAsync(
+        UnregisterWorkspaceGraphRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<Unit>("Workspace graph removal is not implemented by this client.");
+
+    ValueTask<HostResult<WorkspaceGraphSnapshot>> GetWorkspaceGraphAsync(
+        WorkspaceInstanceId workspaceId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<WorkspaceGraphSnapshot>("Workspace graph queries are not implemented by this client.");
+
+    ValueTask<HostResult<AgentContextSnapshot>> InspectAgentContextAsync(
+        AgentContextRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<AgentContextSnapshot>("Agent context inspection is not implemented by this client.");
+
+    ValueTask<HostResult<WorkspaceGraphSnapshot>> ActivateWorkspaceTabAsync(
+        ActivateWorkspaceTabRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<WorkspaceGraphSnapshot>("Workspace tab activation is not implemented by this client.");
+
+    ValueTask<HostResult<WorkspaceGraphSnapshot>> ActivateWorkspacePanelAsync(
+        ActivateWorkspacePanelRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<WorkspaceGraphSnapshot>("Workspace panel activation is not implemented by this client.");
+
+    IAsyncEnumerable<WorkspaceGraphStreamItem> WatchWorkspaceGraphAsync(
+        WatchWorkspaceGraphRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        EmptyWorkspaceGraphStream();
+
+    ValueTask<HostResult<AttachmentResult>> AttachAsync(
+        AttachSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> AttachTerminalRendererAsync(
+        AttachTerminalRendererRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> AttachBrowserRendererAsync(
+        AttachBrowserRendererRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<Unit>("Browser-renderer attachment is not implemented by this client.");
+
+    ValueTask<HostResult<Unit>> DetachAsync(
+        DetachSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<SessionSnapshot>> GetSnapshotAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    IAsyncEnumerable<SessionStreamItem> WatchAsync(
+        WatchSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<InputLeaseDecision>> AcquireInputLeaseAsync(
+        AcquireInputLeaseRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> ReleaseInputLeaseAsync(
+        ReleaseInputLeaseRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> FocusTerminalAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> ResizeTerminalAsync(
+        TerminalResizeRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> WriteTerminalAsync(
+        TerminalWriteRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> SendTerminalKeyAsync(
+        TerminalKeyRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> EnterTerminalAsync(
+        TerminalEnterRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<Unit>("Explicit terminal Enter is not implemented by this client.");
+
+    ValueTask<HostResult<Unit>> InterruptTerminalAsync(
+        TerminalInterruptRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<Unit>("Terminal interrupt is not implemented by this client.");
+
+    ValueTask<HostResult<Unit>> SendTerminalMouseAsync(
+        TerminalMouseRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> ScrollTerminalViewportAsync(
+        TerminalViewportScrollRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> ClearTerminalScrollbackAsync(
+        TerminalClearScrollbackRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<Unit>("Clearing terminal scrollback is not implemented by this client.");
+
+    ValueTask<HostResult<TerminalFindResult>> FindTerminalAsync(
+        TerminalFindRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<TerminalFindResult>("Finding terminal output is not implemented by this client.");
+
+    ValueTask<HostResult<Unit>> UpdateTerminalSelectionAsync(
+        TerminalSelectionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<TerminalSelectionText>> ReadTerminalSelectionAsync(
+        TerminalSelectionReadRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<TerminalPasteResult>> PasteTerminalAsync(
+        TerminalPasteRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<TerminalScreenSnapshot>> ReadTerminalScreenAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<TerminalWaitOutcome>> WaitForTerminalTextAsync(
+        TerminalWaitForTextRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<TerminalWaitOutcome>("Terminal text waits are not implemented by this client.");
+
+    ValueTask<HostResult<TerminalWaitOutcome>> WaitForTerminalChangeAsync(
+        TerminalWaitForChangeRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<TerminalWaitOutcome>("Terminal change waits are not implemented by this client.");
+
+    ValueTask<HostResult<TerminalWaitOutcome>> WaitForTerminalStableAsync(
+        TerminalWaitForStableRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<TerminalWaitOutcome>("Terminal stability waits are not implemented by this client.");
+
+    ValueTask<HostResult<BrowserResult<BrowserSessionState>>> ReadBrowserStateAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<BrowserResult<BrowserSessionState>>(
+            "Browser state is not implemented by this client.");
+
+    ValueTask<HostResult<BrowserResult<BrowserSessionState>>> NavigateBrowserAsync(
+        BrowserNavigateRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<BrowserResult<BrowserSessionState>>(
+            "Browser navigation is not implemented by this client.");
+
+    ValueTask<HostResult<BrowserResult<BrowserSessionState>>> GoBackBrowserAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<BrowserResult<BrowserSessionState>>(
+            "Browser back navigation is not implemented by this client.");
+
+    ValueTask<HostResult<BrowserResult<BrowserSessionState>>> GoForwardBrowserAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<BrowserResult<BrowserSessionState>>(
+            "Browser forward navigation is not implemented by this client.");
+
+    ValueTask<HostResult<BrowserResult<BrowserSessionState>>> ReloadBrowserAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<BrowserResult<BrowserSessionState>>(
+            "Browser reload is not implemented by this client.");
+
+    ValueTask<HostResult<BrowserResult<BrowserSessionState>>> StopBrowserAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<BrowserResult<BrowserSessionState>>(
+            "Browser stop is not implemented by this client.");
+
+    ValueTask<HostResult<MonitorPanelResult<SystemStatisticsSnapshot>>> ReadStatisticsAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<MonitorPanelResult<SystemStatisticsSnapshot>>(
+            "Statistics capture is not implemented by this client.");
+
+    ValueTask<HostResult<MonitorPanelResult<ProcessMonitorSnapshot>>> ListProcessesAsync(
+        ProcessMonitorHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<MonitorPanelResult<ProcessMonitorSnapshot>>(
+            "Process monitoring is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelPage>>> ListFilesAsync(
+        FilePanelListHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelPage>>("File listing is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelEntry>>> StatFileAsync(
+        FilePanelStatHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelEntry>>("File stat is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelPreview>>> PreviewFileAsync(
+        FilePanelPreviewHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelPreview>>("File preview is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelEntry>>> CreateFileDirectoryAsync(
+        FilePanelCreateDirectoryHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelEntry>>("Directory creation is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelEntry>>> RenameFileAsync(
+        FilePanelRenameHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelEntry>>("File rename is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelDeleteReceipt>>> DeleteFileAsync(
+        FilePanelDeleteHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelDeleteReceipt>>("File deletion is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelTransferSnapshot>>> EnqueueFileTransferAsync(
+        FilePanelTransferEnqueueHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelTransferSnapshot>>(
+            "File-transfer enqueue is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<Unit>>> CancelFileTransferAsync(
+        FilePanelTransferCancelHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<Unit>>("File-transfer cancellation is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelTransferSnapshot>>> RetryFileTransferAsync(
+        FilePanelTransferRetryHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelTransferSnapshot>>(
+            "File-transfer retry is not implemented by this client.");
+
+    ValueTask<HostResult<CloseScopeResult>> CloseAsync(
+        CloseScopeRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> DisconnectClientAsync(
+        ClientId clientId,
+        OperationContext context,
+        CancellationToken cancellationToken);
+
+    private static ValueTask<HostResult<T>> Unsupported<T>(string message) =>
+        ValueTask.FromResult(HostResult<T>.Fail(
+            HostError.Create(HostErrorCode.CapabilityNotSupported, message),
+            0));
+
+    private static async IAsyncEnumerable<WorkspaceGraphStreamItem> EmptyWorkspaceGraphStream()
+    {
+        await Task.CompletedTask.ConfigureAwait(false);
+        yield break;
+    }
+}

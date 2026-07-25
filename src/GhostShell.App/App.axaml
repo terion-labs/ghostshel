@@ -1,0 +1,117 @@
+<Application
+    x:Class="GhostShell.App.App"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Name="GhostSHELL"
+    RequestedThemeVariant="Default">
+  <NativeMenu.Menu>
+    <NativeMenu>
+      <NativeMenuItem
+          Header="Command Palette…"
+          Gesture="Meta+K"
+          Click="OnCommandPaletteMenuClick" />
+      <NativeMenuItem
+          Header="Settings…"
+          Gesture="Meta+OemComma"
+          Click="OnSettingsMenuClick" />
+      <NativeMenuItem
+          Header="Launcher"
+          Gesture="Meta+D1"
+          Click="OnLauncherMenuClick" />
+      <NativeMenuItem
+          Header="Quick Terminal"
+          Click="OnQuickTerminalMenuClick" />
+      <NativeMenuItemSeparator />
+      <NativeMenuItem
+          Header="New Terminal Tab"
+          Gesture="Meta+T"
+          Click="OnNewTerminalMenuClick" />
+      <NativeMenuItem
+          Header="Add Panel…"
+          Gesture="Meta+Shift+D"
+          Click="OnAddPanelMenuClick" />
+      <NativeMenuItem
+          Header="Layout Designer…"
+          Gesture="Meta+Shift+L"
+          Click="OnLayoutDesignerMenuClick" />
+      <NativeMenuItemSeparator />
+      <NativeMenuItem
+          Header="Previous Tab"
+          Gesture="Meta+Shift+OemOpenBrackets"
+          Click="OnPreviousTabMenuClick" />
+      <NativeMenuItem
+          Header="Next Tab"
+          Gesture="Meta+Shift+OemCloseBrackets"
+          Click="OnNextTabMenuClick" />
+      <NativeMenuItem
+          Header="Close Panel"
+          Gesture="Meta+Shift+W"
+          Click="OnClosePanelMenuClick" />
+      <NativeMenuItem
+          Header="Close Tab"
+          Gesture="Meta+W"
+          Click="OnCloseTabMenuClick" />
+      <NativeMenuItemSeparator />
+      <NativeMenuItem
+          Header="Toggle Agent Panel"
+          Gesture="Meta+Shift+A"
+          Click="OnToggleAgentMenuClick" />
+    </NativeMenu>
+  </NativeMenu.Menu>
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#111111" />
+          <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#18181B" />
+          <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#1A1A1A" />
+          <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="ShellBorderBrush" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="ShellTextBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ShellMutedBrush" Color="#B8B9B6" />
+          <SolidColorBrush x:Key="ShellAccentBrush" Color="#FF8400" />
+          <SolidColorBrush x:Key="ShellAccentForegroundBrush" Color="#111111" />
+          <SolidColorBrush x:Key="ShellAccentSoftBrush" Color="#291C0F" />
+          <SolidColorBrush x:Key="ShellDangerBrush" Color="#FF5C33" />
+          <SolidColorBrush x:Key="ShellDangerForegroundBrush" Color="#111111" />
+          <SolidColorBrush x:Key="ShellDangerSoftBrush" Color="#3A1715" />
+          <SolidColorBrush x:Key="ShellDangerBorderBrush" Color="#A84C45" />
+          <SolidColorBrush x:Key="ShellSuccessBrush" Color="#77D797" />
+          <SolidColorBrush x:Key="ShellSuccessSoftBrush" Color="#173222" />
+          <SolidColorBrush x:Key="ShellSuccessBorderBrush" Color="#2E6743" />
+          <SolidColorBrush x:Key="ShellWarningBrush" Color="#E1A45F" />
+          <SolidColorBrush x:Key="ShellWarningSoftBrush" Color="#32241A" />
+          <SolidColorBrush x:Key="ShellWarningBorderBrush" Color="#75502F" />
+          <SolidColorBrush x:Key="ShellNoticeBorderBrush" Color="#70492E" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F2F3F0" />
+          <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#E7E8E5" />
+          <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#CBCCC9" />
+          <SolidColorBrush x:Key="ShellBorderBrush" Color="#CBCCC9" />
+          <SolidColorBrush x:Key="ShellTextBrush" Color="#111111" />
+          <SolidColorBrush x:Key="ShellMutedBrush" Color="#666666" />
+          <SolidColorBrush x:Key="ShellAccentBrush" Color="#FF8400" />
+          <SolidColorBrush x:Key="ShellAccentForegroundBrush" Color="#111111" />
+          <SolidColorBrush x:Key="ShellAccentSoftBrush" Color="#E9E3D8" />
+          <SolidColorBrush x:Key="ShellDangerBrush" Color="#D93C15" />
+          <SolidColorBrush x:Key="ShellDangerForegroundBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ShellDangerSoftBrush" Color="#FDE8E5" />
+          <SolidColorBrush x:Key="ShellDangerBorderBrush" Color="#A73528" />
+          <SolidColorBrush x:Key="ShellSuccessBrush" Color="#147A3F" />
+          <SolidColorBrush x:Key="ShellSuccessSoftBrush" Color="#E2F5E8" />
+          <SolidColorBrush x:Key="ShellSuccessBorderBrush" Color="#41935E" />
+          <SolidColorBrush x:Key="ShellWarningBrush" Color="#8A4B08" />
+          <SolidColorBrush x:Key="ShellWarningSoftBrush" Color="#FFF0D6" />
+          <SolidColorBrush x:Key="ShellWarningBorderBrush" Color="#B46B20" />
+          <SolidColorBrush x:Key="ShellNoticeBorderBrush" Color="#A06A36" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellTheme.axaml" />
+  </Application.Styles>
+</Application>

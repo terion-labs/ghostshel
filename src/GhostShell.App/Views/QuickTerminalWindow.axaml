@@ -1,0 +1,119 @@
+<Window
+    x:Class="GhostShell.App.Views.QuickTerminalWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    Title="GhostSHELL Quick Terminal"
+    Width="1200"
+    Height="520"
+    MinWidth="640"
+    MinHeight="320"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowDecorations="None"
+    Topmost="True"
+    WindowStartupLocation="Manual">
+  <Border
+      Background="{DynamicResource ShellBackgroundBrush}"
+      BorderBrush="{DynamicResource ShellAccentBrush}"
+      BorderThickness="0,0,0,1"
+      ClipToBounds="True"
+      CornerRadius="0,0,20,20">
+    <Grid RowDefinitions="*,36">
+      <Grid>
+        <controls:TerminalPresentationHost
+            x:Name="QuickTerminalHost"
+            Margin="1,1,1,0"
+            ClientId="{Binding ClientId}"
+            IsVisible="{Binding IsTerminalAvailable}"
+            SessionClient="{Binding SessionClient}"
+            SessionRequest="{Binding TerminalRequest}" />
+
+        <Border
+            Padding="32"
+            Background="{DynamicResource ShellBackgroundBrush}"
+            IsVisible="{Binding ShowTerminalPlaceholder}">
+          <StackPanel
+              MaxWidth="520"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Spacing="10">
+            <icons:SymbolIcon
+                HorizontalAlignment="Center"
+                Symbol="Warning"
+                FontSize="28"
+                Foreground="#D79B57" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                FontSize="{DynamicResource ShellFontSize15}"
+                FontWeight="SemiBold"
+                Text="{Binding TerminalPlaceholderTitle}" />
+            <TextBlock
+                Classes="Muted"
+                Text="{Binding TerminalUnavailableMessage}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Border
+          Grid.Row="1"
+          Background="{DynamicResource ShellSurfaceBrush}"
+          BorderBrush="{DynamicResource ShellBorderBrush}"
+          BorderThickness="0,1,0,0">
+        <Grid Margin="12,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <icons:SymbolIcon
+                Symbol="WindowConsole"
+                FontSize="14"
+                Foreground="{DynamicResource ShellAccentBrush}" />
+            <TextBlock
+                Classes="Monospace"
+                FontSize="{DynamicResource ShellFontSize10}"
+                FontWeight="SemiBold"
+                Text="QUICK TERMINAL" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ConnectionName}" />
+          </StackPanel>
+
+          <TextBlock
+              Grid.Column="1"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Classes="Monospace Muted"
+              FontSize="{DynamicResource ShellFontSize9}"
+              Text="{Binding ProfileName, StringFormat={}PROFILE · {0}}" />
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Ellipse Width="7" Height="7" Fill="{Binding ShortcutStatusBrush}" />
+            <TextBlock
+                Classes="Monospace Muted"
+                FontSize="{DynamicResource ShellFontSize9}"
+                Text="{Binding ShortcutStatus}"
+                ToolTip.Tip="{Binding ShortcutDetail}" />
+            <TextBlock
+                Classes="Monospace Muted"
+                FontSize="{DynamicResource ShellFontSize9}"
+                Text="{Binding EscapeStatus}"
+                ToolTip.Tip="{Binding EscapeDetail}" />
+            <Button
+                Classes="IconButton"
+                Click="OnSettingsClick"
+                ToolTip.Tip="Quick Terminal settings"
+                AutomationProperties.Name="Open Quick Terminal settings">
+              <icons:SymbolIcon Symbol="Settings" FontSize="12" />
+            </Button>
+            <Button
+                Classes="IconButton"
+                Click="OnHideClick"
+                ToolTip.Tip="Hide Quick Terminal"
+                AutomationProperties.Name="Hide Quick Terminal">
+              <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\GhostShell.Agent.Providers\GhostShell.Agent.Providers.csproj" />
+    <ProjectReference Include="..\GhostShell.Agent.Runtime\GhostShell.Agent.Runtime.csproj" />
+    <ProjectReference Include="..\GhostShell.App\GhostShell.App.csproj" />
+    <ProjectReference Include="..\GhostShell.Application\GhostShell.Application.csproj" />
+    <ProjectReference Include="..\GhostShell.Browser\GhostShell.Browser.csproj" />
+    <ProjectReference Include="..\GhostShell.Files\GhostShell.Files.csproj" />
+    <ProjectReference Include="..\GhostShell.Infrastructure\GhostShell.Infrastructure.csproj" />
+    <ProjectReference Include="..\GhostShell.Mcp\GhostShell.Mcp.csproj" />
+    <ProjectReference Include="..\GhostShell.Monitoring\GhostShell.Monitoring.csproj" />
+    <ProjectReference Include="..\GhostShell.SessionHost\GhostShell.SessionHost.csproj" />
+    <ProjectReference Include="..\GhostShell.Terminal\GhostShell.Terminal.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
+    <PackageReference Include="Tmds.DBus.SourceGenerator" Version="0.0.22" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="DBusXml/org.freedesktop.portal.Settings.xml" DBusGeneratorMode="Proxy" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="../../licenses/THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <GhostShellWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">true</GhostShellWindowsBuild>
+    <GhostShellWindowsBuild Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">true</GhostShellWindowsBuild>
+    <TargetFramework Condition="'$(GhostShellWindowsBuild)' == 'true'">net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework Condition="'$(GhostShellWindowsBuild)' != 'true'">net10.0</TargetFramework>
+    <SupportedOSPlatformVersion Condition="'$(GhostShellWindowsBuild)' == 'true'">10.0.19041.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting Condition="'$(GhostShellWindowsBuild)' == 'true'">true</EnableWindowsTargeting>
+    <AssemblyName>GhostShell</AssemblyName>
+    <GhostShellEffectiveRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</GhostShellEffectiveRuntimeIdentifier>
+    <GhostShellEffectiveRuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</GhostShellEffectiveRuntimeIdentifier>
+    <GhostShellRuntimePackVersion>10.0.10</GhostShellRuntimePackVersion>
+    <GhostShellRuntimePackDirectory>$(NuGetPackageRoot)microsoft.netcore.app.runtime.$(GhostShellEffectiveRuntimeIdentifier)/$(GhostShellRuntimePackVersion)</GhostShellRuntimePackDirectory>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(GhostShellRuntimePackDirectory)/LICENSE.TXT') and Exists('$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT')">
+    <Content Include="$(GhostShellRuntimePackDirectory)/LICENSE.TXT" Link="DOTNET-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT" Link="DOTNET-THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-arm64' and Exists('../../native/artifacts/osx-arm64/libghostshell-ghostty.dylib')">
+    <Content Include="../../native/artifacts/osx-arm64/libghostshell-ghostty.dylib" Link="libghostshell-ghostty.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../native/artifacts/osx-arm64/libghostty.dylib" Link="libghostty.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../native/artifacts/osx-arm64/GHOSTTY-LICENSE" Link="GHOSTTY-LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../native/artifacts/osx-arm64/ghostty/**/*" Link="ghostty/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../native/artifacts/osx-arm64/terminfo/**/*" Link="terminfo/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../licenses/native-macos-components.json" Link="native-macos-components.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../licenses/native-macos-components.json')" />
+    <Content Include="../../native/artifacts/osx-arm64/native-macos-build-receipt.json" Link="native-macos-build-receipt.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../native/artifacts/osx-arm64/native-macos-build-receipt.json')" />
+    <Content Include="../../native/ghostty/provenance/macos-arm64-build-evidence.json" Link="macos-arm64-build-evidence.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../native/ghostty/provenance/macos-arm64-build-evidence.json')" />
+    <Content Include="../../native/ghostty/provenance/macos-arm64-resource-evidence.json" Link="macos-arm64-resource-evidence.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../native/ghostty/provenance/macos-arm64-resource-evidence.json')" />
+  </ItemGroup>
+
+</Project>
