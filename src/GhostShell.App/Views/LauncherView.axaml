@@ -1,0 +1,487 @@
+<UserControl
+    x:Class="GhostShell.App.Views.LauncherView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+  <Grid RowDefinitions="44,*">
+    <Border Classes="TopChrome">
+      <Grid Margin="14,0" ColumnDefinitions="52,*,52">
+        <TextBlock
+            Grid.Column="1"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            FontWeight="SemiBold"
+            Text="GhostSHELL" />
+      </Grid>
+    </Border>
+  
+    <Grid Grid.Row="1" ColumnDefinitions="244,*">
+      <Border
+          Background="{DynamicResource ShellSurfaceBrush}"
+          BorderBrush="{DynamicResource ShellBorderBrush}"
+          BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*">
+          <StackPanel Margin="12,18" Orientation="Horizontal" Spacing="10">
+            <Border Width="28" Height="28" Background="{DynamicResource ShellAccentBrush}" CornerRadius="8">
+              <icons:SymbolIcon
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Symbol="Triangle"
+                  FontSize="15"
+                  Foreground="{DynamicResource ShellAccentForegroundBrush}" />
+            </Border>
+            <StackPanel Spacing="1">
+              <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="Bold" Text="GhostSHELL" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ApplicationVersion}" />
+            </StackPanel>
+          </StackPanel>
+  
+          <StackPanel Grid.Row="1" Margin="12,8" Spacing="2">
+            <Button x:Name="LauncherHomeButton" Classes="NavButton" Classes.active="{Binding IsLauncherOverviewVisible}" Click="OnLauncherHomeClick" AutomationProperties.Name="Launcher home">
+              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Home" FontSize="16" /><TextBlock Text="Home" /></StackPanel>
+            </Button>
+            <Button Classes="NavButton" Click="OnLauncherConnectionsClick" AutomationProperties.Name="Saved connections">
+              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="WindowConsole" FontSize="16" /><TextBlock Text="Saved Connections" /></StackPanel>
+            </Button>
+            <Button Classes="NavButton" Click="OnLauncherScreensClick" AutomationProperties.Name="Saved screens">
+              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Grid" FontSize="16" /><TextBlock Text="Screens" /></StackPanel>
+            </Button>
+            <Button x:Name="LauncherHistoryButton" Classes="NavButton" Classes.active="{Binding IsLauncherHistoryVisible}" Click="OnLauncherHistoryClick" AutomationProperties.Name="Session history">
+              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="History" FontSize="16" /><TextBlock Text="History" /></StackPanel>
+            </Button>
+            <Button Classes="NavButton" Click="OnShowSettingsClick" AutomationProperties.Name="Open settings">
+              <StackPanel Orientation="Horizontal" Spacing="10"><icons:SymbolIcon Symbol="Settings" FontSize="16" /><TextBlock Text="Settings" /></StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+  
+      <ScrollViewer x:Name="LauncherScrollViewer" Grid.Column="1" IsVisible="{Binding IsLauncherOverviewVisible}">
+        <StackPanel Margin="32,26,32,48" Spacing="24">
+          <Grid x:Name="LauncherHomeSection" ColumnDefinitions="*,Auto" ColumnSpacing="20" Focusable="True">
+            <StackPanel Spacing="3">
+              <TextBlock FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Home" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Launch a session or restore a saved workspace" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+              <Button
+                  Width="240"
+                  Classes="SearchButton"
+                  Click="OnShowCommandPaletteClick"
+                  AutomationProperties.Name="Search commands, connections, screens, workspaces, and session history">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                  <icons:SymbolIcon Symbol="Search" FontSize="14" />
+                  <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Search everything…" />
+                  <TextBlock Grid.Column="2" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CommandPaletteShortcut}" />
+                </Grid>
+              </Button>
+              <Button
+                  Classes="PrimaryButton"
+                  Click="OnShowNewItemClick"
+                  AutomationProperties.Name="{Binding NewItemLauncherTitle}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <icons:SymbolIcon Symbol="Add" FontSize="14" />
+                  <TextBlock Text="{Binding NewItemLauncherTitle}" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Grid>
+  
+          <Border
+              x:Name="LauncherOnboardingCard"
+              Classes="SettingsCard"
+              IsVisible="{Binding Onboarding.IsVisible}"
+              AutomationProperties.Name="Getting started">
+            <StackPanel Margin="18" Spacing="14">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <StackPanel Spacing="4">
+                  <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding Onboarding.Title}" />
+                  <TextBlock Classes="Muted" Text="{Binding Onboarding.Introduction}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Border Grid.Column="1" VerticalAlignment="Center" Classes="StatusPill">
+                  <TextBlock Text="LOCAL PROFILE" />
+                </Border>
+              </Grid>
+  
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                <Border Classes="NoticeCard">
+                  <StackPanel Margin="12" Spacing="5">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                      <icons:SymbolIcon Symbol="WindowConsole" FontSize="15" />
+                      <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Local shell" />
+                    </Grid>
+                    <TextBlock Classes="Eyebrow" Text="{Binding Onboarding.LocalTerminalState}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Onboarding.LocalTerminalDetail}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Classes="NoticeCard">
+                  <StackPanel Margin="12" Spacing="5">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                      <icons:SymbolIcon Symbol="Shield" FontSize="15" />
+                      <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Credential vault" />
+                    </Grid>
+                    <TextBlock Classes="Eyebrow" Text="{Binding Onboarding.CredentialVaultState}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Onboarding.CredentialVaultDetail}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Classes="NoticeCard">
+                  <StackPanel Margin="12" Spacing="5">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                      <icons:SymbolIcon Symbol="History" FontSize="15" />
+                      <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Session history" />
+                    </Grid>
+                    <TextBlock Classes="Eyebrow" Text="LOCAL METADATA" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HistoryRetentionStatus}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+              </Grid>
+  
+              <Grid ColumnDefinitions="*" RowDefinitions="Auto,Auto" RowSpacing="10">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Text="{Binding Onboarding.StatusMessage}"
+                    TextWrapping="Wrap"
+                    AutomationProperties.LiveSetting="Polite"
+                    AutomationProperties.Name="Getting started status" />
+                <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal">
+                  <Button Margin="0,0,8,8" Classes="SecondaryButton" Click="OnImportDefinitionsClick" Content="Import setup…" IsEnabled="{Binding Onboarding.CanInteract}" AutomationProperties.Name="Import an existing GhostSHELL setup" />
+                  <Button Margin="0,0,8,8" Classes="SecondaryButton" Click="OnReviewHistoryPrivacyClick" Content="Review privacy" IsEnabled="{Binding Onboarding.CanInteract}" AutomationProperties.Name="Review session history privacy" />
+                  <Button Margin="0,0,8,8" Classes="SecondaryButton" Click="OnRetryOnboardingClick" Content="Retry checks" IsVisible="{Binding Onboarding.CanRetry}" AutomationProperties.Name="Retry getting started checks" />
+                  <Button x:Name="OnboardingFinishButton" Margin="0,0,0,8" Classes="PrimaryButton" Click="OnFinishOnboardingClick" Content="Finish setup" IsEnabled="{Binding Onboarding.CanFinish}" AutomationProperties.Name="Finish first-run setup" />
+                </WrapPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
+  
+          <StackPanel x:Name="LauncherConnectionsSection" Focusable="True" Spacing="14">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Connections" />
+                <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Connections.Count}" /></Border>
+              </StackPanel>
+              <Button Grid.Column="1" Classes="TextButton" Click="OnAddConnectionClick" Content="Add connection" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Connections}" IsVisible="{Binding HasConnections}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Width="271" Height="104" Margin="0,0,14,14" Classes="LaunchCard">
+                    <Grid Margin="15" RowDefinitions="Auto,*,Auto">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="{Binding Name}" />
+                          <TextBlock Classes="Eyebrow" Text="{Binding Kind}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                          <Button Classes="IconButton" Click="OnEditConnectionClick" ToolTip.Tip="Edit connection" AutomationProperties.Name="Edit connection"><icons:SymbolIcon Symbol="Edit" FontSize="11" /></Button>
+                          <Button Classes="IconButton" Click="OnDeleteConnectionClick" ToolTip.Tip="Delete connection" AutomationProperties.Name="Delete connection"><icons:SymbolIcon Symbol="Delete" FontSize="11" /></Button>
+                        </StackPanel>
+                      </Grid>
+                      <TextBlock Grid.Row="1" Margin="0,6,0,0" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                      <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+                        <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Status}" />
+                        <Button
+                            Grid.Column="1"
+                            Classes="TextButton Accent"
+                            Click="OnOpenConnectionClick"
+                            Content="Activate"
+                            IsEnabled="{Binding CanOpen}"
+                            AutomationProperties.Name="{Binding Name, StringFormat=Open saved connection {0} in a tab}" />
+                      </Grid>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border Classes="NoticeCard" IsVisible="{Binding HasNoConnections}">
+              <Grid Margin="14,12" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                <icons:SymbolIcon Symbol="WindowConsole" FontSize="17" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" Text="No saved connections yet." />
+                <Button Grid.Column="2" Classes="TextButton Accent" Click="OnAddConnectionClick" Content="Create connection" />
+              </Grid>
+            </Border>
+          </StackPanel>
+  
+          <StackPanel x:Name="LauncherScreensSection" Focusable="True" Spacing="14">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Screens" />
+                <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Screens.Count}" /></Border>
+              </StackPanel>
+              <Button Grid.Column="1" Classes="TextButton" Click="OnShowNewItemClick" Content="Add screen" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Screens}" IsVisible="{Binding HasScreens}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Width="271" Height="142" Margin="0,0,14,14" Classes="LaunchCard">
+                    <Grid Margin="12" RowDefinitions="66,*">
+                      <Border Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                        <ItemsControl Margin="3" ItemsSource="{Binding PreviewPanels}">
+                          <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:ScreenLayoutPreviewPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border
+                                  Margin="2"
+                                  Classes="ScreenPreviewPanel"
+                                  Classes.primary="{Binding IsPrimary}" />
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Border>
+                      <Grid Grid.Row="1" Margin="0,8,0,0" ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="2">
+                          <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding PanelCount, StringFormat={}{0} panels}" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="·" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Layout}" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                          <Button Classes="IconButton" Click="OnEditScreenClick" ToolTip.Tip="Edit saved screen" AutomationProperties.Name="Edit saved screen"><icons:SymbolIcon Symbol="Edit" FontSize="11" /></Button>
+                          <Button
+                              Classes="TextButton Accent"
+                              Click="OnOpenScreenClick"
+                              Content="Activate"
+                              AutomationProperties.Name="{Binding Name, StringFormat=Open saved screen {0} in a tab}" />
+                        </StackPanel>
+                      </Grid>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border Classes="NoticeCard" IsVisible="{Binding HasNoScreens}">
+              <Grid Margin="14,12" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                <icons:SymbolIcon Symbol="Grid" FontSize="17" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" Text="No reusable screens yet." />
+                <Button Grid.Column="2" Classes="TextButton Accent" Click="OnShowNewItemClick" Content="Create screen" />
+              </Grid>
+            </Border>
+          </StackPanel>
+  
+          <StackPanel x:Name="LauncherHistorySection" Focusable="True" Spacing="12">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Recent Sessions" />
+              <Button
+                  Grid.Column="1"
+                  Classes="TextButton"
+                  Click="OnClearRecentSessionsClick"
+                  Content="Clear history"
+                  IsEnabled="{Binding CanClearRecentSessionHistory}"
+                  ToolTip.Tip="Remove stored recent-session metadata" />
+            </Grid>
+            <Border Classes="LaunchCard" IsVisible="{Binding HasRecentSessions}" ClipToBounds="True">
+              <ItemsControl ItemsSource="{Binding RecentSessions}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource ShellBorderBrush}"
+                        BorderThickness="0,0,0,1"
+                        CornerRadius="0"
+                        HorizontalContentAlignment="Stretch"
+                        Click="OnOpenRecentSessionClick"
+                        IsEnabled="{Binding CanOpen}"
+                        AutomationProperties.Name="{Binding Title, StringFormat=Reopen recent session {0}}">
+                      <Grid Height="52" Margin="14,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+                        <Border Width="30" Height="30" VerticalAlignment="Center" Classes="IconTile">
+                          <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="14" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="10">
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Border Grid.Column="2" VerticalAlignment="Center" Classes="Keycap">
+                          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SourceKind}" />
+                        </Border>
+                        <TextBlock Grid.Column="3" MinWidth="72" VerticalAlignment="Center" TextAlignment="Right" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding LastUsed}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+            <Border Classes="LaunchCard" IsVisible="{Binding IsHistoryLoading}">
+              <StackPanel Margin="16,14" Orientation="Horizontal" Spacing="12" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Loading recent session history">
+                <ProgressBar Width="72" IsIndeterminate="True" />
+                <TextBlock VerticalAlignment="Center" Classes="Muted" Text="Loading recent sessions…" />
+              </StackPanel>
+            </Border>
+            <Border Classes="LaunchCard" IsVisible="{Binding HasNoRecentSessions}">
+              <Grid Margin="16,14" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Border Width="30" Height="30" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="History" FontSize="14" /></Border>
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock FontWeight="SemiBold" Text="No recent sessions" />
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding RecentSessionStatus}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+  
+      <Grid
+          Grid.Column="1"
+          Margin="32,26,32,32"
+          RowDefinitions="Auto,*,Auto"
+          RowSpacing="18"
+          IsVisible="{Binding IsLauncherHistoryVisible}">
+        <Grid ColumnDefinitions="2*,*" ColumnSpacing="18">
+          <StackPanel Spacing="3">
+            <TextBlock FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Session History" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Definition metadata only—never commands, output, environment values, or credentials" />
+          </StackPanel>
+          <Grid Grid.Column="1" ColumnDefinitions="Auto,*" ColumnSpacing="9">
+            <icons:SymbolIcon VerticalAlignment="Center" Symbol="Search" FontSize="15" />
+            <TextBox
+                x:Name="HistorySearchBox"
+                Grid.Column="1"
+                PlaceholderText="Search title, source, kind, outcome, or session ID…"
+                AutomationProperties.Name="Search session history"
+                KeyDown="OnHistorySearchKeyDown"
+                Text="{Binding HistorySearchQuery}" />
+          </Grid>
+        </Grid>
+  
+        <Grid Grid.Row="1" ColumnDefinitions="3*,2*" ColumnSpacing="18">
+          <Border Classes="LaunchCard" ClipToBounds="True">
+            <Grid RowDefinitions="42,*">
+              <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+                <Grid Margin="14,0" ColumnDefinitions="*,Auto">
+                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="RETAINED SESSIONS" />
+                  <Border Grid.Column="1" VerticalAlignment="Center" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding HistoryResultCount}" /></Border>
+                </Grid>
+              </Border>
+              <ListBox
+                  x:Name="HistorySessionList"
+                  Grid.Row="1"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  AutomationProperties.Name="Retained session history"
+                  ItemsSource="{Binding FilteredHistorySessions}"
+                  SelectedItem="{Binding SelectedHistorySession, Mode=TwoWay}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid MinHeight="62" Margin="12,4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
+                      <Border Width="34" Height="34" VerticalAlignment="Center" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="History" FontSize="14" /></Border>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Spacing="3">
+                        <Border HorizontalAlignment="Right" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding SourceKind}" /></Border>
+                        <TextBlock HorizontalAlignment="Right" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding LastUsed}" />
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <StackPanel
+                  Grid.Row="1"
+                  Margin="28"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Spacing="7"
+                  IsVisible="{Binding HasNoFilteredHistorySessions}"
+                  AutomationProperties.LiveSetting="Polite"
+                  AutomationProperties.Name="Session history has no results">
+                <icons:SymbolIcon HorizontalAlignment="Center" Symbol="History" FontSize="24" />
+                <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="No history results" />
+                <TextBlock MaxWidth="430" HorizontalAlignment="Center" Classes="Muted" Text="{Binding HistorySearchEmptyState}" TextAlignment="Center" TextWrapping="Wrap" />
+              </StackPanel>
+              <StackPanel
+                  Grid.Row="1"
+                  Margin="28"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Orientation="Horizontal"
+                  Spacing="12"
+                  IsVisible="{Binding IsHistoryLoading}"
+                  AutomationProperties.LiveSetting="Polite"
+                  AutomationProperties.Name="Loading retained session history">
+                <ProgressBar Width="90" IsIndeterminate="True" />
+                <TextBlock VerticalAlignment="Center" Classes="Muted" Text="Loading retained history…" />
+              </StackPanel>
+            </Grid>
+          </Border>
+  
+          <ScrollViewer Grid.Column="1">
+            <StackPanel Spacing="12">
+              <Border Classes="SettingsCard" IsVisible="{Binding HasSelectedHistorySession}">
+                <StackPanel Margin="18" Spacing="14">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <StackPanel Spacing="3">
+                      <TextBlock FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding SelectedHistorySession.Title}" TextWrapping="Wrap" />
+                      <TextBlock Classes="Muted" Text="{Binding SelectedHistorySession.Detail}" />
+                    </StackPanel>
+                    <Button
+                        Grid.Column="1"
+                        Classes="PrimaryButton"
+                        Click="OnOpenSelectedHistorySessionClick"
+                        Content="Reopen"
+                        IsEnabled="{Binding SelectedHistorySession.CanOpen}"
+                        AutomationProperties.Name="Reopen selected history session" />
+                  </Grid>
+                  <Border Classes="NoticeCard"><TextBlock Margin="11" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedHistorySession.ReopenStatus}" TextWrapping="Wrap" /></Border>
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                    <TextBlock Classes="SectionHeading" Text="SOURCE TYPE" /><TextBlock Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.SourceKind}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Classes="SectionHeading" Text="SOURCE ID" /><TextBlock Grid.Row="1" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.SourceIdentifier}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Classes="SectionHeading" Text="SESSION ID" /><TextBlock Grid.Row="2" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.SessionIdentifier}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Classes="SectionHeading" Text="PANEL" /><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedHistorySession.PanelKindName}" />
+                    <TextBlock Grid.Row="4" Classes="SectionHeading" Text="STARTED" /><TextBlock Grid.Row="4" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.Started}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="5" Classes="SectionHeading" Text="ENDED" /><TextBlock Grid.Row="5" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.Ended}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="6" Classes="SectionHeading" Text="DURATION" /><TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedHistorySession.Duration}" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+              <Border Classes="NoticeCard" IsVisible="{Binding HasNoSelectedHistorySession}">
+                <TextBlock Margin="14" Classes="Muted" Text="Select a retained session to review its exact metadata." TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+  
+        <Border Grid.Row="2" Classes="SettingsCard">
+          <Grid Margin="16" RowDefinitions="Auto,Auto,Auto" RowSpacing="11">
+            <StackPanel Spacing="5">
+              <TextBlock FontWeight="SemiBold" Text="History privacy" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HistoryRetentionStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="History retention status" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HistoryExportStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="History export status" />
+            </StackPanel>
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <StackPanel Spacing="5">
+              <TextBlock Classes="SectionHeading" Text="LOCAL RETENTION" />
+              <ComboBox
+                  ItemsSource="{Binding HistoryRetentionOptions}"
+                  SelectedItem="{Binding SelectedHistoryRetentionOption, Mode=TwoWay}"
+                  IsEnabled="{Binding CanManageHistoryRetention}"
+                  AutomationProperties.Name="Session history retention">
+                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+              </ComboBox>
+              </StackPanel>
+              <Button Grid.Column="1" VerticalAlignment="Bottom" Classes="SecondaryButton" Click="OnSaveHistoryRetentionClick" Content="Apply" IsEnabled="{Binding CanApplyHistoryRetention}" AutomationProperties.Name="Apply history retention" />
+            </Grid>
+            <WrapPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal">
+              <Button Margin="0,0,6,6" Classes="SecondaryButton" Click="OnRetryRecentSessionHistoryClick" Content="Retry" IsEnabled="{Binding CanRetryRecentSessionHistory}" IsVisible="{Binding HasRecentSessionFailure}" AutomationProperties.Name="Retry loading session history" />
+              <Button Margin="0,0,6,6" Classes="SecondaryButton" Click="OnExportAllHistoryClick" Content="Export all" IsEnabled="{Binding CanExportAllHistory}" AutomationProperties.Name="Export all retained history metadata" />
+              <Button Margin="0,0,6,6" Classes="SecondaryButton" Click="OnExportFilteredHistoryClick" Content="Export results" IsEnabled="{Binding CanExportFilteredHistory}" AutomationProperties.Name="Export filtered history metadata" />
+              <Button Margin="0,0,6,6" Classes="SecondaryButton" Click="OnCancelHistoryExportClick" Content="Cancel export" IsVisible="{Binding IsHistoryExporting}" AutomationProperties.Name="Cancel session history export" />
+              <Button Margin="0,0,6,6" Classes="DestructiveButton" Click="OnClearRecentSessionsClick" Content="Clear" IsEnabled="{Binding CanClearRecentSessionHistory}" AutomationProperties.Name="Clear retained session history" />
+              <Button Margin="0,0,0,6" Classes="DestructiveButton" Click="OnResetRecentSessionHistoryClick" Content="Reset unreadable history" IsEnabled="{Binding CanResetRecentSessionHistory}" IsVisible="{Binding HasUnreadableRecentSessionHistory}" AutomationProperties.Name="Reset unreadable session history" />
+            </WrapPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>
