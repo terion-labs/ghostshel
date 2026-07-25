@@ -121,7 +121,7 @@ public sealed class TransientOverlayViewContractTests
                     StringComparison.Ordinal));
         }
 
-        Assert.Single(
+        var overlayHost = Assert.Single(
             mainWindow.Descendants(),
             element => element.Name.LocalName == "Grid"
                 && string.Equals(
@@ -132,6 +132,17 @@ public sealed class TransientOverlayViewContractTests
                     AttributeValue(element, "Background"),
                     "#F20B0B0C",
                     StringComparison.Ordinal));
+        var titleBar = Assert.Single(
+            overlayHost.Elements(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "OverlayTitleBarDragRegion",
+                StringComparison.Ordinal));
+        Assert.Equal("44", AttributeValue(titleBar, "Height"));
+        Assert.Equal("Top", AttributeValue(titleBar, "VerticalAlignment"));
+        Assert.Equal(
+            "TitleBar",
+            AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
     }
 
     [Fact]

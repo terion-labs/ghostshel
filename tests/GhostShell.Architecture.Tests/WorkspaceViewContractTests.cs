@@ -92,6 +92,7 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal("UserControl", root.Name.LocalName);
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
+        AssertTitleBarDragRegion(root);
 
         var surface = Assert.Single(
             root.Elements(),
@@ -109,6 +110,19 @@ public sealed class WorkspaceViewContractTests
         }
 
         var tabStrip = FindNamedElement(root, "RuntimeTabStrip");
+        foreach (var interactiveChromeName in new[]
+                 {
+                     "WorkspaceLauncherButton",
+                     "RuntimeTabStrip",
+                     "WorkspaceTitleBarActions",
+                 })
+        {
+            Assert.Equal(
+                "User",
+                AttributeValue(
+                    FindNamedElement(root, interactiveChromeName),
+                    "WindowDecorationProperties.ElementRole"));
+        }
         Assert.Equal("Auto", AttributeValue(tabStrip, "HorizontalScrollBarVisibility"));
         Assert.Equal("Disabled", AttributeValue(tabStrip, "VerticalScrollBarVisibility"));
         Assert.Equal("Open runtime tabs", AttributeValue(
@@ -196,6 +210,16 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "AutomationProperties.LiveSetting"),
                     "Polite",
                     StringComparison.Ordinal));
+    }
+
+    private static void AssertTitleBarDragRegion(XElement root)
+    {
+        var titleBar = Assert.Single(
+            root.Descendants(),
+            element => HasClass(element, "TopChrome"));
+        Assert.Equal(
+            "TitleBar",
+            AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
     }
 
     [Fact]

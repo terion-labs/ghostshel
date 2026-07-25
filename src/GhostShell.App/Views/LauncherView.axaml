@@ -8,7 +8,9 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <Grid RowDefinitions="44,*">
-    <Border Classes="TopChrome">
+    <Border
+        Classes="TopChrome"
+        WindowDecorationProperties.ElementRole="TitleBar">
       <Grid Margin="14,0" ColumnDefinitions="52,*,52">
         <TextBlock
             Grid.Column="1"
