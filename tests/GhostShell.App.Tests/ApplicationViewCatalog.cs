@@ -35,7 +35,7 @@ internal sealed class ApplicationViewCatalog
                 XDocument.Load(path, LoadOptions.SetLineInfo)))
             .ToArray();
         var codeBehindDocuments = Directory
-            .EnumerateFiles(viewsRoot, "*.axaml.cs", SearchOption.AllDirectories)
+            .EnumerateFiles(viewsRoot, "*.cs", SearchOption.AllDirectories)
             .Order(StringComparer.Ordinal)
             .Select(path => (Path: path, Source: File.ReadAllText(path)))
             .ToArray();
@@ -98,6 +98,30 @@ internal sealed class ApplicationViewCatalog
                 $"code-behind text '{text}'",
                 matches.Select(match => match.Path)));
         return matches[0].Source;
+    }
+
+    public string FindPartialClassSources(string typeName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(typeName);
+        var filePrefix = $"{typeName}.";
+        var declaration = $"partial class {typeName}";
+        var matches = _codeBehindDocuments
+            .Where(document =>
+                Path.GetFileName(document.Path).StartsWith(
+                    filePrefix,
+                    StringComparison.Ordinal)
+                && document.Source.Contains(
+                    declaration,
+                    StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.NotEmpty(matches);
+        return string.Join(
+            Environment.NewLine,
+            matches.Select(document =>
+                $"// {Path.GetRelativePath(RepositoryRoot, document.Path)}"
+                + Environment.NewLine
+                + document.Source));
     }
 
     private static IEnumerable<XElement> Elements(

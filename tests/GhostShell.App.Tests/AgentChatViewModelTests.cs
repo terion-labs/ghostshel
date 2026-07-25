@@ -2259,6 +2259,41 @@ public sealed class AgentChatViewModelTests
     }
 
     [Fact]
+    public void Removing_last_provider_preserves_retained_run_clear_recovery()
+    {
+        var provider = Provider("provider", "Provider", order: 0);
+        using var runtime = new StubGovernedRuntime
+        {
+            Snapshot = Snapshot(
+                state: GovernedAgentState.Ready,
+                runId: new AgentRunId("run-1"),
+                providerId: provider.Id,
+                target: Target(),
+                messages:
+                [
+                    new AgentChatMessage(AgentChatMessageRole.User, "Question"),
+                ]),
+        };
+        using var profiles = new StubProfileRuntime
+        {
+            Profiles = [provider],
+        };
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance);
+
+        Assert.True(viewModel.CanClear);
+
+        profiles.Profiles = [];
+        profiles.RaiseProfilesChanged();
+
+        Assert.True(viewModel.HasNoProvider);
+        Assert.True(viewModel.CanClear);
+        Assert.True(viewModel.NeedsProviderAttention);
+    }
+
+    [Fact]
     public void Dispose_unsubscribes_without_disposing_shared_runtimes()
     {
         using var runtime = new StubGovernedRuntime();

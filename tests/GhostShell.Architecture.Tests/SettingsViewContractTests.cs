@@ -248,8 +248,7 @@ public sealed class SettingsViewContractTests
     [Fact]
     public void Main_window_uses_the_typed_settings_bridge_and_keeps_effect_ownership()
     {
-        var mainWindowCode = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "public sealed partial class MainWindow");
+        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
 
         foreach (var typedCall in MainWindowTypedCalls)
         {

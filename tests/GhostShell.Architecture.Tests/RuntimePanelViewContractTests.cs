@@ -139,8 +139,7 @@ public sealed class RuntimePanelViewContractTests
     [Fact]
     public void Shell_focuses_the_single_runtime_panel_focus_target()
     {
-        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "private void FocusActivePanel()");
+        var codeBehind = ApplicationViews.FindPartialClassSources("MainWindow");
 
         Assert.Contains(
             "control.Classes.Contains(\"RuntimePanelFocusTarget\")",

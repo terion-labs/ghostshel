@@ -48,14 +48,21 @@
 
       <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8"><TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Workspaces" /><Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Workspaces.Count}" /></Border></StackPanel>
-        <ItemsControl Grid.Column="1" ItemsSource="{Binding Workspaces}">
-          <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Button Width="38" Height="38" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}"><icons:SymbolIcon Symbol="{Binding IconSymbol}" FontSize="15" /></Button>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <ScrollViewer
+            Grid.Column="1"
+            HorizontalScrollBarVisibility="Auto"
+            VerticalScrollBarVisibility="Disabled"
+            IsVisible="{Binding HasWorkspaces}"
+            AutomationProperties.Name="Saved workspaces">
+          <ItemsControl ItemsSource="{Binding Workspaces}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Width="38" Height="38" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}"><icons:SymbolIcon Symbol="{Binding IconSymbol}" FontSize="15" /></Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" IsVisible="{Binding HasNoWorkspaces}" Text="No saved workspaces yet." />
       </Grid>
 
@@ -123,11 +130,31 @@
       <Border Grid.Row="4" Classes="NoticeCard">
         <Grid Margin="12" ColumnDefinitions="Auto,170,Auto,Auto,170,Auto,*,Auto" ColumnSpacing="8">
           <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Create" />
-          <TextBox x:Name="NewWorkspaceName" Grid.Column="1" MinHeight="30" PlaceholderText="Workspace name" />
-          <Button Grid.Column="2" Classes="SecondaryButton" Click="OnCreateWorkspaceClick" Content="Workspace" />
+          <TextBox
+              x:Name="NewWorkspaceName"
+              Grid.Column="1"
+              MinHeight="30"
+              PlaceholderText="Workspace name"
+              AutomationProperties.Name="New workspace name" />
+          <Button
+              Grid.Column="2"
+              Classes="SecondaryButton"
+              Click="OnCreateWorkspaceClick"
+              Content="Workspace"
+              AutomationProperties.Name="Create workspace" />
           <Border Grid.Column="3" Width="1" Margin="4,0" Background="{DynamicResource ShellBorderBrush}" />
-          <TextBox x:Name="NewScreenName" Grid.Column="4" MinHeight="30" PlaceholderText="Saved screen name" />
-          <Button Grid.Column="5" Classes="SecondaryButton" Click="OnCreateScreenClick" Content="Screen" />
+          <TextBox
+              x:Name="NewScreenName"
+              Grid.Column="4"
+              MinHeight="30"
+              PlaceholderText="Saved screen name"
+              AutomationProperties.Name="New saved screen name" />
+          <Button
+              Grid.Column="5"
+              Classes="SecondaryButton"
+              Click="OnCreateScreenClick"
+              Content="Screen"
+              AutomationProperties.Name="Create saved screen" />
           <TextBlock Grid.Column="6" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Definitions are durable; every open creates fresh runtime IDs." TextWrapping="Wrap" />
           <Button Grid.Column="7" Classes="TextButton Accent" Click="OnAddConnectionClick" Content="Connection…" />
         </Grid>

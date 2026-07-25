@@ -83,7 +83,12 @@
   
       <ScrollViewer x:Name="LauncherScrollViewer" Grid.Column="1" IsVisible="{Binding IsLauncherOverviewVisible}">
         <StackPanel Margin="32,26,32,48" Spacing="24">
-          <Grid x:Name="LauncherHomeSection" ColumnDefinitions="*,Auto" ColumnSpacing="20" Focusable="True">
+          <Grid
+              x:Name="LauncherHomeSection"
+              ColumnDefinitions="*,Auto"
+              ColumnSpacing="20"
+              Focusable="True"
+              AutomationProperties.Name="Home overview">
             <StackPanel Spacing="3">
               <TextBlock FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Home" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Launch a session or restore a saved workspace" />
@@ -180,7 +185,11 @@
             </StackPanel>
           </Border>
   
-          <StackPanel x:Name="LauncherConnectionsSection" Focusable="True" Spacing="14">
+          <StackPanel
+              x:Name="LauncherConnectionsSection"
+              Focusable="True"
+              Spacing="14"
+              AutomationProperties.Name="Saved connections section">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Connections" />
@@ -229,7 +238,11 @@
             </Border>
           </StackPanel>
   
-          <StackPanel x:Name="LauncherScreensSection" Focusable="True" Spacing="14">
+          <StackPanel
+              x:Name="LauncherScreensSection"
+              Focusable="True"
+              Spacing="14"
+              AutomationProperties.Name="Saved screens section">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Screens" />

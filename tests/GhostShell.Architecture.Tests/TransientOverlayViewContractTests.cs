@@ -355,16 +355,37 @@ public sealed class TransientOverlayViewContractTests
                         StringComparison.Ordinal));
         }
 
+        var workspaceName = FindNamedElement(root, "NewWorkspaceName");
         Assert.Equal(
             "Workspace name",
-            AttributeValue(
-                FindNamedElement(root, "NewWorkspaceName"),
-                "PlaceholderText"));
+            AttributeValue(workspaceName, "PlaceholderText"));
+        Assert.Equal(
+            "New workspace name",
+            AttributeValue(workspaceName, "AutomationProperties.Name"));
+
+        var screenName = FindNamedElement(root, "NewScreenName");
         Assert.Equal(
             "Saved screen name",
-            AttributeValue(
-                FindNamedElement(root, "NewScreenName"),
-                "PlaceholderText"));
+            AttributeValue(screenName, "PlaceholderText"));
+        Assert.Equal(
+            "New saved screen name",
+            AttributeValue(screenName, "AutomationProperties.Name"));
+
+        var workspaceList = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ScrollViewer"
+                && element.Descendants().Any(item =>
+                    item.Name.LocalName == "ItemsControl"
+                    && string.Equals(
+                        AttributeValue(item, "ItemsSource"),
+                        "{Binding Workspaces}",
+                        StringComparison.Ordinal)));
+        Assert.Equal(
+            "Auto",
+            AttributeValue(workspaceList, "HorizontalScrollBarVisibility"));
+        Assert.Equal(
+            "{Binding HasWorkspaces}",
+            AttributeValue(workspaceList, "IsVisible"));
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "Button"
@@ -536,8 +557,7 @@ public sealed class TransientOverlayViewContractTests
     [Fact]
     public void Main_window_uses_typed_overlay_bridges_and_retains_effect_ownership()
     {
-        var mainWindowCode = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "public sealed partial class MainWindow");
+        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
 
         Assert.Contains(
             "this.FindControl<CommandPaletteView>(\"CommandPaletteOverlayView\")",
@@ -612,20 +632,36 @@ public sealed class TransientOverlayViewContractTests
     }
 
     [Fact]
+    public void Main_window_restores_route_focus_after_successful_new_item_creation()
+    {
+        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
+
+        var createWorkspace = ExtractMethod(
+            mainWindowCode,
+            "private async void OnCreateWorkspaceClick");
+        AssertOccursInOrder(
+            createWorkspace,
+            "NewItemLauncherOverlay.ClearWorkspaceName();",
+            "ViewModel.CloseOverlay();",
+            "FocusCurrentRoute();");
+
+        var createScreen = ExtractMethod(
+            mainWindowCode,
+            "private async void OnCreateScreenClick");
+        AssertOccursInOrder(
+            createScreen,
+            "NewItemLauncherOverlay.ClearScreenName();",
+            "ViewModel.CloseOverlay();",
+            "FocusCurrentRoute();");
+    }
+
+    [Fact]
     public void Main_window_preserves_layout_designer_escape_ordering()
     {
-        var mainWindowCode = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "public sealed partial class MainWindow");
-        var keyDownStart = mainWindowCode.IndexOf(
-            "private async void OnWindowKeyDown",
-            StringComparison.Ordinal);
-        Assert.True(keyDownStart >= 0);
-        var keyDownEnd = mainWindowCode.IndexOf(
-            "private void OnTerminalApplicationKeyPressed",
-            keyDownStart,
-            StringComparison.Ordinal);
-        Assert.True(keyDownEnd > keyDownStart);
-        var keyDownCode = mainWindowCode[keyDownStart..keyDownEnd];
+        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
+        var keyDownCode = ExtractMethod(
+            mainWindowCode,
+            "private async void OnWindowKeyDown");
 
         var gestureCancellation = keyDownCode.IndexOf(
             "LayoutDesignerOverlay.CancelPointerGesture();",
@@ -643,6 +679,50 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains(
             "if (cancelledGesture || cancelledPaintMode)",
             keyDownCode);
+    }
+
+    private static string ExtractMethod(string source, string signature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find method signature '{signature}'.");
+        var bodyStart = source.IndexOf('{', start);
+        Assert.True(bodyStart > start, $"Could not find method body for '{signature}'.");
+
+        var depth = 0;
+        for (var index = bodyStart; index < source.Length; index++)
+        {
+            depth += source[index] switch
+            {
+                '{' => 1,
+                '}' => -1,
+                _ => 0,
+            };
+            if (depth == 0)
+            {
+                return source[start..(index + 1)];
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Could not find the end of method '{signature}'.");
+    }
+
+    private static void AssertOccursInOrder(
+        string source,
+        params string[] fragments)
+    {
+        var previous = -1;
+        foreach (var fragment in fragments)
+        {
+            var current = source.IndexOf(
+                fragment,
+                previous + 1,
+                StringComparison.Ordinal);
+            Assert.True(
+                current > previous,
+                $"Could not find '{fragment}' after the preceding operation.");
+            previous = current;
+        }
     }
 
     private static readonly string[] ExtractedControlNames =

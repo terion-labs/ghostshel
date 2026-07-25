@@ -594,8 +594,7 @@ public sealed partial class RepositoryConventionTests
             AttributeValue(status, "AutomationProperties.Name"),
             StringComparison.Ordinal);
 
-        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>");
+        var codeBehind = ApplicationViews.FindPartialClassSources("MainWindow");
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
             codeBehind,
