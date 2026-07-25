@@ -31,8 +31,28 @@ public sealed class TransientOverlayViewContractTests
                 ["ShowLayoutDesignerRequested"] = "OnShowLayoutDesignerClick",
             };
 
+    private static readonly IReadOnlyDictionary<string, string>
+        NewItemLauncherInteractions =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["AddConnectionRequested"] = "OnAddConnectionClick",
+                ["CloseRequested"] = "OnCloseOverlayClick",
+                ["CreateScreenRequested"] = "OnCreateScreenClick",
+                ["CreateWorkspaceRequested"] = "OnCreateWorkspaceClick",
+                ["NewBrowserRequested"] = "OnNewBrowserClick",
+                ["NewFileViewerRequested"] = "OnNewFileViewerClick",
+                ["NewLocalTerminalRequested"] = "OnNewLocalTerminalClick",
+                ["NewProcessMonitorRequested"] = "OnNewProcessMonitorClick",
+                ["NewStatisticsRequested"] = "OnNewStatisticsClick",
+                ["OpenConnectionRequested"] = "OnOpenConnectionClick",
+                ["OpenScreenRequested"] = "OnOpenScreenClick",
+                ["OpenWorkspaceRequested"] = "OnOpenWorkspaceClick",
+                ["ShowCommandPaletteRequested"] = "OnShowCommandPaletteClick",
+                ["ShowLayoutDesignerRequested"] = "OnShowLayoutDesignerClick",
+            };
+
     [Fact]
-    public void Main_window_delegates_two_transient_overlays_to_named_views()
+    public void Main_window_delegates_three_transient_overlays_to_named_views()
     {
         var mainWindow = LoadView("MainWindow");
         AssertDelegatedOverlay(
@@ -41,6 +61,12 @@ public sealed class TransientOverlayViewContractTests
             "CommandPaletteOverlayView",
             "{Binding IsCommandPaletteVisible}",
             CommandPaletteInteractions);
+        AssertDelegatedOverlay(
+            mainWindow,
+            "NewItemLauncherView",
+            "NewItemLauncherOverlayView",
+            "{Binding IsNewItemVisible}",
+            NewItemLauncherInteractions);
         AssertDelegatedOverlay(
             mainWindow,
             "NewPanelChooserView",
@@ -57,6 +83,14 @@ public sealed class TransientOverlayViewContractTests
                     extractedName,
                     StringComparison.Ordinal));
         }
+
+        Assert.Contains(
+            mainWindow.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "IsVisible"),
+                    "{Binding IsLayoutDesignerVisible}",
+                    StringComparison.Ordinal));
 
         Assert.Single(
             mainWindow.Descendants(),
@@ -123,6 +157,88 @@ public sealed class TransientOverlayViewContractTests
     }
 
     [Fact]
+    public void New_item_launcher_preserves_geometry_catalogs_and_creation_inputs()
+    {
+        var launcher = LoadOverlay("NewItemLauncherView");
+        var root = Assert.IsType<XElement>(launcher.Root);
+        AssertStretchingUserControl(root);
+
+        var card = AssertOverlayCard(root);
+        Assert.Equal("90,54", AttributeValue(card, "Margin"));
+        Assert.Equal("1120", AttributeValue(card, "MaxWidth"));
+        Assert.Equal("760", AttributeValue(card, "MaxHeight"));
+        Assert.Equal("Stretch", AttributeValue(card, "HorizontalAlignment"));
+        Assert.Equal("Stretch", AttributeValue(card, "VerticalAlignment"));
+
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && string.Equals(
+                    AttributeValue(element, "Text"),
+                    "{Binding NewItemLauncherTitle}",
+                    StringComparison.Ordinal));
+
+        var choices = root.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Where(element => HasClasses(
+                element,
+                "ChooserButton",
+                "LauncherChooser"))
+            .ToArray();
+        Assert.Equal(5, choices.Length);
+
+        var initialAction = FindNamedElement(root, "NewTerminalButton");
+        Assert.Equal(
+            "OnNewLocalTerminalClick",
+            AttributeValue(initialAction, "Click"));
+        Assert.Contains(
+            choices,
+            element => string.Equals(
+                AttributeValue(element, "AutomationProperties.Name"),
+                "Open a new native browser",
+                StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "IsEnabled"),
+                    "{Binding CanCreateBrowserPanel}",
+                    StringComparison.Ordinal));
+
+        foreach (var catalog in new[]
+                 {
+                     "{Binding Workspaces}",
+                     "{Binding Connections}",
+                     "{Binding Screens}",
+                 })
+        {
+            Assert.Contains(
+                root.Descendants(),
+                element => element.Name.LocalName == "ItemsControl"
+                    && string.Equals(
+                        AttributeValue(element, "ItemsSource"),
+                        catalog,
+                        StringComparison.Ordinal));
+        }
+
+        Assert.Equal(
+            "Workspace name",
+            AttributeValue(
+                FindNamedElement(root, "NewWorkspaceName"),
+                "PlaceholderText"));
+        Assert.Equal(
+            "Saved screen name",
+            AttributeValue(
+                FindNamedElement(root, "NewScreenName"),
+                "PlaceholderText"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && HasClasses(element, "SearchButton")
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "Search commands, connections, screens, workspaces, and session history",
+                    StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void New_panel_chooser_preserves_geometry_choices_and_availability()
     {
         var chooser = LoadOverlay("NewPanelChooserView");
@@ -185,6 +301,43 @@ public sealed class TransientOverlayViewContractTests
             "LauncherSearchResultList.ScrollIntoView(selected);",
             commandPaletteCode);
 
+        var newItemLauncherCode = ApplicationViews
+            .FindUniqueCodeBehindSourceContaining(
+                "public sealed partial class NewItemLauncherView");
+        AssertForwardingContract(
+            newItemLauncherCode,
+            NewItemLauncherInteractions.Keys);
+        Assert.Contains(
+            "internal void FocusInitialAction()",
+            newItemLauncherCode);
+        Assert.Contains(
+            "NewTerminalButton.Focus(NavigationMethod.Tab);",
+            newItemLauncherCode);
+        Assert.Contains(
+            "internal string WorkspaceName =>",
+            newItemLauncherCode);
+        Assert.Contains(
+            "NewWorkspaceName.Text ?? string.Empty;",
+            newItemLauncherCode);
+        Assert.Contains(
+            "internal void ClearWorkspaceName()",
+            newItemLauncherCode);
+        Assert.Contains(
+            "NewWorkspaceName.Text = string.Empty;",
+            newItemLauncherCode);
+        Assert.Contains(
+            "internal string ScreenName =>",
+            newItemLauncherCode);
+        Assert.Contains(
+            "NewScreenName.Text ?? string.Empty;",
+            newItemLauncherCode);
+        Assert.Contains(
+            "internal void ClearScreenName()",
+            newItemLauncherCode);
+        Assert.Contains(
+            "NewScreenName.Text = string.Empty;",
+            newItemLauncherCode);
+
         var newPanelChooserCode = ApplicationViews
             .FindUniqueCodeBehindSourceContaining(
                 "public sealed partial class NewPanelChooserView");
@@ -209,11 +362,29 @@ public sealed class TransientOverlayViewContractTests
             "this.FindControl<CommandPaletteView>(\"CommandPaletteOverlayView\")",
             mainWindowCode);
         Assert.Contains(
+            "this.FindControl<NewItemLauncherView>(\"NewItemLauncherOverlayView\")",
+            mainWindowCode);
+        Assert.Contains(
             "this.FindControl<NewPanelChooserView>(\"NewPanelChooserOverlayView\")",
             mainWindowCode);
         Assert.Contains("CommandPaletteOverlay.FocusSearch();", mainWindowCode);
         Assert.Contains(
             "CommandPaletteOverlay.ScrollSelectedResultIntoView();",
+            mainWindowCode);
+        Assert.Contains(
+            "NewItemLauncherOverlay.FocusInitialAction();",
+            mainWindowCode);
+        Assert.Contains(
+            "NewItemLauncherOverlay.WorkspaceName,",
+            mainWindowCode);
+        Assert.Contains(
+            "NewItemLauncherOverlay.ClearWorkspaceName();",
+            mainWindowCode);
+        Assert.Contains(
+            "NewItemLauncherOverlay.ScreenName);",
+            mainWindowCode);
+        Assert.Contains(
+            "NewItemLauncherOverlay.ClearScreenName();",
             mainWindowCode);
         Assert.Contains(
             "NewPanelChooserOverlay.FocusInitialAction();",
@@ -228,6 +399,8 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains("new DiscardChangesDialog()", mainWindowCode);
         Assert.Contains("ExecuteLauncherSearchTargetAsync(", mainWindowCode);
         Assert.Contains("ViewModel.AddLocalTerminalPanelAsync(", mainWindowCode);
+        Assert.Contains("ViewModel.CreateWorkspaceAsync(", mainWindowCode);
+        Assert.Contains("new SavedScreenEditorDialog(", mainWindowCode);
         Assert.Contains("FocusCurrentRoute();", mainWindowCode);
     }
 
@@ -235,6 +408,9 @@ public sealed class TransientOverlayViewContractTests
     [
         "CommandSearchBox",
         "LauncherSearchResultList",
+        "NewScreenName",
+        "NewTerminalButton",
+        "NewWorkspaceName",
         "NewPanelTerminalButton",
     ];
 
