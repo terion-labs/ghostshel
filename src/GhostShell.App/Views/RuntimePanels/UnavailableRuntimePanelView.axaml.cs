@@ -14,7 +14,6 @@ public sealed partial class UnavailableRuntimePanelView : UserControl
 
     private void OnCloseClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
-        CloseRequested?.Invoke(this, e);
+        CloseRequested?.Invoke(sender, e);
     }
 }
