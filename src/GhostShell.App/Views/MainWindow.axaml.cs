@@ -137,6 +137,11 @@ public sealed partial class MainWindow : Window
         ?? throw new InvalidOperationException(
             "The command palette overlay view is unavailable.");
 
+    private LayoutDesignerView LayoutDesignerOverlay =>
+        this.FindControl<LayoutDesignerView>("LayoutDesignerOverlayView")
+        ?? throw new InvalidOperationException(
+            "The layout designer overlay view is unavailable.");
+
     private NewItemLauncherView NewItemLauncherOverlay =>
         this.FindControl<NewItemLauncherView>("NewItemLauncherOverlayView")
         ?? throw new InvalidOperationException(
@@ -363,7 +368,7 @@ public sealed partial class MainWindow : Window
     {
         if (ViewModel.IsLayoutDesignerVisible)
         {
-            FocusOverlayControlWhenReady("NewLayoutName", () => ViewModel.IsLayoutDesignerVisible);
+            FocusLayoutDesignerNameWhenReady();
             return;
         }
 
@@ -373,7 +378,7 @@ public sealed partial class MainWindow : Window
         }
 
         ViewModel.BeginCreateLayout();
-        FocusOverlayControlWhenReady("NewLayoutName", () => ViewModel.IsLayoutDesignerVisible);
+        FocusLayoutDesignerNameWhenReady();
     }
 
     public async Task SelectRelativeTabAsync(int offset)
@@ -2721,7 +2726,7 @@ public sealed partial class MainWindow : Window
 
         ViewModel.DismissLayoutDesigner();
         ViewModel.BeginEditLayout(layout.Id);
-        FocusOverlayControlWhenReady("NewLayoutName", () => ViewModel.IsLayoutDesignerVisible);
+        FocusLayoutDesignerNameWhenReady();
     }
 
     private void OnLayoutGridSizeChanged(
@@ -2731,14 +2736,17 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = e;
         var editor = ViewModel.LayoutDesignerEditor;
-        var rows = this.FindControl<NumericUpDown>("LayoutRowsPicker")?.Value;
-        var columns = this.FindControl<NumericUpDown>("LayoutColumnsPicker")?.Value;
-        if (editor is null || rows is null || columns is null)
+        var gridSize = LayoutDesignerOverlay.CaptureGridSize();
+        if (editor is null
+            || gridSize.Rows is null
+            || gridSize.Columns is null)
         {
             return;
         }
 
-        _ = editor.ResizeGrid((int)rows.Value, (int)columns.Value);
+        _ = editor.ResizeGrid(
+            (int)gridSize.Rows.Value,
+            (int)gridSize.Columns.Value);
     }
 
     private void OnLayoutSlotClick(object? sender, RoutedEventArgs e)
@@ -2819,7 +2827,7 @@ public sealed partial class MainWindow : Window
 
         if (editor.IsPaintMode)
         {
-            _ = this.FindControl<ItemsControl>("LayoutDesignerGrid")?.Focus();
+            LayoutDesignerOverlay.FocusGrid();
         }
     }
 
@@ -3597,11 +3605,7 @@ public sealed partial class MainWindow : Window
 
         if (e.Key == Key.Escape && ViewModel.IsLayoutDesignerVisible)
         {
-            var cancelledGesture = this.FindControl<ItemsControl>("LayoutDesignerGrid")
-                ?.GetVisualDescendants()
-                .OfType<LayoutDesignerPreviewPanel>()
-                .FirstOrDefault()
-                ?.CancelPointerGesture() == true;
+            var cancelledGesture = LayoutDesignerOverlay.CancelPointerGesture();
             var editor = ViewModel.LayoutDesignerEditor;
             var cancelledPaintMode = editor?.IsPaintMode == true;
             if (cancelledPaintMode)
@@ -3887,17 +3891,14 @@ public sealed partial class MainWindow : Window
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             focus(SettingsRoute));
 
-    private void FocusOverlayControl(string controlName, bool isOverlayVisible)
-    {
-        if (isOverlayVisible)
-        {
-            this.FindControl<Control>(controlName)?.Focus(NavigationMethod.Tab);
-        }
-    }
-
-    private void FocusOverlayControlWhenReady(string controlName, Func<bool> isOverlayVisible) =>
+    private void FocusLayoutDesignerNameWhenReady() =>
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            FocusOverlayControl(controlName, isOverlayVisible()));
+        {
+            if (ViewModel.IsLayoutDesignerVisible)
+            {
+                LayoutDesignerOverlay.FocusNameEditor();
+            }
+        });
 
     private void FocusDefinitionEditorWhenReady() =>
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -3918,10 +3919,7 @@ public sealed partial class MainWindow : Window
         }
 
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            this.GetVisualDescendants()
-                .OfType<Button>()
-                .FirstOrDefault(button => ReferenceEquals(button.DataContext, selected))
-                ?.Focus(NavigationMethod.Directional));
+            LayoutDesignerOverlay.FocusSlot(selected));
     }
 
     private void FocusActivePanel()

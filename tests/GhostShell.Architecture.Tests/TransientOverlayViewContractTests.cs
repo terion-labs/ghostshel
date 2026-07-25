@@ -18,6 +18,37 @@ public sealed class TransientOverlayViewContractTests
             };
 
     private static readonly IReadOnlyDictionary<string, string>
+        LayoutDesignerInteractions =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["AddSlotRequested"] = "OnLayoutAddSlotClick",
+                ["CloseRequested"] = "OnCloseOverlayClick",
+                ["DesignerKeyDownRequested"] = "OnLayoutDesignerKeyDown",
+                ["EditLayoutRequested"] = "OnEditLayoutClick",
+                ["GridSizeChangedRequested"] = "OnLayoutGridSizeChanged",
+                ["GrowBottomRequested"] = "OnLayoutGrowBottomClick",
+                ["GrowLeftRequested"] = "OnLayoutGrowLeftClick",
+                ["GrowRightRequested"] = "OnLayoutGrowRightClick",
+                ["GrowTopRequested"] = "OnLayoutGrowTopClick",
+                ["MoveDownRequested"] = "OnLayoutMoveDownClick",
+                ["MoveEarlierRequested"] = "OnLayoutMoveEarlierClick",
+                ["MoveLaterRequested"] = "OnLayoutMoveLaterClick",
+                ["MoveLeftRequested"] = "OnLayoutMoveLeftClick",
+                ["MoveRightRequested"] = "OnLayoutMoveRightClick",
+                ["MoveUpRequested"] = "OnLayoutMoveUpClick",
+                ["RemoveSlotRequested"] = "OnLayoutRemoveSlotClick",
+                ["ResetRequested"] = "OnResetLayoutClick",
+                ["SaveRequested"] = "OnSaveLayoutDesignerClick",
+                ["ShrinkBottomRequested"] = "OnLayoutShrinkBottomClick",
+                ["ShrinkLeftRequested"] = "OnLayoutShrinkLeftClick",
+                ["ShrinkRightRequested"] = "OnLayoutShrinkRightClick",
+                ["ShrinkTopRequested"] = "OnLayoutShrinkTopClick",
+                ["SlotSelectedRequested"] = "OnLayoutSlotClick",
+                ["TogglePaintModeRequested"] =
+                    "OnLayoutTogglePaintModeClick",
+            };
+
+    private static readonly IReadOnlyDictionary<string, string>
         NewPanelChooserInteractions =
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -52,7 +83,7 @@ public sealed class TransientOverlayViewContractTests
             };
 
     [Fact]
-    public void Main_window_delegates_three_transient_overlays_to_named_views()
+    public void Main_window_delegates_four_transient_overlays_to_named_views()
     {
         var mainWindow = LoadView("MainWindow");
         AssertDelegatedOverlay(
@@ -61,6 +92,12 @@ public sealed class TransientOverlayViewContractTests
             "CommandPaletteOverlayView",
             "{Binding IsCommandPaletteVisible}",
             CommandPaletteInteractions);
+        AssertDelegatedOverlay(
+            mainWindow,
+            "LayoutDesignerView",
+            "LayoutDesignerOverlayView",
+            "{Binding IsLayoutDesignerVisible}",
+            LayoutDesignerInteractions);
         AssertDelegatedOverlay(
             mainWindow,
             "NewItemLauncherView",
@@ -83,14 +120,6 @@ public sealed class TransientOverlayViewContractTests
                     extractedName,
                     StringComparison.Ordinal));
         }
-
-        Assert.Contains(
-            mainWindow.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "IsVisible"),
-                    "{Binding IsLayoutDesignerVisible}",
-                    StringComparison.Ordinal));
 
         Assert.Single(
             mainWindow.Descendants(),
@@ -154,6 +183,114 @@ public sealed class TransientOverlayViewContractTests
                     AttributeValue(element, "AutomationProperties.LiveSetting"),
                     "Polite",
                     StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Layout_designer_preserves_geometry_editor_bindings_and_interactions()
+    {
+        var designer = LoadOverlay("LayoutDesignerView");
+        var root = Assert.IsType<XElement>(designer.Root);
+        AssertStretchingUserControl(root);
+
+        var card = AssertOverlayCard(root);
+        Assert.Equal("1000", AttributeValue(card, "Width"));
+        Assert.Equal("648", AttributeValue(card, "Height"));
+        Assert.Equal("Center", AttributeValue(card, "HorizontalAlignment"));
+        Assert.Equal("Center", AttributeValue(card, "VerticalAlignment"));
+
+        var layout = Assert.Single(
+            card.Elements(),
+            element => element.Name.LocalName == "Grid");
+        Assert.Equal(
+            "60,Auto,*,60",
+            AttributeValue(layout, "RowDefinitions"));
+        Assert.Contains(
+            layout.Descendants(),
+            element => element.Name.LocalName == "Grid"
+                && string.Equals(
+                    AttributeValue(element, "ColumnDefinitions"),
+                    "*,300",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            layout.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "Width"),
+                    "560",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Height"),
+                    "324",
+                    StringComparison.Ordinal));
+
+        var nameEditor = FindNamedElement(root, "NewLayoutName");
+        Assert.Equal(
+            "{Binding LayoutDesignerEditor.Name, Mode=TwoWay}",
+            AttributeValue(nameEditor, "Text"));
+        Assert.Equal("My layout", AttributeValue(nameEditor, "PlaceholderText"));
+
+        AssertGridSizePicker(
+            root,
+            "LayoutColumnsPicker",
+            "{Binding LayoutDesignerEditor.Columns}");
+        AssertGridSizePicker(
+            root,
+            "LayoutRowsPicker",
+            "{Binding LayoutDesignerEditor.Rows}");
+
+        var editableGrid = FindNamedElement(root, "LayoutDesignerGrid");
+        Assert.Equal(
+            "{Binding LayoutDesignerEditor}",
+            AttributeValue(editableGrid, "DataContext"));
+        Assert.Equal("{Binding Slots}", AttributeValue(editableGrid, "ItemsSource"));
+        Assert.Equal("True", AttributeValue(editableGrid, "Focusable"));
+        Assert.Equal(
+            "OnLayoutDesignerKeyDown",
+            AttributeValue(editableGrid, "KeyDown"));
+        Assert.Equal(
+            "Editable layout grid",
+            AttributeValue(editableGrid, "AutomationProperties.Name"));
+        Assert.Contains(
+            editableGrid.Descendants(),
+            element => element.Name.LocalName == "LayoutDesignerPreviewPanel");
+
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "LayoutDesignerGridVisual"
+                && string.Equals(
+                    AttributeValue(element, "PreviewBounds"),
+                    "{Binding LayoutDesignerEditor.PaintPreviewBounds}",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding Layouts}",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "Content"),
+                    "Save layout",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "IsEnabled"),
+                    "{Binding LayoutDesignerEditor.CanSave}",
+                    StringComparison.Ordinal));
+
+        Assert.Equal(24, LayoutDesignerInteractions.Count);
+        foreach (var handler in LayoutDesignerInteractions.Values)
+        {
+            Assert.Contains(
+                root.DescendantsAndSelf().SelectMany(element =>
+                    element.Attributes()),
+                attribute => string.Equals(
+                    attribute.Value,
+                    handler,
+                    StringComparison.Ordinal));
+        }
     }
 
     [Fact]
@@ -301,6 +438,50 @@ public sealed class TransientOverlayViewContractTests
             "LauncherSearchResultList.ScrollIntoView(selected);",
             commandPaletteCode);
 
+        var layoutDesignerCode = ApplicationViews
+            .FindUniqueCodeBehindSourceContaining(
+                "public sealed partial class LayoutDesignerView");
+        AssertForwardingContract(
+            layoutDesignerCode,
+            LayoutDesignerInteractions.Keys);
+        Assert.Contains(
+            "internal readonly record struct LayoutDesignerGridSize(",
+            layoutDesignerCode);
+        Assert.Contains(
+            "internal void FocusNameEditor()",
+            layoutDesignerCode);
+        Assert.Contains(
+            "NewLayoutName.Focus(NavigationMethod.Tab);",
+            layoutDesignerCode);
+        Assert.Contains(
+            "internal LayoutDesignerGridSize CaptureGridSize()",
+            layoutDesignerCode);
+        Assert.Contains(
+            "new(LayoutRowsPicker.Value, LayoutColumnsPicker.Value);",
+            layoutDesignerCode);
+        Assert.Contains(
+            "internal void FocusGrid()",
+            layoutDesignerCode);
+        Assert.Contains(
+            "LayoutDesignerGrid.Focus();",
+            layoutDesignerCode);
+        Assert.Contains(
+            "internal bool CancelPointerGesture()",
+            layoutDesignerCode);
+        Assert.Contains(
+            "?.CancelPointerGesture() == true;",
+            layoutDesignerCode);
+        Assert.Contains(
+            "internal void FocusSlot(LayoutDesignerSlotViewModel slot)",
+            layoutDesignerCode);
+        Assert.Contains(
+            "ReferenceEquals(button.DataContext, slot)",
+            layoutDesignerCode);
+        Assert.DoesNotContain("RequestCancel()", layoutDesignerCode);
+        Assert.DoesNotContain("DismissLayoutDesigner()", layoutDesignerCode);
+        Assert.DoesNotContain("SaveLayoutDesignerAsync(", layoutDesignerCode);
+        Assert.DoesNotContain("CancelPaintMode()", layoutDesignerCode);
+
         var newItemLauncherCode = ApplicationViews
             .FindUniqueCodeBehindSourceContaining(
                 "public sealed partial class NewItemLauncherView");
@@ -362,6 +543,9 @@ public sealed class TransientOverlayViewContractTests
             "this.FindControl<CommandPaletteView>(\"CommandPaletteOverlayView\")",
             mainWindowCode);
         Assert.Contains(
+            "this.FindControl<LayoutDesignerView>(\"LayoutDesignerOverlayView\")",
+            mainWindowCode);
+        Assert.Contains(
             "this.FindControl<NewItemLauncherView>(\"NewItemLauncherOverlayView\")",
             mainWindowCode);
         Assert.Contains(
@@ -370,6 +554,21 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains("CommandPaletteOverlay.FocusSearch();", mainWindowCode);
         Assert.Contains(
             "CommandPaletteOverlay.ScrollSelectedResultIntoView();",
+            mainWindowCode);
+        Assert.Contains(
+            "LayoutDesignerOverlay.FocusNameEditor();",
+            mainWindowCode);
+        Assert.Contains(
+            "LayoutDesignerOverlay.CaptureGridSize();",
+            mainWindowCode);
+        Assert.Contains(
+            "LayoutDesignerOverlay.FocusGrid();",
+            mainWindowCode);
+        Assert.Contains(
+            "LayoutDesignerOverlay.CancelPointerGesture();",
+            mainWindowCode);
+        Assert.Contains(
+            "LayoutDesignerOverlay.FocusSlot(selected)",
             mainWindowCode);
         Assert.Contains(
             "NewItemLauncherOverlay.FocusInitialAction();",
@@ -401,13 +600,59 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains("ViewModel.AddLocalTerminalPanelAsync(", mainWindowCode);
         Assert.Contains("ViewModel.CreateWorkspaceAsync(", mainWindowCode);
         Assert.Contains("new SavedScreenEditorDialog(", mainWindowCode);
+        Assert.Contains(
+            "ViewModel.LayoutDesignerEditor?.RequestCancel()",
+            mainWindowCode);
+        Assert.Contains("ViewModel.SaveLayoutDesignerAsync(", mainWindowCode);
+        Assert.Contains("ViewModel.DismissLayoutDesigner();", mainWindowCode);
+        Assert.Contains("ViewModel.BeginEditLayout(layout.Id);", mainWindowCode);
+        Assert.Contains("editor.ResizeGrid(", mainWindowCode);
+        Assert.Contains("editor!.CancelPaintMode();", mainWindowCode);
         Assert.Contains("FocusCurrentRoute();", mainWindowCode);
+    }
+
+    [Fact]
+    public void Main_window_preserves_layout_designer_escape_ordering()
+    {
+        var mainWindowCode = ApplicationViews.FindUniqueCodeBehindSourceContaining(
+            "public sealed partial class MainWindow");
+        var keyDownStart = mainWindowCode.IndexOf(
+            "private async void OnWindowKeyDown",
+            StringComparison.Ordinal);
+        Assert.True(keyDownStart >= 0);
+        var keyDownEnd = mainWindowCode.IndexOf(
+            "private void OnTerminalApplicationKeyPressed",
+            keyDownStart,
+            StringComparison.Ordinal);
+        Assert.True(keyDownEnd > keyDownStart);
+        var keyDownCode = mainWindowCode[keyDownStart..keyDownEnd];
+
+        var gestureCancellation = keyDownCode.IndexOf(
+            "LayoutDesignerOverlay.CancelPointerGesture();",
+            StringComparison.Ordinal);
+        var paintModeCancellation = keyDownCode.IndexOf(
+            "editor!.CancelPaintMode();",
+            StringComparison.Ordinal);
+        var overlayClose = keyDownCode.IndexOf(
+            "if (e.Key == Key.Escape && ViewModel.HasOverlay)",
+            StringComparison.Ordinal);
+
+        Assert.True(gestureCancellation >= 0);
+        Assert.True(paintModeCancellation > gestureCancellation);
+        Assert.True(overlayClose > paintModeCancellation);
+        Assert.Contains(
+            "if (cancelledGesture || cancelledPaintMode)",
+            keyDownCode);
     }
 
     private static readonly string[] ExtractedControlNames =
     [
         "CommandSearchBox",
+        "LayoutColumnsPicker",
+        "LayoutDesignerGrid",
+        "LayoutRowsPicker",
         "LauncherSearchResultList",
+        "NewLayoutName",
         "NewScreenName",
         "NewTerminalButton",
         "NewWorkspaceName",
@@ -454,6 +699,21 @@ public sealed class TransientOverlayViewContractTests
             "Cycle",
             AttributeValue(card, "KeyboardNavigation.TabNavigation"));
         return card;
+    }
+
+    private static void AssertGridSizePicker(
+        XElement root,
+        string name,
+        string valueBinding)
+    {
+        var picker = FindNamedElement(root, name);
+        Assert.Equal("NumericUpDown", picker.Name.LocalName);
+        Assert.Equal("1", AttributeValue(picker, "Minimum"));
+        Assert.Equal("12", AttributeValue(picker, "Maximum"));
+        Assert.Equal(valueBinding, AttributeValue(picker, "Value"));
+        Assert.Equal(
+            "OnLayoutGridSizeChanged",
+            AttributeValue(picker, "ValueChanged"));
     }
 
     private static void AssertForwardingContract(
