@@ -16,6 +16,9 @@ public sealed class RuntimePanelViewContractTests
         "BrowserRuntimePanelViewModel",
         "BrowserRuntimePanelView")]
     [InlineData(
+        "FileRuntimePanelViewModel",
+        "FileRuntimePanelView")]
+    [InlineData(
         "StatisticsRuntimePanelViewModel",
         "StatisticsRuntimePanelView")]
     [InlineData(
@@ -63,6 +66,10 @@ public sealed class RuntimePanelViewContractTests
         "BrowserRuntimePanelView",
         null,
         "Close browser panel")]
+    [InlineData(
+        "FileRuntimePanelView",
+        null,
+        "Close File Viewer panel")]
     [InlineData(
         "StatisticsRuntimePanelView",
         "Local host statistics panel",
@@ -145,12 +152,9 @@ public sealed class RuntimePanelViewContractTests
             StringComparison.Ordinal);
 
         var mainWindow = LoadView("MainWindow");
-        var inlineFilePanel = Assert.Single(
+        Assert.DoesNotContain(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "PanelCard")
-                && HasClass(element, "RuntimePanelFocusTarget"));
-        Assert.Equal("True", AttributeValue(inlineFilePanel, "Focusable"));
+            element => HasClass(element, "RuntimePanelFocusTarget"));
     }
 
     [Fact]
@@ -319,6 +323,100 @@ public sealed class RuntimePanelViewContractTests
         Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void File_panel_view_preserves_content_states_and_typed_shell_interactions()
+    {
+        var mainWindow = LoadView("MainWindow");
+        var template = Assert.Single(
+            mainWindow.Descendants(),
+            element => element.Name.LocalName == "DataTemplate"
+                && string.Equals(
+                    AttributeValue(element, "DataType"),
+                    "vm:FileRuntimePanelViewModel",
+                    StringComparison.Ordinal));
+        var component = Assert.Single(template.Elements());
+        var shellInteractions = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["CreateFolderRequested"] = "OnFileCreateFolderClick",
+            ["DeleteRequested"] = "OnFileDeleteClick",
+            ["DismissOperationIssueRequested"] = "OnDismissFileOperationIssueClick",
+            ["DownloadRequested"] = "OnFileDownloadClick",
+            ["EntryDoubleTapped"] = "OnFileEntryDoubleTapped",
+            ["EntrySelectionChanged"] = "OnFileEntrySelectionChanged",
+            ["LoadMoreRequested"] = "OnFileLoadMoreClick",
+            ["LocationKeyDown"] = "OnFileLocationKeyDown",
+            ["NavigateUpRequested"] = "OnFileNavigateUpClick",
+            ["OpenExternallyRequested"] = "OnFileOpenExternallyClick",
+            ["ProfileSelectionChanged"] = "OnFileProfileSelectionChanged",
+            ["RefreshRequested"] = "OnFileRefreshClick",
+            ["RenameRequested"] = "OnFileRenameClick",
+            ["TransferRequested"] = "OnFileTransferClick",
+            ["UploadRequested"] = "OnFileUploadClick",
+        };
+
+        foreach (var (interaction, handler) in shellInteractions)
+        {
+            Assert.Equal(handler, AttributeValue(component, interaction));
+        }
+
+        var document = LoadRuntimePanelView("FileRuntimePanelView");
+        var root = Assert.IsType<XElement>(document.Root);
+        Assert.Equal(
+            3,
+            root.Descendants().Count(element =>
+                element.Name.LocalName == "ListBox"
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding Entries}",
+                    StringComparison.Ordinal)));
+
+        Assert.Equal(
+            "Polite",
+            AttributeValue(
+                FindUniqueAccessibleElement(root, "File Viewer loading"),
+                "AutomationProperties.LiveSetting"));
+        Assert.Equal(
+            "Assertive",
+            AttributeValue(
+                FindUniqueAccessibleElement(root, "File Viewer operation status"),
+                "AutomationProperties.LiveSetting"));
+        Assert.Contains(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "IsVisible"),
+                "{Binding ShowErrorState}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "IsVisible"),
+                "{Binding ShowEmptyLocationState}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "IsVisible"),
+                "{Binding ShowSearchNoResultsState}",
+                StringComparison.Ordinal));
+
+        var codeBehind = File.ReadAllText(
+            RuntimePanelPath("FileRuntimePanelView", ".axaml.cs"));
+        foreach (var interaction in shellInteractions.Keys)
+        {
+            Assert.Contains(
+                $"{interaction}?.Invoke(sender, e);",
+                codeBehind,
+                StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("StorageProvider", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("Process.Start", codeBehind, StringComparison.Ordinal);
     }
 
     [Theory]
