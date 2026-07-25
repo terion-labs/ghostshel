@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:overlays="using:GhostShell.App.Views.Overlays"
     xmlns:panelViews="using:GhostShell.App.Views.RuntimePanels"
     xmlns:views="using:GhostShell.App.Views"
     xmlns:vm="using:GhostShell.App.ViewModels"
@@ -224,59 +225,12 @@
 
     <!-- Docked overlays. Runtime native views are hidden while these are open. -->
     <Grid IsVisible="{Binding HasOverlay}" Background="#F20B0B0C">
-      <Border Width="680" MaxHeight="700" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="OverlayCard" IsVisible="{Binding IsCommandPaletteVisible}" KeyboardNavigation.TabNavigation="Cycle">
-        <Grid RowDefinitions="58,*,44">
-          <Grid Margin="16,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-            <icons:SymbolIcon VerticalAlignment="Center" Symbol="Search" FontSize="17" />
-            <TextBox
-                x:Name="CommandSearchBox"
-                Grid.Column="1"
-                BorderThickness="0"
-                Background="Transparent"
-                KeyDown="OnCommandSearchKeyDown"
-                PlaceholderText="Search connections, screens, workspaces, sessions, or commands…"
-                AutomationProperties.Name="Search commands and launch targets"
-                Text="{Binding LauncherSearchQuery}" />
-            <Button Grid.Column="2" Padding="0" MinHeight="0" Background="Transparent" BorderThickness="0" VerticalAlignment="Center" Click="OnCloseOverlayClick" AutomationProperties.Name="Close command palette">
-              <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="ESC" /></Border>
-            </Button>
-          </Grid>
-          <ListBox
-              x:Name="LauncherSearchResultList"
-              Grid.Row="1"
-              Background="Transparent"
-              BorderThickness="0"
-              AutomationProperties.Name="Commands and launch targets"
-              ItemsSource="{Binding LauncherSearchResults}"
-              SelectedItem="{Binding SelectedLauncherSearchResult, Mode=TwoWay}">
-            <ListBox.Styles>
-              <Style Selector="ListBoxItem">
-                <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
-              </Style>
-            </ListBox.Styles>
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <Button
-                    Margin="4,0"
-                    Padding="10,8"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    HorizontalContentAlignment="Stretch"
-                    Click="OnLauncherSearchResultClick"
-                    IsEnabled="{Binding IsAvailable}">
-                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
-                    <Border Width="34" Height="34" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="14" /></Border>
-                    <StackPanel Grid.Column="1" Spacing="2"><TextBlock Classes="SectionHeading" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Group}" /><TextBlock FontWeight="SemiBold" Text="{Binding Title}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayDetail}" TextTrimming="CharacterEllipsis" /></StackPanel>
-                    <Border Grid.Column="2" Classes="Keycap" VerticalAlignment="Center" IsVisible="{Binding HasTrailingText}"><TextBlock Classes="Monospace" Text="{Binding TrailingText}" /></Border>
-                  </Grid>
-                </Button>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-          <StackPanel Grid.Row="1" Margin="30" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="7" IsVisible="{Binding HasNoLauncherSearchResults}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Launcher search has no results"><icons:SymbolIcon HorizontalAlignment="Center" Symbol="Search" FontSize="24" /><TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="No results" /><TextBlock MaxWidth="420" HorizontalAlignment="Center" Classes="Muted" TextAlignment="Center" Text="{Binding LauncherSearchEmptyState}" TextWrapping="Wrap" /></StackPanel>
-          <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0"><Grid Margin="14,0" ColumnDefinitions="*,Auto"><TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Unavailable results stay visible but cannot be opened." /><TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="↑↓ navigate  ↵ activate" /></Grid></Border>
-        </Grid>
-      </Border>
+      <overlays:CommandPaletteView
+          x:Name="CommandPaletteOverlayView"
+          ActivateSearchResultRequested="OnLauncherSearchResultClick"
+          CloseRequested="OnCloseOverlayClick"
+          IsVisible="{Binding IsCommandPaletteVisible}"
+          SearchKeyDownRequested="OnCommandSearchKeyDown" />
 
       <Border
           Margin="90,54"
@@ -409,19 +363,16 @@
         </Grid>
       </Border>
 
-      <Border Width="900" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="OverlayCard" IsVisible="{Binding IsNewPanelVisible}" KeyboardNavigation.TabNavigation="Cycle">
-        <StackPanel Margin="22" Spacing="18">
-          <Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="Add a panel" /><TextBlock Classes="Muted" Text="Choose an adapter supported by this desktop milestone." /></StackPanel><Button Grid.Column="1" Classes="IconButton" Click="OnCloseOverlayClick" AutomationProperties.Name="Close panel chooser"><icons:SymbolIcon Symbol="Dismiss" FontSize="14" /></Button></Grid>
-          <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
-            <Button x:Name="NewPanelTerminalButton" Classes="ChooserButton PanelChooser" Click="OnAddTerminalPanelClick"><StackPanel Spacing="9"><Border Width="36" Height="36" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="18" /></Border><TextBlock FontWeight="SemiBold" Text="Terminal" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Local PTY" /></StackPanel></Button>
-            <Button Grid.Column="1" Classes="ChooserButton PanelChooser" AutomationProperties.Name="Add native browser panel" Click="OnAddBrowserPanelClick" IsEnabled="{Binding CanCreateBrowserPanel}"><StackPanel Spacing="9"><Border Width="36" Height="36" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="18" /></Border><TextBlock FontWeight="SemiBold" Text="Browser" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Native webview" /></StackPanel></Button>
-            <Button Grid.Column="2" Classes="ChooserButton PanelChooser" Click="OnAddStatisticsPanelClick" AutomationProperties.Name="Add Statistics panel"><StackPanel Spacing="9"><Border Width="36" Height="36" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="PulseSquare" FontSize="18" /></Border><TextBlock FontWeight="SemiBold" Text="Statistics" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Live metrics" /></StackPanel></Button>
-            <Button Grid.Column="3" Classes="ChooserButton PanelChooser" Click="OnAddFilePanelClick"><StackPanel Spacing="9"><Border Width="36" Height="36" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="18" /></Border><TextBlock FontWeight="SemiBold" Text="Files" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Saved providers" /></StackPanel></Button>
-            <Button Grid.Column="4" Classes="ChooserButton PanelChooser" Click="OnAddProcessMonitorPanelClick" AutomationProperties.Name="Add Process Monitor panel"><StackPanel Spacing="9"><Border Width="36" Height="36" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="18" /></Border><TextBlock FontWeight="SemiBold" Text="Processes" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Running processes" /></StackPanel></Button>
-          </Grid>
-          <Button Classes="TextButton Accent" Click="OnShowLayoutDesignerClick" Content="Open layout designer instead" />
-        </StackPanel>
-      </Border>
+      <overlays:NewPanelChooserView
+          x:Name="NewPanelChooserOverlayView"
+          AddBrowserPanelRequested="OnAddBrowserPanelClick"
+          AddFilePanelRequested="OnAddFilePanelClick"
+          AddProcessMonitorPanelRequested="OnAddProcessMonitorPanelClick"
+          AddStatisticsPanelRequested="OnAddStatisticsPanelClick"
+          AddTerminalPanelRequested="OnAddTerminalPanelClick"
+          CloseRequested="OnCloseOverlayClick"
+          IsVisible="{Binding IsNewPanelVisible}"
+          ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />
 
       <Border Width="1000" Height="648" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="OverlayCard" IsVisible="{Binding IsLayoutDesignerVisible}" KeyboardNavigation.TabNavigation="Cycle">
         <Grid RowDefinitions="60,Auto,*,60">

@@ -10,6 +10,7 @@ using Avalonia.VisualTree;
 using GhostShell.App;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Controls;
+using GhostShell.App.Views.Overlays;
 using GhostShell.Application;
 using GhostShell.Core;
 using AvaloniaKeyModifiers = Avalonia.Input.KeyModifiers;
@@ -131,6 +132,16 @@ public sealed partial class MainWindow : Window
     private MainWindowViewModel ViewModel => DataContext as MainWindowViewModel
         ?? throw new InvalidOperationException("The main window view model is unavailable.");
 
+    private CommandPaletteView CommandPaletteOverlay =>
+        this.FindControl<CommandPaletteView>("CommandPaletteOverlayView")
+        ?? throw new InvalidOperationException(
+            "The command palette overlay view is unavailable.");
+
+    private NewPanelChooserView NewPanelChooserOverlay =>
+        this.FindControl<NewPanelChooserView>("NewPanelChooserOverlayView")
+        ?? throw new InvalidOperationException(
+            "The new panel chooser overlay view is unavailable.");
+
     private SettingsView SettingsRoute =>
         this.FindControl<SettingsView>("SettingsRouteView")
         ?? throw new InvalidOperationException(
@@ -146,7 +157,7 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            this.FindControl<TextBox>("CommandSearchBox")?.Focus();
+            CommandPaletteOverlay.FocusSearch();
             ViewModel.SelectFirstAvailableLauncherSearchResult();
         });
     }
@@ -329,7 +340,13 @@ public sealed partial class MainWindow : Window
         }
 
         ViewModel.ShowOverlay(ShellOverlay.NewPanel);
-        FocusOverlayControlWhenReady("NewPanelTerminalButton", () => ViewModel.IsNewPanelVisible);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (ViewModel.IsNewPanelVisible)
+            {
+                NewPanelChooserOverlay.FocusInitialAction();
+            }
+        });
     }
 
     public async Task ShowLayoutDesignerAsync()
@@ -3536,7 +3553,7 @@ public sealed partial class MainWindow : Window
         if (e.Key is Key.Down or Key.Up)
         {
             ViewModel.MoveLauncherSearchSelection(e.Key == Key.Down ? 1 : -1);
-            ScrollLauncherSearchSelectionIntoView();
+            CommandPaletteOverlay.ScrollSelectedResultIntoView();
             e.Handled = true;
             return;
         }
@@ -3549,15 +3566,6 @@ public sealed partial class MainWindow : Window
             }
 
             e.Handled = true;
-        }
-    }
-
-    private void ScrollLauncherSearchSelectionIntoView()
-    {
-        var resultList = this.FindControl<ListBox>("LauncherSearchResultList");
-        if (resultList?.SelectedItem is { } selected)
-        {
-            resultList.ScrollIntoView(selected);
         }
     }
 

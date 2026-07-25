@@ -1,0 +1,74 @@
+<UserControl
+    x:Class="GhostShell.App.Views.Overlays.NewPanelChooserView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+  <Border
+      Width="900"
+      HorizontalAlignment="Center"
+      VerticalAlignment="Center"
+      Classes="OverlayCard"
+      KeyboardNavigation.TabNavigation="Cycle">
+    <StackPanel Margin="22" Spacing="18">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel>
+          <TextBlock FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="Add a panel" />
+          <TextBlock Classes="Muted" Text="Choose an adapter supported by this desktop milestone." />
+        </StackPanel>
+        <Button Grid.Column="1" Classes="IconButton" Click="OnCloseClick" AutomationProperties.Name="Close panel chooser">
+          <icons:SymbolIcon Symbol="Dismiss" FontSize="14" />
+        </Button>
+      </Grid>
+      <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
+        <Button x:Name="NewPanelTerminalButton" Classes="ChooserButton PanelChooser" Click="OnAddTerminalPanelClick">
+          <StackPanel Spacing="9">
+            <Border Width="36" Height="36" Classes="ChooserIconTile">
+              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="18" />
+            </Border>
+            <TextBlock FontWeight="SemiBold" Text="Terminal" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Local PTY" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="1" Classes="ChooserButton PanelChooser" AutomationProperties.Name="Add native browser panel" Click="OnAddBrowserPanelClick" IsEnabled="{Binding CanCreateBrowserPanel}">
+          <StackPanel Spacing="9">
+            <Border Width="36" Height="36" Classes="ChooserIconTile">
+              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="18" />
+            </Border>
+            <TextBlock FontWeight="SemiBold" Text="Browser" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Native webview" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="2" Classes="ChooserButton PanelChooser" Click="OnAddStatisticsPanelClick" AutomationProperties.Name="Add Statistics panel">
+          <StackPanel Spacing="9">
+            <Border Width="36" Height="36" Classes="ChooserIconTile">
+              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="PulseSquare" FontSize="18" />
+            </Border>
+            <TextBlock FontWeight="SemiBold" Text="Statistics" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Live metrics" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="3" Classes="ChooserButton PanelChooser" Click="OnAddFilePanelClick">
+          <StackPanel Spacing="9">
+            <Border Width="36" Height="36" Classes="ChooserIconTile">
+              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="18" />
+            </Border>
+            <TextBlock FontWeight="SemiBold" Text="Files" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Saved providers" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="4" Classes="ChooserButton PanelChooser" Click="OnAddProcessMonitorPanelClick" AutomationProperties.Name="Add Process Monitor panel">
+          <StackPanel Spacing="9">
+            <Border Width="36" Height="36" Classes="ChooserIconTile">
+              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="18" />
+            </Border>
+            <TextBlock FontWeight="SemiBold" Text="Processes" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Running processes" />
+          </StackPanel>
+        </Button>
+      </Grid>
+      <Button Classes="TextButton Accent" Click="OnShowLayoutDesignerClick" Content="Open layout designer instead" />
+    </StackPanel>
+  </Border>
+</UserControl>
