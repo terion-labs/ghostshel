@@ -13,6 +13,9 @@ public sealed class RuntimePanelViewContractTests
         "TerminalRuntimePanelViewModel",
         "TerminalRuntimePanelView")]
     [InlineData(
+        "BrowserRuntimePanelViewModel",
+        "BrowserRuntimePanelView")]
+    [InlineData(
         "StatisticsRuntimePanelViewModel",
         "StatisticsRuntimePanelView")]
     [InlineData(
@@ -57,6 +60,10 @@ public sealed class RuntimePanelViewContractTests
         null,
         "Close panel")]
     [InlineData(
+        "BrowserRuntimePanelView",
+        null,
+        "Close browser panel")]
+    [InlineData(
         "StatisticsRuntimePanelView",
         "Local host statistics panel",
         "Close Statistics panel")]
@@ -77,6 +84,7 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(document.Root);
 
         Assert.Equal("UserControl", root.Name.LocalName);
+        Assert.True(HasClass(root, "RuntimePanelFocusTarget"));
         Assert.Equal("True", AttributeValue(root, "Focusable"));
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
@@ -114,11 +122,35 @@ public sealed class RuntimePanelViewContractTests
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
-            "CloseRequested?.Invoke(this, e);",
+            "CloseRequested?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Shell_focuses_the_single_runtime_panel_focus_target()
+    {
+        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
+            "private void FocusActivePanel()");
+
+        Assert.Contains(
+            "control.Classes.Contains(\"RuntimePanelFocusTarget\")",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "control.Classes.Contains(\"PanelCard\")",
+            codeBehind,
+            StringComparison.Ordinal);
+
+        var mainWindow = LoadView("MainWindow");
+        var inlineFilePanel = Assert.Single(
+            mainWindow.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && HasClass(element, "PanelCard")
+                && HasClass(element, "RuntimePanelFocusTarget"));
+        Assert.Equal("True", AttributeValue(inlineFilePanel, "Focusable"));
     }
 
     [Fact]
@@ -201,6 +233,90 @@ public sealed class RuntimePanelViewContractTests
             "SessionSnapshotChanged?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Browser_panel_view_preserves_native_host_and_typed_shell_interactions()
+    {
+        var mainWindow = LoadView("MainWindow");
+        var template = Assert.Single(
+            mainWindow.Descendants(),
+            element => element.Name.LocalName == "DataTemplate"
+                && string.Equals(
+                    AttributeValue(element, "DataType"),
+                    "vm:BrowserRuntimePanelViewModel",
+                    StringComparison.Ordinal));
+        var component = Assert.Single(template.Elements());
+
+        Assert.Equal(
+            "OnBrowserAddressKeyDown",
+            AttributeValue(component, "AddressKeyDown"));
+        Assert.Equal(
+            "OnBrowserBackClick",
+            AttributeValue(component, "BackRequested"));
+        Assert.Equal(
+            "OnBrowserStateChanged",
+            AttributeValue(component, "BrowserStateChanged"));
+        Assert.Equal(
+            "OnBrowserForwardClick",
+            AttributeValue(component, "ForwardRequested"));
+        Assert.Equal(
+            "OnBrowserReloadClick",
+            AttributeValue(component, "ReloadRequested"));
+        Assert.Equal(
+            "OnBrowserStopClick",
+            AttributeValue(component, "StopRequested"));
+
+        var document = LoadRuntimePanelView("BrowserRuntimePanelView");
+        var root = Assert.IsType<XElement>(document.Root);
+        var browser = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "BrowserPresentationHost");
+
+        Assert.Equal("RuntimeBrowser", AttributeValue(browser, "Name"));
+        Assert.Equal("1", AttributeValue(browser, "Margin"));
+        Assert.Equal("{Binding ClientId}", AttributeValue(browser, "ClientId"));
+        Assert.Equal(
+            "{Binding RendererView}",
+            AttributeValue(browser, "RendererView"));
+        Assert.Equal(
+            "{Binding SessionClient}",
+            AttributeValue(browser, "SessionClient"));
+        Assert.Equal(
+            "{Binding SessionRequest}",
+            AttributeValue(browser, "SessionRequest"));
+        Assert.Equal(
+            "OnBrowserStateChanged",
+            AttributeValue(browser, "BrowserStateChanged"));
+        Assert.DoesNotContain(
+            root.DescendantsAndSelf(),
+            element => element.Attributes().Any(attribute =>
+                attribute.Name.LocalName.Contains("Transform", StringComparison.Ordinal)));
+
+        var address = FindUniqueAccessibleElement(root, "Browser address");
+        Assert.Equal("OnAddressKeyDown", AttributeValue(address, "KeyDown"));
+        Assert.Equal(
+            "{Binding AddressText, Mode=TwoWay}",
+            AttributeValue(address, "Text"));
+
+        var status = FindUniqueAccessibleElement(root, "Browser session status");
+        Assert.Equal(
+            "Polite",
+            AttributeValue(status, "AutomationProperties.LiveSetting"));
+
+        var codeBehind = File.ReadAllText(
+            RuntimePanelPath("BrowserRuntimePanelView", ".axaml.cs"));
+        Assert.Contains(
+            "AddressKeyDown?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "BrowserStateChanged?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
     }

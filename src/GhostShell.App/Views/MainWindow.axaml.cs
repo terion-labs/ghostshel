@@ -4044,7 +4044,7 @@ public sealed partial class MainWindow : Window
                 .OfType<Control>()
                 .FirstOrDefault(control =>
                     ReferenceEquals(control.DataContext, activePanel)
-                    && control.Classes.Contains("PanelCard"))
+                    && control.Classes.Contains("RuntimePanelFocusTarget"))
                 ?.Focus();
         });
     }

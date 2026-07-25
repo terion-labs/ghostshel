@@ -31,13 +31,13 @@ public sealed partial class TerminalRuntimePanelView : UserControl
         ApplicationKeyPressed?.Invoke(sender, e);
 
     private void OnCancelReconnectClick(object? sender, RoutedEventArgs e) =>
-        CancelReconnectRequested?.Invoke(this, e);
+        CancelReconnectRequested?.Invoke(sender, e);
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
-        CloseRequested?.Invoke(this, e);
+        CloseRequested?.Invoke(sender, e);
 
     private void OnRetryConnectionClick(object? sender, RoutedEventArgs e) =>
-        RetryConnectionRequested?.Invoke(this, e);
+        RetryConnectionRequested?.Invoke(sender, e);
 
     private void OnSessionInitializationFailed(
         object? sender,
@@ -50,5 +50,5 @@ public sealed partial class TerminalRuntimePanelView : UserControl
         SessionSnapshotChanged?.Invoke(sender, e);
 
     private void OnTrustHostKeyClick(object? sender, RoutedEventArgs e) =>
-        TrustHostKeyRequested?.Invoke(this, e);
+        TrustHostKeyRequested?.Invoke(sender, e);
 }

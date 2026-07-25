@@ -1,0 +1,182 @@
+<UserControl
+    x:Class="GhostShell.App.Views.RuntimePanels.BrowserRuntimePanelView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    Classes="RuntimePanelFocusTarget"
+    Focusable="True"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch"
+    IsVisible="{Binding IsVisibleInLayout}">
+  <Border
+      Classes="PanelCard"
+      Classes.active="{Binding IsActive}">
+    <Grid RowDefinitions="36,43,*,25">
+      <Border Grid.Row="0" Classes="PanelHeader">
+        <Grid Margin="11,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+          <Ellipse
+              Width="7"
+              Height="7"
+              VerticalAlignment="Center"
+              Fill="{Binding StatusBrush, ElementName=RuntimeBrowser}" />
+          <StackPanel
+              Grid.Column="1"
+              VerticalAlignment="Center"
+              Orientation="Horizontal"
+              Spacing="8">
+            <TextBlock
+                Classes="Monospace"
+                FontSize="{DynamicResource ShellFontSize11}"
+                FontWeight="SemiBold"
+                Text="{Binding Title}" />
+            <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
+            <TextBlock
+                Classes="Eyebrow Accent"
+                IsVisible="{Binding IsZoomed}"
+                Text="ZOOMED" />
+          </StackPanel>
+          <StackPanel
+              Grid.Column="2"
+              VerticalAlignment="Center"
+              Orientation="Horizontal"
+              Spacing="5">
+            <TextBlock
+                VerticalAlignment="Center"
+                AutomationProperties.LiveSetting="Polite"
+                AutomationProperties.Name="Browser session status"
+                Classes="Monospace Muted"
+                FontSize="{DynamicResource ShellFontSize9}"
+                Text="{Binding StatusText, ElementName=RuntimeBrowser}" />
+            <Button
+                AutomationProperties.Name="Close browser panel"
+                Classes="IconButton"
+                Click="OnCloseClick"
+                ToolTip.Tip="Close browser panel">
+              <icons:SymbolIcon FontSize="12" Symbol="Dismiss" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border
+          Grid.Row="1"
+          Background="{DynamicResource ShellSurfaceRaisedBrush}"
+          BorderBrush="{DynamicResource ShellBorderBrush}"
+          BorderThickness="0,0,0,1">
+        <Grid
+            Margin="8,5"
+            ColumnDefinitions="Auto,Auto,*,Auto"
+            ColumnSpacing="6"
+            DataContext="{Binding ElementName=RuntimeBrowser}">
+          <Button
+              AutomationProperties.Name="Go back"
+              Classes="IconButton Large"
+              Click="OnBackClick"
+              IsEnabled="{Binding CanGoBack}"
+              ToolTip.Tip="Back">
+            <icons:SymbolIcon FontSize="14" Symbol="ArrowLeft" />
+          </Button>
+          <Button
+              Grid.Column="1"
+              AutomationProperties.Name="Go forward"
+              Classes="IconButton Large"
+              Click="OnForwardClick"
+              IsEnabled="{Binding CanGoForward}"
+              ToolTip.Tip="Forward">
+            <icons:SymbolIcon FontSize="14" Symbol="ArrowRight" />
+          </Button>
+          <TextBox
+              Grid.Column="2"
+              AutomationProperties.Name="Browser address"
+              Classes="Monospace"
+              FontSize="{DynamicResource ShellFontSize10}"
+              IsEnabled="{Binding IsLive}"
+              KeyDown="OnAddressKeyDown"
+              Text="{Binding AddressText, Mode=TwoWay}" />
+          <Button
+              Grid.Column="3"
+              AutomationProperties.Name="Reload page"
+              Classes="IconButton Large"
+              Click="OnReloadClick"
+              IsEnabled="{Binding IsLive}"
+              IsVisible="{Binding !IsLoading}"
+              ToolTip.Tip="Reload">
+            <icons:SymbolIcon FontSize="14" Symbol="ArrowClockwise" />
+          </Button>
+          <Button
+              Grid.Column="3"
+              AutomationProperties.Name="Stop loading page"
+              Classes="IconButton Large"
+              Click="OnStopClick"
+              IsVisible="{Binding IsLoading}"
+              ToolTip.Tip="Stop loading">
+            <icons:SymbolIcon FontSize="14" Symbol="Dismiss" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Row="2">
+        <controls:BrowserPresentationHost
+            x:Name="RuntimeBrowser"
+            Margin="1"
+            BrowserStateChanged="OnBrowserStateChanged"
+            ClientId="{Binding ClientId}"
+            RendererView="{Binding RendererView}"
+            SessionClient="{Binding SessionClient}"
+            SessionRequest="{Binding SessionRequest}" />
+        <Border
+            Margin="1"
+            Padding="24"
+            Background="#0D0D0E"
+            IsHitTestVisible="False"
+            IsVisible="{Binding ShowFallback, ElementName=RuntimeBrowser}">
+          <StackPanel
+              MaxWidth="440"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Spacing="8">
+            <icons:SymbolIcon
+                FontSize="24"
+                Foreground="#7B7B82"
+                Symbol="Globe" />
+            <TextBlock
+                Classes="Monospace Muted"
+                FontSize="{DynamicResource ShellFontSize11}"
+                Text="{Binding StatusMessage, ElementName=RuntimeBrowser}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Border
+          Grid.Row="3"
+          Background="{DynamicResource ShellSurfaceBrush}"
+          BorderBrush="{DynamicResource ShellBorderBrush}"
+          BorderThickness="0,1,0,0">
+        <Grid Margin="9,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+          <icons:SymbolIcon
+              VerticalAlignment="Center"
+              FontSize="11"
+              Foreground="{DynamicResource ShellMutedBrush}"
+              Symbol="Globe" />
+          <TextBlock
+              Grid.Column="1"
+              VerticalAlignment="Center"
+              Classes="Monospace Muted"
+              FontSize="{DynamicResource ShellFontSize9}"
+              Text="{Binding AddressText, ElementName=RuntimeBrowser}"
+              TextTrimming="CharacterEllipsis" />
+          <TextBlock
+              Grid.Column="2"
+              VerticalAlignment="Center"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize9}"
+              Text="{Binding StatusMessage, ElementName=RuntimeBrowser}"
+              TextTrimming="CharacterEllipsis" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>
