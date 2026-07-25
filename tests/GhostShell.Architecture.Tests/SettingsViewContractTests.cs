@@ -70,6 +70,7 @@ public sealed class SettingsViewContractTests
             ["ShowNewItemRequested"] = "OnShowNewItemClick",
             ["TerminalSettingsRequested"] = "OnTerminalSettingsClick",
             ["TestMcpServerRequested"] = "OnTestMcpServerClick",
+            ["TitleBarPointerPressedRequested"] = "OnTitleBarPointerPressed",
             ["UnbindKeybindingRequested"] = "OnUnbindKeybindingClick",
             ["UndoDeletedSavedScreenRequested"] =
                 "OnUndoDeletedSavedScreenClick",
@@ -126,6 +127,9 @@ public sealed class SettingsViewContractTests
         Assert.Equal(
             "TitleBar",
             AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
+        Assert.Equal(
+            "OnTitleBarPointerPressed",
+            AttributeValue(titleBar, "PointerPressed"));
         Assert.Equal(
             "User",
             AttributeValue(

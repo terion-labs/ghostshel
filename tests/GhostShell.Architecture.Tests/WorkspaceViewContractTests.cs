@@ -44,6 +44,7 @@ public sealed class WorkspaceViewContractTests
             ["ShowNewPanelRequested"] = "OnShowNewPanelClick",
             ["ShowSettingsRequested"] = "OnShowSettingsClick",
             ["SubmitAgentQuestionRequested"] = "OnSubmitAgentQuestionClick",
+            ["TitleBarPointerPressedRequested"] = "OnTitleBarPointerPressed",
             ["ToggleAgentRequested"] = "OnToggleAgentClick",
         };
 
@@ -220,6 +221,9 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(
             "TitleBar",
             AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
+        Assert.Equal(
+            "OnTitleBarPointerPressed",
+            AttributeValue(titleBar, "PointerPressed"));
     }
 
     [Fact]

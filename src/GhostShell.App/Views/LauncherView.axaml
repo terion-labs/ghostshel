@@ -10,6 +10,7 @@
   <Grid RowDefinitions="44,*">
     <Border
         Classes="TopChrome"
+        PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
       <Grid Margin="14,0" ColumnDefinitions="52,*,52">
         <TextBlock

@@ -118,7 +118,8 @@
         SaveHistoryRetentionRequested="OnSaveHistoryRetentionClick"
         ShowCommandPaletteRequested="OnShowCommandPaletteClick"
         ShowNewItemRequested="OnShowNewItemClick"
-        ShowSettingsRequested="OnShowSettingsClick" />
+        ShowSettingsRequested="OnShowSettingsClick"
+        TitleBarPointerPressedRequested="OnTitleBarPointerPressed" />
 
     <!-- Runtime workspace -->
     <views:WorkspaceView
@@ -156,6 +157,7 @@
         ShowNewPanelRequested="OnShowNewPanelClick"
         ShowSettingsRequested="OnShowSettingsClick"
         SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick"
+        TitleBarPointerPressedRequested="OnTitleBarPointerPressed"
         ToggleAgentRequested="OnToggleAgentClick" />
 
     <!-- Settings -->
@@ -217,6 +219,7 @@
         ShowNewItemRequested="OnShowNewItemClick"
         TerminalSettingsRequested="OnTerminalSettingsClick"
         TestMcpServerRequested="OnTestMcpServerClick"
+        TitleBarPointerPressedRequested="OnTitleBarPointerPressed"
         UnbindKeybindingRequested="OnUnbindKeybindingClick"
         UndoDeletedSavedScreenRequested="OnUndoDeletedSavedScreenClick"
         WorkspaceSettingsRequested="OnWorkspaceSettingsClick" />
@@ -309,6 +312,7 @@
           HorizontalAlignment="Stretch"
           VerticalAlignment="Top"
           Background="Transparent"
+          PointerPressed="OnTitleBarPointerPressed"
           WindowDecorationProperties.ElementRole="TitleBar" />
     </Grid>
 
