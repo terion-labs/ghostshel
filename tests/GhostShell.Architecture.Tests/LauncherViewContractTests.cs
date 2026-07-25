@@ -97,6 +97,20 @@ public sealed class LauncherViewContractTests
             "{Binding IsLauncherOverviewVisible}",
             AttributeValue(home, "IsActive"));
 
+        foreach (var (name, automationName) in new[]
+                 {
+                     ("LauncherHomeSection", "Home overview"),
+                     ("LauncherConnectionsSection", "Saved connections section"),
+                     ("LauncherScreensSection", "Saved screens section"),
+                 })
+        {
+            var overviewTarget = FindNamedElement(root, name);
+            Assert.Equal("True", AttributeValue(overviewTarget, "Focusable"));
+            Assert.Equal(
+                automationName,
+                AttributeValue(overviewTarget, "AutomationProperties.Name"));
+        }
+
         var historySearch = FindNamedElement(root, "HistorySearchBox");
         Assert.Equal(
             "Search session history",
@@ -175,8 +189,7 @@ public sealed class LauncherViewContractTests
     [Fact]
     public void Main_window_uses_typed_launcher_focus_apis_across_the_namescope()
     {
-        var mainWindowCode = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "public sealed partial class MainWindow");
+        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
 
         foreach (var extractedName in ExtractedControlNames)
         {

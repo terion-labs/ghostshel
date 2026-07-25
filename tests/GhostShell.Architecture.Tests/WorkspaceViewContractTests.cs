@@ -247,8 +247,7 @@ public sealed class WorkspaceViewContractTests
 
         Assert.Equal(6, runtimeTemplateTypes.Length);
 
-        var mainWindowCode = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "public sealed partial class MainWindow");
+        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
             mainWindowCode,

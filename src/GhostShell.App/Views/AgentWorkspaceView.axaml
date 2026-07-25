@@ -390,6 +390,12 @@
               Content="Open provider settings"
               AutomationProperties.Name="Open AI provider settings"
               AutomationProperties.HelpText="Configure an AI service for this local GhostSHELL profile. Credentials remain in the operating-system vault." />
+          <Button
+              Classes="TextButton"
+              Click="OnClearAgentChatClick"
+              Content="Clear agent session"
+              IsVisible="{Binding AgentChat.CanClear}"
+              AutomationProperties.Name="Clear the retained AI agent session" />
         </StackPanel>
         <StackPanel
             Margin="18,28"

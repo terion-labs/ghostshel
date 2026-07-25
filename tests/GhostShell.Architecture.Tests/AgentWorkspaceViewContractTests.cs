@@ -85,6 +85,21 @@ public sealed class AgentWorkspaceViewContractTests
         Assert.False(string.IsNullOrWhiteSpace(
             AttributeValue(providerSettings, "AutomationProperties.HelpText")));
 
+        var clearRetainedSession = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "Content"),
+                    "Clear agent session",
+                    StringComparison.Ordinal));
+        Assert.Equal(
+            "{Binding AgentChat.CanClear}",
+            AttributeValue(clearRetainedSession, "IsVisible"));
+        Assert.False(string.IsNullOrWhiteSpace(
+            AttributeValue(
+                clearRetainedSession,
+                "AutomationProperties.Name")));
+
         var prompt = FindNamedElement(root, "AgentChatPromptInput");
         var composer = Assert.Single(
             prompt.Ancestors(),
