@@ -10,6 +10,9 @@ public sealed class RuntimePanelViewContractTests
 
     [Theory]
     [InlineData(
+        "TerminalRuntimePanelViewModel",
+        "TerminalRuntimePanelView")]
+    [InlineData(
         "StatisticsRuntimePanelViewModel",
         "StatisticsRuntimePanelView")]
     [InlineData(
@@ -49,6 +52,10 @@ public sealed class RuntimePanelViewContractTests
     }
 
     [Theory]
+    [InlineData(
+        "TerminalRuntimePanelView",
+        null,
+        "Close panel")]
     [InlineData(
         "StatisticsRuntimePanelView",
         "Local host statistics panel",
@@ -108,6 +115,90 @@ public sealed class RuntimePanelViewContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "CloseRequested?.Invoke(this, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Terminal_panel_view_preserves_native_host_and_typed_shell_interactions()
+    {
+        var mainWindow = LoadView("MainWindow");
+        var template = Assert.Single(
+            mainWindow.Descendants(),
+            element => element.Name.LocalName == "DataTemplate"
+                && string.Equals(
+                    AttributeValue(element, "DataType"),
+                    "vm:TerminalRuntimePanelViewModel",
+                    StringComparison.Ordinal));
+        var component = Assert.Single(template.Elements());
+
+        Assert.Equal(
+            "OnTerminalApplicationKeyPressed",
+            AttributeValue(component, "ApplicationKeyPressed"));
+        Assert.Equal(
+            "OnCancelConnectionReconnectClick",
+            AttributeValue(component, "CancelReconnectRequested"));
+        Assert.Equal(
+            "OnRetryConnectionPanelClick",
+            AttributeValue(component, "RetryConnectionRequested"));
+        Assert.Equal(
+            "OnTerminalSessionInitializationFailed",
+            AttributeValue(component, "SessionInitializationFailed"));
+        Assert.Equal(
+            "OnTerminalSessionSnapshotChanged",
+            AttributeValue(component, "SessionSnapshotChanged"));
+        Assert.Equal(
+            "OnTrustConnectionHostKeyClick",
+            AttributeValue(component, "TrustHostKeyRequested"));
+
+        var document = LoadRuntimePanelView("TerminalRuntimePanelView");
+        var root = Assert.IsType<XElement>(document.Root);
+        var terminal = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "TerminalPresentationHost");
+
+        Assert.Equal("RuntimeTerminal", AttributeValue(terminal, "Name"));
+        Assert.Equal("1", AttributeValue(terminal, "Margin"));
+        Assert.Equal("{Binding ClientId}", AttributeValue(terminal, "ClientId"));
+        Assert.Equal(
+            "{Binding SessionClient}",
+            AttributeValue(terminal, "SessionClient"));
+        Assert.Equal(
+            "{Binding SessionRequest}",
+            AttributeValue(terminal, "SessionRequest"));
+        Assert.Equal(
+            "OnApplicationKeyPressed",
+            AttributeValue(terminal, "ApplicationKeyPressed"));
+        Assert.Equal(
+            "OnSessionSnapshotChanged",
+            AttributeValue(terminal, "SessionSnapshotChanged"));
+        Assert.Equal(
+            "OnSessionInitializationFailed",
+            AttributeValue(terminal, "SessionInitializationFailed"));
+        Assert.DoesNotContain(
+            root.DescendantsAndSelf(),
+            element => element.Attributes().Any(attribute =>
+                attribute.Name.LocalName.Contains("Transform", StringComparison.Ordinal)));
+
+        var status = FindUniqueAccessibleElement(root, "Terminal session status");
+        Assert.Equal(
+            "Polite",
+            AttributeValue(status, "AutomationProperties.LiveSetting"));
+
+        var codeBehind = File.ReadAllText(
+            RuntimePanelPath("TerminalRuntimePanelView", ".axaml.cs"));
+        Assert.Contains(
+            "ApplicationKeyPressed?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SessionInitializationFailed?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SessionSnapshotChanged?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
