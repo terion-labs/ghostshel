@@ -1,0 +1,401 @@
+<Styles xmlns="https://github.com/avaloniaui">
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellBaseFontSize}" />
+    <Setter Property="FontFamily" Value="{DynamicResource ShellUiFontFamily}" />
+  </Style>
+
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+    <Setter Property="Padding" Value="{DynamicResource ShellControlPadding}" />
+    <Setter Property="MinHeight" Value="{DynamicResource ShellControlMinHeight}" />
+  </Style>
+
+  <Style Selector="Button:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Button:disabled">
+    <Setter Property="Opacity" Value="0.48" />
+  </Style>
+
+  <Style Selector="Button.IconButton">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.IconButton.Large">
+    <Setter Property="Width" Value="34" />
+    <Setter Property="Height" Value="34" />
+  </Style>
+
+  <Style Selector="Button.PrimaryButton">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Padding" Value="13,7" />
+  </Style>
+
+  <Style Selector="Button.SecondaryButton">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="Padding" Value="12,7" />
+  </Style>
+
+  <Style Selector="Button.SecondaryButton.painting">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="Button.SecondaryButton.active">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="Button.DangerButton">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="30" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
+  </Style>
+
+  <Style Selector="Button.DestructiveButton">
+    <Setter Property="Background" Value="{DynamicResource ShellDangerBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellDangerForegroundBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Padding" Value="12,7" />
+  </Style>
+
+  <Style Selector="Button.TextButton">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="6,4" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
+  </Style>
+
+  <Style Selector="Button.TextButton.Accent">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="Button.SearchButton">
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Padding" Value="11,0" />
+    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="4,0" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+  </Style>
+
+  <Style Selector="Button.NavButton">
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="11,9" />
+  </Style>
+
+  <Style Selector="Button.NavButton.active">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.ChooserButton">
+    <Setter Property="MinHeight" Value="116" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+  </Style>
+
+  <Style Selector="Button.ChooserButton.LauncherChooser">
+    <Setter Property="MinHeight" Value="124" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="CornerRadius" Value="16" />
+  </Style>
+
+  <Style Selector="Button.ChooserButton.PanelChooser">
+    <Setter Property="MinHeight" Value="110" />
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="CornerRadius" Value="12" />
+  </Style>
+
+  <Style Selector="Button.LayoutSlotButton">
+    <Setter Property="Margin" Value="3" />
+    <Setter Property="Padding" Value="10" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="7" />
+  </Style>
+
+  <Style Selector="Button.LayoutSlotButton.active">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Button.LayoutSlotButton.orange">
+    <Setter Property="Background" Value="#291C0F" />
+    <Setter Property="BorderBrush" Value="#80FF8400" />
+  </Style>
+
+  <Style Selector="Button.LayoutSlotButton.blue">
+    <Setter Property="Background" Value="#141E30" />
+    <Setter Property="BorderBrush" Value="#803B82F6" />
+  </Style>
+
+  <Style Selector="Button.LayoutSlotButton.green">
+    <Setter Property="Background" Value="#11271A" />
+    <Setter Property="BorderBrush" Value="#8022C55E" />
+  </Style>
+
+  <Style Selector="Button.LayoutSlotButton.pink">
+    <Setter Property="Background" Value="#2A1420" />
+    <Setter Property="BorderBrush" Value="#80EC4899" />
+  </Style>
+
+  <Style Selector="Button.LayoutSlotButton.orange.active, Button.LayoutSlotButton.blue.active, Button.LayoutSlotButton.green.active, Button.LayoutSlotButton.pink.active">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Border.LayoutSlotBadge.orange">
+    <Setter Property="Background" Value="#FF8400" />
+  </Style>
+
+  <Style Selector="Border.LayoutSlotBadge.blue">
+    <Setter Property="Background" Value="#3B82F6" />
+  </Style>
+
+  <Style Selector="Border.LayoutSlotBadge.green">
+    <Setter Property="Background" Value="#22C55E" />
+  </Style>
+
+  <Style Selector="Border.LayoutSlotBadge.pink">
+    <Setter Property="Background" Value="#EC4899" />
+  </Style>
+
+  <Style Selector="TextBox, ComboBox, NumericUpDown">
+    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{DynamicResource ShellControlMinHeight}" />
+  </Style>
+
+  <Style Selector="TextBox:focus, ComboBox:focus, NumericUpDown:focus">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.Muted">
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.Monospace">
+    <Setter Property="FontFamily" Value="JetBrains Mono, Menlo, Consolas, monospace" />
+  </Style>
+
+  <Style Selector="TextBlock.SectionHeading">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+    <Setter Property="LetterSpacing" Value="1.25" />
+  </Style>
+
+  <Style Selector="TextBlock.Eyebrow">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize8}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+    <Setter Property="LetterSpacing" Value="0.8" />
+  </Style>
+
+  <Style Selector="TextBlock.Eyebrow.Accent">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="Border.TopChrome">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+
+  <Style Selector="Border.LaunchCard">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  </Style>
+
+  <Style Selector="Border.ListCard">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  </Style>
+
+  <Style Selector="Border.SettingsCard">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  </Style>
+
+  <Style Selector="Border.NoticeCard">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellNoticeBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="Border.NoticeCard:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Border.AgentProgressCard">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellNoticeBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="9" />
+  </Style>
+
+  <Style Selector="Border.AgentProgressCard:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Border.OverlayCard">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="BoxShadow" Value="0 18 54 0 #A0000000" />
+  </Style>
+
+  <Style Selector="Border.PanelCard">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="9" />
+  </Style>
+
+  <Style Selector="Border.PanelCard.active">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="Border.PanelHeader">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="CornerRadius" Value="9,9,0,0" />
+  </Style>
+
+  <Style Selector="Border.AgentPanel">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="11" />
+  </Style>
+
+  <Style Selector="Border.IconTile">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
+
+  <Style Selector="Border.ChooserIconTile">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="CornerRadius" Value="10" />
+  </Style>
+
+  <Style Selector="Border.ScreenPreviewPanel">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <Style Selector="Border.ScreenPreviewPanel.primary">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="Border.Keycap">
+    <Setter Property="Padding" Value="6,3" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="5" />
+  </Style>
+
+  <Style Selector="Border.Keycap TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize8}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+  </Style>
+
+  <Style Selector="Border.StatusPill">
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="Background" Value="{DynamicResource ShellSuccessSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellSuccessBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="999" />
+  </Style>
+
+  <Style Selector="Border.StatusPill TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize8}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellSuccessBrush}" />
+  </Style>
+
+  <Style Selector="Border.StatusPill.Warning">
+    <Setter Property="Background" Value="{DynamicResource ShellWarningSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellWarningBorderBrush}" />
+  </Style>
+
+  <Style Selector="Border.StatusPill.Warning TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ShellWarningBrush}" />
+  </Style>
+
+  <Style Selector="Border.StatusPill.Danger">
+    <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
+  </Style>
+
+  <Style Selector="Border.StatusPill.Danger TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
+  </Style>
+</Styles>

@@ -1,0 +1,123 @@
+using GhostShell.Application;
+using Porta.Pty;
+
+namespace GhostShell.Terminal;
+
+internal sealed record PortablePtyExit(int ExitCode);
+
+internal interface IPortablePtyConnection : IDisposable
+{
+    event EventHandler<PortablePtyExit>? ProcessExited;
+
+    Stream Reader { get; }
+
+    Stream Writer { get; }
+
+    bool TryGetExitCode(out int exitCode);
+
+    void Resize(int columns, int rows);
+
+    void Kill();
+}
+
+internal interface IPortablePtyFactory
+{
+    ValueTask<IPortablePtyConnection> SpawnAsync(
+        TerminalLaunchRequest launch,
+        int columns,
+        int rows,
+        CancellationToken cancellationToken);
+}
+
+internal sealed class PortaPtyFactory : IPortablePtyFactory
+{
+    public async ValueTask<IPortablePtyConnection> SpawnAsync(
+        TerminalLaunchRequest launch,
+        int columns,
+        int rows,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(launch);
+        var executable = launch.Executable ?? ResolveDefaultShell();
+        var workingDirectory = launch.WorkingDirectory ?? Environment.CurrentDirectory;
+        if (!Directory.Exists(workingDirectory))
+        {
+            throw new DirectoryNotFoundException(
+                $"The terminal working directory does not exist: {workingDirectory}");
+        }
+
+        var environment = new Dictionary<string, string>(launch.Environment, StringComparer.Ordinal);
+        environment.TryAdd("TERM", "xterm-256color");
+        environment.TryAdd("COLORTERM", "truecolor");
+        var connection = await PtyProvider.SpawnAsync(
+                new PtyOptions
+                {
+                    Name = "GhostSHELL",
+                    App = executable,
+                    CommandLine = launch.Arguments.ToArray(),
+                    Cwd = workingDirectory,
+                    Cols = columns,
+                    Rows = rows,
+                    Environment = environment,
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new PortaPtyConnection(connection);
+    }
+
+    private static string ResolveDefaultShell()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return Environment.GetEnvironmentVariable("COMSPEC")
+                ?? Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        }
+
+        var configured = Environment.GetEnvironmentVariable("SHELL");
+        return !string.IsNullOrWhiteSpace(configured) && Path.IsPathRooted(configured)
+            ? configured
+            : "/bin/sh";
+    }
+}
+
+internal sealed class PortaPtyConnection : IPortablePtyConnection
+{
+    private readonly IPtyConnection _connection;
+
+    public PortaPtyConnection(IPtyConnection connection)
+    {
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connection.ProcessExited += OnProcessExited;
+    }
+
+    public event EventHandler<PortablePtyExit>? ProcessExited;
+
+    public Stream Reader => _connection.ReaderStream;
+
+    public Stream Writer => _connection.WriterStream;
+
+    public bool TryGetExitCode(out int exitCode)
+    {
+        if (_connection.WaitForExit(0))
+        {
+            exitCode = _connection.ExitCode;
+            return true;
+        }
+
+        exitCode = default;
+        return false;
+    }
+
+    public void Resize(int columns, int rows) => _connection.Resize(columns, rows);
+
+    public void Kill() => _connection.Kill();
+
+    public void Dispose()
+    {
+        _connection.ProcessExited -= OnProcessExited;
+        _connection.Dispose();
+    }
+
+    private void OnProcessExited(object? sender, PtyExitedEventArgs eventArgs) =>
+        ProcessExited?.Invoke(this, new PortablePtyExit(eventArgs.ExitCode));
+}

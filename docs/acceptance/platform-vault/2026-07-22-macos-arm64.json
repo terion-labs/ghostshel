@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "reason": "accepted",
+  "startedAtUtc": "2026-07-22T23:02:35.8260410\u002B00:00",
+  "completedAtUtc": "2026-07-22T23:02:37.5992610\u002B00:00",
+  "durationMilliseconds": 1773,
+  "host": {
+    "osFamily": "macOS",
+    "osDescription": "macOS 26.5.2",
+    "architecture": "arm64"
+  },
+  "dotnet": {
+    "sdkVersion": "10.0.302"
+  },
+  "provider": {
+    "adapter": "macos-keychain",
+    "persistence": "os-protected-persistent"
+  },
+  "test": {
+    "testId": "GhostShell.Infrastructure.Tests.PlatformSecretVaultIntegrationTests.Native_vault_round_trips_only_when_explicitly_enabled",
+    "outcome": "PASSED",
+    "exitCode": 0,
+    "durationMilliseconds": 150
+  },
+  "cleanup": {
+    "state": "CONFIRMED",
+    "recovery": null
+  }
+}

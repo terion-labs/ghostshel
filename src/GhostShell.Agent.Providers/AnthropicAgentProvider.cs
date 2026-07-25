@@ -1,0 +1,619 @@
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using GhostShell.Agent;
+using GhostShell.Application;
+using GhostShell.Core;
+
+namespace GhostShell.Agent.Providers;
+
+internal sealed class AnthropicAgentProvider(
+    AiProviderProfile profile,
+    string model,
+    AiProviderHttpTransport transport,
+    AiProviderRuntimeLimits limits) : IAgentProvider
+{
+    public async IAsyncEnumerable<AgentProviderEvent> StreamAsync(
+        AgentProviderRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        operation.CancelAfter(limits.StreamTimeout);
+        await using var enumerator = StreamCoreAsync(request, operation.Token)
+            .GetAsyncEnumerator(operation.Token);
+        while (true)
+        {
+            bool moved;
+            try
+            {
+                moved = await enumerator.MoveNextAsync().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException exception)
+                when (!cancellationToken.IsCancellationRequested)
+            {
+                throw AiProviderClientException.Create(
+                    AiProviderRuntimeErrorCode.Timeout,
+                    innerException: exception);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (IOException exception)
+            {
+                throw AiProviderClientException.Create(
+                    AiProviderRuntimeErrorCode.ProviderUnavailable,
+                    innerException: exception);
+            }
+
+            if (!moved)
+            {
+                yield break;
+            }
+
+            yield return enumerator.Current;
+        }
+    }
+
+    private async IAsyncEnumerable<AgentProviderEvent> StreamCoreAsync(
+        AgentProviderRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var body = WriteRequest(request);
+        using var httpRequest = await transport.CreateRequestAsync(
+            profile,
+            HttpMethod.Post,
+            "messages",
+            "text/event-stream",
+            body,
+            cancellationToken).ConfigureAwait(false);
+        using var response = await transport
+            .SendAsync(profile, httpRequest, cancellationToken)
+            .ConfigureAwait(false);
+        AiProviderHttpTransport.ValidateContent(
+            response,
+            "text/event-stream",
+            limits.MaximumStreamResponseBytes);
+        yield return new AgentProviderEvent.ResponseStarted();
+
+        await using var responseStream = await response.Content
+            .ReadAsStreamAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await using var limited = new LimitedReadStream(
+            responseStream,
+            limits.MaximumStreamResponseBytes);
+        var parser = SseParser.Create(
+            limited,
+            (_, data) =>
+            {
+                if (data.Length > limits.MaximumSseEventBytes)
+                {
+                    throw AiProviderClientException.Create(
+                        AiProviderRuntimeErrorCode.ResponseTooLarge);
+                }
+
+                return data.ToArray();
+            });
+        var state = new AnthropicStreamState(limits.MaximumProviderFragmentBytes);
+        var eventCount = 0;
+        await foreach (var item in parser
+                           .EnumerateAsync(cancellationToken)
+                           .ConfigureAwait(false))
+        {
+            eventCount = checked(eventCount + 1);
+            if (eventCount > limits.MaximumSseEvents)
+            {
+                throw AiProviderClientException.Create(
+                    AiProviderRuntimeErrorCode.ResponseTooLarge);
+            }
+
+            using var document = AiProviderJson.Parse(item.Data);
+            foreach (var providerEvent in state.Apply(
+                         item.EventType,
+                         document.RootElement))
+            {
+                yield return providerEvent;
+            }
+        }
+
+        yield return new AgentProviderEvent.ResponseCompleted(state.Complete());
+    }
+
+    private byte[] WriteRequest(AgentProviderRequest request) =>
+        AiProviderJson.Write(
+            limits.MaximumRequestBytes,
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("model", model);
+                writer.WriteNumber("max_tokens", limits.MaximumOutputTokens);
+                writer.WriteBoolean("stream", true);
+                var system = SystemPrompt(request);
+                if (system.Length > 0)
+                {
+                    writer.WriteString("system", system);
+                }
+
+                writer.WriteStartArray("messages");
+                for (var index = 0; index < request.Messages.Length; index++)
+                {
+                    var message = request.Messages[index];
+                    if (message.Role is AgentMessageRole.System or AgentMessageRole.Summary)
+                    {
+                        continue;
+                    }
+
+                    if (message.Role == AgentMessageRole.Tool)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("role", "user");
+                        writer.WriteStartArray("content");
+                        while (index < request.Messages.Length
+                               && request.Messages[index].Role == AgentMessageRole.Tool)
+                        {
+                            WriteToolResult(writer, request.Messages[index]);
+                            index++;
+                        }
+
+                        index--;
+                        writer.WriteEndArray();
+                        writer.WriteEndObject();
+                        continue;
+                    }
+
+                    WriteMessage(writer, message);
+                }
+
+                writer.WriteEndArray();
+                if (request.Tools.Length > 0)
+                {
+                    writer.WriteStartArray("tools");
+                    foreach (var tool in request.Tools)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("name", tool.ProviderName);
+                        writer.WriteString("description", tool.Description);
+                        writer.WritePropertyName("input_schema");
+                        tool.InputSchema.WriteTo(writer);
+                        writer.WriteEndObject();
+                    }
+
+                    writer.WriteEndArray();
+                }
+
+                writer.WriteEndObject();
+            });
+
+    private static void WriteMessage(Utf8JsonWriter writer, AgentMessage message)
+    {
+        writer.WriteStartObject();
+        switch (message.Role)
+        {
+            case AgentMessageRole.User:
+                writer.WriteString("role", "user");
+                writer.WriteString("content", message.Content);
+                break;
+            case AgentMessageRole.Assistant:
+                writer.WriteString("role", "assistant");
+                if (message.ToolCalls.Length == 0)
+                {
+                    writer.WriteString("content", message.Content);
+                    break;
+                }
+
+                writer.WriteStartArray("content");
+                if (message.Content.Length > 0)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "text");
+                    writer.WriteString("text", message.Content);
+                    writer.WriteEndObject();
+                }
+
+                foreach (var toolCall in message.ToolCalls)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "tool_use");
+                    writer.WriteString("id", toolCall.ProviderCallId);
+                    writer.WriteString(
+                        "name",
+                        toolCall.ProviderName);
+                    writer.WritePropertyName("input");
+                    toolCall.Arguments.WriteTo(writer);
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndArray();
+                break;
+            default:
+                throw AiProviderClientException.Create(
+                    AiProviderRuntimeErrorCode.InvalidConfiguration);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteToolResult(
+        Utf8JsonWriter writer,
+        AgentMessage message)
+    {
+        if (message.ToolResult is not { } result)
+        {
+            throw AiProviderClientException.Create(
+                AiProviderRuntimeErrorCode.InvalidConfiguration);
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("type", "tool_result");
+        writer.WriteString("tool_use_id", result.ProviderCallId);
+        writer.WriteBoolean(
+            "is_error",
+            result.Status == AgentToolResultStatus.Failed);
+        writer.WriteString("content", AiProviderJson.ToolResultContent(result));
+        writer.WriteEndObject();
+    }
+
+    private static string SystemPrompt(AgentProviderRequest request)
+    {
+        var systemMessages = request.Messages
+            .Where(message => message.Role is AgentMessageRole.System or AgentMessageRole.Summary)
+            .Select(message => message.Content)
+            .ToArray();
+        return string.Join("\n\n", systemMessages);
+    }
+
+    private sealed class AnthropicStreamState(int maximumFragmentBytes)
+    {
+        private readonly List<ContentBlock> _blocks = [];
+        private AgentProviderStopReason? _stopReason;
+        private bool _messageStarted;
+        private bool _messageStopped;
+        private int _toolCount;
+
+        public IReadOnlyList<AgentProviderEvent> Apply(
+            string eventType,
+            JsonElement root)
+        {
+            if (_messageStopped
+                || root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var payloadType)
+                || payloadType.ValueKind != JsonValueKind.String)
+            {
+                throw ProtocolError();
+            }
+
+            var type = payloadType.GetString()!;
+            if (!string.Equals(eventType, type, StringComparison.Ordinal))
+            {
+                throw ProtocolError();
+            }
+
+            if (_stopReason is not null
+                && type is not ("message_stop" or "ping"))
+            {
+                throw ProtocolError();
+            }
+
+            var events = new List<AgentProviderEvent>();
+            switch (type)
+            {
+                case "message_start":
+                    StartMessage();
+                    break;
+                case "content_block_start":
+                    StartContentBlock(root, events);
+                    break;
+                case "content_block_delta":
+                    ApplyContentDelta(root, events);
+                    break;
+                case "content_block_stop":
+                    StopContentBlock(root, events);
+                    break;
+                case "message_delta":
+                    ApplyMessageDelta(root);
+                    break;
+                case "message_stop":
+                    StopMessage();
+                    break;
+                case "ping":
+                    EnsureMessageStarted();
+                    break;
+                case "error":
+                    throw AiProviderClientException.Create(
+                        AiProviderRuntimeErrorCode.ProviderUnavailable);
+                default:
+                    throw ProtocolError();
+            }
+
+            return events;
+        }
+
+        public AgentProviderStopReason Complete()
+        {
+            if (!_messageStarted || !_messageStopped || _stopReason is null)
+            {
+                throw ProtocolError();
+            }
+
+            return _stopReason.Value;
+        }
+
+        private void StartMessage()
+        {
+            if (_messageStarted)
+            {
+                throw ProtocolError();
+            }
+
+            _messageStarted = true;
+        }
+
+        private void StartContentBlock(
+            JsonElement root,
+            ICollection<AgentProviderEvent> events)
+        {
+            EnsureMessageStarted();
+            var index = ContentIndex(root);
+            if (index != _blocks.Count)
+            {
+                throw ProtocolError();
+            }
+
+            var block = AiProviderJson.RequiredObject(root, "content_block");
+            var type = AiProviderJson.RequiredBoundedString(block, "type", 64);
+            switch (type)
+            {
+                case "text":
+                    {
+                        var state = ContentBlock.Text(index);
+                        _blocks.Add(state);
+                        var initialText = ReadOptionalFragment(block, "text");
+                        if (!string.IsNullOrEmpty(initialText))
+                        {
+                            events.Add(new AgentProviderEvent.TextDelta(initialText));
+                        }
+
+                        break;
+                    }
+                case "tool_use":
+                    {
+                        var id = RequiredIdentifier(block, "id", 256);
+                        var name = RequiredIdentifier(block, "name", 128);
+                        var toolIndex = _toolCount;
+                        _toolCount = checked(_toolCount + 1);
+                        _blocks.Add(ContentBlock.Tool(index, toolIndex));
+                        events.Add(new AgentProviderEvent.ToolCallStarted(
+                            toolIndex,
+                            id,
+                            name));
+                        break;
+                    }
+                default:
+                    throw ProtocolError();
+            }
+        }
+
+        private void ApplyContentDelta(
+            JsonElement root,
+            ICollection<AgentProviderEvent> events)
+        {
+            EnsureMessageStarted();
+            var block = OpenBlock(root);
+            var delta = AiProviderJson.RequiredObject(root, "delta");
+            var deltaType = AiProviderJson.RequiredBoundedString(delta, "type", 64);
+            if (block.Kind == ContentBlockKind.Text && deltaType == "text_delta")
+            {
+                var text = RequiredFragment(delta, "text");
+                events.Add(new AgentProviderEvent.TextDelta(text));
+                return;
+            }
+
+            if (block.Kind == ContentBlockKind.Tool && deltaType == "input_json_delta")
+            {
+                var partialJson = RequiredFragment(delta, "partial_json");
+                events.Add(new AgentProviderEvent.ToolCallArgumentsDelta(
+                    block.ToolIndex!.Value,
+                    partialJson));
+                block.HasArguments = true;
+                return;
+            }
+
+            throw ProtocolError();
+        }
+
+        private void StopContentBlock(
+            JsonElement root,
+            ICollection<AgentProviderEvent> events)
+        {
+            EnsureMessageStarted();
+            var block = OpenBlock(root);
+            block.IsStopped = true;
+            if (block.Kind != ContentBlockKind.Tool)
+            {
+                return;
+            }
+
+            if (!block.HasArguments)
+            {
+                events.Add(new AgentProviderEvent.ToolCallArgumentsDelta(
+                    block.ToolIndex!.Value,
+                    "{}"));
+            }
+
+            events.Add(new AgentProviderEvent.ToolCallCompleted(block.ToolIndex!.Value));
+        }
+
+        private void ApplyMessageDelta(JsonElement root)
+        {
+            EnsureMessageStarted();
+            if (_blocks.Any(block => !block.IsStopped))
+            {
+                throw ProtocolError();
+            }
+
+            var delta = AiProviderJson.RequiredObject(root, "delta");
+            if (!delta.TryGetProperty("stop_reason", out var stopReason)
+                || stopReason.ValueKind == JsonValueKind.Null)
+            {
+                return;
+            }
+
+            if (stopReason.ValueKind != JsonValueKind.String)
+            {
+                throw ProtocolError();
+            }
+
+            var parsed = stopReason.GetString() switch
+            {
+                "end_turn" or "stop_sequence" => AgentProviderStopReason.EndTurn,
+                "tool_use" => AgentProviderStopReason.ToolUse,
+                "max_tokens" or "model_context_window_exceeded" =>
+                    AgentProviderStopReason.MaximumTokens,
+                "refusal" => AgentProviderStopReason.ContentFiltered,
+                _ => throw ProtocolError(),
+            };
+            if (_stopReason is not null && _stopReason != parsed)
+            {
+                throw ProtocolError();
+            }
+
+            _stopReason = parsed;
+        }
+
+        private void StopMessage()
+        {
+            EnsureMessageStarted();
+            if (_stopReason is null || _blocks.Any(block => !block.IsStopped))
+            {
+                throw ProtocolError();
+            }
+
+            _messageStopped = true;
+        }
+
+        private ContentBlock OpenBlock(JsonElement root)
+        {
+            var index = ContentIndex(root);
+            if (index < 0 || index >= _blocks.Count || _blocks[index].IsStopped)
+            {
+                throw ProtocolError();
+            }
+
+            return _blocks[index];
+        }
+
+        private string? ReadOptionalFragment(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var property)
+                || property.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            return ReadFragment(property);
+        }
+
+        private string RequiredFragment(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var property))
+            {
+                throw ProtocolError();
+            }
+
+            var value = ReadFragment(property);
+            return value.Length == 0 ? throw ProtocolError() : value;
+        }
+
+        private string ReadFragment(JsonElement property)
+        {
+            if (property.ValueKind != JsonValueKind.String)
+            {
+                throw ProtocolError();
+            }
+
+            var value = property.GetString()!;
+            if (Encoding.UTF8.GetByteCount(value) > maximumFragmentBytes)
+            {
+                throw AiProviderClientException.Create(
+                    AiProviderRuntimeErrorCode.ResponseTooLarge);
+            }
+
+            return value;
+        }
+
+        private void EnsureMessageStarted()
+        {
+            if (!_messageStarted)
+            {
+                throw ProtocolError();
+            }
+        }
+
+        private static int ContentIndex(JsonElement root)
+        {
+            if (!root.TryGetProperty("index", out var property)
+                || property.ValueKind != JsonValueKind.Number
+                || !property.TryGetInt32(out var index)
+                || index < 0)
+            {
+                throw ProtocolError();
+            }
+
+            return index;
+        }
+
+        private static string RequiredIdentifier(
+            JsonElement parent,
+            string propertyName,
+            int maximumLength)
+        {
+            var value = AiProviderJson.RequiredBoundedString(
+                parent,
+                propertyName,
+                maximumLength);
+            if (value.Any(char.IsWhiteSpace))
+            {
+                throw ProtocolError();
+            }
+
+            return value;
+        }
+    }
+
+    private enum ContentBlockKind
+    {
+        Text,
+        Tool,
+    }
+
+    private sealed class ContentBlock
+    {
+        private ContentBlock(int index, ContentBlockKind kind, int? toolIndex)
+        {
+            Index = index;
+            Kind = kind;
+            ToolIndex = toolIndex;
+        }
+
+        public int Index { get; }
+
+        public ContentBlockKind Kind { get; }
+
+        public int? ToolIndex { get; }
+
+        public bool HasArguments { get; set; }
+
+        public bool IsStopped { get; set; }
+
+        public static ContentBlock Text(int index) =>
+            new(index, ContentBlockKind.Text, toolIndex: null);
+
+        public static ContentBlock Tool(int index, int toolIndex) =>
+            new(index, ContentBlockKind.Tool, toolIndex);
+    }
+
+    private static AiProviderClientException ProtocolError() =>
+        AiProviderClientException.Create(AiProviderRuntimeErrorCode.ProtocolError);
+}

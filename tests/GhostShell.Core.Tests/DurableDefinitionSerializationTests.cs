@@ -1,0 +1,126 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace GhostShell.Core.Tests;
+
+public sealed class DurableDefinitionSerializationTests
+{
+    [Fact]
+    public void Layout_screen_and_workspace_definitions_round_trip_with_polymorphic_entries()
+    {
+        var layout = new LayoutDefinition(
+            new LayoutId("single"),
+            LayoutDefinition.CurrentSchemaVersion,
+            "Single",
+            new LayoutGrid(1, 1),
+            [new(new LayoutSlotId("main"), new(0, 0, 1, 1), new(120, 80))]);
+        var screen = new ScreenDefinition(
+            new ScreenId("shell"),
+            ScreenDefinition.CurrentSchemaVersion,
+            "Shell",
+            null,
+            layout.Id,
+            [
+                new(
+                    new ScreenPanelId("terminal"),
+                    new LayoutSlotId("main"),
+                    ScreenPanelKind.Terminal,
+                    null,
+                    new ConnectionId("local"),
+                    new PanelStartupBehavior("/work", ["git status"])),
+            ]);
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("project"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Project",
+            null,
+            null,
+            [
+                new WorkspaceEntry.ConnectionReference(
+                    new WorkspaceEntryId("connection"),
+                    new ConnectionId("local")),
+                new WorkspaceEntry.ScreenReference(
+                    new WorkspaceEntryId("screen"),
+                    screen.Id),
+                new WorkspaceEntry.Tab(
+                    new WorkspaceEntryId("scratch"),
+                    "Scratch",
+                    layout.Id,
+                    screen.Panels),
+            ],
+            icon: "server");
+
+        var restoredLayout = RoundTrip(layout);
+        var restoredScreen = RoundTrip(screen);
+        var restoredWorkspace = RoundTrip(workspace);
+
+        Assert.True(LayoutValidator.Validate(restoredLayout).IsValid);
+        Assert.True(ScreenValidator.Validate(restoredScreen, restoredLayout).IsValid);
+        Assert.True(WorkspaceValidator.Validate(restoredWorkspace).IsValid);
+        Assert.IsType<WorkspaceEntry.ConnectionReference>(restoredWorkspace.Entries[0]);
+        Assert.IsType<WorkspaceEntry.ScreenReference>(restoredWorkspace.Entries[1]);
+        Assert.IsType<WorkspaceEntry.Tab>(restoredWorkspace.Entries[2]);
+        Assert.Equal("server", restoredWorkspace.Icon);
+    }
+
+    [Fact]
+    public void Workspace_payload_without_icon_uses_the_backward_compatible_default()
+    {
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("legacy"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Legacy",
+            null,
+            null,
+            []);
+        var payload = JsonNode.Parse(JsonSerializer.Serialize(workspace))!.AsObject();
+        Assert.True(payload.Remove(nameof(WorkspaceDefinition.Icon)));
+
+        var restored = JsonSerializer.Deserialize<WorkspaceDefinition>(payload.ToJsonString());
+
+        Assert.NotNull(restored);
+        Assert.Equal(WorkspaceDefinition.DefaultIcon, restored.Icon);
+        Assert.True(WorkspaceValidator.Validate(restored).IsValid);
+    }
+
+    [Theory]
+    [InlineData(StartupCommandDeliveryFailurePolicy.RetryWhileLive)]
+    [InlineData(StartupCommandDeliveryFailurePolicy.StopAfterFirstDeliveryFailure)]
+    public void Panel_startup_delivery_failure_policy_round_trips(
+        StartupCommandDeliveryFailurePolicy policy)
+    {
+        var startup = new PanelStartupBehavior(
+            "/work",
+            ["git status"],
+            policy);
+
+        var restored = JsonSerializer.Deserialize<PanelStartupBehavior>(
+            JsonSerializer.Serialize(startup));
+
+        Assert.NotNull(restored);
+        Assert.Equal(policy, restored.DeliveryFailurePolicy);
+    }
+
+    [Fact]
+    public void Legacy_panel_startup_payload_without_delivery_failure_policy_uses_retry_default()
+    {
+        var startup = new PanelStartupBehavior("/work", ["git status"]);
+        var payload = JsonNode.Parse(JsonSerializer.Serialize(startup))!.AsObject();
+        Assert.True(payload.Remove(nameof(PanelStartupBehavior.DeliveryFailurePolicy)));
+
+        var restored = JsonSerializer.Deserialize<PanelStartupBehavior>(payload.ToJsonString());
+
+        Assert.NotNull(restored);
+        Assert.Equal(
+            StartupCommandDeliveryFailurePolicy.RetryWhileLive,
+            restored.DeliveryFailurePolicy);
+    }
+
+    private static T RoundTrip<T>(T value)
+        where T : IDurableDefinition
+    {
+        var json = JsonSerializer.Serialize(value);
+        return JsonSerializer.Deserialize<T>(json)
+            ?? throw new InvalidOperationException($"Could not deserialize {typeof(T).Name}.");
+    }
+}

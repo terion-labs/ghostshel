@@ -1,0 +1,993 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Windows.Input;
+using GhostShell.Application;
+using GhostShell.Core;
+
+namespace GhostShell.App.ViewModels;
+
+public enum SystemMonitorPanelState
+{
+    Waiting,
+    Live,
+    Stale,
+    Failed,
+    Disposed,
+}
+
+public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
+{
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+    private readonly ISessionHostClient _sessionClient;
+    private readonly ClientId _clientId;
+    private readonly SessionOwner _owner;
+    private readonly IUiThreadDispatcher _dispatcher;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly AsyncActionCommand _refreshCommand;
+    private SystemStatisticsSnapshot? _snapshot;
+    private SystemMonitorPanelState _state = SystemMonitorPanelState.Waiting;
+    private string _statusText = "Waiting for first local-host sample…";
+    private string? _issueTitle;
+    private string? _issueMessage;
+    private bool _isRefreshing;
+    private bool _hasHostedSession;
+    private bool _started;
+    private bool _disposed;
+    private long _hostRevision;
+    private Task? _polling;
+
+    public StatisticsRuntimePanelViewModel(
+        PanelInstanceId id,
+        string title,
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner,
+        IUiThreadDispatcher dispatcher,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        : base(id, PanelKind.Statistics, title, "STATISTICS")
+    {
+        _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        _clientId = clientId;
+        _owner = owner;
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        _delay = delay ?? Task.Delay;
+        SessionId = SessionId.New();
+        _refreshCommand = new AsyncActionCommand(
+            RetryAsync,
+            () => !_disposed
+                && !IsRefreshing
+                && (HasHostedSession || State == SystemMonitorPanelState.Failed));
+    }
+
+    public SessionId SessionId { get; }
+
+    public Task Initialization { get; private set; } = Task.CompletedTask;
+
+    public ICommand RefreshCommand => _refreshCommand;
+
+    public SystemStatisticsSnapshot? Snapshot
+    {
+        get => _snapshot;
+        private set
+        {
+            if (SetProperty(ref _snapshot, value))
+            {
+                OnPropertyChanged(nameof(HasSnapshot));
+                OnPropertyChanged(nameof(ShowLoading));
+                OnPropertyChanged(nameof(ShowContent));
+                OnPropertyChanged(nameof(ShowTerminalError));
+                _refreshCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(CpuText));
+                OnPropertyChanged(nameof(MemoryText));
+                OnPropertyChanged(nameof(ProcessCountText));
+                OnPropertyChanged(nameof(GhostShellCpuText));
+                OnPropertyChanged(nameof(GhostShellMemoryText));
+                OnPropertyChanged(nameof(UptimeText));
+                OnPropertyChanged(nameof(ProcessorCountText));
+                OnPropertyChanged(nameof(CapturedAtText));
+            }
+        }
+    }
+
+    public SystemMonitorPanelState State
+    {
+        get => _state;
+        private set
+        {
+            if (SetProperty(ref _state, value))
+            {
+                OnPropertyChanged(nameof(StatusColor));
+                OnPropertyChanged(nameof(ShowLoading));
+                OnPropertyChanged(nameof(ShowContent));
+                OnPropertyChanged(nameof(ShowTerminalError));
+                _refreshCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string StatusText
+    {
+        get => _statusText;
+        private set => SetProperty(ref _statusText, value);
+    }
+
+    public string? IssueTitle
+    {
+        get => _issueTitle;
+        private set
+        {
+            if (SetProperty(ref _issueTitle, value))
+            {
+                OnPropertyChanged(nameof(HasIssue));
+            }
+        }
+    }
+
+    public string? IssueMessage
+    {
+        get => _issueMessage;
+        private set => SetProperty(ref _issueMessage, value);
+    }
+
+    public bool IsRefreshing
+    {
+        get => _isRefreshing;
+        private set
+        {
+            if (SetProperty(ref _isRefreshing, value))
+            {
+                _refreshCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool HasHostedSession
+    {
+        get => _hasHostedSession;
+        private set
+        {
+            if (SetProperty(ref _hasHostedSession, value))
+            {
+                _refreshCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool HasSnapshot => Snapshot is not null;
+
+    public bool HasIssue => IssueTitle is not null;
+
+    public bool ShowLoading => !HasSnapshot && State == SystemMonitorPanelState.Waiting;
+
+    public bool ShowContent => HasSnapshot;
+
+    public bool ShowTerminalError => !HasSnapshot && State == SystemMonitorPanelState.Failed;
+
+    public string StatusColor => State switch
+    {
+        SystemMonitorPanelState.Live => "#72B57B",
+        SystemMonitorPanelState.Stale => "#D79B57",
+        SystemMonitorPanelState.Failed => "#D96B6B",
+        SystemMonitorPanelState.Disposed => "#77777F",
+        _ => "#9A9AA2",
+    };
+
+    public string CpuText => Snapshot?.ObservedCpuPercent is { } value
+        ? $"{value.ToString("0.0", CultureInfo.InvariantCulture)}%"
+        : "Unavailable";
+
+    public string MemoryText => MonitorPanelPresentation.FormatBytes(
+        Snapshot?.ObservedWorkingSetBytes);
+
+    public string ProcessCountText => Snapshot is { } snapshot
+        ? $"{snapshot.ObservedProcessCount:N0} observed / {snapshot.EnumeratedProcessCount:N0} total"
+        : "Unavailable";
+
+    public string GhostShellCpuText => Snapshot?.GhostShellCpuPercent is { } value
+        ? $"{value.ToString("0.0", CultureInfo.InvariantCulture)}%"
+        : "Unavailable";
+
+    public string GhostShellMemoryText => MonitorPanelPresentation.FormatBytes(
+        Snapshot?.GhostShellWorkingSetBytes);
+
+    public string UptimeText => Snapshot is { } snapshot
+        ? MonitorPanelPresentation.FormatDuration(snapshot.HostUptime)
+        : "Unavailable";
+
+    public string ProcessorCountText => Snapshot is { } snapshot
+        ? snapshot.LogicalProcessorCount.ToString(CultureInfo.InvariantCulture)
+        : "Unavailable";
+
+    public string CapturedAtText => Snapshot is { } snapshot
+        ? $"Captured {snapshot.CapturedAtUtc.ToLocalTime():T}"
+        : "No sample captured";
+
+    public Task Start()
+    {
+        if (_disposed || _started)
+        {
+            return Initialization;
+        }
+
+        _started = true;
+        Initialization = InitializeAsync();
+        return Initialization;
+    }
+
+    public Task RefreshAsync(CancellationToken cancellationToken = default) =>
+        RefreshCoreAsync(cancellationToken);
+
+    public override void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _lifetime.Cancel();
+        State = SystemMonitorPanelState.Disposed;
+        StatusText = "Monitoring stopped";
+        _refreshCommand.RaiseCanExecuteChanged();
+        base.Dispose();
+    }
+
+    private async Task InitializeAsync()
+    {
+        HostResult<SessionSnapshot> result;
+        try
+        {
+            result = await _sessionClient.EnsureStatisticsSessionAsync(
+                new EnsureStatisticsSessionRequest(SessionId, _owner, Title),
+                OperationContext.ForHuman(
+                    _clientId,
+                    idempotencyKey: IdempotencyKey.New()),
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            await ApplyHostFailureAsync(
+                "Statistics unavailable",
+                "The local statistics session could not be started.");
+            return;
+        }
+
+        if (result is HostResult<SessionSnapshot>.Failure failure)
+        {
+            await ApplyHostFailureAsync(
+                "Statistics unavailable",
+                failure.Error.Message);
+            return;
+        }
+
+        var success = (HostResult<SessionSnapshot>.Success)result;
+        _hostRevision = success.ResultingRevision;
+        await _dispatcher.InvokeAsync(
+            () => HasHostedSession = true,
+            _lifetime.Token);
+        await RefreshCoreAsync(_lifetime.Token);
+        if (!_lifetime.IsCancellationRequested)
+        {
+            _polling = PollAsync(_lifetime.Token);
+        }
+    }
+
+    private async Task RetryAsync()
+    {
+        if (HasHostedSession)
+        {
+            await RefreshCoreAsync(CancellationToken.None);
+            return;
+        }
+
+        await _dispatcher.InvokeAsync(
+            () =>
+            {
+                IssueTitle = null;
+                IssueMessage = null;
+                State = SystemMonitorPanelState.Waiting;
+                StatusText = "Starting local statistics…";
+            },
+            CancellationToken.None);
+        Initialization = InitializeAsync();
+        await Initialization;
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await _delay(PollInterval, cancellationToken);
+                await RefreshCoreAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RefreshCoreAsync(CancellationToken cancellationToken)
+    {
+        if (!HasHostedSession || _disposed)
+        {
+            return;
+        }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _lifetime.Token);
+        try
+        {
+            await _refreshGate.WaitAsync(linked.Token);
+        }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            await _dispatcher.InvokeAsync(() => IsRefreshing = true, linked.Token);
+            HostResult<MonitorPanelResult<SystemStatisticsSnapshot>> result;
+            try
+            {
+                result = await _sessionClient.ReadStatisticsAsync(
+                    SessionId,
+                    OperationContext.ForHuman(_clientId, _hostRevision),
+                    linked.Token);
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                await ApplyCaptureFailureAsync(
+                    "Statistics refresh failed",
+                    "The local statistics snapshot could not be captured.",
+                    linked.Token);
+                return;
+            }
+
+            if (result is HostResult<MonitorPanelResult<SystemStatisticsSnapshot>>.Failure failure)
+            {
+                await ApplyCaptureFailureAsync(
+                    "Statistics refresh failed",
+                    failure.Error.Message,
+                    linked.Token);
+                return;
+            }
+
+            var monitorResult =
+                ((HostResult<MonitorPanelResult<SystemStatisticsSnapshot>>.Success)result).Value;
+            if (!monitorResult.IsSuccess)
+            {
+                if (monitorResult.Error!.Code != MonitorPanelErrorCode.Cancelled)
+                {
+                    await ApplyCaptureFailureAsync(
+                        "Statistics refresh failed",
+                        monitorResult.Error.Message,
+                        linked.Token);
+                }
+
+                return;
+            }
+
+            await _dispatcher.InvokeAsync(
+                () =>
+                {
+                    Snapshot = monitorResult.Value;
+                    IssueTitle = null;
+                    IssueMessage = null;
+                    State = SystemMonitorPanelState.Live;
+                    StatusText = "Live · local host";
+                },
+                linked.Token);
+        }
+        finally
+        {
+            _refreshGate.Release();
+            if (!_disposed)
+            {
+                try
+                {
+                    await _dispatcher.InvokeAsync(
+                        () => IsRefreshing = false,
+                        _lifetime.Token);
+                }
+                catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+                {
+                }
+            }
+        }
+    }
+
+    private Task ApplyHostFailureAsync(string title, string message) =>
+        ApplyFailureAsync(title, message, CancellationToken.None);
+
+    private Task ApplyCaptureFailureAsync(
+        string title,
+        string message,
+        CancellationToken cancellationToken) =>
+        ApplyFailureAsync(title, message, cancellationToken);
+
+    private Task ApplyFailureAsync(
+        string title,
+        string message,
+        CancellationToken cancellationToken) =>
+        _dispatcher.InvokeAsync(
+            () =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                IssueTitle = title;
+                IssueMessage = message;
+                State = HasSnapshot
+                    ? SystemMonitorPanelState.Stale
+                    : SystemMonitorPanelState.Failed;
+                StatusText = HasSnapshot ? "Stale · retry available" : "Unavailable";
+            },
+            cancellationToken);
+}
+
+public sealed class ProcessMonitorEntryViewModel
+{
+    public ProcessMonitorEntryViewModel(ProcessMonitorEntry entry)
+    {
+        Entry = entry ?? throw new ArgumentNullException(nameof(entry));
+    }
+
+    public ProcessMonitorEntry Entry { get; }
+
+    public int ProcessId => Entry.ProcessId;
+
+    public string Name => Entry.Name;
+
+    public string Cpu => Entry.CpuPercent is { } value
+        ? $"{value.ToString("0.0", CultureInfo.InvariantCulture)}%"
+        : "—";
+
+    public string Memory => MonitorPanelPresentation.FormatBytes(Entry.WorkingSetBytes);
+
+    public string Started => Entry.StartedAtUtc?.ToLocalTime().ToString("g") ?? "Unknown";
+
+    public bool IsGhostShell => Entry.IsGhostShell;
+
+    public string AccessibleSummary =>
+        $"PID {ProcessId}, {Name}, CPU {MonitorPanelPresentation.AccessiblePercent(Entry.CpuPercent)}, "
+        + $"memory {Memory}, started {Started}.";
+}
+
+public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
+{
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+    private readonly ISessionHostClient _sessionClient;
+    private readonly ClientId _clientId;
+    private readonly SessionOwner _owner;
+    private readonly IUiThreadDispatcher _dispatcher;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly AsyncActionCommand _refreshCommand;
+    private IReadOnlyList<ProcessMonitorEntry> _latestEntries = [];
+    private ProcessMonitorSnapshot? _snapshot;
+    private ProcessMonitorEntryViewModel? _selectedProcess;
+    private ProcessMonitorSort _sort = ProcessMonitorSort.CpuDescending;
+    private SystemMonitorPanelState _state = SystemMonitorPanelState.Waiting;
+    private string _filter = string.Empty;
+    private string _statusText = "Waiting for first local-host sample…";
+    private string? _issueTitle;
+    private string? _issueMessage;
+    private bool _isRefreshing;
+    private bool _hasHostedSession;
+    private bool _started;
+    private bool _disposed;
+    private long _hostRevision;
+    private Task? _polling;
+
+    public ProcessMonitorRuntimePanelViewModel(
+        PanelInstanceId id,
+        string title,
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner,
+        IUiThreadDispatcher dispatcher,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        : base(id, PanelKind.ProcessMonitor, title, "PROCESS MONITOR")
+    {
+        _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        _clientId = clientId;
+        _owner = owner;
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        _delay = delay ?? Task.Delay;
+        SessionId = SessionId.New();
+        _refreshCommand = new AsyncActionCommand(
+            RetryAsync,
+            () => !_disposed
+                && !IsRefreshing
+                && (HasHostedSession || State == SystemMonitorPanelState.Failed));
+    }
+
+    public ObservableCollection<ProcessMonitorEntryViewModel> Processes { get; } = [];
+
+    public IReadOnlyList<ProcessMonitorSort> SortOptions { get; } =
+        Enum.GetValues<ProcessMonitorSort>();
+
+    public SessionId SessionId { get; }
+
+    public Task Initialization { get; private set; } = Task.CompletedTask;
+
+    public ICommand RefreshCommand => _refreshCommand;
+
+    public ProcessMonitorSnapshot? Snapshot
+    {
+        get => _snapshot;
+        private set
+        {
+            if (SetProperty(ref _snapshot, value))
+            {
+                OnPropertyChanged(nameof(HasSnapshot));
+                OnPropertyChanged(nameof(ShowLoading));
+                OnPropertyChanged(nameof(ShowContent));
+                OnPropertyChanged(nameof(ShowTerminalError));
+                OnPropertyChanged(nameof(ShowInlineIssue));
+                OnPropertyChanged(nameof(CapturedAtText));
+            }
+        }
+    }
+
+    public ProcessMonitorEntryViewModel? SelectedProcess
+    {
+        get => _selectedProcess;
+        set => SetProperty(ref _selectedProcess, value);
+    }
+
+    public ProcessMonitorSort Sort
+    {
+        get => _sort;
+        set
+        {
+            if (!Enum.IsDefined(value))
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, null);
+            }
+
+            if (SetProperty(ref _sort, value) && _started)
+            {
+                _ = RefreshAsync();
+            }
+        }
+    }
+
+    public string Filter
+    {
+        get => _filter;
+        set
+        {
+            if (SetProperty(ref _filter, value ?? string.Empty))
+            {
+                ApplyFilter();
+            }
+        }
+    }
+
+    public SystemMonitorPanelState State
+    {
+        get => _state;
+        private set
+        {
+            if (SetProperty(ref _state, value))
+            {
+                OnPropertyChanged(nameof(StatusColor));
+                OnPropertyChanged(nameof(ShowLoading));
+                OnPropertyChanged(nameof(ShowContent));
+                OnPropertyChanged(nameof(ShowTerminalError));
+                OnPropertyChanged(nameof(ShowInlineIssue));
+                _refreshCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string StatusText
+    {
+        get => _statusText;
+        private set => SetProperty(ref _statusText, value);
+    }
+
+    public string? IssueTitle
+    {
+        get => _issueTitle;
+        private set
+        {
+            if (SetProperty(ref _issueTitle, value))
+            {
+                OnPropertyChanged(nameof(HasIssue));
+                OnPropertyChanged(nameof(ShowInlineIssue));
+            }
+        }
+    }
+
+    public string? IssueMessage
+    {
+        get => _issueMessage;
+        private set => SetProperty(ref _issueMessage, value);
+    }
+
+    public bool IsRefreshing
+    {
+        get => _isRefreshing;
+        private set
+        {
+            if (SetProperty(ref _isRefreshing, value))
+            {
+                _refreshCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool HasHostedSession
+    {
+        get => _hasHostedSession;
+        private set
+        {
+            if (SetProperty(ref _hasHostedSession, value))
+            {
+                _refreshCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool HasSnapshot => Snapshot is not null;
+
+    public bool HasIssue => IssueTitle is not null;
+
+    public bool ShowLoading => !HasSnapshot && State == SystemMonitorPanelState.Waiting;
+
+    public bool ShowContent => HasSnapshot;
+
+    public bool ShowTerminalError => !HasSnapshot && State == SystemMonitorPanelState.Failed;
+
+    public bool ShowInlineIssue => HasSnapshot && HasIssue;
+
+    public string StatusColor => State switch
+    {
+        SystemMonitorPanelState.Live => "#72B57B",
+        SystemMonitorPanelState.Stale => "#D79B57",
+        SystemMonitorPanelState.Failed => "#D96B6B",
+        SystemMonitorPanelState.Disposed => "#77777F",
+        _ => "#9A9AA2",
+    };
+
+    public string CapturedAtText => Snapshot is { } snapshot
+        ? $"Captured {snapshot.CapturedAtUtc.ToLocalTime():T}"
+        : "No sample captured";
+
+    public string ShowingText
+    {
+        get
+        {
+            if (Snapshot is not { } snapshot)
+            {
+                return "No processes captured";
+            }
+
+            var source = snapshot.IsTruncated
+                ? $"bounded sample of {snapshot.EnumeratedProcessCount:N0}"
+                : $"{snapshot.EnumeratedProcessCount:N0} enumerated";
+            return string.IsNullOrWhiteSpace(Filter)
+                ? $"Showing {Processes.Count:N0} processes · {source}"
+                : $"Showing {Processes.Count:N0} matching processes · {source}";
+        }
+    }
+
+    public Task Start()
+    {
+        if (_disposed || _started)
+        {
+            return Initialization;
+        }
+
+        _started = true;
+        Initialization = InitializeAsync();
+        return Initialization;
+    }
+
+    public Task RefreshAsync(CancellationToken cancellationToken = default) =>
+        RefreshCoreAsync(cancellationToken);
+
+    public override void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _lifetime.Cancel();
+        State = SystemMonitorPanelState.Disposed;
+        StatusText = "Monitoring stopped";
+        _refreshCommand.RaiseCanExecuteChanged();
+        base.Dispose();
+    }
+
+    private async Task InitializeAsync()
+    {
+        HostResult<SessionSnapshot> result;
+        try
+        {
+            result = await _sessionClient.EnsureProcessMonitorSessionAsync(
+                new EnsureProcessMonitorSessionRequest(SessionId, _owner, Title),
+                OperationContext.ForHuman(
+                    _clientId,
+                    idempotencyKey: IdempotencyKey.New()),
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            await ApplyFailureAsync(
+                "Process monitor unavailable",
+                "The local process-monitor session could not be started.",
+                CancellationToken.None);
+            return;
+        }
+
+        if (result is HostResult<SessionSnapshot>.Failure failure)
+        {
+            await ApplyFailureAsync(
+                "Process monitor unavailable",
+                failure.Error.Message,
+                CancellationToken.None);
+            return;
+        }
+
+        var success = (HostResult<SessionSnapshot>.Success)result;
+        _hostRevision = success.ResultingRevision;
+        await _dispatcher.InvokeAsync(
+            () => HasHostedSession = true,
+            _lifetime.Token);
+        await RefreshCoreAsync(_lifetime.Token);
+        if (!_lifetime.IsCancellationRequested)
+        {
+            _polling = PollAsync(_lifetime.Token);
+        }
+    }
+
+    private async Task RetryAsync()
+    {
+        if (HasHostedSession)
+        {
+            await RefreshCoreAsync(CancellationToken.None);
+            return;
+        }
+
+        await _dispatcher.InvokeAsync(
+            () =>
+            {
+                IssueTitle = null;
+                IssueMessage = null;
+                State = SystemMonitorPanelState.Waiting;
+                StatusText = "Starting local process monitor…";
+            },
+            CancellationToken.None);
+        Initialization = InitializeAsync();
+        await Initialization;
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await _delay(PollInterval, cancellationToken);
+                await RefreshCoreAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RefreshCoreAsync(CancellationToken cancellationToken)
+    {
+        if (!HasHostedSession || _disposed)
+        {
+            return;
+        }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _lifetime.Token);
+        try
+        {
+            await _refreshGate.WaitAsync(linked.Token);
+        }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            await _dispatcher.InvokeAsync(() => IsRefreshing = true, linked.Token);
+            HostResult<MonitorPanelResult<ProcessMonitorSnapshot>> result;
+            try
+            {
+                result = await _sessionClient.ListProcessesAsync(
+                    new ProcessMonitorHostRequest(
+                        SessionId,
+                        new ProcessMonitorQuery(
+                            ProcessMonitorQuery.DefaultMaximumResults,
+                            Sort)),
+                    OperationContext.ForHuman(_clientId, _hostRevision),
+                    linked.Token);
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                await ApplyFailureAsync(
+                    "Process refresh failed",
+                    "The bounded local process list could not be captured.",
+                    linked.Token);
+                return;
+            }
+
+            if (result is HostResult<MonitorPanelResult<ProcessMonitorSnapshot>>.Failure failure)
+            {
+                await ApplyFailureAsync(
+                    "Process refresh failed",
+                    failure.Error.Message,
+                    linked.Token);
+                return;
+            }
+
+            var monitorResult =
+                ((HostResult<MonitorPanelResult<ProcessMonitorSnapshot>>.Success)result).Value;
+            if (!monitorResult.IsSuccess)
+            {
+                if (monitorResult.Error!.Code != MonitorPanelErrorCode.Cancelled)
+                {
+                    await ApplyFailureAsync(
+                        "Process refresh failed",
+                        monitorResult.Error.Message,
+                        linked.Token);
+                }
+
+                return;
+            }
+
+            await _dispatcher.InvokeAsync(
+                () =>
+                {
+                    Snapshot = monitorResult.Value;
+                    _latestEntries = Snapshot!.Processes;
+                    ApplyFilter();
+                    IssueTitle = null;
+                    IssueMessage = null;
+                    State = SystemMonitorPanelState.Live;
+                    StatusText = "Live · local host";
+                },
+                linked.Token);
+        }
+        finally
+        {
+            _refreshGate.Release();
+            if (!_disposed)
+            {
+                try
+                {
+                    await _dispatcher.InvokeAsync(
+                        () => IsRefreshing = false,
+                        _lifetime.Token);
+                }
+                catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+                {
+                }
+            }
+        }
+    }
+
+    private Task ApplyFailureAsync(
+        string title,
+        string message,
+        CancellationToken cancellationToken) =>
+        _dispatcher.InvokeAsync(
+            () =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                IssueTitle = title;
+                IssueMessage = message;
+                State = HasSnapshot
+                    ? SystemMonitorPanelState.Stale
+                    : SystemMonitorPanelState.Failed;
+                StatusText = HasSnapshot ? "Stale · retry available" : "Unavailable";
+            },
+            cancellationToken);
+
+    private void ApplyFilter()
+    {
+        var hadSelection = SelectedProcess is { };
+        var selectedIdentity = SelectedProcess is { } selected
+            ? (selected.Entry.ProcessId, selected.Entry.StartedAtUtc)
+            : default;
+        var terms = Filter.Split(
+            ' ',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var filtered = _latestEntries.Where(entry =>
+            terms.Length == 0
+            || terms.All(term =>
+                entry.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || entry.ProcessId.ToString(CultureInfo.InvariantCulture)
+                    .Contains(term, StringComparison.OrdinalIgnoreCase)));
+        Processes.Clear();
+        foreach (var entry in filtered)
+        {
+            Processes.Add(new ProcessMonitorEntryViewModel(entry));
+        }
+
+        SelectedProcess = hadSelection
+            ? Processes.FirstOrDefault(process =>
+                process.Entry.ProcessId == selectedIdentity.ProcessId
+                && process.Entry.StartedAtUtc == selectedIdentity.StartedAtUtc)
+            : null;
+        OnPropertyChanged(nameof(ShowingText));
+    }
+}
+
+internal static class MonitorPanelPresentation
+{
+    public static string FormatBytes(long? bytes)
+    {
+        if (bytes is null)
+        {
+            return "Unavailable";
+        }
+
+        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
+        var value = Math.Max(0, (double)bytes.Value);
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0
+            ? $"{value.ToString("0", CultureInfo.InvariantCulture)} {units[unit]}"
+            : $"{value.ToString("0.0", CultureInfo.InvariantCulture)} {units[unit]}";
+    }
+
+    public static string FormatDuration(TimeSpan duration)
+    {
+        var bounded = duration < TimeSpan.Zero ? TimeSpan.Zero : duration;
+        return bounded.TotalDays >= 1
+            ? $"{(int)bounded.TotalDays}d {bounded.Hours}h {bounded.Minutes}m"
+            : $"{bounded.Hours}h {bounded.Minutes}m";
+    }
+
+    public static string AccessiblePercent(double? value) => value is { } percent
+        ? $"{percent.ToString("0.0", CultureInfo.InvariantCulture)} percent"
+        : "unavailable";
+}

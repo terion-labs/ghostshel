@@ -1,0 +1,33 @@
+<Window
+    x:Class="GhostShell.App.Views.SshHostKeyReviewDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Review SSH host key"
+    Width="590"
+    SizeToContent="Height"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,Auto" Margin="22" RowSpacing="18">
+    <StackPanel Spacing="12">
+      <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding Title}" />
+      <TextBlock Classes="Muted" Text="{Binding Explanation}" TextWrapping="Wrap" />
+      <Border Classes="SettingsCard">
+        <StackPanel Margin="15" Spacing="8">
+          <TextBlock Classes="Eyebrow" Text="ENDPOINT" />
+          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Review.Endpoint}" />
+          <TextBlock Classes="Eyebrow" Text="PRESENTED HOST KEY" />
+          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Review.Presented.Algorithm}" />
+          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Review.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
+          <TextBlock Classes="Eyebrow" Text="PREVIOUSLY TRUSTED" IsVisible="{Binding Review.RequiresExplicitReplacement}" />
+          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Foreground="#FF8577" Text="{Binding Review.Trusted.Sha256Fingerprint}" TextWrapping="Wrap" IsVisible="{Binding Review.RequiresExplicitReplacement}" />
+        </StackPanel>
+      </Border>
+      <TextBlock Foreground="#FFB06A" FontSize="{DynamicResource ShellFontSize10}" Text="Verify this fingerprint through a separate trusted channel before continuing. GhostSHELL will never replace a changed key automatically." TextWrapping="Wrap" />
+    </StackPanel>
+    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+      <Button Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
+      <Button Classes="PrimaryButton" Click="OnConfirmClick" Content="{Binding ConfirmLabel}" IsDefault="True" />
+    </StackPanel>
+  </Grid>
+</Window>

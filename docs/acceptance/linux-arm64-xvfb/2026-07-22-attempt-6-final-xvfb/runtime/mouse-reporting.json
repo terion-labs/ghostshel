@@ -1,0 +1,39 @@
+{
+  "receivedHex": "1b5b3c303b36393b394d1b5b3c33323b37373b31304d1b5b3c303b37373b31306d1b5b3c36343b37373b31304d1b5b3c36353b37373b31304d",
+  "reports": [
+    {
+      "buttonCode": 0,
+      "column": 69,
+      "row": 9,
+      "suffix": "M"
+    },
+    {
+      "buttonCode": 32,
+      "column": 77,
+      "row": 10,
+      "suffix": "M"
+    },
+    {
+      "buttonCode": 0,
+      "column": 77,
+      "row": 10,
+      "suffix": "m"
+    },
+    {
+      "buttonCode": 64,
+      "column": 77,
+      "row": 10,
+      "suffix": "M"
+    },
+    {
+      "buttonCode": 65,
+      "column": 77,
+      "row": 10,
+      "suffix": "M"
+    }
+  ],
+  "observedPress": true,
+  "observedRelease": true,
+  "observedDrag": true,
+  "observedWheel": true
+}

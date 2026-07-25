@@ -1,0 +1,2890 @@
+using GhostShell.Application;
+
+namespace GhostShell.Browser.Tests;
+
+public sealed class BrowserSurfaceTests
+{
+    [Fact]
+    public void CreatesTheRealNativeSurfaceWithoutVisualHosting()
+    {
+        var surface = new BrowserSurface();
+
+        Assert.NotNull(surface.Content);
+        Assert.Same(
+            BrowserCapabilityProfile.Production,
+            surface.CapabilityProfile);
+        Assert.Equal(
+            BrowserCapabilityProfile.Production.Capabilities.Values,
+            surface.Capabilities.Values);
+    }
+
+    [Fact]
+    public void StartsBlankWithTheBoundedBrowserCapabilities()
+    {
+        var surface = Surface(new RecordingNativeBrowserView());
+
+        Assert.Equal(BrowserSessionState.Initial(BrowserAddress.Blank), surface.State);
+        Assert.Equal(
+        [
+            SessionCapabilities.BrowserBack,
+            SessionCapabilities.BrowserCheck,
+            SessionCapabilities.BrowserClick,
+            SessionCapabilities.BrowserFill,
+            SessionCapabilities.BrowserForward,
+            SessionCapabilities.BrowserNavigate,
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserReload,
+            SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserReadState,
+            SessionCapabilities.BrowserStop,
+        ],
+            surface.Capabilities.Values);
+    }
+
+    [Fact]
+    public async Task ProductionProfileRejectsInteractionsBeforeNativeDispatch()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var reference = new BrowserElementReference(
+            "be_production_profile",
+            document);
+        var origin = BrowserNavigationOrigin.FromAddress(document.Address);
+
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var click = await surface.ClickWithinOriginAsync(
+            reference,
+            origin,
+            CancellationToken.None);
+        var fill = await surface.FillWithinOriginAsync(
+            reference,
+            "value",
+            origin,
+            CancellationToken.None);
+        var check = await surface.CheckWithinOriginAsync(
+            reference,
+            origin,
+            CancellationToken.None);
+        Assert.Equal(
+            BrowserErrorCode.UnsupportedCapability,
+            snapshot.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.UnsupportedCapability,
+            click.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.UnsupportedCapability,
+            fill.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.UnsupportedCapability,
+            check.Error?.Code);
+        Assert.Equal(0, nativeView.SnapshotCount);
+        Assert.Equal(0, nativeView.ClickCount);
+        Assert.Equal(0, nativeView.FillCount);
+        Assert.Equal(0, nativeView.CheckCount);
+    }
+
+    [Fact]
+    public async Task SnapshotCapturesBoundedNodesAndOpaqueReferences()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = NativeBrowserSnapshotResult.Success(
+                new NativeBrowserSnapshot(
+                    [
+                        new NativeBrowserSnapshotNode(
+                            0,
+                            "document",
+                            "Example",
+                            BrowserSnapshotNodeState.None,
+                            Handle: null),
+                        new NativeBrowserSnapshotNode(
+                            1,
+                            "button",
+                            "Continue",
+                            BrowserSnapshotNodeState.Required,
+                            Handle: NativeHandle("0_2")),
+                    ],
+                    IsTruncated: false)),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+
+        var result = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(document, result.Value?.Document);
+        Assert.Equal(2, result.Value?.Nodes.Count);
+        var button = result.Value!.Nodes[1];
+        Assert.Equal("button", button.Role);
+        Assert.Equal("Continue", button.Name);
+        Assert.Equal(
+            BrowserSnapshotNodeState.Required,
+            button.States);
+        Assert.NotNull(button.Reference);
+        Assert.True(surface.TryResolveElementReference(
+            button.Reference!,
+            out var handle));
+        Assert.Equal(NativeHandle("0_2"), handle);
+    }
+
+    [Fact]
+    public async Task NextSnapshotAndReferenceExpiryInvalidateOldReferences()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("0"),
+        };
+        var time = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var surface = Surface(nativeView, time);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var first = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var firstReference = first.Value!.Nodes[1].Reference!;
+
+        var second = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        Assert.True(second.IsSuccess);
+        Assert.False(surface.TryResolveElementReference(
+            firstReference,
+            out _));
+        var secondReference = second.Value!.Nodes[1].Reference!;
+        time.Advance(TimeSpan.FromMinutes(2));
+        Assert.False(surface.TryResolveElementReference(
+            secondReference,
+            out _));
+    }
+
+    [Fact]
+    public async Task ClickConsumesExactHandleAndAllSnapshotReferences()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+
+        var result = await surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(document, result.Value?.SourceDocument);
+        Assert.Equal(1, nativeView.ClickCount);
+        Assert.Equal(NativeHandle("original"), nativeView.LastClickHandle);
+        Assert.False(surface.TryResolveElementReference(
+            reference,
+            out _));
+
+        var repeated = await surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.False(repeated.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.ElementReferenceStale,
+            repeated.Error?.Code);
+        Assert.Equal(1, nativeView.ClickCount);
+    }
+
+    [Fact]
+    public async Task ForgedAndWrongDocumentReferencesNeverReachNativeClick()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var forged = new BrowserElementReference(
+            "be_forged",
+            document);
+
+        var forgedResult = await surface.ClickWithinOriginAsync(
+            forged,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var wrongDocument = new BrowserElementReference(
+            "be_forged",
+            new BrowserDocumentBinding(
+                Address("https://example.test/other"),
+                document.DocumentRevision));
+        var wrongResult = await surface.ClickWithinOriginAsync(
+            wrongDocument,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.ElementReferenceStale,
+            forgedResult.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationStateChanged,
+            wrongResult.Error?.Code);
+        Assert.Equal(0, nativeView.ClickCount);
+    }
+
+    [Fact]
+    public async Task CancellationAfterClickCommitCannotOverwriteActivation()
+    {
+        var pendingClick =
+            new TaskCompletionSource<NativeBrowserClickResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("original"),
+            PendingClick = pendingClick,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+        using var cancellation = new CancellationTokenSource();
+
+        var click = surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            cancellation.Token).AsTask();
+        cancellation.Cancel();
+        await Task.Yield();
+
+        Assert.False(click.IsCompleted);
+        Assert.Equal(1, nativeView.ClickCount);
+        pendingClick.SetResult(
+            NativeBrowserClickResult.Activated());
+
+        var result = await click;
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ClickSerializesSnapshotNavigationAndConcurrentClick()
+    {
+        var pendingClick =
+            new TaskCompletionSource<NativeBrowserClickResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("original"),
+            PendingClick = pendingClick,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+        var click = surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None).AsTask();
+
+        var concurrentClick = await surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var concurrentSnapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var concurrentNavigation = await surface.NavigateAsync(
+            Address("https://example.test/next"),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            concurrentClick.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            concurrentSnapshot.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            concurrentNavigation.Error?.Code);
+        Assert.Equal(1, nativeView.ClickCount);
+        Assert.Equal(0, nativeView.NavigateCount);
+
+        pendingClick.SetResult(
+            NativeBrowserClickResult.NotInteractable());
+        var result = await click;
+        Assert.Equal(
+            BrowserErrorCode.ElementNotInteractable,
+            result.Error?.Code);
+    }
+
+    [Fact]
+    public async Task ClickWaitsForSameOriginNavigationTerminalState()
+    {
+        var pendingClick =
+            new TaskCompletionSource<NativeBrowserClickResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("original"),
+            PendingClick = pendingClick,
+        };
+        var surface = Surface(nativeView);
+        var source = Address("https://example.test/start");
+        _ = await surface.NavigateAsync(
+            source,
+            CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(
+            source,
+            isSuccess: true);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+        var destination = Address("https://example.test/next");
+        var click = surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(destination),
+            CancellationToken.None).AsTask();
+
+        Assert.False(nativeView.RaiseNavigationStarted(destination));
+        pendingClick.SetResult(
+            NativeBrowserClickResult.Activated());
+        await Task.Yield();
+
+        Assert.False(click.IsCompleted);
+        Assert.Equal(BrowserLoadState.Loading, surface.State.LoadState);
+
+        nativeView.RaiseNavigationCompleted(
+            destination,
+            isSuccess: true);
+        var result = await click;
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(destination, surface.State.Address);
+        Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CrossOriginClickNavigationFailsAndQuarantinesAdapter()
+    {
+        var pendingClick =
+            new TaskCompletionSource<NativeBrowserClickResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("original"),
+            PendingClick = pendingClick,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(nativeView, replacement);
+        var source = Address("https://example.test/start");
+        _ = await surface.NavigateAsync(
+            source,
+            CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(
+            source,
+            isSuccess: true);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+        var click = surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(
+                source),
+            CancellationToken.None).AsTask();
+
+        Assert.True(nativeView.RaiseNavigationStarted(
+            Address("https://other.test/escape")));
+        pendingClick.SetResult(
+            NativeBrowserClickResult.Activated());
+        var result = await click;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task ClickDeadlineIsOutcomeUnknownAndFencesLateCompletion()
+    {
+        var pendingClick =
+            new TaskCompletionSource<NativeBrowserClickResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("original"),
+            PendingClick = pendingClick,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () => replacement,
+            static _ => { },
+            nativeSnapshotDeadline: TimeSpan.FromMilliseconds(25),
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+
+        var result = await surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+
+        pendingClick.SetResult(
+            NativeBrowserClickResult.Activated());
+        await Task.Yield();
+        await Task.Yield();
+
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task FillConsumesExactHandleTextAndAllSnapshotReferences()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+
+        var result = await surface.FillWithinOriginAsync(
+            reference,
+            "Ada\nLovelace",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(document, result.Value?.SourceDocument);
+        Assert.Equal(1, nativeView.FillCount);
+        Assert.Equal(NativeHandle("original"), nativeView.LastFillHandle);
+        Assert.Equal("Ada\nLovelace", nativeView.LastFillText);
+        Assert.False(surface.TryResolveElementReference(reference, out _));
+
+        var repeated = await surface.FillWithinOriginAsync(
+            reference,
+            "second attempt",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.ElementReferenceStale,
+            repeated.Error?.Code);
+        Assert.Equal(1, nativeView.FillCount);
+    }
+
+    [Fact]
+    public async Task InvalidFillReferencesAndPreDispatchCancellationStayNativeFree()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var forged = new BrowserElementReference("be_forged", document);
+
+        var forgedResult = await surface.FillWithinOriginAsync(
+            forged,
+            "forged",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var wrongDocument = new BrowserElementReference(
+            "be_forged",
+            new BrowserDocumentBinding(
+                Address("https://example.test/other"),
+                document.DocumentRevision));
+        var wrongResult = await surface.FillWithinOriginAsync(
+            wrongDocument,
+            "wrong",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var cancelled = await surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "cancelled",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            cancellation.Token);
+
+        Assert.Equal(
+            BrowserErrorCode.ElementReferenceStale,
+            forgedResult.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationStateChanged,
+            wrongResult.Error?.Code);
+        Assert.Equal(BrowserErrorCode.Cancelled, cancelled.Error?.Code);
+        Assert.Equal(0, nativeView.FillCount);
+    }
+
+    [Fact]
+    public async Task CancellationAfterFillCommitCannotOverwriteKnownResult()
+    {
+        var pendingFill =
+            new TaskCompletionSource<NativeBrowserFillResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            PendingFill = pendingFill,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+
+        var fill = surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "committed",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            cancellation.Token).AsTask();
+        cancellation.Cancel();
+        await Task.Yield();
+
+        Assert.False(fill.IsCompleted);
+        Assert.Equal(1, nativeView.FillCount);
+        pendingFill.SetResult(NativeBrowserFillResult.Filled());
+
+        Assert.True((await fill).IsSuccess);
+    }
+
+    [Fact]
+    public async Task FillSerializesClickSnapshotNavigationAndAnotherFill()
+    {
+        var pendingFill =
+            new TaskCompletionSource<NativeBrowserFillResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            PendingFill = pendingFill,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+        var fill = surface.FillWithinOriginAsync(
+            reference,
+            "pending",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None).AsTask();
+
+        var concurrentFill = await surface.FillWithinOriginAsync(
+            reference,
+            "other",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var concurrentClick = await surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var concurrentSnapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var concurrentNavigation = await surface.NavigateAsync(
+            Address("https://example.test/next"),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            concurrentFill.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            concurrentClick.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            concurrentSnapshot.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            concurrentNavigation.Error?.Code);
+        Assert.Equal(1, nativeView.FillCount);
+        Assert.Equal(0, nativeView.ClickCount);
+        Assert.Equal(0, nativeView.NavigateCount);
+
+        pendingFill.SetResult(NativeBrowserFillResult.NotFillable());
+        var result = await fill;
+        Assert.Equal(
+            BrowserErrorCode.ElementNotFillable,
+            result.Error?.Code);
+    }
+
+    [Theory]
+    [InlineData(
+        2,
+        BrowserErrorCode.ElementNotInteractable)]
+    [InlineData(
+        3,
+        BrowserErrorCode.ElementNotFillable)]
+    [InlineData(
+        5,
+        BrowserErrorCode.FillValueNotSupported)]
+    [InlineData(
+        1,
+        BrowserErrorCode.ElementReferenceStale)]
+    public async Task FillMapsClosedPreCommitFailures(
+        int nativeStatusValue,
+        BrowserErrorCode expectedError)
+    {
+        var nativeStatus =
+            (NativeBrowserFillStatus)nativeStatusValue;
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            FillResult = nativeStatus switch
+            {
+                NativeBrowserFillStatus.NotInteractable =>
+                    NativeBrowserFillResult.NotInteractable(),
+                NativeBrowserFillStatus.NotFillable =>
+                    NativeBrowserFillResult.NotFillable(),
+                NativeBrowserFillStatus.ValueNotSupported =>
+                    NativeBrowserFillResult.ValueNotSupported(),
+                NativeBrowserFillStatus.Stale =>
+                    NativeBrowserFillResult.Stale(),
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(nativeStatus)),
+            },
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        var result = await surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "value",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.Equal(expectedError, result.Error?.Code);
+    }
+
+    [Fact]
+    public async Task FillWaitsForSameOriginNavigationTerminalState()
+    {
+        var pendingFill =
+            new TaskCompletionSource<NativeBrowserFillResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            PendingFill = pendingFill,
+        };
+        var surface = Surface(nativeView);
+        var source = Address("https://example.test/start");
+        _ = await surface.NavigateAsync(source, CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(source, isSuccess: true);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var destination = Address("https://example.test/next");
+        var fill = surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "navigate",
+            BrowserNavigationOrigin.FromAddress(destination),
+            CancellationToken.None).AsTask();
+
+        Assert.False(nativeView.RaiseNavigationStarted(destination));
+        pendingFill.SetResult(NativeBrowserFillResult.Filled());
+        await Task.Yield();
+
+        Assert.False(fill.IsCompleted);
+        Assert.Equal(BrowserLoadState.Loading, surface.State.LoadState);
+
+        nativeView.RaiseNavigationCompleted(destination, isSuccess: true);
+        var result = await fill;
+        Assert.True(result.IsSuccess);
+        Assert.Equal(destination, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CrossOriginFillNavigationFailsAndQuarantinesAdapter()
+    {
+        var pendingFill =
+            new TaskCompletionSource<NativeBrowserFillResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            PendingFill = pendingFill,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(nativeView, replacement);
+        var source = Address("https://example.test/start");
+        _ = await surface.NavigateAsync(source, CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(source, isSuccess: true);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var fill = surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "escape",
+            BrowserNavigationOrigin.FromAddress(source),
+            CancellationToken.None).AsTask();
+
+        Assert.True(nativeView.RaiseNavigationStarted(
+            Address("https://other.test/escape")));
+        pendingFill.SetResult(NativeBrowserFillResult.Filled());
+        var result = await fill;
+
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task FillNavigationRejectionIsPolicyFailure()
+    {
+        var pendingFill =
+            new TaskCompletionSource<NativeBrowserFillResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            PendingFill = pendingFill,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(nativeView, replacement);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var fill = surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "rejected",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None).AsTask();
+
+        nativeView.RaiseNavigationRejected();
+        pendingFill.SetResult(NativeBrowserFillResult.Filled());
+        var result = await fill;
+
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task FillDeadlineIsOutcomeUnknownAndFencesLateCompletion()
+    {
+        var pendingFill =
+            new TaskCompletionSource<NativeBrowserFillResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            PendingFill = pendingFill,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () => replacement,
+            static _ => { },
+            nativeSnapshotDeadline: TimeSpan.FromMilliseconds(25),
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        var result = await surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "timeout",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+
+        pendingFill.SetResult(NativeBrowserFillResult.Filled());
+        await Task.Yield();
+        await Task.Yield();
+
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task SynchronousFillFailureWithoutReplacementBlocksFurtherUse()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            ThrowOnFill = true,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        var fill = await surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "ambiguous",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var navigation = await surface.NavigateAsync(
+            Address("https://example.test/next"),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            fill.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            navigation.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+    }
+
+    [Fact]
+    public async Task ControlFillTextIsRejectedBeforeLeaseConsumption()
+    {
+        await AssertFillTextRejectedWithoutConsumingLeaseAsync("\0");
+    }
+
+    [Fact]
+    public async Task UnpairedSurrogateFillTextIsRejectedBeforeLeaseConsumption()
+    {
+        await AssertFillTextRejectedWithoutConsumingLeaseAsync(
+            new string('\ud800', 1));
+    }
+
+    private static async Task
+        AssertFillTextRejectedWithoutConsumingLeaseAsync(
+            string invalidText)
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => surface.FillWithinOriginAsync(
+                    reference,
+                    invalidText,
+                    BrowserNavigationOrigin.FromAddress(document.Address),
+                    CancellationToken.None)
+                .AsTask());
+        var valid = await surface.FillWithinOriginAsync(
+            reference,
+            "valid",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.True(valid.IsSuccess);
+        Assert.Equal(1, nativeView.FillCount);
+        Assert.Equal("valid", nativeView.LastFillText);
+    }
+
+    [Fact]
+    public async Task OversizedFillTextIsRejectedBeforeNativeDispatch()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => surface.FillWithinOriginAsync(
+                    snapshot.Value!.Nodes[1].Reference!,
+                    new string(
+                        'x',
+                        BrowserElementFillRequest.MaximumTextBytes + 1),
+                    BrowserNavigationOrigin.FromAddress(document.Address),
+                    CancellationToken.None)
+                .AsTask());
+
+        Assert.Equal(0, nativeView.FillCount);
+    }
+
+    [Fact]
+    public async Task FillDispatcherFailureReturnsUnknownAndPermanentlyFencesAdapter()
+    {
+        var pendingFill =
+            new TaskCompletionSource<NativeBrowserFillResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = FillableSnapshot("original"),
+            PendingFill = pendingFill,
+        };
+        var dispatcher = new FailingBrowserUiDispatcher();
+        var surface = new BrowserSurface(
+            nativeView,
+            dispatcher,
+            () => new RecordingNativeBrowserView(),
+            static _ => { },
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var fill = surface.FillWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            "ambiguous",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None).AsTask();
+
+        dispatcher.FailMarshalling();
+        pendingFill.SetResult(NativeBrowserFillResult.Filled());
+        var result = await fill.WaitAsync(TimeSpan.FromSeconds(1));
+        dispatcher.RestoreAccess();
+        var navigation = await surface.NavigateAsync(
+            Address("https://example.test/next"),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            result.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            navigation.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+    }
+
+    [Fact]
+    public async Task CheckConsumesExactHandleAndAllSnapshotReferences()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+        var siblingReference = snapshot.Value.Nodes[2].Reference!;
+
+        var result = await surface.CheckWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(document, result.Value?.SourceDocument);
+        Assert.Equal(1, nativeView.CheckCount);
+        Assert.Equal(NativeHandle("original"), nativeView.LastCheckHandle);
+        Assert.False(surface.TryResolveElementReference(
+            reference,
+            out _));
+        Assert.False(surface.TryResolveElementReference(
+            siblingReference,
+            out _));
+
+        var repeated = await surface.CheckWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.ElementReferenceStale,
+            repeated.Error?.Code);
+        Assert.Equal(1, nativeView.CheckCount);
+    }
+
+    [Fact]
+    public async Task InvalidCheckReferencesAndPreDispatchCancellationStayNativeFree()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var forged = new BrowserElementReference("be_forged", document);
+
+        var forgedResult = await surface.CheckWithinOriginAsync(
+            forged,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var wrongDocument = new BrowserElementReference(
+            "be_forged",
+            new BrowserDocumentBinding(
+                Address("https://example.test/other"),
+                document.DocumentRevision));
+        var wrongResult = await surface.CheckWithinOriginAsync(
+            wrongDocument,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var cancelled = await surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            cancellation.Token);
+
+        Assert.Equal(
+            BrowserErrorCode.ElementReferenceStale,
+            forgedResult.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationStateChanged,
+            wrongResult.Error?.Code);
+        Assert.Equal(BrowserErrorCode.Cancelled, cancelled.Error?.Code);
+        Assert.Equal(0, nativeView.CheckCount);
+    }
+
+    [Fact]
+    public async Task CancellationAfterCheckCommitCannotOverwriteKnownResult()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+
+        var check = surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            cancellation.Token).AsTask();
+        cancellation.Cancel();
+        await Task.Yield();
+
+        Assert.False(check.IsCompleted);
+        Assert.Equal(1, nativeView.CheckCount);
+        pendingCheck.SetResult(NativeBrowserCheckResult.Checked());
+
+        Assert.True((await check).IsSuccess);
+    }
+
+    [Fact]
+    public async Task CheckSerializesAllBrowserMutations()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var reference = snapshot.Value!.Nodes[1].Reference!;
+        var check = surface.CheckWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None).AsTask();
+
+        var concurrentCheck = await surface.CheckWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var concurrentClick = await surface.ClickWithinOriginAsync(
+            reference,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var concurrentFill = await surface.FillWithinOriginAsync(
+            reference,
+            "value",
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var concurrentSnapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var concurrentNavigation = await surface.NavigateAsync(
+            Address("https://example.test/next"),
+            CancellationToken.None);
+
+        Assert.All(
+            [
+                concurrentCheck.Error,
+                concurrentClick.Error,
+                concurrentFill.Error,
+                concurrentSnapshot.Error,
+                concurrentNavigation.Error,
+            ],
+            error => Assert.Equal(
+                BrowserErrorCode.NavigationInProgress,
+                error?.Code));
+        Assert.Equal(1, nativeView.CheckCount);
+        Assert.Equal(0, nativeView.ClickCount);
+        Assert.Equal(0, nativeView.FillCount);
+        Assert.Equal(0, nativeView.NavigateCount);
+
+        pendingCheck.SetResult(
+            NativeBrowserCheckResult.NotCheckable());
+        var result = await check;
+        Assert.Equal(
+            BrowserErrorCode.ElementNotCheckable,
+            result.Error?.Code);
+    }
+
+    [Theory]
+    [InlineData(
+        2,
+        BrowserErrorCode.ElementNotInteractable)]
+    [InlineData(
+        3,
+        BrowserErrorCode.ElementNotCheckable)]
+    [InlineData(
+        1,
+        BrowserErrorCode.ElementReferenceStale)]
+    public async Task CheckMapsClosedPreCommitFailures(
+        int nativeStatusValue,
+        BrowserErrorCode expectedError)
+    {
+        var nativeStatus =
+            (NativeBrowserCheckStatus)nativeStatusValue;
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            CheckResult = nativeStatus switch
+            {
+                NativeBrowserCheckStatus.NotInteractable =>
+                    NativeBrowserCheckResult.NotInteractable(),
+                NativeBrowserCheckStatus.NotCheckable =>
+                    NativeBrowserCheckResult.NotCheckable(),
+                NativeBrowserCheckStatus.Stale =>
+                    NativeBrowserCheckResult.Stale(),
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(nativeStatus)),
+            },
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        var result = await surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.Equal(expectedError, result.Error?.Code);
+    }
+
+    [Fact]
+    public async Task CheckWaitsForSameOriginNavigationTerminalState()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var surface = Surface(nativeView);
+        var source = Address("https://example.test/start");
+        _ = await surface.NavigateAsync(source, CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(source, isSuccess: true);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var destination = Address("https://example.test/next");
+        var check = surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(destination),
+            CancellationToken.None).AsTask();
+
+        Assert.False(nativeView.RaiseNavigationStarted(destination));
+        pendingCheck.SetResult(NativeBrowserCheckResult.Checked());
+        await Task.Yield();
+
+        Assert.False(check.IsCompleted);
+        Assert.Equal(BrowserLoadState.Loading, surface.State.LoadState);
+
+        nativeView.RaiseNavigationCompleted(destination, isSuccess: true);
+        var result = await check;
+        Assert.True(result.IsSuccess);
+        Assert.Equal(destination, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CrossOriginCheckNavigationFailsAndQuarantinesAdapter()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(nativeView, replacement);
+        var source = Address("https://example.test/start");
+        _ = await surface.NavigateAsync(source, CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(source, isSuccess: true);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var check = surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(source),
+            CancellationToken.None).AsTask();
+
+        Assert.True(nativeView.RaiseNavigationStarted(
+            Address("https://other.test/escape")));
+        pendingCheck.SetResult(NativeBrowserCheckResult.Checked());
+        var result = await check;
+
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CheckedResultKeepsOriginGuardUntilUiObservationBarrier()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var dispatcher = new QueuedBrowserUiDispatcher();
+        var surface = new BrowserSurface(
+            nativeView,
+            dispatcher,
+            () => replacement,
+            static _ => { },
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var source = Address("https://example.test/start");
+        _ = await surface.NavigateAsync(source, CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(source, isSuccess: true);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var check = surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(source),
+            CancellationToken.None).AsTask();
+
+        pendingCheck.SetResult(NativeBrowserCheckResult.Checked());
+        await dispatcher.WaitForWorkAsync().WaitAsync(
+            TimeSpan.FromSeconds(1));
+
+        Assert.False(check.IsCompleted);
+        Assert.True(nativeView.RaiseNavigationStarted(
+            Address("https://other.test/escape")));
+        var result = await check.WaitAsync(TimeSpan.FromSeconds(1));
+        dispatcher.Drain();
+
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CheckDeadlineIsOutcomeUnknownAndFencesLateCompletion()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () => replacement,
+            static _ => { },
+            nativeSnapshotDeadline: TimeSpan.FromMilliseconds(25),
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        var result = await surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+
+        pendingCheck.SetResult(NativeBrowserCheckResult.Checked());
+        await Task.Yield();
+        await Task.Yield();
+
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CheckDeadlineWinsOverAnEarlierQueuedNativeResult()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var replacement = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("replacement"),
+        };
+        var dispatcher = new QueuedBrowserUiDispatcher();
+        var replacementCount = 0;
+        var surface = new BrowserSurface(
+            nativeView,
+            dispatcher,
+            () =>
+            {
+                replacementCount++;
+                return replacement;
+            },
+            static _ => { },
+            nativeSnapshotDeadline: TimeSpan.FromMilliseconds(25),
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var check = surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None).AsTask();
+        dispatcher.Suspend();
+
+        pendingCheck.SetResult(NativeBrowserCheckResult.Checked());
+        await dispatcher.WaitForWorkAsync().WaitAsync(
+            TimeSpan.FromSeconds(1));
+        var result = await check.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            result.Error?.Code);
+        Assert.False(result.Error?.Retryable);
+        Assert.Equal(0, replacementCount);
+        Assert.Equal(0, surface.State.DocumentRevision);
+
+        dispatcher.Drain();
+
+        Assert.Equal(1, replacementCount);
+        Assert.Equal(1, surface.State.DocumentRevision);
+        var recovered = await surface.CaptureSnapshotAsync(
+            BrowserDocumentBinding.FromState(surface.State),
+            CancellationToken.None);
+        Assert.True(recovered.IsSuccess);
+        Assert.Equal(1, replacement.SnapshotCount);
+    }
+
+    [Fact]
+    public async Task SynchronousCheckFailureWithoutReplacementBlocksFurtherUse()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            ThrowOnCheck = true,
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        var check = await surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None);
+        var navigation = await surface.NavigateAsync(
+            Address("https://example.test/next"),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            check.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            navigation.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+    }
+
+    [Fact]
+    public async Task CheckDispatcherFailureReturnsUnknownAndPermanentlyFencesAdapter()
+    {
+        var pendingCheck =
+            new TaskCompletionSource<NativeBrowserCheckResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = CheckableSnapshot("original"),
+            PendingCheck = pendingCheck,
+        };
+        var dispatcher = new FailingBrowserUiDispatcher();
+        var surface = new BrowserSurface(
+            nativeView,
+            dispatcher,
+            () => new RecordingNativeBrowserView(),
+            static _ => { },
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var check = surface.CheckWithinOriginAsync(
+            snapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(document.Address),
+            CancellationToken.None).AsTask();
+
+        dispatcher.FailMarshalling();
+        pendingCheck.SetResult(NativeBrowserCheckResult.Checked());
+        var result = await check.WaitAsync(TimeSpan.FromSeconds(1));
+        dispatcher.RestoreAccess();
+        var navigation = await surface.NavigateAsync(
+            Address("https://example.test/next"),
+            CancellationToken.None);
+
+        Assert.Equal(
+            BrowserErrorCode.InteractionOutcomeUnknown,
+            result.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            navigation.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+    }
+
+    [Fact]
+    public async Task SnapshotRequiresAReadyMatchingDocument()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var stale = BrowserDocumentBinding.FromState(surface.State);
+        _ = await surface.NavigateAsync(
+            Address("https://example.test/loading"),
+            CancellationToken.None);
+
+        var result = await surface.CaptureSnapshotAsync(
+            stale,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            result.Error?.Code);
+        Assert.Equal(0, nativeView.SnapshotCount);
+    }
+
+    [Fact]
+    public async Task SnapshotCancellationBeforeDispatchDoesNotInvokeNativeView()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await surface.CaptureSnapshotAsync(
+            BrowserDocumentBinding.FromState(surface.State),
+            cancellation.Token);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BrowserErrorCode.Cancelled, result.Error?.Code);
+        Assert.Equal(0, nativeView.SnapshotCount);
+    }
+
+    [Fact]
+    public async Task CancelledSnapshotKeepsNativeInvocationBoundedUntilItDrains()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("0"),
+            PendingSnapshot = new(
+                TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        using var cancellation = new CancellationTokenSource();
+        var first = surface.CaptureSnapshotAsync(
+            document,
+            cancellation.Token).AsTask();
+
+        cancellation.Cancel();
+        var cancelled = await first;
+        var overlapping = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+
+        Assert.False(cancelled.IsSuccess);
+        Assert.Equal(BrowserErrorCode.Cancelled, cancelled.Error?.Code);
+        Assert.False(overlapping.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            overlapping.Error?.Code);
+        Assert.Equal(1, nativeView.SnapshotCount);
+
+        nativeView.PendingSnapshot.SetResult(
+            nativeView.SnapshotResult);
+        nativeView.PendingSnapshot = null;
+        var next = await CaptureAfterNativeSnapshotDrainAsync(
+            surface,
+            document,
+            CancellationToken.None);
+
+        Assert.True(next.IsSuccess);
+        Assert.Equal(2, nativeView.SnapshotCount);
+    }
+
+    [Fact]
+    public async Task GovernedNavigationCannotOverlapANativeSnapshot()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            PendingSnapshot = new(
+                TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var snapshot = surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None).AsTask();
+
+        var governed = await BeginGovernedNavigation(
+            surface,
+            Address("https://example.test/governed"),
+            CancellationToken.None);
+
+        Assert.False(governed.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            governed.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+
+        nativeView.PendingSnapshot.SetResult(nativeView.SnapshotResult);
+        Assert.True((await snapshot).IsSuccess);
+    }
+
+    [Fact]
+    public async Task TimedOutSnapshotReplacesNativeViewAndFencesLateCompletion()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            PendingSnapshot = new(
+                TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var replacement = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("replacement"),
+        };
+        var reentrantAddress =
+            Address("https://example.test/reentrant");
+        var capturedOldNavigationCompletion =
+            nativeView.CaptureNavigationCompletedCallback(
+                reentrantAddress,
+                isSuccess: true,
+                navigationGeneration: 1);
+        var replacementCount = 0;
+        var presentationCount = 0;
+        var replacementPublished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        BrowserResult<BrowserSessionState>? reentrantNavigation = null;
+        BrowserResult<BrowserDocumentSnapshot>? reentrantSnapshot = null;
+        BrowserSurface? surface = null;
+        surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () =>
+            {
+                replacementCount++;
+                return replacement;
+            },
+            _ =>
+            {
+                presentationCount++;
+                capturedOldNavigationCompletion();
+                reentrantNavigation = surface!.NavigateAsync(
+                        reentrantAddress,
+                        CancellationToken.None)
+                    .AsTask()
+                    .GetAwaiter()
+                    .GetResult();
+                reentrantSnapshot = surface!.CaptureSnapshotAsync(
+                        BrowserDocumentBinding.FromState(surface.State),
+                        CancellationToken.None)
+                    .AsTask()
+                    .GetAwaiter()
+                    .GetResult();
+            },
+            nativeSnapshotDeadline: TimeSpan.FromMilliseconds(25),
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        surface.StateChanged += (_, args) =>
+        {
+            if (args.State.DocumentRevision == 1)
+            {
+                replacementPublished.TrySetResult();
+            }
+        };
+        var firstDocument =
+            BrowserDocumentBinding.FromState(surface.State);
+
+        var timedOut = await surface.CaptureSnapshotAsync(
+            firstDocument,
+            CancellationToken.None);
+        await replacementPublished.Task.WaitAsync(
+            TimeSpan.FromSeconds(1));
+
+        Assert.False(timedOut.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            timedOut.Error?.Code);
+        Assert.True(timedOut.Error?.Retryable);
+        Assert.Equal(1, replacementCount);
+        Assert.Equal(1, presentationCount);
+        Assert.Equal(1, surface.State.DocumentRevision);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            reentrantNavigation?.Error?.Code);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            reentrantSnapshot?.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+        Assert.Equal(0, replacement.NavigateCount);
+
+        var recovered = await surface.CaptureSnapshotAsync(
+            BrowserDocumentBinding.FromState(surface.State),
+            CancellationToken.None);
+        var recoveredReference =
+            recovered.Value?.Nodes[1].Reference;
+
+        Assert.True(recovered.IsSuccess);
+        Assert.Equal(1, nativeView.SnapshotCount);
+        Assert.Equal(1, replacement.SnapshotCount);
+        Assert.NotNull(recoveredReference);
+        Assert.True(surface.TryResolveElementReference(
+            recoveredReference!,
+            out var recoveredHandle));
+        Assert.Equal(NativeHandle("replacement"), recoveredHandle);
+
+        nativeView.PendingSnapshot.SetException(
+            new InvalidOperationException(
+                "late vendor failure must stay fenced"));
+        await Task.Yield();
+        await Task.Yield();
+
+        Assert.Equal(1, surface.State.DocumentRevision);
+        Assert.True(surface.TryResolveElementReference(
+            recoveredReference,
+            out recoveredHandle));
+        Assert.Equal(NativeHandle("replacement"), recoveredHandle);
+    }
+
+    [Fact]
+    public async Task DeadlineRemainsAuthoritativeWhileUiQuarantineIsQueued()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            PendingSnapshot = new(
+                TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var replacement = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("replacement"),
+        };
+        var dispatcher = new QueuedBrowserUiDispatcher();
+        var replacementCount = 0;
+        var surface = new BrowserSurface(
+            nativeView,
+            dispatcher,
+            () =>
+            {
+                replacementCount++;
+                return replacement;
+            },
+            static _ => { },
+            nativeSnapshotDeadline: TimeSpan.FromMilliseconds(25),
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var capture = surface.CaptureSnapshotAsync(
+            BrowserDocumentBinding.FromState(surface.State),
+            CancellationToken.None).AsTask();
+        dispatcher.Suspend();
+
+        var timedOut = await capture.WaitAsync(
+            TimeSpan.FromSeconds(1));
+        await dispatcher.WaitForWorkAsync().WaitAsync(
+            TimeSpan.FromSeconds(1));
+
+        Assert.False(timedOut.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            timedOut.Error?.Code);
+        Assert.True(timedOut.Error?.Retryable);
+        Assert.Equal(0, replacementCount);
+        Assert.Equal(0, surface.State.DocumentRevision);
+
+        nativeView.PendingSnapshot.SetResult(nativeView.SnapshotResult);
+        dispatcher.Drain();
+
+        Assert.Equal(1, replacementCount);
+        Assert.Equal(1, surface.State.DocumentRevision);
+        var recovered = await surface.CaptureSnapshotAsync(
+            BrowserDocumentBinding.FromState(surface.State),
+            CancellationToken.None);
+        Assert.True(recovered.IsSuccess);
+        Assert.Equal(1, replacement.SnapshotCount);
+    }
+
+    [Fact]
+    public async Task FailedReplacementFencesNativeViewUntilSnapshotDrains()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = ActionableSnapshot("recovered"),
+            PendingSnapshot = new(
+                TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var replacement = new RecordingNativeBrowserView();
+        var presentationCount = 0;
+        var presentationAttempted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () => replacement,
+            _ =>
+            {
+                presentationCount++;
+                presentationAttempted.TrySetResult();
+                throw new InvalidOperationException(
+                    "the host rejected presentation");
+            },
+            nativeSnapshotDeadline: TimeSpan.FromMilliseconds(25),
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+
+        var timedOut = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        await presentationAttempted.Task.WaitAsync(
+            TimeSpan.FromSeconds(1));
+        var blockedSnapshot = await surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None);
+        var blockedNavigation = await surface.NavigateAsync(
+            Address("https://example.test/fenced"),
+            CancellationToken.None);
+
+        Assert.False(timedOut.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            timedOut.Error?.Code);
+        Assert.True(timedOut.Error?.Retryable);
+        Assert.Equal(1, presentationCount);
+        Assert.False(blockedSnapshot.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            blockedSnapshot.Error?.Code);
+        Assert.False(blockedNavigation.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            blockedNavigation.Error?.Code);
+        Assert.True(blockedNavigation.Error?.Retryable);
+        Assert.Equal(0, nativeView.NavigateCount);
+        Assert.Equal(1, nativeView.SnapshotCount);
+        Assert.Equal(0, replacement.SnapshotCount);
+        Assert.Equal(0, surface.State.DocumentRevision);
+
+        nativeView.PendingSnapshot.SetResult(nativeView.SnapshotResult);
+        nativeView.PendingSnapshot = null;
+        var recovered = await CaptureAfterNativeSnapshotDrainAsync(
+            surface,
+            document,
+            CancellationToken.None);
+
+        Assert.True(recovered.IsSuccess);
+        Assert.Equal(2, nativeView.SnapshotCount);
+        Assert.Equal(0, replacement.SnapshotCount);
+        Assert.Equal(0, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task DocumentChangeDuringSnapshotDiscardsLateNativeData()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            PendingSnapshot = new(
+                TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var surface = Surface(nativeView);
+        var document = BrowserDocumentBinding.FromState(surface.State);
+        var capture = surface.CaptureSnapshotAsync(
+            document,
+            CancellationToken.None).AsTask();
+        var next = Address("https://example.test/next");
+        _ = await surface.NavigateAsync(next, CancellationToken.None);
+        nativeView.RaiseNavigationStarted(next);
+        nativeView.RaiseNavigationCompleted(next, isSuccess: true);
+
+        nativeView.PendingSnapshot.SetResult(
+            ActionableSnapshot("0"));
+        var result = await capture;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationStateChanged,
+            result.Error?.Code);
+        Assert.Equal("browser_state_changed", result.Error?.StableCode);
+    }
+
+    [Fact]
+    public async Task InvalidNativeSnapshotUsesOnlyStableSanitizedFailure()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            SnapshotResult = NativeBrowserSnapshotResult.Invalid(),
+        };
+        var surface = Surface(nativeView);
+
+        var result = await surface.CaptureSnapshotAsync(
+            BrowserDocumentBinding.FromState(surface.State),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.SnapshotInvalid,
+            result.Error?.Code);
+        Assert.Equal(
+            "browser_snapshot_invalid",
+            result.Error?.StableCode);
+        Assert.DoesNotContain(
+            "vendor",
+            result.Error!.Message,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task NavigateQueuesTheValidatedAddressAndPublishesLoading()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var address = Address("https://example.test/path?q=one");
+        var published = new List<BrowserSessionState>();
+        surface.StateChanged += (_, args) => published.Add(args.State);
+
+        var result = await surface.NavigateAsync(address, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(address, nativeView.NavigatedAddress);
+        Assert.Equal(BrowserLoadState.Loading, surface.State.LoadState);
+        Assert.Equal(address, surface.State.Address);
+        Assert.Equal([surface.State], published);
+    }
+
+    [Fact]
+    public void SuccessfulCompletionAdvancesTheDocumentRevisionAndHistoryState()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            CanGoBack = true,
+            CanGoForward = false,
+        };
+        var surface = Surface(nativeView);
+        var address = Address("https://example.test/complete");
+
+        nativeView.RaiseNavigationStarted(address);
+        nativeView.RaiseNavigationCompleted(address, isSuccess: true);
+
+        Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+        Assert.Equal(address, surface.State.Address);
+        Assert.True(surface.State.CanGoBack);
+        Assert.False(surface.State.CanGoForward);
+        Assert.Equal(1, surface.State.DocumentRevision);
+        Assert.Null(surface.State.Failure);
+    }
+
+    [Fact]
+    public void FailedCompletionPublishesOnlyAStableEngineNeutralFailure()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var address = Address("https://example.test/failure");
+
+        nativeView.RaiseNavigationStarted(address);
+        nativeView.RaiseNavigationCompleted(address, isSuccess: false);
+
+        Assert.Equal(BrowserLoadState.Failed, surface.State.LoadState);
+        Assert.Equal(BrowserErrorCode.NavigationFailed, surface.State.Failure?.Code);
+        Assert.Equal("navigation_failed", surface.State.Failure?.StableCode);
+        Assert.DoesNotContain("vendor", surface.State.Failure?.Message);
+        Assert.Equal(0, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public void RejectedTopLevelNavigationKeepsTheLastSupportedAddress()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+
+        nativeView.RaiseNavigationRejected();
+
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(BrowserLoadState.Failed, surface.State.LoadState);
+        Assert.Equal(BrowserErrorCode.NavigationFailed, surface.State.Failure?.Code);
+    }
+
+    [Fact]
+    public async Task MissingHistoryReturnsAnExpectedFailureWithoutChangingState()
+    {
+        var surface = Surface(new RecordingNativeBrowserView());
+        var initial = surface.State;
+
+        var result = await surface.GoBackAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BrowserErrorCode.HistoryUnavailable, result.Error?.Code);
+        Assert.Same(initial, surface.State);
+    }
+
+    [Fact]
+    public async Task AcceptedBackAndForwardOperationsEnterLoadingState()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            AcceptBack = true,
+            AcceptForward = true,
+        };
+        var surface = Surface(nativeView);
+
+        var back = await surface.GoBackAsync(CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(
+            Address("https://example.test/back"),
+            isSuccess: true);
+        var forward = await surface.GoForwardAsync(CancellationToken.None);
+
+        Assert.True(back.IsSuccess);
+        Assert.True(forward.IsSuccess);
+        Assert.Equal(BrowserLoadState.Loading, surface.State.LoadState);
+        Assert.Equal(1, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task ReloadAndStopPublishLoadingThenReadyWithoutAdvancingRevision()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            AcceptReload = true,
+            AcceptStop = true,
+        };
+        var surface = Surface(nativeView);
+
+        var reload = await surface.ReloadAsync(CancellationToken.None);
+        var stop = await surface.StopAsync(CancellationToken.None);
+
+        Assert.True(reload.IsSuccess);
+        Assert.True(stop.IsSuccess);
+        Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+        Assert.Equal(0, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task VendorExceptionMapsToAStableFailureAndDoesNotEscape()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            ThrowOnNavigate = true,
+        };
+        var surface = Surface(nativeView);
+
+        var result = await surface.NavigateAsync(
+            Address("https://example.test"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BrowserErrorCode.EngineFailed, result.Error?.Code);
+        Assert.Equal("engine_failed", result.Error?.StableCode);
+        Assert.Equal(BrowserLoadState.Failed, surface.State.LoadState);
+        Assert.DoesNotContain("vendor", surface.State.Failure?.Message);
+    }
+
+    [Fact]
+    public async Task CancellationDoesNotReachTheNativeRenderer()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await surface.NavigateAsync(
+            Address("https://example.test"),
+            cancellation.Token);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BrowserErrorCode.Cancelled, result.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+        Assert.Equal(BrowserSessionState.Initial(BrowserAddress.Blank), surface.State);
+    }
+
+    [Fact]
+    public async Task GovernedNavigationWaitsThroughSameOriginRedirects()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var requested = Address("https://example.test/start");
+        var redirected = Address("https://example.test/final?from=redirect");
+        var operation = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+
+        Assert.False(operation.IsCompleted);
+        Assert.Equal(BrowserLoadState.Loading, surface.State.LoadState);
+        Assert.False(nativeView.RaiseNavigationStarted(requested));
+        Assert.False(nativeView.RaiseNavigationStarted(redirected));
+        Assert.Equal(redirected, surface.State.Address);
+
+        nativeView.RaiseNavigationCompleted(redirected, isSuccess: true);
+        var result = await operation;
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(BrowserLoadState.Ready, result.Value?.LoadState);
+        Assert.Equal(redirected, result.Value?.Address);
+        Assert.Equal(1, result.Value?.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task GovernedNavigationRejectsCrossOriginRedirectAndLateCompletion()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var requested = Address("https://example.test/start");
+        var escaped = Address("https://outside.example.test/redirect");
+        var operation = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+
+        Assert.False(nativeView.RaiseNavigationStarted(requested));
+        Assert.True(nativeView.RaiseNavigationStarted(escaped));
+        var result = await operation;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.Equal(
+            "browser_domain_policy_denied",
+            result.Error?.StableCode);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(0, surface.State.DocumentRevision);
+        Assert.Equal(result.Error, surface.State.Failure);
+
+        nativeView.RaiseNavigationCompleted(escaped, isSuccess: true);
+
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(0, surface.State.DocumentRevision);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            surface.State.Failure?.Code);
+        var blockedWithoutReplacement = await surface.NavigateAsync(
+            Address("https://human.example.test/page"),
+            CancellationToken.None);
+        Assert.False(blockedWithoutReplacement.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            blockedWithoutReplacement.Error?.Code);
+    }
+
+    [Fact]
+    public async Task FinalOriginEscapeWithoutStartEventQuarantinesNativeView()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(
+            nativeView,
+            replacement);
+        var requested = Address("https://example.test/start");
+        var escaped = Address("https://outside.example.test/final");
+        var governed = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+
+        nativeView.RaiseNavigationCompleted(
+            escaped,
+            isSuccess: true);
+        var result = await governed;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+
+        var next = Address("https://human.example.test/page");
+        var accepted = await surface.NavigateAsync(
+            next,
+            CancellationToken.None);
+        replacement.RaiseNavigationStarted(next);
+        replacement.RaiseNavigationCompleted(next, isSuccess: true);
+
+        Assert.True(accepted.IsSuccess);
+        Assert.Equal(next, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CancellationDuringFinalEscapeResetCannotRegressReplacement()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(
+            nativeView,
+            replacement);
+        var requested = Address("https://example.test/start");
+        var escaped = Address("https://outside.example.test/final");
+        using var cancellation = new CancellationTokenSource();
+        surface.StateChanged += (_, args) =>
+        {
+            if (args.State.Address == BrowserAddress.Blank
+                && args.State.DocumentRevision == 1)
+            {
+                cancellation.Cancel();
+            }
+        };
+        var governed = BeginGovernedNavigation(
+            surface,
+            requested,
+            cancellation.Token);
+
+        nativeView.RaiseNavigationCompleted(
+            escaped,
+            isSuccess: true);
+        var result = await governed;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+
+        var next = Address("https://human.example.test/page");
+        var accepted = await surface.NavigateAsync(
+            next,
+            CancellationToken.None);
+
+        Assert.True(accepted.IsSuccess);
+        Assert.Equal(1, replacement.NavigateCount);
+    }
+
+    [Fact]
+    public async Task RejectedAttemptDrainsBeforeLaterHumanNavigation()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(
+            nativeView,
+            replacement);
+        var requested = Address("https://example.test/start");
+        var escaped = Address("https://outside.example.test/redirect");
+        var governed = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+        nativeView.RaiseNavigationStarted(requested);
+        nativeView.RaiseNavigationStarted(escaped);
+        _ = await governed;
+
+        var humanAddress = Address("https://human.example.test/page");
+        var blockedWhileDraining = await surface.NavigateAsync(
+            humanAddress,
+            CancellationToken.None);
+        Assert.False(blockedWhileDraining.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            blockedWhileDraining.Error?.Code);
+
+        nativeView.RaiseNavigationCompleted(escaped, isSuccess: false);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+        var human = await surface.NavigateAsync(
+            humanAddress,
+            CancellationToken.None);
+        replacement.RaiseNavigationStarted(humanAddress);
+        replacement.RaiseNavigationCompleted(
+            humanAddress,
+            isSuccess: true);
+
+        Assert.True(human.IsSuccess);
+        Assert.Equal(humanAddress, surface.State.Address);
+        Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeFirstStartKeepsDelayedNavigationContained()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            AcceptStop = true,
+        };
+        var surface = Surface(nativeView);
+        var requested = Address("https://example.test/start");
+        var escaped = Address("https://outside.example.test/redirect");
+        using var cancellation = new CancellationTokenSource();
+        var governed = BeginGovernedNavigation(
+            surface,
+            requested,
+            cancellation.Token);
+
+        cancellation.Cancel();
+        var cancelled = await governed;
+
+        Assert.False(cancelled.IsSuccess);
+        Assert.Equal(BrowserErrorCode.Cancelled, cancelled.Error?.Code);
+        Assert.True(nativeView.RaiseNavigationStarted(escaped));
+
+        var blocked = await surface.NavigateAsync(
+            Address("https://human.example.test/page"),
+            CancellationToken.None);
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            blocked.Error?.Code);
+
+        nativeView.RaiseNavigationCompleted(escaped, isSuccess: false);
+
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(0, surface.State.DocumentRevision);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LateCompletionCannotBeAttributedToANewerNavigation(
+        bool reuseRejectedAddress)
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var replacement = new RecordingNativeBrowserView();
+        var surface = SurfaceWithReplacement(
+            nativeView,
+            replacement);
+        var requested = Address("https://example.test/start");
+        var escaped = Address("https://outside.example.test/redirect");
+        var governed = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+        nativeView.RaiseNavigationStarted(requested);
+        nativeView.RaiseNavigationStarted(escaped);
+        _ = await governed;
+        var rejectedGeneration =
+            nativeView.LastNavigationGeneration;
+        var capturedLateCompletion =
+            nativeView.CaptureNavigationCompletedCallback(
+                escaped,
+                isSuccess: true,
+                navigationGeneration: rejectedGeneration);
+        var next = reuseRejectedAddress
+            ? escaped
+            : Address("https://human.example.test/page");
+
+        var blocked = await surface.NavigateAsync(next, CancellationToken.None);
+
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal(1, nativeView.NavigateCount);
+        nativeView.RaiseNavigationCompleted(escaped, isSuccess: false);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+
+        var accepted = await surface.NavigateAsync(next, CancellationToken.None);
+        capturedLateCompletion();
+
+        Assert.Equal(next, surface.State.Address);
+        Assert.Equal(BrowserLoadState.Loading, surface.State.LoadState);
+        Assert.Equal(1, surface.State.DocumentRevision);
+
+        replacement.RaiseNavigationStarted(next);
+        replacement.RaiseNavigationCompleted(next, isSuccess: true);
+
+        Assert.True(accepted.IsSuccess);
+        Assert.Equal(next, surface.State.Address);
+        Assert.Equal(2, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CapturedOldCallbackDuringPresentationCannotReenterReplacement()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var replacement = new RecordingNativeBrowserView();
+        Action? capturedCompletion = null;
+        var presentationCount = 0;
+        var replacementCount = 0;
+        var surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () =>
+            {
+                replacementCount++;
+                return replacement;
+            },
+            _ =>
+            {
+                presentationCount++;
+                var callback = capturedCompletion;
+                capturedCompletion = null;
+                callback?.Invoke();
+            },
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var requested = Address("https://example.test/start");
+        var escaped = Address("https://outside.example.test/redirect");
+        var governed = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+        nativeView.RaiseNavigationStarted(requested);
+        nativeView.RaiseNavigationStarted(escaped);
+        _ = await governed;
+        capturedCompletion =
+            nativeView.CaptureNavigationCompletedCallback(
+                escaped,
+                isSuccess: false,
+                navigationGeneration:
+                    nativeView.LastNavigationGeneration);
+
+        nativeView.RaiseNavigationCompleted(
+            escaped,
+            isSuccess: false);
+
+        Assert.Equal(1, replacementCount);
+        Assert.Equal(1, presentationCount);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(1, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task UnsupportedSchemeRedirectIsAnOriginPolicyDenial()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var requested = Address("https://example.test/start");
+        var governed = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+        nativeView.RaiseNavigationStarted(requested);
+
+        nativeView.RaiseNavigationRejected(
+            NativeBrowserNavigationRejectionReason.UnsupportedAddress);
+        var result = await governed;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.Equal(
+            "browser_domain_policy_denied",
+            result.Error?.StableCode);
+
+        nativeView.RaiseNavigationCompleted(address: null, isSuccess: false);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(0, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task GovernedNavigationRejectsAStaleStartingDocumentBinding()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var staleBinding = BrowserNavigationStartBinding.FromState(
+            surface.State);
+        var committed = Address("https://example.test/committed");
+        _ = await surface.NavigateAsync(committed, CancellationToken.None);
+        nativeView.RaiseNavigationStarted(committed);
+        nativeView.RaiseNavigationCompleted(committed, isSuccess: true);
+        nativeView.AcceptReload = true;
+
+        var result = await surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Reload(),
+            BrowserNavigationOrigin.FromAddress(committed),
+            staleBinding,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationStateChanged,
+            result.Error?.Code);
+        Assert.Equal("browser_state_changed", result.Error?.StableCode);
+        Assert.True(result.Error?.Retryable);
+        Assert.Equal(0, nativeView.ReloadCount);
+    }
+
+    [Fact]
+    public async Task GovernedNavigationFailsClosedWhileAnotherLoadIsActive()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var first = Address("https://example.test/first");
+        var second = Address("https://example.test/second");
+        _ = await surface.NavigateAsync(first, CancellationToken.None);
+
+        var result = await surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Navigate(second),
+            BrowserNavigationOrigin.FromAddress(second),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationInProgress,
+            result.Error?.Code);
+        Assert.Equal(1, nativeView.NavigateCount);
+        Assert.Equal(first, surface.State.Address);
+    }
+
+    [Theory]
+    [InlineData("back")]
+    [InlineData("forward")]
+    [InlineData("reload")]
+    public async Task GovernedHistoryAndReloadCannotEscapeTheCommittedOrigin(
+        string operation)
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            AcceptBack = true,
+            AcceptForward = true,
+            AcceptReload = true,
+        };
+        var surface = Surface(nativeView);
+        BrowserOriginConstrainedNavigationRequest request = operation switch
+        {
+            "back" => new BrowserOriginConstrainedNavigationRequest.Back(),
+            "forward" => new BrowserOriginConstrainedNavigationRequest.Forward(),
+            "reload" => new BrowserOriginConstrainedNavigationRequest.Reload(),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
+        var governed = surface.NavigateWithinOriginAsync(
+            request,
+            BrowserNavigationOrigin.FromAddress(BrowserAddress.Blank),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            CancellationToken.None).AsTask();
+
+        Assert.True(nativeView.RaiseNavigationStarted(
+            Address("https://escaped.example.test/")));
+        var result = await governed;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(0, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public async Task CancellingGovernedNavigationStopsAndPreservesCommittedState()
+    {
+        var nativeView = new RecordingNativeBrowserView
+        {
+            AcceptStop = true,
+        };
+        var surface = Surface(nativeView);
+        var requested = Address("https://example.test/start");
+        using var cancellation = new CancellationTokenSource();
+        var operation = BeginGovernedNavigation(
+            surface,
+            requested,
+            cancellation.Token);
+        nativeView.RaiseNavigationStarted(requested);
+
+        cancellation.Cancel();
+        var result = await operation;
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BrowserErrorCode.Cancelled, result.Error?.Code);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(0, surface.State.DocumentRevision);
+        Assert.Equal(1, nativeView.StopCount);
+
+        nativeView.RaiseNavigationCompleted(requested, isSuccess: true);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
+        Assert.Equal(0, surface.State.DocumentRevision);
+    }
+
+    [Fact]
+    public void PublicApiDoesNotExposeTheVendorWebView()
+    {
+        var exportedTypes = typeof(BrowserSurface).Assembly.GetExportedTypes();
+        var publicSignatures = exportedTypes
+            .SelectMany(type => type.GetMembers())
+            .Select(member => member.ToString() ?? string.Empty);
+
+        Assert.DoesNotContain(
+            publicSignatures,
+            signature => signature.Contains(
+                "NativeWebView",
+                StringComparison.Ordinal));
+    }
+
+    private static BrowserAddress Address(string value)
+    {
+        Assert.True(BrowserAddress.TryParse(value, out var address));
+        return address;
+    }
+
+    private static NativeBrowserSnapshotResult ActionableSnapshot(
+        string token) =>
+        NativeBrowserSnapshotResult.Success(
+            new NativeBrowserSnapshot(
+                [
+                    new NativeBrowserSnapshotNode(
+                        0,
+                        "document",
+                        "Example",
+                        BrowserSnapshotNodeState.None,
+                        Handle: null),
+                    new NativeBrowserSnapshotNode(
+                        1,
+                        "button",
+                        "Continue",
+                        BrowserSnapshotNodeState.None,
+                        NativeHandle(token)),
+                ],
+                IsTruncated: false));
+
+    private static NativeBrowserSnapshotResult FillableSnapshot(
+        string token) =>
+        NativeBrowserSnapshotResult.Success(
+            new NativeBrowserSnapshot(
+                [
+                    new NativeBrowserSnapshotNode(
+                        0,
+                        "document",
+                        "Example",
+                        BrowserSnapshotNodeState.None,
+                        Handle: null),
+                    new NativeBrowserSnapshotNode(
+                        1,
+                        "textbox",
+                        "Name",
+                        BrowserSnapshotNodeState.None,
+                        NativeHandle(token)),
+                ],
+                IsTruncated: false));
+
+    private static NativeBrowserSnapshotResult CheckableSnapshot(
+        string token) =>
+        NativeBrowserSnapshotResult.Success(
+            new NativeBrowserSnapshot(
+                [
+                    new NativeBrowserSnapshotNode(
+                        0,
+                        "document",
+                        "Example",
+                        BrowserSnapshotNodeState.None,
+                        Handle: null),
+                    new NativeBrowserSnapshotNode(
+                        1,
+                        "checkbox",
+                        "Remember me",
+                        BrowserSnapshotNodeState.None,
+                        NativeHandle(token)),
+                    new NativeBrowserSnapshotNode(
+                        1,
+                        "radio",
+                        "Daily",
+                        BrowserSnapshotNodeState.None,
+                        NativeHandle(string.Concat(token, "_peer"))),
+                ],
+                IsTruncated: false));
+
+    private static NativeBrowserElementHandle NativeHandle(
+        string token) =>
+        new(
+            "snapshot_test",
+            token.Replace('.', '_'),
+            0);
+
+    private static Task<BrowserResult<BrowserSessionState>>
+        BeginGovernedNavigation(
+            BrowserSurface surface,
+            BrowserAddress address,
+            CancellationToken cancellationToken) =>
+        surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Navigate(address),
+            BrowserNavigationOrigin.FromAddress(address),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            cancellationToken).AsTask();
+
+    private static async Task<BrowserResult<BrowserDocumentSnapshot>>
+        CaptureAfterNativeSnapshotDrainAsync(
+            BrowserSurface surface,
+            BrowserDocumentBinding document,
+            CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            var result = await surface.CaptureSnapshotAsync(
+                document,
+                cancellationToken);
+            if (result.Error?.Code
+                != BrowserErrorCode.NavigationInProgress)
+            {
+                return result;
+            }
+
+            await Task.Delay(
+                TimeSpan.FromMilliseconds(1),
+                cancellationToken);
+        }
+
+        throw new TimeoutException(
+            "The drained native snapshot did not release its BrowserSurface fence.");
+    }
+
+    private static BrowserSurface Surface(INativeBrowserView nativeView) =>
+        new(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+
+    private static BrowserSurface Surface(
+        INativeBrowserView nativeView,
+        TimeProvider timeProvider) =>
+        new(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            timeProvider: timeProvider,
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+
+    private static BrowserSurface SurfaceWithReplacement(
+        INativeBrowserView nativeView,
+        INativeBrowserView replacement) =>
+        new(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () => replacement,
+            static _ => { },
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+
+    private sealed class ManualTimeProvider(
+        DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+
+        public void Advance(TimeSpan duration) =>
+            utcNow += duration;
+    }
+
+    private sealed class QueuedBrowserUiDispatcher : IBrowserUiDispatcher
+    {
+        private readonly object _gate = new();
+        private readonly Queue<Action> _operations = new();
+        private readonly TaskCompletionSource _workQueued = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private bool _hasAccess = true;
+
+        public bool CheckAccess()
+        {
+            lock (_gate)
+            {
+                return _hasAccess;
+            }
+        }
+
+        public ValueTask<T> InvokeAsync<T>(Func<T> operation)
+        {
+            ArgumentNullException.ThrowIfNull(operation);
+            if (CheckAccess())
+            {
+                return ValueTask.FromResult(operation());
+            }
+
+            var completion = new TaskCompletionSource<T>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            Enqueue(
+                () =>
+                {
+                    try
+                    {
+                        completion.TrySetResult(operation());
+                    }
+                    catch (Exception exception)
+                    {
+                        completion.TrySetException(exception);
+                    }
+                });
+            return new ValueTask<T>(completion.Task);
+        }
+
+        public void Post(Action operation)
+        {
+            ArgumentNullException.ThrowIfNull(operation);
+            Enqueue(operation);
+        }
+
+        public void Suspend()
+        {
+            lock (_gate)
+            {
+                _hasAccess = false;
+            }
+        }
+
+        public Task WaitForWorkAsync() => _workQueued.Task;
+
+        public void Drain()
+        {
+            lock (_gate)
+            {
+                _hasAccess = true;
+            }
+
+            while (true)
+            {
+                Action operation;
+                lock (_gate)
+                {
+                    if (!_operations.TryDequeue(out operation!))
+                    {
+                        return;
+                    }
+                }
+
+                operation();
+            }
+        }
+
+        private void Enqueue(Action operation)
+        {
+            lock (_gate)
+            {
+                _operations.Enqueue(operation);
+                _workQueued.TrySetResult();
+            }
+        }
+    }
+
+    private sealed class FailingBrowserUiDispatcher :
+        IBrowserUiDispatcher
+    {
+        private volatile bool _hasAccess = true;
+
+        public bool CheckAccess() => _hasAccess;
+
+        public ValueTask<T> InvokeAsync<T>(Func<T> operation)
+        {
+            ArgumentNullException.ThrowIfNull(operation);
+            return _hasAccess
+                ? ValueTask.FromResult(operation())
+                : ValueTask.FromException<T>(
+                    new InvalidOperationException(
+                        "The UI dispatcher is unavailable."));
+        }
+
+        public void Post(Action operation)
+        {
+            ArgumentNullException.ThrowIfNull(operation);
+            if (!_hasAccess)
+            {
+                throw new InvalidOperationException(
+                    "The UI dispatcher is unavailable.");
+            }
+
+            operation();
+        }
+
+        public void FailMarshalling() => _hasAccess = false;
+
+        public void RestoreAccess() => _hasAccess = true;
+    }
+}

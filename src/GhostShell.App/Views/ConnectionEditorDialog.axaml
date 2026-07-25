@@ -1,0 +1,175 @@
+<Window
+    x:Class="GhostShell.App.Views.ConnectionEditorDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Connection"
+    Width="720"
+    Height="760"
+    MinWidth="620"
+    MinHeight="620"
+    CanResize="True"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="58,*,68">
+    <Grid Margin="20,0" ColumnDefinitions="*,Auto">
+      <StackPanel VerticalAlignment="Center" Spacing="2">
+        <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Profiles store secret references, never secret values." />
+      </StackPanel>
+      <Button
+          Grid.Column="1"
+          Classes="IconButton"
+          Click="OnCancelClick"
+          Content="×"
+          IsCancel="True"
+          AutomationProperties.Name="Close connection editor" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Margin="20,8,20,22" Spacing="14">
+        <Border Classes="SettingsCard">
+          <Grid Margin="16" ColumnDefinitions="*,220" RowDefinitions="Auto,Auto" RowSpacing="12">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Name" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Shown in launchers, tabs, and agent scope." />
+            </StackPanel>
+            <TextBox Grid.Column="1" Text="{Binding Name}" PlaceholderText="Production shell" />
+            <StackPanel Grid.Row="1" Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Connection type" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Each type uses a structured native launch plan." />
+            </StackPanel>
+            <ComboBox
+                Grid.Row="1"
+                Grid.Column="1"
+                ItemsSource="{Binding ConnectionKinds}"
+                SelectedItem="{Binding Kind}" />
+          </Grid>
+        </Border>
+
+        <Border Classes="SettingsCard" IsVisible="{Binding IsLocal}">
+          <Grid Margin="16" ColumnDefinitions="*,320">
+            <StackPanel Spacing="3">
+              <TextBlock FontWeight="SemiBold" Text="Shell executable" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Leave blank to use the host default shell." />
+            </StackPanel>
+            <TextBox Grid.Column="1" Classes="Monospace" Text="{Binding LocalShell}" PlaceholderText="/bin/zsh" />
+          </Grid>
+        </Border>
+
+        <Border Classes="SettingsCard" IsVisible="{Binding IsSsh}">
+          <StackPanel Margin="16" Spacing="13">
+            <Grid ColumnDefinitions="*,110,180" ColumnSpacing="9">
+              <StackPanel Spacing="4"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding Host}" PlaceholderText="server.example.com" /></StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4"><TextBlock FontWeight="SemiBold" Text="Port" /><NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" /></StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" PlaceholderText="deploy" /></StackPanel>
+            </Grid>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="9">
+              <StackPanel Spacing="4"><TextBlock FontWeight="SemiBold" Text="Authentication" /><ComboBox ItemsSource="{Binding AuthenticationChoices}" SelectedItem="{Binding Authentication}" /></StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4"><TextBlock FontWeight="SemiBold" Text="Host-key policy" /><ComboBox ItemsSource="{Binding HostKeyPolicies}" SelectedItem="{Binding HostKeyPolicy}" /></StackPanel>
+            </Grid>
+            <StackPanel Spacing="4" IsVisible="{Binding UsesSecretReference}">
+              <TextBlock FontWeight="SemiBold" Text="Credential secret reference" />
+              <TextBox Classes="Monospace" Text="{Binding SecretReference}" PlaceholderText="Opaque secret ID from the OS vault" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Diagnostics authenticate inside the secure adapter boundary. A terminal claims the stored credential through a one-use, lifetime-bound helper when it starts." TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Spacing="4" IsVisible="{Binding UsesPassphraseReference}">
+              <TextBlock FontWeight="SemiBold" Text="Passphrase secret reference (optional)" />
+              <TextBox Classes="Monospace" Text="{Binding PassphraseSecretReference}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="SettingsCard" IsVisible="{Binding IsDocker}">
+          <Grid Margin="16" ColumnDefinitions="*,*" ColumnSpacing="10">
+            <StackPanel Spacing="4"><TextBlock FontWeight="SemiBold" Text="Container" /><TextBox Text="{Binding Container}" PlaceholderText="api-dev" /></StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4"><TextBlock FontWeight="SemiBold" Text="Docker context (optional)" /><TextBox Text="{Binding DockerContext}" PlaceholderText="desktop-linux" /></StackPanel>
+          </Grid>
+        </Border>
+
+        <Border Classes="SettingsCard" IsVisible="{Binding IsWsl}">
+          <Grid Margin="16" ColumnDefinitions="*,*" ColumnSpacing="10">
+            <StackPanel Spacing="4"><TextBlock FontWeight="SemiBold" Text="Distribution" /><TextBox Text="{Binding Distribution}" PlaceholderText="Ubuntu-24.04" /></StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4"><TextBlock FontWeight="SemiBold" Text="Username (optional)" /><TextBox Text="{Binding Username}" /></StackPanel>
+          </Grid>
+        </Border>
+
+        <Border Classes="SettingsCard">
+          <StackPanel Margin="16" Spacing="12">
+            <StackPanel Spacing="4">
+              <TextBlock FontWeight="SemiBold" Text="Startup directory" />
+              <TextBox Classes="Monospace" Text="{Binding StartupDirectory}" PlaceholderText="Optional working directory" />
+            </StackPanel>
+            <Grid ColumnDefinitions="Auto,*,140,140" ColumnSpacing="10">
+              <CheckBox VerticalAlignment="Center" IsChecked="{Binding KeepAliveEnabled}" Content="Keep alive" />
+              <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Remote runtimes use explicit keepalive arguments." />
+              <StackPanel Grid.Column="2" Spacing="4"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="INTERVAL (SECONDS)" /><NumericUpDown Minimum="1" Maximum="86400" Value="{Binding KeepAliveSeconds}" /></StackPanel>
+              <StackPanel Grid.Column="3" Spacing="4"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="MAX FAILURES" /><NumericUpDown Minimum="1" Maximum="100" Value="{Binding KeepAliveFailures}" /></StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="NoticeCard">
+          <Grid Margin="14" ColumnDefinitions="Auto,*" ColumnSpacing="11">
+            <Border Width="9" Height="9" VerticalAlignment="Top" Margin="0,5,0,0" Background="#D79B57" CornerRadius="5" />
+            <StackPanel Grid.Column="1" Spacing="4">
+              <TextBlock FontWeight="SemiBold" Text="{Binding TestStatus}" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TestDetail}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <ItemsControl ItemsSource="{Binding Diagnostics}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid Margin="2,3" ColumnDefinitions="9,110,80,*" ColumnSpacing="9">
+                <Ellipse Width="7" Height="7" Fill="{Binding StatusColor}" />
+                <TextBlock Grid.Column="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Stage}" />
+                <TextBlock Grid.Column="2" Classes="Eyebrow" Text="{Binding Status}" />
+                <TextBlock Grid.Column="3" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Message}" TextWrapping="Wrap" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border Classes="SettingsCard" IsVisible="{Binding HasHostKeyReview}">
+          <StackPanel Margin="16" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <StackPanel Spacing="3">
+                <TextBlock FontWeight="SemiBold" Text="{Binding HostKeyReviewTitle}" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Endpoint}" />
+              </StackPanel>
+              <Button
+                  Grid.Column="1"
+                  Classes="SecondaryButton"
+                  Click="OnTrustHostKeyClick"
+                  Content="{Binding TrustHostKeyLabel}"
+                  IsVisible="{Binding CanTrustHostKey}" />
+            </Grid>
+            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="5">
+              <TextBlock Classes="Eyebrow" Text="ALGORITHM" />
+              <TextBlock Grid.Column="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Algorithm}" />
+              <TextBlock Grid.Row="1" Classes="Eyebrow" Text="PRESENTED" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="2" Classes="Eyebrow" Text="PREVIOUS" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TrustedHostKeyFingerprint}" TextWrapping="Wrap" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock
+            x:Name="ValidationError"
+            Foreground="#FF8577"
+            IsVisible="False"
+            TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" BorderBrush="#2C2C30" BorderThickness="0,1,0,0">
+      <Grid Margin="20,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Opening revalidates runtime, credentials, and platform support." />
+        <Button Grid.Column="1" MinWidth="120" Classes="SecondaryButton" Click="OnTestClick" Content="Run diagnostics" />
+        <Button Grid.Column="2" MinWidth="110" Classes="PrimaryButton" Click="OnSaveClick" Content="Save" IsDefault="True" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

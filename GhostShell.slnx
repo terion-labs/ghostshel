@@ -1,0 +1,44 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GhostShell.App/GhostShell.App.csproj" />
+    <Project Path="src/GhostShell.Agent/GhostShell.Agent.csproj" />
+    <Project Path="src/GhostShell.Agent.Providers/GhostShell.Agent.Providers.csproj" />
+    <Project Path="src/GhostShell.Agent.Runtime/GhostShell.Agent.Runtime.csproj" />
+    <Project Path="src/GhostShell.Application/GhostShell.Application.csproj" />
+    <Project Path="src/GhostShell.Browser/GhostShell.Browser.csproj" />
+    <Project Path="src/GhostShell.Core/GhostShell.Core.csproj" />
+    <Project Path="src/GhostShell.Desktop/GhostShell.Desktop.csproj" />
+    <Project Path="src/GhostShell.Files/GhostShell.Files.csproj" />
+    <Project Path="src/GhostShell.Infrastructure/GhostShell.Infrastructure.csproj" />
+    <Project Path="src/GhostShell.Mcp/GhostShell.Mcp.csproj" />
+    <Project Path="src/GhostShell.Monitoring/GhostShell.Monitoring.csproj" />
+    <Project Path="src/GhostShell.Protocol/GhostShell.Protocol.csproj" />
+    <Project Path="src/GhostShell.SessionHost/GhostShell.SessionHost.csproj" />
+    <Project Path="src/GhostShell.Terminal/GhostShell.Terminal.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GhostShell.App.Tests/GhostShell.App.Tests.csproj" />
+    <Project Path="tests/GhostShell.Agent.Tests/GhostShell.Agent.Tests.csproj" />
+    <Project Path="tests/GhostShell.Agent.Providers.Tests/GhostShell.Agent.Providers.Tests.csproj" />
+    <Project Path="tests/GhostShell.Agent.Runtime.Tests/GhostShell.Agent.Runtime.Tests.csproj" />
+    <Project Path="tests/GhostShell.AccessibilityAcceptance.Tests/GhostShell.AccessibilityAcceptance.Tests.csproj" />
+    <Project Path="tests/GhostShell.Architecture.Tests/GhostShell.Architecture.Tests.csproj" />
+    <Project Path="tests/GhostShell.Application.Tests/GhostShell.Application.Tests.csproj" />
+    <Project Path="tests/GhostShell.Browser.Tests/GhostShell.Browser.Tests.csproj" />
+    <Project Path="tests/GhostShell.Core.Tests/GhostShell.Core.Tests.csproj" />
+    <Project Path="tests/GhostShell.Files.Tests/GhostShell.Files.Tests.csproj" />
+    <Project Path="tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj" />
+    <Project Path="tests/GhostShell.Mcp.Tests/GhostShell.Mcp.Tests.csproj" />
+    <Project Path="tests/GhostShell.Monitoring.Tests/GhostShell.Monitoring.Tests.csproj" />
+    <Project Path="tests/GhostShell.Protocol.Tests/GhostShell.Protocol.Tests.csproj" />
+    <Project Path="tests/GhostShell.SessionHost.Tests/GhostShell.SessionHost.Tests.csproj" />
+    <Project Path="tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj" />
+    <Project Path="tests/GhostShell.TerminalAcceptance.Tests/GhostShell.TerminalAcceptance.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/GhostShell.AccessibilityAcceptance/GhostShell.AccessibilityAcceptance.csproj" />
+    <Project Path="tools/GhostShell.Packaging/GhostShell.Packaging.csproj" />
+    <Project Path="tools/GhostShell.SingleInstanceTestHost/GhostShell.SingleInstanceTestHost.csproj" />
+    <Project Path="tools/GhostShell.TerminalAcceptance/GhostShell.TerminalAcceptance.csproj" />
+  </Folder>
+</Solution>

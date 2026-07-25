@@ -1,0 +1,482 @@
+using System.Collections.Specialized;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Markup.Xaml;
+using Avalonia.Media;
+using Avalonia.Platform;
+using Avalonia.Styling;
+using Avalonia.Threading;
+using GhostShell.App.ViewModels;
+using GhostShell.App.Views;
+using GhostShell.Application;
+using GhostShell.Core;
+
+namespace GhostShell.App;
+
+public sealed partial class App : Avalonia.Application
+{
+    private readonly MainWindowViewModel? _mainWindowViewModel;
+    private readonly ApplicationStartupState? _startupState;
+    private readonly IRecoveryCoordinator? _recoveryCoordinator;
+    private readonly IDefinitionCatalog? _definitionCatalog;
+    private readonly IDefinitionBundleStore? _definitionBundleStore;
+    private readonly IDiagnosticsBundleExporter? _diagnosticsExporter;
+    private readonly IDiagnosticsBundleRequestSource? _diagnosticsRequestSource;
+    private readonly IDiagnosticsArtifactPresenter? _diagnosticsArtifactPresenter;
+    private readonly IRecentSessionHistoryExporter? _recentSessionHistoryExporter;
+    private readonly RecoveryDataControlViewModel? _recoveryDataControlViewModel;
+    private readonly LocalArtifactControlViewModel? _localArtifactControlViewModel;
+    private readonly QuickTerminalController? _quickTerminalController;
+    private readonly IHostAccessibilityPreferencesSource? _hostAccessibilityPreferences;
+    private IPlatformSettings? _platformSettings;
+    private AvaloniaHostAppearanceAdapter? _hostAppearance;
+    private INotifyCollectionChanged? _windowCollection;
+
+    private static readonly string[] AppearanceClasses =
+    [
+        "profile-macos-classic",
+        "profile-macos-liquid-glass",
+        "profile-windows11",
+        "profile-gnome",
+        "profile-kde",
+        "profile-ghostshell",
+        "profile-custom",
+        "appearance-light",
+        "appearance-dark",
+        "high-contrast",
+        "motion-disabled",
+        "materials-enabled",
+    ];
+
+    private static readonly int[] ScalableFontSizes =
+    [
+        8, 9, 10, 11, 12, 13, 14,
+        15, 16, 17, 18, 19, 20, 21,
+        22, 23, 24, 25, 26, 27, 28,
+    ];
+
+    public App()
+    {
+    }
+
+    public App(
+        MainWindowViewModel mainWindowViewModel,
+        ApplicationStartupState startupState,
+        IRecoveryCoordinator recoveryCoordinator,
+        IDefinitionCatalog definitionCatalog,
+        IDefinitionBundleStore definitionBundleStore,
+        IDiagnosticsBundleExporter diagnosticsExporter,
+        IDiagnosticsBundleRequestSource diagnosticsRequestSource,
+        IDiagnosticsArtifactPresenter diagnosticsArtifactPresenter,
+        IRecentSessionHistoryExporter recentSessionHistoryExporter,
+        RecoveryDataControlViewModel recoveryDataControlViewModel,
+        LocalArtifactControlViewModel localArtifactControlViewModel,
+        QuickTerminalController quickTerminalController,
+        IHostAccessibilityPreferencesSource hostAccessibilityPreferences)
+    {
+        ArgumentNullException.ThrowIfNull(mainWindowViewModel);
+        ArgumentNullException.ThrowIfNull(startupState);
+        ArgumentNullException.ThrowIfNull(recoveryCoordinator);
+        ArgumentNullException.ThrowIfNull(definitionCatalog);
+        ArgumentNullException.ThrowIfNull(definitionBundleStore);
+        ArgumentNullException.ThrowIfNull(diagnosticsExporter);
+        ArgumentNullException.ThrowIfNull(diagnosticsRequestSource);
+        ArgumentNullException.ThrowIfNull(diagnosticsArtifactPresenter);
+        ArgumentNullException.ThrowIfNull(recentSessionHistoryExporter);
+        ArgumentNullException.ThrowIfNull(recoveryDataControlViewModel);
+        ArgumentNullException.ThrowIfNull(localArtifactControlViewModel);
+        ArgumentNullException.ThrowIfNull(quickTerminalController);
+        ArgumentNullException.ThrowIfNull(hostAccessibilityPreferences);
+        _mainWindowViewModel = mainWindowViewModel;
+        _startupState = startupState;
+        _recoveryCoordinator = recoveryCoordinator;
+        _definitionCatalog = definitionCatalog;
+        _definitionBundleStore = definitionBundleStore;
+        _diagnosticsExporter = diagnosticsExporter;
+        _diagnosticsRequestSource = diagnosticsRequestSource;
+        _diagnosticsArtifactPresenter = diagnosticsArtifactPresenter;
+        _recentSessionHistoryExporter = recentSessionHistoryExporter;
+        _recoveryDataControlViewModel = recoveryDataControlViewModel;
+        _localArtifactControlViewModel = localArtifactControlViewModel;
+        _quickTerminalController = quickTerminalController;
+        _hostAccessibilityPreferences = hostAccessibilityPreferences;
+    }
+
+    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+
+    public override void OnFrameworkInitializationCompleted()
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+            var mainWindowViewModel = _mainWindowViewModel
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide the main window view model.");
+            var mainWindow = new MainWindow(
+                _definitionBundleStore
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide the definition bundle store."),
+                _definitionCatalog
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide the definition catalog."),
+                _diagnosticsExporter
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide the diagnostics exporter."),
+                _diagnosticsRequestSource
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide the diagnostics request source."),
+                _diagnosticsArtifactPresenter
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide the diagnostics artifact presenter."),
+                _recentSessionHistoryExporter
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide the session-history exporter."),
+                _recoveryDataControlViewModel
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide recovery data controls."),
+                _localArtifactControlViewModel
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide app-managed storage controls."))
+            {
+                DataContext = mainWindowViewModel,
+            };
+            desktop.MainWindow = mainWindow;
+            QuickTerminalController.Initialize(mainWindow);
+            mainWindow.Closed += OnMainWindowClosed;
+            desktop.Exit += OnDesktopExit;
+            AttachAppearance(mainWindow);
+            if (_startupState?.RecoveryState == RecoveryDecisionState.Pending)
+            {
+                mainWindow.Opened += OnRecoveryWindowOpened;
+            }
+        }
+
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private MainWindow MainWindow =>
+        (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow as MainWindow
+        ?? throw new InvalidOperationException("The GhostSHELL window is unavailable.");
+
+    private MainWindowViewModel MainWindowViewModel => _mainWindowViewModel
+        ?? throw new InvalidOperationException("The main window view model is unavailable.");
+
+    private QuickTerminalController QuickTerminalController => _quickTerminalController
+        ?? throw new InvalidOperationException("The Quick Terminal controller is unavailable.");
+
+    private void OnCommandPaletteMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        MainWindow.ShowCommandPalette();
+    }
+
+    private void OnSettingsMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        MainWindow.NavigateToSettings();
+    }
+
+    private void OnLauncherMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        MainWindow.NavigateToLauncher();
+    }
+
+    private void OnQuickTerminalMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        QuickTerminalController.Toggle();
+    }
+
+    private async void OnNewTerminalMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.RequestNewTerminalAsync();
+    }
+
+    private async void OnAddPanelMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.ShowNewPanelChooserAsync();
+    }
+
+    private async void OnLayoutDesignerMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.ShowLayoutDesignerAsync();
+    }
+
+    private void OnToggleAgentMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        MainWindow.ToggleAgentPanel();
+    }
+
+    private async void OnPreviousTabMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.SelectRelativeTabAsync(-1);
+    }
+
+    private async void OnNextTabMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.SelectRelativeTabAsync(1);
+    }
+
+    private async void OnClosePanelMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.RequestClosePanelAsync();
+    }
+
+    private async void OnCloseTabMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.RequestCloseTabAsync();
+    }
+
+    private void AttachAppearance(MainWindow mainWindow)
+    {
+        _platformSettings = PlatformSettings
+            ?? throw new InvalidOperationException("Platform appearance settings are unavailable.");
+        var hostAccessibilityPreferences = _hostAccessibilityPreferences
+            ?? throw new InvalidOperationException(
+                "The desktop composition root did not provide host accessibility preferences.");
+        _hostAppearance = new AvaloniaHostAppearanceAdapter(
+            _platformSettings,
+            hostAccessibilityPreferences);
+        _platformSettings.ColorValuesChanged += OnPlatformColorValuesChanged;
+        hostAccessibilityPreferences.Changed += OnHostAccessibilityPreferencesChanged;
+        hostAccessibilityPreferences.Start();
+        ApplyAppearance();
+        if (_definitionCatalog is not null)
+        {
+            _definitionCatalog.Changed += OnDefinitionCatalogChanged;
+        }
+
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.Windows is INotifyCollectionChanged windowCollection)
+        {
+            _windowCollection = windowCollection;
+            _windowCollection.CollectionChanged += OnWindowCollectionChanged;
+        }
+
+        mainWindow.Closed += (_, _) =>
+        {
+            if (_platformSettings is not null)
+            {
+                _platformSettings.ColorValuesChanged -= OnPlatformColorValuesChanged;
+            }
+            hostAccessibilityPreferences.Changed -= OnHostAccessibilityPreferencesChanged;
+            if (_definitionCatalog is not null)
+            {
+                _definitionCatalog.Changed -= OnDefinitionCatalogChanged;
+            }
+            if (_windowCollection is not null)
+            {
+                _windowCollection.CollectionChanged -= OnWindowCollectionChanged;
+                _windowCollection = null;
+            }
+        };
+    }
+
+    private void OnPlatformColorValuesChanged(object? sender, PlatformColorValues values)
+    {
+        _ = sender;
+        _ = values;
+        ApplyAppearance();
+    }
+
+    private void OnDefinitionCatalogChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Dispatcher.UIThread.Post(() =>
+        {
+            ApplyAppearance();
+        });
+    }
+
+    private void OnHostAccessibilityPreferencesChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Dispatcher.UIThread.Post(ApplyAppearance);
+    }
+
+    private void OnWindowCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        _ = sender;
+        if (e.NewItems is null)
+        {
+            return;
+        }
+
+        var resources = ResolveAppearanceResources();
+        foreach (var window in e.NewItems.OfType<Window>())
+        {
+            ApplyToWindow(window, resources);
+        }
+    }
+
+    private void ApplyAppearance()
+    {
+        var resources = ResolveAppearanceResources();
+        RequestedThemeVariant = resources.ThemeVariant;
+        ApplyApplicationResources(resources);
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            foreach (var window in desktop.Windows)
+            {
+                ApplyToWindow(window, resources);
+            }
+
+            (desktop.MainWindow as MainWindow)?.RefreshAppearanceControlsFromStoredProfile();
+        }
+    }
+
+    private EffectiveAppearanceResources ResolveAppearanceResources()
+    {
+        var preference = _definitionCatalog?.Snapshot.Themes
+            .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)?.Value
+            ?? ThemePreference.Default;
+        var hostAppearance = _hostAppearance?.GetCurrent()
+            ?? throw new InvalidOperationException("Platform appearance settings are unavailable.");
+        return EffectiveAppearanceResourceMapper.Map(preference.Resolve(hostAppearance));
+    }
+
+    private void ApplyApplicationResources(EffectiveAppearanceResources resources)
+    {
+        Resources["ShellBackgroundBrush"] = Brush(resources.Background);
+        Resources["ShellSurfaceBrush"] = Brush(resources.Surface);
+        Resources["ShellSurfaceRaisedBrush"] = Brush(resources.RaisedSurface);
+        Resources["ShellSurfaceHoverBrush"] = Brush(resources.HoverSurface);
+        Resources["ShellBorderBrush"] = Brush(resources.Border);
+        Resources["ShellTextBrush"] = Brush(resources.Text);
+        Resources["ShellMutedBrush"] = Brush(resources.MutedText);
+        Resources["ShellAccentBrush"] = Brush(resources.Accent);
+        Resources["ShellAccentForegroundBrush"] = Brush(resources.AccentForeground);
+        Resources["ShellAccentSoftBrush"] = Brush(resources.AccentSoft);
+        Resources["ShellDangerBrush"] = Brush(resources.Danger);
+        Resources["ShellDangerForegroundBrush"] = Brush(resources.DangerForeground);
+        Resources["ShellDangerSoftBrush"] = Brush(resources.DangerSoft);
+        Resources["ShellDangerBorderBrush"] = Brush(resources.DangerBorder);
+        Resources["ShellSuccessBrush"] = Brush(resources.Success);
+        Resources["ShellSuccessSoftBrush"] = Brush(resources.SuccessSoft);
+        Resources["ShellSuccessBorderBrush"] = Brush(resources.SuccessBorder);
+        Resources["ShellWarningBrush"] = Brush(resources.Warning);
+        Resources["ShellWarningSoftBrush"] = Brush(resources.WarningSoft);
+        Resources["ShellWarningBorderBrush"] = Brush(resources.WarningBorder);
+        Resources["ShellNoticeBorderBrush"] = Brush(resources.NoticeBorder);
+        Resources["ShellUiFontFamily"] = resources.FontFamily;
+        Resources["ShellBaseFontSize"] = resources.BaseFontSize;
+        foreach (var baseFontSize in ScalableFontSizes)
+        {
+            Resources[$"ShellFontSize{baseFontSize}"] = resources.ScaleFontSize(baseFontSize);
+        }
+
+        Resources["ShellControlMinHeight"] = resources.ControlMinHeight;
+        Resources["ShellControlCornerRadius"] = resources.ControlCornerRadius;
+        Resources["ShellControlPadding"] = resources.ControlPadding;
+        Resources["ShellCardCornerRadius"] = resources.CardCornerRadius;
+        Resources["ShellAppearanceStatus"] = resources.AppearanceStatus;
+        Resources["ShellAccentStatus"] = resources.AccentStatus;
+        Resources["ShellPlatformProfileClass"] = resources.ProfileClass;
+        Resources["ShellHighContrast"] = resources.HighContrast;
+        Resources["ShellMotionEnabled"] = resources.MotionEnabled;
+        Resources["ShellAdvancedMaterialsEnabled"] = resources.AdvancedMaterialsEnabled;
+    }
+
+    private static void ApplyToWindow(
+        Window window,
+        EffectiveAppearanceResources resources)
+    {
+        window.RequestedThemeVariant = resources.ThemeVariant;
+        foreach (var appearanceClass in AppearanceClasses)
+        {
+            window.Classes.Remove(appearanceClass);
+        }
+
+        window.Classes.Add(resources.ProfileClass);
+        window.Classes.Add(resources.AppearanceClass);
+        if (resources.HighContrast)
+        {
+            window.Classes.Add("high-contrast");
+        }
+        if (!resources.MotionEnabled)
+        {
+            window.Classes.Add("motion-disabled");
+        }
+        if (resources.AdvancedMaterialsEnabled)
+        {
+            window.Classes.Add("materials-enabled");
+        }
+    }
+
+    private static SolidColorBrush Brush(Color color) => new(color);
+
+    private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
+    {
+        _ = e;
+        if (sender is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Exit -= OnDesktopExit;
+        }
+
+        _quickTerminalController?.Dispose();
+    }
+
+    private void OnMainWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is MainWindow mainWindow)
+        {
+            mainWindow.Closed -= OnMainWindowClosed;
+        }
+
+        // macOS can keep the native application run loop alive after every window closes.
+        // The main window remains the explicit desktop lifetime owner even though Quick Terminal
+        // is a reusable hidden top-level window.
+        (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+    }
+
+    private async void OnRecoveryWindowOpened(object? sender, EventArgs e)
+    {
+        if (sender is not MainWindow owner
+            || _startupState is null
+            || _recoveryCoordinator is null)
+        {
+            return;
+        }
+
+        owner.Opened -= OnRecoveryWindowOpened;
+        var choice = await new RecoveryDialog().ShowDialog<RecoveryChoice>(owner);
+        var result = await _recoveryCoordinator.ResolveAsync(choice, CancellationToken.None);
+        if (!result.IsSuccess)
+        {
+            await new OperationErrorDialog(
+                $"Recovery could not be completed ({result.Error!.Code}).")
+                .ShowDialog(owner);
+            owner.Close();
+            return;
+        }
+
+        _startupState.ResolveRecovery(choice, result.Value!);
+        _ = await MainWindowViewModel.ApplyStartupRecoveryAsync(
+            _startupState,
+            CancellationToken.None);
+    }
+}

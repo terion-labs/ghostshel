@@ -1,0 +1,723 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using GhostShell.Core;
+
+namespace GhostShell.App.ViewModels;
+
+/// <summary>
+/// Owns an isolated edit of a durable workspace definition. The editor keeps missing
+/// references as explicit options, and only emits a save request after the complete
+/// ordered definition and every workspace-only tab validate together.
+/// </summary>
+public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
+{
+    private static readonly FileProviderProfileId BuiltInHomeId = new("builtin.files.home");
+    private static readonly IReadOnlyList<WorkspaceIconOption> SupportedIcons =
+    [
+        new(WorkspaceDefinition.DefaultIcon, "Workspace"),
+        new("terminal", "Terminal"),
+        new("server", "Server"),
+        new("code", "Code"),
+        new("cloud", "Cloud"),
+        new("database", "Database"),
+        new("folder", "Folder"),
+        new("globe", "Globe"),
+        new("star", "Star"),
+    ];
+
+    private readonly WorkspaceDefinition _original;
+    private readonly IReadOnlyDictionary<ScreenId, ScreenDefinition> _screens;
+    private readonly ObservableCollection<WorkspaceEntryEditorViewModel> _entries = [];
+    private readonly ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> _readOnlyEntries;
+    private string _name;
+    private string _description;
+    private string _accent;
+    private string _icon;
+    private bool _isDirty;
+    private IReadOnlyList<DefinitionValidationIssue> _validationIssues = [];
+    private string? _lastOperationError;
+    private bool _disposed;
+
+    public static WorkspaceEditorViewModel CreateNew(
+        IReadOnlyList<ConnectionProfile> connections,
+        IReadOnlyList<ScreenDefinition> screens,
+        IReadOnlyList<LayoutDefinition> layouts,
+        IReadOnlyList<FileProviderProfile>? fileProviders = null,
+        string name = "New workspace")
+    {
+        var workspace = new WorkspaceDefinition(
+            WorkspaceId.New(),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            string.IsNullOrWhiteSpace(name) ? "New workspace" : name.Trim(),
+            null,
+            null,
+            []);
+        return new WorkspaceEditorViewModel(
+            workspace,
+            expectedRevision: null,
+            connections,
+            screens,
+            layouts,
+            fileProviders ?? []);
+    }
+
+    public WorkspaceEditorViewModel(
+        WorkspaceDefinition workspace,
+        long? expectedRevision,
+        IReadOnlyList<ConnectionProfile> connections,
+        IReadOnlyList<ScreenDefinition> screens,
+        IReadOnlyList<LayoutDefinition> layouts)
+        : this(workspace, expectedRevision, connections, screens, layouts, [])
+    {
+    }
+
+    public WorkspaceEditorViewModel(
+        WorkspaceDefinition workspace,
+        long? expectedRevision,
+        IReadOnlyList<ConnectionProfile> connections,
+        IReadOnlyList<ScreenDefinition> screens,
+        IReadOnlyList<LayoutDefinition> layouts,
+        IReadOnlyList<FileProviderProfile> fileProviders)
+    {
+        _original = workspace ?? throw new ArgumentNullException(nameof(workspace));
+        ArgumentNullException.ThrowIfNull(connections);
+        ArgumentNullException.ThrowIfNull(screens);
+        ArgumentNullException.ThrowIfNull(layouts);
+        ArgumentNullException.ThrowIfNull(fileProviders);
+        ExpectedRevision = expectedRevision;
+        _name = workspace.Name;
+        _description = workspace.Description ?? string.Empty;
+        _accent = workspace.Accent ?? string.Empty;
+        _icon = workspace.Icon;
+        _screens = screens.ToDictionary(screen => screen.Id);
+        _readOnlyEntries = new(_entries);
+
+        ConnectionOptions = BuildConnectionOptions(workspace, connections, screens);
+        LayoutOptions = BuildLayoutOptions(workspace, layouts, screens);
+        ScreenOptions = BuildScreenOptions(workspace, screens, LayoutOptions);
+        FileProviderOptions = BuildFileProviderOptions(workspace, screens, fileProviders);
+        RestoreEntries();
+        PublishState();
+    }
+
+    public WorkspaceId Id => _original.Id;
+
+    public int SchemaVersion => _original.SchemaVersion;
+
+    public long? ExpectedRevision { get; }
+
+    public bool IsNew => ExpectedRevision is null;
+
+    public IReadOnlyList<WorkspaceIconOption> IconOptions => SupportedIcons;
+
+    public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
+
+    public IReadOnlyList<WorkspaceScreenOption> ScreenOptions { get; }
+
+    public IReadOnlyList<WorkspaceLayoutOption> LayoutOptions { get; }
+
+    public IReadOnlyList<ScreenFileProviderOption> FileProviderOptions { get; }
+
+    /// <summary>The durable launcher and keyboard traversal order.</summary>
+    public ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> Entries => _readOnlyEntries;
+
+    public IReadOnlyList<WorkspaceEntryEditorViewModel> ConnectionEntries =>
+        _entries.Where(entry => entry.IsConnection).ToArray();
+
+    public IReadOnlyList<WorkspaceEntryEditorViewModel> SavedScreenEntries =>
+        _entries.Where(entry => entry.IsSavedScreen).ToArray();
+
+    public IReadOnlyList<WorkspaceEntryEditorViewModel> WorkspaceTabEntries =>
+        _entries.Where(entry => entry.IsWorkspaceTab).ToArray();
+
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (SetProperty(ref _name, value))
+            {
+                Changed();
+            }
+        }
+    }
+
+    public string Description
+    {
+        get => _description;
+        set
+        {
+            if (SetProperty(ref _description, value))
+            {
+                Changed();
+            }
+        }
+    }
+
+    /// <summary>An empty value follows the effective application accent.</summary>
+    public string Accent
+    {
+        get => _accent;
+        set
+        {
+            if (SetProperty(ref _accent, value))
+            {
+                Changed();
+            }
+        }
+    }
+
+    public string Icon
+    {
+        get => _icon;
+        set
+        {
+            if (SetProperty(ref _icon, value))
+            {
+                Changed();
+            }
+        }
+    }
+
+    public bool IsDirty => _isDirty;
+
+    public string DirtyStatus => IsNew
+        ? "UNSAVED NEW WORKSPACE"
+        : IsDirty
+            ? "UNSAVED CHANGES"
+            : "SAVED DEFINITION";
+
+    public IReadOnlyList<DefinitionValidationIssue> ValidationIssues => _validationIssues;
+
+    public bool IsValid => ValidationIssues.Count == 0;
+
+    public bool CanSave => (IsNew || IsDirty) && IsValid;
+
+    public string ValidationSummary => IsValid
+        ? "Workspace is valid."
+        : string.Join(" ", ValidationIssues.Select(issue => issue.Message).Distinct());
+
+    public int MissingReferenceCount => _entries.Count(entry => entry.HasMissingReference);
+
+    public bool HasMissingReferences => MissingReferenceCount > 0;
+
+    public string? LastOperationError
+    {
+        get => _lastOperationError;
+        private set
+        {
+            if (SetProperty(ref _lastOperationError, value))
+            {
+                OnPropertyChanged(nameof(HasOperationError));
+            }
+        }
+    }
+
+    public bool HasOperationError => LastOperationError is not null;
+
+    public WorkspaceEditorOperationResult AddConnection(
+        ConnectionId connectionId,
+        string? alias = null)
+    {
+        var option = ConnectionOptions.SingleOrDefault(candidate =>
+            candidate.Id == connectionId && candidate.IsAvailable);
+        if (option is null)
+        {
+            return Reject($"Connection '{connectionId}' is not available.");
+        }
+
+        return AddEntry(new WorkspaceEntry.ConnectionReference(
+            WorkspaceEntryId.New(),
+            option.Id,
+            alias));
+    }
+
+    public WorkspaceEditorOperationResult AddSavedScreen(
+        ScreenId screenId,
+        string? alias = null)
+    {
+        var option = ScreenOptions.SingleOrDefault(candidate =>
+            candidate.Id == screenId && candidate.IsAvailable);
+        if (option is null)
+        {
+            return Reject($"Saved screen '{screenId}' is not available.");
+        }
+
+        return AddEntry(new WorkspaceEntry.ScreenReference(
+            WorkspaceEntryId.New(),
+            option.Id,
+            alias));
+    }
+
+    public WorkspaceEditorOperationResult AddWorkspaceTabFromScreen(
+        ScreenId screenId,
+        string? name = null)
+    {
+        if (!_screens.TryGetValue(screenId, out var screen))
+        {
+            return Reject($"Saved screen '{screenId}' is not available.");
+        }
+
+        var tab = new WorkspaceEntry.Tab(
+            WorkspaceEntryId.New(),
+            string.IsNullOrWhiteSpace(name) ? screen.Name : name.Trim(),
+            screen.LayoutId,
+            screen.Panels);
+        return AddEntry(tab);
+    }
+
+    public WorkspaceEditorOperationResult AddWorkspaceTab(
+        LayoutId layoutId,
+        string name = "New tab")
+    {
+        var layout = LayoutOptions.SingleOrDefault(option =>
+            option.Id == layoutId && option.IsAvailable)?.Definition;
+        if (layout is null)
+        {
+            return Reject($"Layout '{layoutId}' is not available.");
+        }
+
+        var connectionId = ConnectionOptions.FirstOrDefault(option => option.IsAvailable)?.Id;
+        var panels = layout.Slots
+            .Select(slot => new ScreenPanelDefinition(
+                ScreenPanelId.New(),
+                slot.Id,
+                ScreenPanelKind.Terminal,
+                "Terminal",
+                connectionId,
+                PanelStartupBehavior.None))
+            .ToArray();
+        return AddEntry(new WorkspaceEntry.Tab(
+            WorkspaceEntryId.New(),
+            string.IsNullOrWhiteSpace(name) ? "New tab" : name.Trim(),
+            layout.Id,
+            panels));
+    }
+
+    public WorkspaceEditorOperationResult RemoveEntry(WorkspaceEntryId entryId)
+    {
+        var entry = _entries.SingleOrDefault(item => item.Id == entryId);
+        if (entry is null)
+        {
+            return Reject($"Workspace entry '{entryId}' does not exist.");
+        }
+
+        entry.PropertyChanged -= OnEntryChanged;
+        _entries.Remove(entry);
+        entry.Dispose();
+        LastOperationError = null;
+        Changed(entriesChanged: true);
+        return WorkspaceEditorOperationResult.Applied(entryId);
+    }
+
+    public WorkspaceEditorOperationResult MoveEntry(
+        WorkspaceEntryId entryId,
+        int destinationIndex)
+    {
+        var sourceIndex = _entries
+            .Select((entry, index) => (entry, index))
+            .Where(item => item.entry.Id == entryId)
+            .Select(item => item.index)
+            .SingleOrDefault(-1);
+        if (sourceIndex < 0)
+        {
+            return Reject($"Workspace entry '{entryId}' does not exist.");
+        }
+
+        if (destinationIndex < 0 || destinationIndex >= _entries.Count)
+        {
+            return Reject("The destination is outside the workspace entry order.");
+        }
+
+        LastOperationError = null;
+        if (sourceIndex != destinationIndex)
+        {
+            _entries.Move(sourceIndex, destinationIndex);
+            Changed(entriesChanged: true);
+        }
+
+        return WorkspaceEditorOperationResult.Applied(entryId);
+    }
+
+    public WorkspaceEditorOperationResult MoveEntryEarlier(WorkspaceEntryId entryId)
+    {
+        var index = IndexOf(entryId);
+        return index <= 0
+            ? Reject("The entry is already first or is no longer available.")
+            : MoveEntry(entryId, index - 1);
+    }
+
+    public WorkspaceEditorOperationResult MoveEntryLater(WorkspaceEntryId entryId)
+    {
+        var index = IndexOf(entryId);
+        return index < 0 || index >= _entries.Count - 1
+            ? Reject("The entry is already last or is no longer available.")
+            : MoveEntry(entryId, index + 1);
+    }
+
+    public void Reset()
+    {
+        var nameChanged = !StringComparer.Ordinal.Equals(_name, _original.Name);
+        var description = _original.Description ?? string.Empty;
+        var descriptionChanged = !StringComparer.Ordinal.Equals(_description, description);
+        var accent = _original.Accent ?? string.Empty;
+        var accentChanged = !StringComparer.Ordinal.Equals(_accent, accent);
+        var iconChanged = !StringComparer.Ordinal.Equals(_icon, _original.Icon);
+        _name = _original.Name;
+        _description = description;
+        _accent = accent;
+        _icon = _original.Icon;
+        if (nameChanged)
+        {
+            OnPropertyChanged(nameof(Name));
+        }
+
+        if (descriptionChanged)
+        {
+            OnPropertyChanged(nameof(Description));
+        }
+
+        if (accentChanged)
+        {
+            OnPropertyChanged(nameof(Accent));
+        }
+
+        if (iconChanged)
+        {
+            OnPropertyChanged(nameof(Icon));
+        }
+
+        RestoreEntries();
+        LastOperationError = null;
+        SetDirty(false);
+        PublishState(entriesChanged: true);
+    }
+
+    public WorkspaceEditorCancelDisposition RequestCancel() => IsDirty
+        ? WorkspaceEditorCancelDisposition.ConfirmDiscard
+        : WorkspaceEditorCancelDisposition.Close;
+
+    public WorkspaceEditorSaveRequest CreateSaveRequest()
+    {
+        if (!IsValid)
+        {
+            throw new InvalidOperationException($"The workspace cannot be saved: {ValidationSummary}");
+        }
+
+        return new(BuildDefinition(), ExpectedRevision);
+    }
+
+    public void ClearOperationError() => LastOperationError = null;
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        ClearEntries();
+        _disposed = true;
+    }
+
+    private WorkspaceEditorOperationResult AddEntry(WorkspaceEntry entry)
+    {
+        var editor = CreateEntryEditor(entry);
+        editor.PropertyChanged += OnEntryChanged;
+        _entries.Add(editor);
+        LastOperationError = null;
+        Changed(entriesChanged: true);
+        return WorkspaceEditorOperationResult.Applied(entry.Id);
+    }
+
+    private WorkspaceEntryEditorViewModel CreateEntryEditor(WorkspaceEntry entry) =>
+        WorkspaceEntryEditorViewModel.Create(
+            entry,
+            ConnectionOptions,
+            ScreenOptions,
+            LayoutOptions,
+            FileProviderOptions);
+
+    private void RestoreEntries()
+    {
+        ClearEntries();
+        foreach (var entry in _original.Entries)
+        {
+            var editor = CreateEntryEditor(entry);
+            editor.PropertyChanged += OnEntryChanged;
+            _entries.Add(editor);
+        }
+    }
+
+    private void ClearEntries()
+    {
+        foreach (var entry in _entries)
+        {
+            entry.PropertyChanged -= OnEntryChanged;
+            entry.Dispose();
+        }
+
+        _entries.Clear();
+    }
+
+    private WorkspaceDefinition BuildDefinition() => new(
+        Id,
+        SchemaVersion,
+        (Name ?? string.Empty).Trim(),
+        Description,
+        Accent,
+        _entries.Select(entry => entry.Build()).ToArray(),
+        _original.AgentPolicyOverride,
+        Icon);
+
+    private IReadOnlyList<DefinitionValidationIssue> Validate()
+    {
+        var definition = BuildDefinition();
+        List<DefinitionValidationIssue> issues = [.. WorkspaceValidator.Validate(definition).Issues];
+        if (!string.IsNullOrWhiteSpace(Accent))
+        {
+            try
+            {
+                _ = RgbColor.Parse(Accent);
+            }
+            catch (FormatException)
+            {
+                issues.Add(new(
+                    DefinitionValidationCode.InvalidEntry,
+                    "The workspace color must contain six hexadecimal digits.",
+                    Id.Value));
+            }
+        }
+
+        foreach (var entry in _entries)
+        {
+            if (entry.HasMissingReference)
+            {
+                issues.Add(new(
+                    DefinitionValidationCode.MissingDependency,
+                    $"Repair the missing definition used by '{entry.DisplayName}'.",
+                    entry.Id.Value));
+            }
+
+            if (entry.Tab is not { SelectedLayout.Definition: { } layout } tab)
+            {
+                continue;
+            }
+
+            var tabDefinition = tab.Build();
+            var screen = new ScreenDefinition(
+                new ScreenId($"workspace-tab-{entry.Id.Value}"),
+                ScreenDefinition.CurrentSchemaVersion,
+                tabDefinition.Name,
+                null,
+                tabDefinition.LayoutId,
+                tabDefinition.Panels);
+            issues.AddRange(ScreenValidator.Validate(screen, layout).Issues);
+        }
+
+        return issues
+            .DistinctBy(issue => (issue.Code, issue.Message, issue.Target))
+            .ToArray();
+    }
+
+    private void OnEntryChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Changed();
+    }
+
+    private void Changed(bool entriesChanged = false)
+    {
+        SetDirty(true);
+        PublishState(entriesChanged);
+    }
+
+    private void SetDirty(bool value)
+    {
+        if (_isDirty == value)
+        {
+            return;
+        }
+
+        _isDirty = value;
+        OnPropertyChanged(nameof(IsDirty));
+        OnPropertyChanged(nameof(DirtyStatus));
+    }
+
+    private void PublishState(bool entriesChanged = false)
+    {
+        _validationIssues = Validate();
+        if (entriesChanged)
+        {
+            OnPropertyChanged(nameof(Entries));
+            OnPropertyChanged(nameof(ConnectionEntries));
+            OnPropertyChanged(nameof(SavedScreenEntries));
+            OnPropertyChanged(nameof(WorkspaceTabEntries));
+        }
+
+        OnPropertyChanged(nameof(ValidationIssues));
+        OnPropertyChanged(nameof(IsValid));
+        OnPropertyChanged(nameof(CanSave));
+        OnPropertyChanged(nameof(ValidationSummary));
+        OnPropertyChanged(nameof(MissingReferenceCount));
+        OnPropertyChanged(nameof(HasMissingReferences));
+    }
+
+    private WorkspaceEditorOperationResult Reject(string error)
+    {
+        LastOperationError = error;
+        return WorkspaceEditorOperationResult.Rejected(error);
+    }
+
+    private int IndexOf(WorkspaceEntryId entryId) => _entries
+        .Select((entry, index) => (entry, index))
+        .Where(item => item.entry.Id == entryId)
+        .Select(item => item.index)
+        .SingleOrDefault(-1);
+
+    private static IReadOnlyList<ScreenConnectionOption> BuildConnectionOptions(
+        WorkspaceDefinition workspace,
+        IReadOnlyList<ConnectionProfile> connections,
+        IReadOnlyList<ScreenDefinition> screens)
+    {
+        var options = connections
+            .Select(connection => new ScreenConnectionOption(
+                connection.Id,
+                connection.Name,
+                connection.ConnectionKind.ToString().ToUpperInvariant(),
+                true))
+            .ToList();
+        var referencedIds = workspace.Entries
+            .OfType<WorkspaceEntry.ConnectionReference>()
+            .Select(entry => entry.ConnectionId)
+            .Concat(workspace.Entries
+                .OfType<WorkspaceEntry.Tab>()
+                .SelectMany(tab => tab.Panels)
+                .Select(panel => panel.ConnectionId)
+                .OfType<ConnectionId>())
+            .Concat(screens
+                .SelectMany(screen => screen.Panels)
+                .Select(panel => panel.ConnectionId)
+                .OfType<ConnectionId>())
+            .Distinct();
+        foreach (var missingId in referencedIds.Where(id =>
+            options.All(option => option.Id != id)))
+        {
+            options.Add(new ScreenConnectionOption(
+                missingId,
+                missingId.Value,
+                "UNAVAILABLE",
+                false));
+        }
+
+        return options
+            .OrderByDescending(option => option.IsAvailable)
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<WorkspaceLayoutOption> BuildLayoutOptions(
+        WorkspaceDefinition workspace,
+        IReadOnlyList<LayoutDefinition> layouts,
+        IReadOnlyList<ScreenDefinition> screens)
+    {
+        var options = layouts
+            .Select(layout => new WorkspaceLayoutOption(
+                layout.Id,
+                layout.Name,
+                true,
+                layout))
+            .ToList();
+        var referencedIds = workspace.Entries
+            .OfType<WorkspaceEntry.Tab>()
+            .Select(tab => tab.LayoutId)
+            .Concat(screens.Select(screen => screen.LayoutId))
+            .Distinct();
+        foreach (var missingId in referencedIds.Where(id =>
+            options.All(option => option.Id != id)))
+        {
+            options.Add(new WorkspaceLayoutOption(
+                missingId,
+                missingId.Value,
+                false,
+                null));
+        }
+
+        return options
+            .OrderByDescending(option => option.IsAvailable)
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<WorkspaceScreenOption> BuildScreenOptions(
+        WorkspaceDefinition workspace,
+        IReadOnlyList<ScreenDefinition> screens,
+        IReadOnlyList<WorkspaceLayoutOption> layoutOptions)
+    {
+        var options = screens
+            .Select(screen => new WorkspaceScreenOption(
+                screen.Id,
+                screen.Name,
+                layoutOptions.Single(option => option.Id == screen.LayoutId).DisplayName,
+                true))
+            .ToList();
+        var referencedIds = workspace.Entries
+            .OfType<WorkspaceEntry.ScreenReference>()
+            .Select(entry => entry.ScreenId)
+            .Distinct();
+        foreach (var missingId in referencedIds.Where(id =>
+            options.All(option => option.Id != id)))
+        {
+            options.Add(new WorkspaceScreenOption(
+                missingId,
+                missingId.Value,
+                "Unavailable",
+                false));
+        }
+
+        return options
+            .OrderByDescending(option => option.IsAvailable)
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<ScreenFileProviderOption> BuildFileProviderOptions(
+        WorkspaceDefinition workspace,
+        IReadOnlyList<ScreenDefinition> screens,
+        IReadOnlyList<FileProviderProfile> fileProviders)
+    {
+        List<ScreenFileProviderOption> options =
+        [
+            new(BuiltInHomeId, "Home", "LOCAL", true),
+        ];
+        options.AddRange(fileProviders
+            .Where(profile => profile.Id != BuiltInHomeId)
+            .Select(profile => new ScreenFileProviderOption(
+                profile.Id,
+                profile.Name,
+                profile.ProviderKind.ToString().ToUpperInvariant(),
+                true)));
+        var referencedIds = workspace.Entries
+            .OfType<WorkspaceEntry.Tab>()
+            .SelectMany(tab => tab.Panels)
+            .Concat(screens.SelectMany(screen => screen.Panels))
+            .Select(panel => panel.FileProviderProfileId)
+            .OfType<FileProviderProfileId>()
+            .Distinct();
+        foreach (var missingId in referencedIds.Where(id =>
+            options.All(option => option.Id != id)))
+        {
+            options.Add(new ScreenFileProviderOption(
+                missingId,
+                missingId.Value,
+                "UNAVAILABLE",
+                false));
+        }
+
+        return options
+            .OrderByDescending(option => option.IsAvailable)
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+}

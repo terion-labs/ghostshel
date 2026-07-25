@@ -1,0 +1,285 @@
+using System.Xml.Linq;
+
+namespace GhostShell.Architecture.Tests;
+
+public sealed class ProjectDependencyTests
+{
+    private static readonly string RepositoryRoot = FindRepositoryRoot();
+
+    [Fact]
+    public void CoreHasOnlyBclDependencies()
+    {
+        var project = LoadProject("src/GhostShell.Core/GhostShell.Core.csproj");
+        Assert.Empty(References(project, "ProjectReference"));
+        Assert.Empty(References(project, "PackageReference"));
+    }
+
+    [Theory]
+    [InlineData("src/GhostShell.Application/GhostShell.Application.csproj")]
+    [InlineData("src/GhostShell.Protocol/GhostShell.Protocol.csproj")]
+    public void ApplicationAndProtocolReferenceOnlyCore(string projectPath)
+    {
+        var references = References(LoadProject(projectPath), "ProjectReference");
+        var reference = Assert.Single(references);
+        Assert.EndsWith("GhostShell.Core.csproj", reference, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PresentationDoesNotReferenceConcreteEnginesOrHost()
+    {
+        var references = References(
+            LoadProject("src/GhostShell.App/GhostShell.App.csproj"),
+            "ProjectReference");
+        Assert.All(references, reference => Assert.Contains(
+            Path.GetFileName(reference.Replace('\\', Path.DirectorySeparatorChar)),
+            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" }));
+        Assert.DoesNotContain(references, reference =>
+            reference.Contains("Terminal", StringComparison.Ordinal)
+            || reference.Contains("Browser", StringComparison.Ordinal)
+            || reference.Contains("SessionHost", StringComparison.Ordinal)
+            || reference.Contains("Protocol", StringComparison.Ordinal)
+            || reference.Contains("Infrastructure", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PresentationSourceContainsNoConcreteTerminalOrBrowserImplementationTypes()
+    {
+        var sourceRoot = Path.Combine(RepositoryRoot, "src/GhostShell.App");
+        var files = Directory
+            .EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal)
+                || path.EndsWith(".axaml", StringComparison.Ordinal))
+            .Where(path => !HasPathSegment(path, "bin") && !HasPathSegment(path, "obj"));
+
+        foreach (var file in files)
+        {
+            var source = File.ReadAllText(file);
+            Assert.DoesNotContain("GhostShell.Terminal", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Ghostty", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("GhosttyTerminalHandle", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Avalonia.Controls.WebView", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("NativeWebView", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("WKWebView", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("WebView2", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("WPEWebKit", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("WebKitGTK", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void BrowserAdapterDependsOnlyOnApplicationAndReviewedNativeWebViewPackage()
+    {
+        var project = LoadProject("src/GhostShell.Browser/GhostShell.Browser.csproj");
+        var projectReference = Assert.Single(References(project, "ProjectReference"));
+        Assert.EndsWith(
+            "GhostShell.Application.csproj",
+            projectReference,
+            StringComparison.Ordinal);
+
+        var packageReference = Assert.Single(
+            project.Descendants("PackageReference"));
+        Assert.Equal(
+            "Avalonia.Controls.WebView",
+            (string?)packageReference.Attribute("Include"));
+        Assert.Equal("12.0.1", (string?)packageReference.Attribute("Version"));
+    }
+
+    [Fact]
+    public void InfrastructureDependsOnlyOnApplicationAndCoreProjects()
+    {
+        var references = References(
+            LoadProject("src/GhostShell.Infrastructure/GhostShell.Infrastructure.csproj"),
+            "ProjectReference")
+            .Select(reference => Path.GetFileName(
+                reference.Replace('\\', Path.DirectorySeparatorChar)))
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(
+            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" },
+            references.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void FilesBoundaryDoesNotDependOnPresentationRuntimeOrInfrastructureProjects()
+    {
+        var references = References(
+                LoadProject("src/GhostShell.Files/GhostShell.Files.csproj"),
+                "ProjectReference")
+            .Select(reference => Path.GetFileName(
+                reference.Replace('\\', Path.DirectorySeparatorChar)))
+            .ToArray();
+
+        Assert.All(references, reference => Assert.Contains(
+            reference,
+            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" }));
+
+        var sourceRoot = Path.Combine(RepositoryRoot, "src/GhostShell.Files");
+        var banned = new[]
+        {
+            "Avalonia",
+            "Ghostty",
+            "WKWebView",
+            "WebView2",
+        };
+        foreach (var file in Directory.EnumerateFiles(sourceRoot, "*.cs", SearchOption.TopDirectoryOnly))
+        {
+            var source = File.ReadAllText(file);
+            Assert.All(banned, value => Assert.DoesNotContain(value, source, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void MonitoringBoundaryDependsOnlyOnApplicationAndCore()
+    {
+        var references = References(
+                LoadProject("src/GhostShell.Monitoring/GhostShell.Monitoring.csproj"),
+                "ProjectReference")
+            .Select(reference => Path.GetFileName(
+                reference.Replace('\\', Path.DirectorySeparatorChar)))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" },
+            references);
+
+        var project = LoadProject("src/GhostShell.Monitoring/GhostShell.Monitoring.csproj");
+        Assert.Empty(References(project, "PackageReference"));
+        var sourceRoot = Path.Combine(RepositoryRoot, "src/GhostShell.Monitoring");
+        foreach (var file in Directory.EnumerateFiles(
+                     sourceRoot,
+                     "*.cs",
+                     SearchOption.TopDirectoryOnly))
+        {
+            var source = File.ReadAllText(file);
+            Assert.DoesNotContain("Avalonia", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Ghostty", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("System.Management", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void ProtocolContainsNoUiNativeOrProviderPayloadTypes()
+    {
+        var sourceRoot = Path.Combine(RepositoryRoot, "src/GhostShell.Protocol");
+        var banned = new[]
+        {
+            "Avalonia",
+            "Ghostty",
+            "WKWebView",
+            "WebView2",
+            "Anthropic",
+            "OpenAI",
+        };
+        foreach (var file in Directory.EnumerateFiles(sourceRoot, "*.cs", SearchOption.TopDirectoryOnly))
+        {
+            var source = File.ReadAllText(file);
+            Assert.All(banned, value => Assert.DoesNotContain(value, source, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void DesktopCompositionOwnsConcreteEngineAndHostReferences()
+    {
+        var references = References(
+            LoadProject("src/GhostShell.Desktop/GhostShell.Desktop.csproj"),
+            "ProjectReference");
+        Assert.Contains(references, reference => reference.EndsWith(
+            "GhostShell.Terminal.csproj",
+            StringComparison.Ordinal));
+        Assert.Contains(references, reference => reference.EndsWith(
+            "GhostShell.Browser.csproj",
+            StringComparison.Ordinal));
+        Assert.Contains(references, reference => reference.EndsWith(
+            "GhostShell.SessionHost.csproj",
+            StringComparison.Ordinal));
+        Assert.Contains(references, reference => reference.EndsWith(
+            "GhostShell.Infrastructure.csproj",
+            StringComparison.Ordinal));
+        Assert.Contains(references, reference => reference.EndsWith(
+            "GhostShell.Monitoring.csproj",
+            StringComparison.Ordinal));
+        Assert.Contains(references, reference => reference.EndsWith(
+            "GhostShell.Agent.Providers.csproj",
+            StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AvaloniaPackagesShareASecurityPatchedVersion()
+    {
+        var versions = new[]
+            {
+                "src/GhostShell.App/GhostShell.App.csproj",
+                "src/GhostShell.Browser/GhostShell.Browser.csproj",
+                "src/GhostShell.Desktop/GhostShell.Desktop.csproj",
+            }
+            .SelectMany(path => LoadProject(path).Descendants("PackageReference"))
+            .Where(element => ((string?)element.Attribute("Include"))?.StartsWith(
+                "Avalonia",
+                StringComparison.Ordinal) is true)
+            .Select(element => (string?)element.Attribute("Version"))
+            .Where(version => version is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var version = Version.Parse(Assert.Single(versions));
+        Assert.True(
+            version >= new Version(12, 0, 1),
+            $"Avalonia {version} predates the DBus security fix shipped in 12.0.1.");
+    }
+
+    [Fact]
+    public void DesktopUsesAvaloniasDbusProtocolVersionForItsPortalClient()
+    {
+        var project = LoadProject("src/GhostShell.Desktop/GhostShell.Desktop.csproj");
+        var reference = Assert.Single(project.Descendants("PackageReference"), element =>
+            string.Equals(
+                (string?)element.Attribute("Include"),
+                "Tmds.DBus.Protocol",
+                StringComparison.Ordinal));
+
+        Assert.Equal("0.92.0", (string?)reference.Attribute("Version"));
+    }
+
+    [Fact]
+    public void DesktopKeepsDbusSourceGeneratorBuildOnly()
+    {
+        var project = LoadProject("src/GhostShell.Desktop/GhostShell.Desktop.csproj");
+        var reference = Assert.Single(project.Descendants("PackageReference"), element =>
+            string.Equals(
+                (string?)element.Attribute("Include"),
+                "Tmds.DBus.SourceGenerator",
+                StringComparison.Ordinal));
+
+        Assert.Equal("all", (string?)reference.Attribute("PrivateAssets"));
+    }
+
+    private static XDocument LoadProject(string relativePath) =>
+        XDocument.Load(Path.Combine(RepositoryRoot, relativePath));
+
+    private static IReadOnlyList<string> References(XDocument project, string elementName) =>
+        project.Descendants(elementName)
+            .Select(element => (string?)element.Attribute("Include"))
+            .Where(value => value is not null)
+            .Cast<string>()
+            .ToArray();
+
+    private static bool HasPathSegment(string path, string segment) =>
+        path.Split(Path.DirectorySeparatorChar).Contains(segment, StringComparer.Ordinal);
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "GhostShell.slnx")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        throw new DirectoryNotFoundException("Unable to locate the GhostSHELL repository root.");
+    }
+}

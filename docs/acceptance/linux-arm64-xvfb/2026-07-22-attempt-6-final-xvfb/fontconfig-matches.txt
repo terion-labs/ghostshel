@@ -1,0 +1,3 @@
+JetBrainsMono-Regular.ttf: "JetBrains Mono" "Regular"
+NotoSansCJK-Regular.ttc: "Noto Sans CJK JP" "Regular"
+NotoColorEmoji.ttf: "Noto Color Emoji" "Regular"

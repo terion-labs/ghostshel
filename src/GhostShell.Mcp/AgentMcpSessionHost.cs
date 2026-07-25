@@ -1,0 +1,2249 @@
+using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
+using System.Security.Cryptography;
+using System.Text;
+using GhostShell.Application;
+using GhostShell.Core;
+
+namespace GhostShell.Mcp;
+
+/// <summary>
+/// Native .NET execution bridge from governed agent authorization to
+/// directly launched stdio MCP servers.
+/// </summary>
+public sealed class AgentMcpSessionHost :
+    IAgentMcpSessionHost,
+    IMcpCredentialSessionInvalidator,
+    IMcpServerDiagnostics,
+    IAsyncDisposable
+{
+    private const int MaximumRuns = 16;
+    private const int MaximumProfilesPerRun = 16;
+    private const int MaximumToolsPerRun = 128;
+    private const int MaximumAggregateSchemaBytes = 512 * 1024;
+    private const int MaximumEnvironmentValueBytes = 32 * 1024;
+    private const int MaximumEnvironmentBytes = 128 * 1024;
+    private const int MaximumWindowsEnvironmentBlockCodeUnits = 32_767;
+    private static readonly TimeSpan ContextDeadline =
+        TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan MaximumTestDuration =
+        TimeSpan.FromSeconds(30);
+    private static readonly UTF8Encoding StrictUtf8 = new(
+        encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
+
+    private readonly IDefinitionCatalog _catalog;
+    private readonly ISecretVault _secretVault;
+    private readonly ISessionHostClient _sessionHost;
+    private readonly IAgentAuthorizationConsumer _authorizationConsumer;
+    private readonly IAgentMcpRunAuthorityVerifier _mcpRunAuthorityVerifier;
+    private readonly IAgentApprovalPrincipal _approvalPrincipal;
+    private readonly AgentMcpToolCallActionComposer _composer;
+    private readonly TimeProvider _timeProvider;
+    private readonly McpStdioClientOptions _clientOptions;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SemaphoreSlim _testGate = new(1, 1);
+    private readonly CancellationTokenSource _testShutdown = new();
+    private readonly ConcurrentDictionary<AgentRunId, RunSession> _runs = [];
+    private readonly object _catalogStateGate = new();
+    private readonly SemaphoreSlim _catalogCleanupSignal = new(0, 1);
+    private readonly CancellationTokenSource _catalogCleanupShutdown = new();
+    private readonly Task _catalogCleanupWorker;
+    private McpCatalogState _mcpCatalogState;
+    private IReadOnlyDictionary<
+        McpServerProfileId,
+        McpTestProfileFingerprint> _mcpTestProfileFingerprint;
+    private readonly Dictionary<
+        McpServerProfileId,
+        CancellationTokenSource> _testProfileGenerationSources = [];
+    private CancellationTokenSource _catalogGenerationSource = new();
+    private bool _catalogEventsStopped;
+    private int _disposeStarted;
+    private int _cleanupUncertain;
+    private volatile bool _disposed;
+
+    public AgentMcpSessionHost(
+        IDefinitionCatalog catalog,
+        ISecretVault secretVault,
+        ISessionHostClient sessionHost,
+        IAgentAuthorizationConsumer authorizationConsumer,
+        IAgentMcpRunAuthorityVerifier mcpRunAuthorityVerifier,
+        AgentMcpToolCallActionComposer composer,
+        TimeProvider timeProvider,
+        IAgentApprovalPrincipal approvalPrincipal)
+        : this(
+            catalog,
+            secretVault,
+            sessionHost,
+            authorizationConsumer,
+            mcpRunAuthorityVerifier,
+            composer,
+            timeProvider,
+            approvalPrincipal,
+            CreateDefaultOptions())
+    {
+    }
+
+    internal AgentMcpSessionHost(
+        IDefinitionCatalog catalog,
+        ISecretVault secretVault,
+        ISessionHostClient sessionHost,
+        IAgentAuthorizationConsumer authorizationConsumer,
+        IAgentMcpRunAuthorityVerifier mcpRunAuthorityVerifier,
+        AgentMcpToolCallActionComposer composer,
+        TimeProvider timeProvider,
+        IAgentApprovalPrincipal approvalPrincipal,
+        McpStdioClientOptions clientOptions)
+    {
+        _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _secretVault =
+            secretVault ?? throw new ArgumentNullException(nameof(secretVault));
+        _sessionHost =
+            sessionHost ?? throw new ArgumentNullException(nameof(sessionHost));
+        _authorizationConsumer = authorizationConsumer
+            ?? throw new ArgumentNullException(nameof(authorizationConsumer));
+        _mcpRunAuthorityVerifier = mcpRunAuthorityVerifier
+            ?? throw new ArgumentNullException(
+                nameof(mcpRunAuthorityVerifier));
+        _approvalPrincipal = approvalPrincipal
+            ?? throw new ArgumentNullException(nameof(approvalPrincipal));
+        if (_approvalPrincipal.Actor.Kind != ActorKind.Human
+            || _approvalPrincipal.Actor.ClientId is not { } principalClient
+            || !string.Equals(
+                _approvalPrincipal.Actor.Id.Value,
+                principalClient.Value,
+                StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The MCP diagnostics principal must identify the authenticated human client.",
+                nameof(approvalPrincipal));
+        }
+
+        _composer = composer ?? throw new ArgumentNullException(nameof(composer));
+        _timeProvider =
+            timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _clientOptions =
+            clientOptions ?? throw new ArgumentNullException(nameof(clientOptions));
+        _clientOptions.Validate();
+        var catalogSnapshot = _catalog.Snapshot;
+        _mcpCatalogState = McpCatalogState.Capture(catalogSnapshot);
+        _mcpTestProfileFingerprint =
+            CaptureTestProfileFingerprint(catalogSnapshot);
+        foreach (var profileId in _mcpTestProfileFingerprint.Keys)
+        {
+            _testProfileGenerationSources.Add(
+                profileId,
+                new CancellationTokenSource());
+        }
+
+        _catalogCleanupWorker = RunCatalogCleanupWorkerAsync();
+        _catalog.Changed += OnCatalogChanged;
+    }
+
+    public async ValueTask<AgentMcpHostResult<AgentMcpRunManifest>>
+        OpenRunAsync(
+            AgentMcpOpenRunRequest request,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AgentMcpRunAuthorityResult authorityResult;
+        try
+        {
+            authorityResult = await _mcpRunAuthorityVerifier.AcquireAsync(
+                    new AgentMcpRunAuthorityRequest(
+                        request.RunId,
+                        request.Actor),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            return Failure<AgentMcpRunManifest>(
+                "mcp_run_not_authorized",
+                "The MCP run does not have live launch authority.");
+        }
+
+        if (authorityResult is not
+            AgentMcpRunAuthorityResult.Granted
+            {
+                Lease: { } lease,
+            })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Failure<AgentMcpRunManifest>(
+                "mcp_run_not_authorized",
+                "The MCP run does not have live launch authority.");
+        }
+
+        var catalogGenerationToken =
+            CaptureCatalogGenerationToken();
+        using var discoveryCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                lease.RevocationToken,
+                catalogGenerationToken);
+        var entered = false;
+        try
+        {
+            await _gate.WaitAsync(discoveryCancellation.Token)
+                .ConfigureAwait(false);
+            entered = true;
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (IsCleanupUncertain)
+            {
+                return Failure<AgentMcpRunManifest>(
+                    "mcp_cleanup_uncertain",
+                    "A previous MCP process cleanup could not be confirmed.");
+            }
+
+            if (_runs.TryGetValue(request.RunId, out var existing))
+            {
+                if (existing.Agent != request.Actor
+                    || existing.Agent != lease.Agent
+                    || existing.PolicyGeneration
+                        != lease.PolicyGeneration
+                    || existing.AuthorityRevocationToken
+                        .IsCancellationRequested)
+                {
+                    return Failure<AgentMcpRunManifest>(
+                        "mcp_run_not_authorized",
+                        "The MCP run does not have matching live launch authority.");
+                }
+
+                if (existing.IsClosing)
+                {
+                    return Failure<AgentMcpRunManifest>(
+                        "mcp_manifest_changed",
+                        "The frozen MCP profile set changed.");
+                }
+
+                discoveryCancellation.Token.ThrowIfCancellationRequested();
+                return new AgentMcpHostResult<
+                    AgentMcpRunManifest>.Success(existing.Manifest);
+            }
+
+            if (_runs.Count >= MaximumRuns)
+            {
+                return Failure<AgentMcpRunManifest>(
+                    "mcp_run_capacity_exceeded",
+                    "The MCP run capacity is exhausted.");
+            }
+
+            var profiles = _catalog.Snapshot.McpServerProfiles
+                .Where(stored =>
+                    stored.Value.IsEnabled
+                    && stored.Value.EnabledTools.Count > 0)
+                .OrderBy(stored => stored.Value.Name, StringComparer.Ordinal)
+                .ThenBy(
+                    stored => stored.Value.Id.Value,
+                    StringComparer.Ordinal)
+                .ToArray();
+            if (profiles.Length > MaximumProfilesPerRun)
+            {
+                return Failure<AgentMcpRunManifest>(
+                    "mcp_profile_capacity_exceeded",
+                    "Too many enabled MCP profiles are in scope.");
+            }
+
+            RunSession? run = null;
+            try
+            {
+                run = await CreateRunAsync(
+                        request,
+                        profiles,
+                        lease,
+                        discoveryCancellation.Token)
+                    .ConfigureAwait(false);
+                discoveryCancellation.Token.ThrowIfCancellationRequested();
+                if (!_runs.TryAdd(request.RunId, run))
+                {
+                    throw new InvalidOperationException(
+                        "The MCP run was added concurrently.");
+                }
+
+                return new AgentMcpHostResult<
+                    AgentMcpRunManifest>.Success(run.Manifest);
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                if (run is not null)
+                {
+                    await run.DisposeAsync().ConfigureAwait(false);
+                    if (run.CleanupUncertain)
+                    {
+                        MarkCleanupUncertain();
+                    }
+                }
+
+                throw;
+            }
+            catch (OperationCanceledException)
+                when (lease.RevocationToken.IsCancellationRequested)
+            {
+                if (run is not null)
+                {
+                    await run.DisposeAsync().ConfigureAwait(false);
+                    if (run.CleanupUncertain)
+                    {
+                        MarkCleanupUncertain();
+                        return Failure<AgentMcpRunManifest>(
+                            "mcp_cleanup_uncertain",
+                            "MCP process cleanup could not be confirmed.");
+                    }
+                }
+
+                return Failure<AgentMcpRunManifest>(
+                    "mcp_run_authority_revoked",
+                    "The MCP run launch authority changed during discovery.");
+            }
+            catch (OperationCanceledException)
+                when (catalogGenerationToken.IsCancellationRequested)
+            {
+                if (run is not null)
+                {
+                    await run.DisposeAsync().ConfigureAwait(false);
+                    if (run.CleanupUncertain)
+                    {
+                        MarkCleanupUncertain();
+                        return Failure<AgentMcpRunManifest>(
+                            "mcp_cleanup_uncertain",
+                            "MCP process cleanup could not be confirmed.");
+                    }
+                }
+
+                return Failure<AgentMcpRunManifest>(
+                    "mcp_manifest_changed",
+                    "The MCP profile set changed during discovery.");
+            }
+            catch (McpHostFailureException exception)
+            {
+                if (run is not null)
+                {
+                    await run.DisposeAsync().ConfigureAwait(false);
+                    if (run.CleanupUncertain)
+                    {
+                        MarkCleanupUncertain();
+                        return Failure<AgentMcpRunManifest>(
+                            "mcp_cleanup_uncertain",
+                            "MCP process cleanup could not be confirmed.");
+                    }
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(
+                        "MCP discovery was cancelled.",
+                        exception,
+                        cancellationToken);
+                }
+
+                return Failure<AgentMcpRunManifest>(
+                    exception.StableCode,
+                    exception.Message);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                _ = exception;
+                if (run is not null)
+                {
+                    await run.DisposeAsync().ConfigureAwait(false);
+                    if (run.CleanupUncertain)
+                    {
+                        MarkCleanupUncertain();
+                        return Failure<AgentMcpRunManifest>(
+                            "mcp_cleanup_uncertain",
+                            "MCP process cleanup could not be confirmed.");
+                    }
+                }
+
+                return Failure<AgentMcpRunManifest>(
+                    "mcp_discovery_failed",
+                    "MCP discovery failed safely.");
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+            when (lease.RevocationToken.IsCancellationRequested)
+        {
+            return Failure<AgentMcpRunManifest>(
+                "mcp_run_authority_revoked",
+                "The MCP run launch authority changed during discovery.");
+        }
+        catch (OperationCanceledException)
+            when (catalogGenerationToken.IsCancellationRequested)
+        {
+            return Failure<AgentMcpRunManifest>(
+                "mcp_manifest_changed",
+                "The MCP profile set changed during discovery.");
+        }
+        finally
+        {
+            if (entered)
+            {
+                _gate.Release();
+            }
+        }
+    }
+
+    public async ValueTask<
+        AgentMcpHostResult<AgentMcpToolCallReceipt>> RunToolAsync(
+        AgentAuthorizationId authorizationId,
+        AgentMcpToolCallAction action,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        RunSession? run;
+        CancellationToken catalogGenerationToken;
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                "caller_cancelled",
+                "The MCP call was cancelled before entering the run.");
+        }
+
+        try
+        {
+            if (_disposed
+                || !_runs.TryGetValue(action.Proposal.RunId, out run))
+            {
+                return Failure<AgentMcpToolCallReceipt>(
+                    "mcp_run_not_found",
+                    "The MCP run is no longer available.");
+            }
+
+            catalogGenerationToken =
+                CaptureCatalogGenerationToken();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        bool entered;
+        try
+        {
+            entered = await run.TryEnterAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                "caller_cancelled",
+                "The MCP call was cancelled before entering the run.");
+        }
+
+        if (!entered)
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                "mcp_run_closed",
+                "The MCP run is closing.");
+        }
+
+        try
+        {
+            return await RunToolCoreAsync(
+                    run,
+                    authorizationId,
+                    action,
+                    cancellationToken,
+                    catalogGenerationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            run.Exit();
+        }
+    }
+
+    public async ValueTask CloseRunAsync(
+        AgentRunId runId,
+        CancellationToken cancellationToken)
+    {
+        RunSession? run = null;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_runs.TryRemove(runId, out var removed))
+            {
+                run = removed;
+                run.BeginClose();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        if (run is not null)
+        {
+            await run.DisposeAsync().ConfigureAwait(false);
+            if (run.CleanupUncertain)
+            {
+                MarkCleanupUncertain();
+            }
+        }
+    }
+
+    public async ValueTask InvalidateAsync(SecretRef reference)
+    {
+        RunSession[] affectedRuns;
+        try
+        {
+            await _gate.WaitAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_disposed)
+            {
+                affectedRuns = _runs
+                    .Where(pair => pair.Value.ReferencesSecret(reference))
+                    .Select(pair => pair.Value)
+                    .ToArray();
+                foreach (var run in affectedRuns)
+                {
+                    _runs.TryRemove(
+                        run.Manifest.RunId,
+                        out _);
+                    run.BeginClose();
+                }
+            }
+            else
+            {
+                affectedRuns = [];
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        foreach (var run in affectedRuns)
+        {
+            await run.DisposeAsync().ConfigureAwait(false);
+            if (run.CleanupUncertain)
+            {
+                MarkCleanupUncertain();
+            }
+        }
+
+        try
+        {
+            await _testGate.WaitAsync().ConfigureAwait(false);
+            _testGate.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Host shutdown already made diagnostics quiescent.
+        }
+    }
+
+    public async ValueTask<McpServerTestResult> TestAsync(
+        McpServerTestRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
+        var principal = _approvalPrincipal.Actor;
+        if (context.Actor.Kind != ActorKind.Human
+            || context.Actor.ClientId is not { } clientId
+            || !string.Equals(
+                context.Actor.Id.Value,
+                clientId.Value,
+                StringComparison.Ordinal)
+            || !string.Equals(
+                context.Actor.Id.Value,
+                principal.Id.Value,
+                StringComparison.Ordinal)
+            || principal.ClientId is not { } principalClientId
+            || principalClientId != clientId)
+        {
+            return TestFailure(
+                "mcp_test_not_authenticated",
+                "The MCP server test requires an authenticated human client.",
+                retryable: false);
+        }
+
+        if (context.ExpectedRevision != request.ExpectedRevision)
+        {
+            return TestFailure(
+                "mcp_profile_revision_mismatch",
+                "The MCP server changed before the test could start.",
+                retryable: false);
+        }
+
+        var now = _timeProvider.GetUtcNow().ToUniversalTime();
+        var duration = MaximumTestDuration;
+        if (context.DeadlineUtc is { } deadline)
+        {
+            if (deadline.Offset != TimeSpan.Zero || deadline <= now)
+            {
+                return TestFailure(
+                    "mcp_test_deadline_invalid",
+                    "The MCP server test deadline is invalid or expired.",
+                    retryable: false);
+            }
+
+            var remaining = deadline - now;
+            if (remaining < duration)
+            {
+                duration = remaining;
+            }
+        }
+
+        var catalogGenerationToken =
+            CaptureTestProfileGenerationToken(
+                request.ProfileId);
+        using var timeout = CancellationTokenSource
+            .CreateLinkedTokenSource(
+                cancellationToken,
+                _testShutdown.Token,
+                catalogGenerationToken);
+        timeout.CancelAfter(duration);
+        var entered = false;
+        try
+        {
+            await _testGate.WaitAsync(timeout.Token).ConfigureAwait(false);
+            entered = true;
+            if (_disposed)
+            {
+                return TestFailure(
+                    "mcp_test_unavailable",
+                    "MCP diagnostics are no longer available.",
+                    retryable: false);
+            }
+
+            if (IsCleanupUncertain)
+            {
+                return TestFailure(
+                    "mcp_cleanup_uncertain",
+                    "A previous MCP process cleanup could not be confirmed.",
+                    retryable: false);
+            }
+
+            var stored = _catalog.Snapshot.McpServerProfiles
+                .SingleOrDefault(item =>
+                    item.Value.Id == request.ProfileId);
+            if (stored is null)
+            {
+                return TestFailure(
+                    "mcp_profile_not_found",
+                    "The MCP server profile no longer exists.",
+                    retryable: false);
+            }
+
+            if (stored.Revision != request.ExpectedRevision)
+            {
+                return TestFailure(
+                    "mcp_profile_revision_mismatch",
+                    "The MCP server changed before the test could start.",
+                    retryable: false);
+            }
+
+            if (!stored.Value.IsEnabled)
+            {
+                return TestFailure(
+                    "mcp_profile_disabled",
+                    "Enable and trust the MCP server profile before testing it.",
+                    retryable: false);
+            }
+
+            var session = await OpenProfileAsync(
+                    stored,
+                    timeout.Token)
+                .ConfigureAwait(false);
+            McpServerTestResult result;
+            await using (session)
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                result = !IsProfileRevisionCurrent(stored)
+                    ? TestFailure(
+                        "mcp_profile_revision_mismatch",
+                        "The MCP server changed during discovery.",
+                        retryable: false)
+                    : new McpServerTestResult.Success(
+                        new McpServerTestReport(
+                            stored.Value.Id,
+                            stored.Revision,
+                            session.DiscoveredToolCount,
+                            session.Manifests.Count,
+                            _timeProvider.GetUtcNow()
+                                .ToUniversalTime()));
+            }
+
+            if (session.CleanupUncertain)
+            {
+                MarkCleanupUncertain();
+                return TestFailure(
+                    "mcp_cleanup_uncertain",
+                    "The MCP test process cleanup could not be confirmed.",
+                    retryable: false);
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            if (catalogGenerationToken.IsCancellationRequested
+                && !cancellationToken.IsCancellationRequested
+                && !_testShutdown.IsCancellationRequested)
+            {
+                return TestFailure(
+                    "mcp_profile_revision_mismatch",
+                    "The MCP server changed during the test.",
+                    retryable: false);
+            }
+
+            return CreateTestCancellationFailure(
+                cancellationToken,
+                timeout.Token);
+        }
+        catch (McpHostFailureException exception)
+        {
+            if (exception.StableCode == "mcp_cancelled"
+                && catalogGenerationToken.IsCancellationRequested
+                && !cancellationToken.IsCancellationRequested
+                && !_testShutdown.IsCancellationRequested)
+            {
+                return TestFailure(
+                    "mcp_profile_revision_mismatch",
+                    "The MCP server changed during the test.",
+                    retryable: false);
+            }
+
+            if (exception.StableCode == "mcp_cancelled"
+                && timeout.IsCancellationRequested)
+            {
+                return CreateTestCancellationFailure(
+                    cancellationToken,
+                    timeout.Token);
+            }
+
+            return TestFailure(
+                exception.StableCode,
+                exception.Message,
+                IsRetryableTestFailure(exception.StableCode));
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            return TestFailure(
+                "mcp_test_failed",
+                "The MCP server test failed safely.",
+                retryable: true);
+        }
+        finally
+        {
+            if (entered)
+            {
+                _testGate.Release();
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
+        {
+            return;
+        }
+
+        _testShutdown.Cancel();
+        _catalog.Changed -= OnCatalogChanged;
+        CancellationTokenSource catalogGeneration;
+        CancellationTokenSource[] testProfileGenerations;
+        lock (_catalogStateGate)
+        {
+            _catalogEventsStopped = true;
+            catalogGeneration = _catalogGenerationSource;
+            testProfileGenerations =
+                _testProfileGenerationSources.Values.ToArray();
+            _testProfileGenerationSources.Clear();
+        }
+
+        CancelWithoutThrow(catalogGeneration);
+        foreach (var generation in testProfileGenerations)
+        {
+            CancelWithoutThrow(generation);
+        }
+
+        try
+        {
+            await _catalogCleanupShutdown.CancelAsync()
+                .ConfigureAwait(false);
+        }
+        catch (AggregateException)
+        {
+            // Cancellation remains effective even if a callback failed.
+        }
+
+        await _catalogCleanupWorker.ConfigureAwait(false);
+        RunSession[] runs;
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            runs = _runs.Values.ToArray();
+            _runs.Clear();
+            foreach (var run in runs)
+            {
+                run.BeginClose();
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        foreach (var run in runs)
+        {
+            await run.DisposeAsync().ConfigureAwait(false);
+            if (run.CleanupUncertain)
+            {
+                MarkCleanupUncertain();
+            }
+        }
+
+        await _testGate.WaitAsync().ConfigureAwait(false);
+        _testGate.Release();
+        _gate.Dispose();
+        _testGate.Dispose();
+        _testShutdown.Dispose();
+        catalogGeneration.Dispose();
+        foreach (var generation in testProfileGenerations)
+        {
+            generation.Dispose();
+        }
+
+        _catalogCleanupShutdown.Dispose();
+        _catalogCleanupSignal.Dispose();
+    }
+
+    private void OnCatalogChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        var snapshot = _catalog.Snapshot;
+        var nextState = McpCatalogState.Capture(snapshot);
+        var nextTestFingerprint =
+            CaptureTestProfileFingerprint(snapshot);
+        CancellationTokenSource? revokedRunGeneration = null;
+        List<CancellationTokenSource> revokedTestGenerations = [];
+        var runStateChanged = false;
+        lock (_catalogStateGate)
+        {
+            if (_catalogEventsStopped)
+            {
+                return;
+            }
+
+            var profileIds = _mcpTestProfileFingerprint.Keys
+                .Concat(nextTestFingerprint.Keys)
+                .Distinct()
+                .ToArray();
+            foreach (var profileId in profileIds)
+            {
+                var hadPrevious = _mcpTestProfileFingerprint
+                    .TryGetValue(
+                        profileId,
+                        out var previous);
+                var hasCurrent = nextTestFingerprint.TryGetValue(
+                    profileId,
+                    out var current);
+                if (hadPrevious == hasCurrent
+                    && (!hadPrevious || previous == current))
+                {
+                    continue;
+                }
+
+                if (_testProfileGenerationSources.Remove(
+                        profileId,
+                        out var revokedTestGeneration))
+                {
+                    revokedTestGenerations.Add(
+                        revokedTestGeneration);
+                }
+
+                if (hasCurrent)
+                {
+                    _testProfileGenerationSources.Add(
+                        profileId,
+                        new CancellationTokenSource());
+                }
+            }
+
+            _mcpTestProfileFingerprint = nextTestFingerprint;
+            runStateChanged =
+                !_mcpCatalogState.HasSameAuthorityFingerprint(
+                    nextState);
+            if (runStateChanged)
+            {
+                _mcpCatalogState = nextState;
+                revokedRunGeneration =
+                    _catalogGenerationSource;
+                _catalogGenerationSource =
+                    new CancellationTokenSource();
+            }
+        }
+
+        foreach (var generation in revokedTestGenerations)
+        {
+            CancelWithoutThrow(generation);
+            generation.Dispose();
+        }
+
+        if (!runStateChanged)
+        {
+            return;
+        }
+
+        CancelWithoutThrow(revokedRunGeneration!);
+        foreach (var run in _runs.Values)
+        {
+            if (!run.HasCurrentProfiles(nextState))
+            {
+                run.BeginClose();
+            }
+        }
+
+        revokedRunGeneration!.Dispose();
+        try
+        {
+            _catalogCleanupSignal.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // One pending reconciliation already covers the latest snapshot.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Host shutdown already owns all remaining runs.
+        }
+    }
+
+    private CancellationToken CaptureCatalogGenerationToken()
+    {
+        lock (_catalogStateGate)
+        {
+            return _catalogEventsStopped
+                ? new CancellationToken(canceled: true)
+                : _catalogGenerationSource.Token;
+        }
+    }
+
+    private CancellationToken CaptureTestProfileGenerationToken(
+        McpServerProfileId profileId)
+    {
+        lock (_catalogStateGate)
+        {
+            if (_catalogEventsStopped)
+            {
+                return new CancellationToken(canceled: true);
+            }
+
+            return _testProfileGenerationSources.TryGetValue(
+                profileId,
+                out var generation)
+                    ? generation.Token
+                    : CancellationToken.None;
+        }
+    }
+
+    private static IReadOnlyDictionary<
+        McpServerProfileId,
+        McpTestProfileFingerprint> CaptureTestProfileFingerprint(
+        DefinitionCatalogSnapshot snapshot) =>
+        snapshot.McpServerProfiles.ToDictionary(
+            stored => stored.Value.Id,
+            stored => new McpTestProfileFingerprint(
+                stored.Revision,
+                stored.Value.IsEnabled));
+
+    private async Task RunCatalogCleanupWorkerAsync()
+    {
+        try
+        {
+            while (true)
+            {
+                await _catalogCleanupSignal.WaitAsync(
+                        _catalogCleanupShutdown.Token)
+                    .ConfigureAwait(false);
+                try
+                {
+                    await ReconcileCatalogRunsAsync(
+                            _catalogCleanupShutdown.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                    when (_catalogCleanupShutdown.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (ObjectDisposedException)
+                    when (_catalogEventsStopped)
+                {
+                    return;
+                }
+                catch (Exception exception)
+                    when (exception is not OutOfMemoryException)
+                {
+                    _ = exception;
+                    MarkCleanupUncertain();
+                }
+            }
+        }
+        catch (OperationCanceledException)
+            when (_catalogCleanupShutdown.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException)
+            when (_catalogEventsStopped)
+        {
+        }
+    }
+
+    private async Task ReconcileCatalogRunsAsync(
+        CancellationToken cancellationToken)
+    {
+        McpCatalogState state;
+        lock (_catalogStateGate)
+        {
+            state = _mcpCatalogState;
+        }
+
+        RunSession[] staleRuns;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            var candidates = _runs.Values
+                .Where(run => !run.HasCurrentProfiles(state))
+                .ToArray();
+            var removedRuns = new List<RunSession>(
+                candidates.Length);
+            foreach (var run in candidates)
+            {
+                if (_runs.TryRemove(
+                        run.Manifest.RunId,
+                        out var removed))
+                {
+                    removed.BeginClose();
+                    removedRuns.Add(removed);
+                }
+            }
+
+            staleRuns = removedRuns.ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        foreach (var run in staleRuns)
+        {
+            await run.DisposeAsync().ConfigureAwait(false);
+            if (run.CleanupUncertain)
+            {
+                MarkCleanupUncertain();
+            }
+        }
+    }
+
+    private static void CancelWithoutThrow(
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (AggregateException)
+        {
+            // Authority is revoked even when a consumer callback fails.
+        }
+        catch (ObjectDisposedException)
+        {
+            // A completed reconciliation may already have retired it.
+        }
+    }
+
+    private async Task<RunSession> CreateRunAsync(
+        AgentMcpOpenRunRequest request,
+        IReadOnlyList<StoredDefinition<McpServerProfile>> profiles,
+        AgentMcpRunAuthorityLease lease,
+        CancellationToken cancellationToken)
+    {
+        var sessions = new List<ProfileSession>(profiles.Count);
+        var aggregateSchemaBytes = 0;
+        try
+        {
+            foreach (var profile in profiles)
+            {
+                sessions.Add(await OpenProfileAsync(
+                        profile,
+                        cancellationToken)
+                    .ConfigureAwait(false));
+                if (sessions.Sum(session => session.DiscoveredToolCount)
+                    > MaximumToolsPerRun)
+                {
+                    throw new McpHostFailureException(
+                        "mcp_tool_capacity_exceeded",
+                        "The enabled MCP tool set exceeds its run limit.");
+                }
+
+                foreach (var manifest in sessions[^1].Manifests)
+                {
+                    var schemaBytes = StrictUtf8.GetByteCount(
+                        manifest.InputSchema.GetRawText());
+                    if (aggregateSchemaBytes
+                        > MaximumAggregateSchemaBytes - schemaBytes)
+                    {
+                        throw new McpHostFailureException(
+                            "mcp_schema_capacity_exceeded",
+                            "The enabled MCP schemas exceed their run budget.");
+                    }
+
+                    aggregateSchemaBytes += schemaBytes;
+                }
+            }
+
+            var manifests = sessions
+                .SelectMany(session => session.Manifests)
+                .ToArray();
+            var runManifest = new AgentMcpRunManifest(
+                request.RunId,
+                request.OpenedAtUtc,
+                manifests);
+            return new RunSession(
+                runManifest,
+                lease.Agent,
+                lease.PolicyGeneration,
+                lease.RevocationToken,
+                sessions);
+        }
+        catch
+        {
+            foreach (var session in sessions)
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (sessions.Any(session => session.CleanupUncertain))
+            {
+                MarkCleanupUncertain();
+                throw new McpHostFailureException(
+                    "mcp_cleanup_uncertain",
+                    "MCP process cleanup could not be confirmed.");
+            }
+
+            throw;
+        }
+    }
+
+    private async Task<ProfileSession> OpenProfileAsync(
+        StoredDefinition<McpServerProfile> stored,
+        CancellationToken cancellationToken)
+    {
+        var profile = stored.Value;
+        ValidateLaunch(profile);
+        var environment = await ResolveEnvironmentAsync(
+                profile,
+                cancellationToken)
+            .ConfigureAwait(false);
+        byte[] toolIdentityKey;
+        try
+        {
+            toolIdentityKey = RandomNumberGenerator.GetBytes(
+                SHA256.HashSizeInBytes);
+        }
+        catch
+        {
+            environment.Dispose();
+            throw;
+        }
+        McpStdioClient? client = null;
+        try
+        {
+            var launch = new McpStdioServerLaunch(
+                profile.Executable,
+                profile.Arguments,
+                profile.WorkingDirectory,
+                environment.Values);
+            var connected = await McpStdioClient.ConnectAsync(
+                    launch,
+                    new McpClientInfo("ghostshell", "1.0.0"),
+                    _clientOptions,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            environment.DropLaunchValues();
+            if (!connected.IsSuccess)
+            {
+                var error = connected.Error!;
+                if (error.CleanupUncertain)
+                {
+                    MarkCleanupUncertain();
+                    throw new McpHostFailureException(
+                        "mcp_cleanup_uncertain",
+                        "MCP process cleanup could not be confirmed.");
+                }
+
+                throw MapFailure(error);
+            }
+
+            client = connected.Value!;
+            var listed = await client.ListToolsAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!listed.IsSuccess)
+            {
+                throw MapFailure(listed.Error!);
+            }
+
+            if (client.IsToolCatalogStale)
+            {
+                throw new McpHostFailureException(
+                    "mcp_tool_catalog_changed",
+                    "The MCP tool catalog changed during discovery.");
+            }
+
+            var listedTools = listed.Value!;
+            var listedByName = listedTools.ToDictionary(
+                tool => tool.Name,
+                StringComparer.Ordinal);
+            var manifests = new List<AgentMcpToolManifest>(
+                profile.EnabledTools.Count);
+            var protocolToolNames = new Dictionary<string, string>(
+                profile.EnabledTools.Count,
+                StringComparer.Ordinal);
+            foreach (var enabledTool in profile.EnabledTools)
+            {
+                if (!listedByName.TryGetValue(
+                        enabledTool,
+                        out var tool))
+                {
+                    throw new McpHostFailureException(
+                        "mcp_enabled_tool_missing",
+                        "An enabled MCP tool is absent from the server catalog.");
+                }
+
+                var schema = McpAgentSchemaSanitizer.Sanitize(
+                    tool.InputSchema,
+                    environment.Redactor);
+                var serverName = environment.Redactor.Redact(
+                    client.ServerInfo.Name,
+                    out _);
+                var serverVersion = environment.Redactor.Redact(
+                    client.ServerInfo.Version,
+                    out _);
+                var toolIdentity = CreateOpaqueToolIdentity(
+                    toolIdentityKey,
+                    profile.Id,
+                    tool.Name);
+                var safeToolName = environment.Redactor.Redact(
+                    enabledTool,
+                    out var toolNameRedacted);
+                if (toolNameRedacted)
+                {
+                    safeToolName =
+                        $"redacted_tool_{toolIdentity.Value[..16]}";
+                }
+
+                var manifest = new AgentMcpToolManifest(
+                    profile.Id,
+                    stored.Revision,
+                    profile.Name,
+                    profile.Executable,
+                    launch.WorkingDirectory,
+                    serverName,
+                    serverVersion,
+                    McpProtocol.Version,
+                    safeToolName,
+                    schema,
+                    toolIdentity,
+                    toolNameRedacted);
+                manifests.Add(manifest);
+                protocolToolNames.Add(
+                    manifest.ProviderAlias,
+                    tool.Name);
+            }
+
+            return new ProfileSession(
+                stored,
+                client,
+                environment.DetachRedactor(),
+                manifests,
+                protocolToolNames,
+                listedTools.Count);
+        }
+        catch (Exception exception)
+        {
+            var cleanupUncertain = false;
+            if (client is not null)
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                if (client.CleanupUncertain)
+                {
+                    MarkCleanupUncertain();
+                    cleanupUncertain = true;
+                }
+            }
+
+            environment.Dispose();
+            if (cleanupUncertain
+                && exception is not OutOfMemoryException)
+            {
+                throw new McpHostFailureException(
+                    "mcp_cleanup_uncertain",
+                    "MCP process cleanup could not be confirmed.",
+                    exception);
+            }
+
+            throw;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(toolIdentityKey);
+        }
+    }
+
+    private async ValueTask<
+        AgentMcpHostResult<AgentMcpToolCallReceipt>> RunToolCoreAsync(
+        RunSession run,
+        AgentAuthorizationId authorizationId,
+        AgentMcpToolCallAction action,
+        CancellationToken callerCancellation,
+        CancellationToken catalogGenerationToken)
+    {
+        if (!run.TryResolve(
+                action.Request.Manifest.ProviderAlias,
+                out var profileSession,
+                out var currentManifest,
+                out var protocolToolName)
+            || currentManifest.ManifestDigest
+                != action.Request.Manifest.ManifestDigest
+            || !IsProfileCurrent(profileSession.Stored))
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                "mcp_manifest_changed",
+                "The frozen MCP manifest no longer matches configuration.");
+        }
+
+        AgentContextSnapshot context;
+        try
+        {
+            context = await InspectTargetAsync(
+                    action,
+                    callerCancellation)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (callerCancellation.IsCancellationRequested)
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                "caller_cancelled",
+                "The MCP call was cancelled before authorization consumption.");
+        }
+        catch (McpHostFailureException exception)
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                exception.StableCode,
+                exception.Message);
+        }
+
+        AgentActionExecutionBinding binding;
+        try
+        {
+            binding = _composer.BindForExecution(
+                action,
+                context,
+                currentManifest);
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or InvalidOperationException)
+        {
+            _ = exception;
+            return Failure<AgentMcpToolCallReceipt>(
+                "mcp_action_invalid",
+                "The prepared MCP call no longer matches its exact authority.");
+        }
+
+        AgentPermitResult permitResult;
+        try
+        {
+            permitResult = await _authorizationConsumer.ConsumeAsync(
+                    authorizationId,
+                    binding,
+                    callerCancellation)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (callerCancellation.IsCancellationRequested)
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                "caller_cancelled",
+                "The MCP call was cancelled before dispatch.");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            return Failure<AgentMcpToolCallReceipt>(
+                "mcp_authorization_unavailable",
+                "The MCP authorization could not be consumed.");
+        }
+
+        if (permitResult is AgentPermitResult.Denied denied)
+        {
+            return Failure<AgentMcpToolCallReceipt>(
+                StableAuthorizationCode(denied.Error.Code),
+                "The MCP authorization was rejected.");
+        }
+
+        var permit = ((AgentPermitResult.Granted)permitResult).Permit;
+        if (permit.Authorization.Source
+            != AgentAuthorizationSource.HumanApproval)
+        {
+            return await CompleteFailureAsync(
+                    permit,
+                    "mcp_human_approval_required",
+                    "MCP tools require exact human approval.")
+                .ConfigureAwait(false);
+        }
+
+        using var operationCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                callerCancellation,
+                permit.CancellationToken,
+                run.ShutdownToken,
+                catalogGenerationToken);
+        if (operationCancellation.IsCancellationRequested)
+        {
+            return await CompleteCancelledAsync(permit)
+                .ConfigureAwait(false);
+        }
+
+        if (!IsProfileCurrent(profileSession.Stored)
+            || profileSession.Client.IsToolCatalogStale
+            || run.IsClosing)
+        {
+            return await CompleteFailureAsync(
+                    permit,
+                    "mcp_manifest_changed",
+                    "The MCP profile or tool catalog changed before dispatch.")
+                .ConfigureAwait(false);
+        }
+
+        var called = await profileSession.Client.CallToolAsync(
+                protocolToolName,
+                action.Request.Arguments,
+                operationCancellation.Token)
+            .ConfigureAwait(false);
+        if (!called.IsSuccess)
+        {
+            var error = called.Error!;
+            if (error.Code == McpErrorCode.Cancelled
+                && !error.OutcomeUncertain)
+            {
+                return await CompleteCancelledAsync(permit)
+                    .ConfigureAwait(false);
+            }
+
+            var stableCode = error.OutcomeUncertain
+                ? "mcp_tool_outcome_unknown"
+                : StableMcpCode(error.Code);
+            var completed = await CompleteAsync(
+                    permit,
+                    AgentActionOutcome.Failed,
+                    stableCode)
+                .ConfigureAwait(false);
+            if (completed is not null)
+            {
+                return completed;
+            }
+
+            return new AgentMcpHostResult<
+                AgentMcpToolCallReceipt>.Failure(
+                new AgentMcpHostError(
+                    stableCode,
+                    error.OutcomeUncertain
+                        ? "The MCP tool outcome could not be confirmed."
+                        : "The MCP tool call failed safely.",
+                    error.OutcomeUncertain));
+        }
+
+        AgentMcpToolCallReceipt receipt;
+        try
+        {
+            receipt = McpProviderResultProjection.Project(
+                called.Value!,
+                profileSession.Redactor);
+            if (!IsValidProviderReceipt(receipt))
+            {
+                throw new InvalidOperationException(
+                    "The MCP result projection is invalid.");
+            }
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or InvalidOperationException)
+        {
+            _ = exception;
+            receipt = new AgentMcpToolCallReceipt(
+                called.Value!.IsError
+                    ? """
+                      {"ok":false,"content_origin":"untrusted_mcp","is_error":true,"content":[],"omitted_content_count":0,"redacted_content_count":0,"structured_content":null,"projection_notice":"The completed MCP result could not be projected."}
+                      """
+                    : """
+                      {"ok":true,"content_origin":"untrusted_mcp","is_error":false,"content":[],"omitted_content_count":0,"redacted_content_count":0,"structured_content":null,"projection_notice":"The completed MCP result could not be projected."}
+                      """,
+                called.Value.IsError);
+        }
+
+        var outcome = receipt.IsError
+            ? AgentActionOutcome.Failed
+            : AgentActionOutcome.Succeeded;
+        var resultCode = receipt.IsError
+            ? "mcp_tool_error"
+            : "mcp_tool_succeeded";
+        var completionFailure = await CompleteAsync(
+                permit,
+                outcome,
+                resultCode)
+            .ConfigureAwait(false);
+        return completionFailure
+            ?? new AgentMcpHostResult<
+                AgentMcpToolCallReceipt>.Success(receipt);
+    }
+
+    private async Task<AgentContextSnapshot> InspectTargetAsync(
+        AgentMcpToolCallAction action,
+        CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.GetUtcNow().ToUniversalTime();
+        var deadline = now + ContextDeadline;
+        if (deadline > action.Proposal.DeadlineUtc)
+        {
+            deadline = action.Proposal.DeadlineUtc;
+        }
+
+        if (deadline <= now)
+        {
+            throw new McpHostFailureException(
+                "mcp_action_expired",
+                "The MCP action expired before target inspection.");
+        }
+
+        var maximumPanelCount = action.Proposal.Target is
+            AgentTarget.Panel or AgentTarget.ConnectionSession
+                ? 1
+                : AgentTarget.SelectedPanels.MaximumPanelCount;
+        var result = await _sessionHost.InspectAgentContextAsync(
+                new AgentContextRequest(
+                    action.Proposal.Target,
+                    maximumPanelCount),
+                new OperationContext(
+                    RequestId.New(),
+                    action.Proposal.Actor,
+                    CancellationId: CancellationId.New(),
+                    DeadlineUtc: deadline),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (result
+                is not HostResult<AgentContextSnapshot>.Success success
+            || success.Value.Target != action.Proposal.Target)
+        {
+            throw new McpHostFailureException(
+                "target_changed",
+                "The exact agent target changed before MCP execution.");
+        }
+
+        return success.Value;
+    }
+
+    private async ValueTask<
+        AgentMcpHostResult<AgentMcpToolCallReceipt>?> CompleteAsync(
+        AgentActionPermit permit,
+        AgentActionOutcome outcome,
+        string stableCode)
+    {
+        try
+        {
+            var error = await _authorizationConsumer.CompleteAsync(
+                    permit,
+                    new AgentActionCompletion(
+                        outcome,
+                        stableCode,
+                        _timeProvider.GetUtcNow().ToUniversalTime()),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            return error is null
+                ? null
+                : Failure<AgentMcpToolCallReceipt>(
+                    AgentActionFailureCodes.CompletionAuditUnavailable,
+                    "The MCP completion audit could not be confirmed.");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            return Failure<AgentMcpToolCallReceipt>(
+                AgentActionFailureCodes.CompletionAuditUnavailable,
+                "The MCP completion audit could not be confirmed.");
+        }
+    }
+
+    private async ValueTask<
+        AgentMcpHostResult<AgentMcpToolCallReceipt>> CompleteFailureAsync(
+        AgentActionPermit permit,
+        string stableCode,
+        string message)
+    {
+        var completion = await CompleteAsync(
+                permit,
+                AgentActionOutcome.Failed,
+                stableCode)
+            .ConfigureAwait(false);
+        return completion
+            ?? Failure<AgentMcpToolCallReceipt>(stableCode, message);
+    }
+
+    private async ValueTask<
+        AgentMcpHostResult<AgentMcpToolCallReceipt>> CompleteCancelledAsync(
+        AgentActionPermit permit)
+    {
+        var completion = await CompleteAsync(
+                permit,
+                AgentActionOutcome.Cancelled,
+                "caller_cancelled")
+            .ConfigureAwait(false);
+        return completion
+            ?? Failure<AgentMcpToolCallReceipt>(
+                "caller_cancelled",
+                "The MCP call was cancelled before dispatch.");
+    }
+
+    private async Task<ResolvedEnvironment> ResolveEnvironmentAsync(
+        McpServerProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        var literals = new List<char[]>(profile.Environment.Count);
+        var totalBytes = 0;
+        var windowsEnvironmentBlockCodeUnits = 1;
+        try
+        {
+            foreach (var variable in profile.Environment)
+            {
+                var resolved = await _secretVault.ResolveAsync(
+                        new ResolveSecretRequest(
+                            variable.Reference,
+                            new SecretScope(
+                                SecretScopeKind.McpServer,
+                                profile.Id.Value),
+                            new SecretUsePurpose(
+                                SecretUseKind.McpServerEnvironment,
+                                profile.Id.Value)),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (resolved
+                    is not SecretVaultResult<SecretMaterial>.Success success)
+                {
+                    throw new McpHostFailureException(
+                        "mcp_secret_unavailable",
+                        "An MCP environment secret is unavailable.");
+                }
+
+                using var material = success.Value;
+                if (material.Length > MaximumEnvironmentValueBytes
+                    || totalBytes
+                        > MaximumEnvironmentBytes - material.Length)
+                {
+                    throw new McpHostFailureException(
+                        "mcp_secret_limit_exceeded",
+                        "The MCP environment secrets exceed the process-value budget.");
+                }
+
+                totalBytes += material.Length;
+                var bytes = new byte[material.Length];
+                try
+                {
+                    material.CopyTo(bytes);
+                    var chars = StrictUtf8.GetChars(bytes);
+                    if (chars.Contains('\0'))
+                    {
+                        CryptographicOperations.ZeroMemory(
+                            System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                                chars.AsSpan()));
+                        throw new McpHostFailureException(
+                            "mcp_secret_invalid",
+                            "An MCP environment secret is not a valid process value.");
+                    }
+
+                    var windowsEntryCodeUnits = checked(
+                        variable.Name.Length
+                        + 1
+                        + chars.Length
+                        + 1);
+                    if (windowsEnvironmentBlockCodeUnits
+                        > MaximumWindowsEnvironmentBlockCodeUnits
+                            - windowsEntryCodeUnits)
+                    {
+                        CryptographicOperations.ZeroMemory(
+                            System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                                chars.AsSpan()));
+                        throw new McpHostFailureException(
+                            "mcp_secret_limit_exceeded",
+                            "The MCP environment secrets exceed the process-value budget.");
+                    }
+
+                    windowsEnvironmentBlockCodeUnits +=
+                        windowsEntryCodeUnits;
+                    literals.Add(chars);
+                    values.Add(variable.Name, new string(chars));
+                }
+                catch (DecoderFallbackException exception)
+                {
+                    throw new McpHostFailureException(
+                        "mcp_secret_invalid",
+                        "An MCP environment secret is not valid UTF-8.",
+                        exception);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(bytes);
+                }
+            }
+
+            return new ResolvedEnvironment(values, literals);
+        }
+        catch
+        {
+            values.Clear();
+            foreach (var literal in literals)
+            {
+                CryptographicOperations.ZeroMemory(
+                    System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                        literal.AsSpan()));
+            }
+
+            throw;
+        }
+    }
+
+    private bool IsProfileCurrent(
+        StoredDefinition<McpServerProfile> stored) =>
+        IsProfileRevisionCurrent(stored)
+        && stored.Value.IsEnabled;
+
+    private bool IsProfileRevisionCurrent(
+        StoredDefinition<McpServerProfile> stored) =>
+        _catalog.Snapshot.McpServerProfiles.Any(current =>
+            current.Value.Id == stored.Value.Id
+            && current.Revision == stored.Revision);
+
+    private static void ValidateLaunch(McpServerProfile profile)
+    {
+        if (!Path.IsPathFullyQualified(profile.Executable)
+            || profile.WorkingDirectory is { } workingDirectory
+            && !Path.IsPathFullyQualified(workingDirectory))
+        {
+            throw new McpHostFailureException(
+                "mcp_launch_path_invalid",
+                "MCP executable and working-directory paths must be absolute.");
+        }
+    }
+
+    private static McpHostFailureException MapFailure(McpError error) =>
+        new(
+            StableMcpCode(error.Code),
+            error.Code switch
+            {
+                McpErrorCode.LaunchFailed =>
+                    "The MCP server process could not be started.",
+                McpErrorCode.UnsupportedProtocolVersion =>
+                    "The MCP server does not support the pinned protocol.",
+                McpErrorCode.MissingToolsCapability =>
+                    "The MCP server does not advertise tools.",
+                McpErrorCode.Cancelled =>
+                    "The MCP operation was cancelled.",
+                _ => "The MCP server returned an invalid or unavailable tool surface.",
+            });
+
+    private static string StableMcpCode(McpErrorCode code) =>
+        code switch
+        {
+            McpErrorCode.Cancelled => "mcp_cancelled",
+            McpErrorCode.Disposed => "mcp_server_closed",
+            McpErrorCode.LaunchFailed => "mcp_server_launch_failed",
+            McpErrorCode.TransportClosed => "mcp_transport_closed",
+            McpErrorCode.ProcessExited => "mcp_server_exited",
+            McpErrorCode.TransportFailed => "mcp_transport_failed",
+            McpErrorCode.MessageTooLarge => "mcp_message_too_large",
+            McpErrorCode.InvalidMessage => "mcp_message_invalid",
+            McpErrorCode.UnsupportedProtocolVersion =>
+                "mcp_protocol_unsupported",
+            McpErrorCode.MissingToolsCapability =>
+                "mcp_tools_unsupported",
+            McpErrorCode.RemoteError => "mcp_remote_error",
+            McpErrorCode.InvalidResult => "mcp_result_invalid",
+            McpErrorCode.LimitExceeded => "mcp_limit_exceeded",
+            McpErrorCode.InvalidArguments => "mcp_arguments_invalid",
+            McpErrorCode.ToolNotListed => "mcp_tool_not_listed",
+            McpErrorCode.ToolCatalogStale => "mcp_tool_catalog_changed",
+            _ => "mcp_failed",
+        };
+
+    private static string StableAuthorizationCode(
+        AgentAuthorizationErrorCode code) =>
+        code switch
+        {
+            AgentAuthorizationErrorCode.AuthorizationExpired =>
+                "authorization_expired",
+            AgentAuthorizationErrorCode.PolicyChanged => "policy_changed",
+            AgentAuthorizationErrorCode.RunCancelled => "run_cancelled",
+            AgentAuthorizationErrorCode.Cancelled => "caller_cancelled",
+            _ => "authorization_rejected",
+        };
+
+    private static AgentMcpHostResult<T> Failure<T>(
+        string stableCode,
+        string message) =>
+        new AgentMcpHostResult<T>.Failure(
+            new AgentMcpHostError(stableCode, message));
+
+    private static McpServerTestResult TestFailure(
+        string stableCode,
+        string message,
+        bool retryable) =>
+        new McpServerTestResult.Failure(
+            new McpServerTestError(
+                stableCode,
+                message,
+                retryable));
+
+    private McpServerTestResult CreateTestCancellationFailure(
+        CancellationToken callerCancellation,
+        CancellationToken operationCancellation)
+    {
+        if (callerCancellation.IsCancellationRequested)
+        {
+            return TestFailure(
+                "mcp_test_cancelled",
+                "The MCP server test was cancelled.",
+                retryable: true);
+        }
+
+        if (_testShutdown.IsCancellationRequested)
+        {
+            return TestFailure(
+                "mcp_test_unavailable",
+                "MCP diagnostics are no longer available.",
+                retryable: false);
+        }
+
+        return operationCancellation.IsCancellationRequested
+            ? TestFailure(
+                "mcp_test_timed_out",
+                "The MCP server did not finish bounded discovery in time.",
+                retryable: true)
+            : TestFailure(
+                "mcp_test_failed",
+                "The MCP server test failed safely.",
+                retryable: true);
+    }
+
+    private static bool IsRetryableTestFailure(string stableCode) =>
+        stableCode is
+            "mcp_server_launch_failed"
+            or "mcp_server_closed"
+            or "mcp_server_exited"
+            or "mcp_transport_closed"
+            or "mcp_transport_failed"
+            or "mcp_cancelled"
+            or "mcp_discovery_failed";
+
+    private bool IsCleanupUncertain =>
+        Volatile.Read(ref _cleanupUncertain) != 0;
+
+    private void MarkCleanupUncertain() =>
+        Interlocked.Exchange(ref _cleanupUncertain, 1);
+
+    private static McpStdioClientOptions CreateDefaultOptions() =>
+        new()
+        {
+            MaxTools = MaximumToolsPerRun,
+            MaxToolSchemaBytes =
+                AgentMcpToolManifest.MaximumInputSchemaBytes,
+            MaxToolArgumentsBytes =
+                AgentMcpToolCallRequest.MaximumArgumentsBytes,
+            MaxToolResultBytes =
+                AgentMcpToolCallReceipt.MaximumProviderJsonBytes,
+            MaxJsonDepth = AgentMcpToolCallRequest.MaximumJsonDepth,
+            MaxJsonNodes = AgentMcpToolCallRequest.MaximumJsonNodes,
+        };
+
+    private static AgentActionDigest CreateOpaqueToolIdentity(
+        ReadOnlySpan<byte> key,
+        McpServerProfileId profileId,
+        string toolName)
+    {
+        var profileBytes = StrictUtf8.GetBytes(profileId.Value);
+        var toolBytes = StrictUtf8.GetBytes(toolName);
+        try
+        {
+            using var hash = IncrementalHash.CreateHMAC(
+                HashAlgorithmName.SHA256,
+                key);
+            hash.AppendData("ghostshell.mcp-tool-identity.v1"u8);
+            hash.AppendData([0]);
+            hash.AppendData(profileBytes);
+            hash.AppendData([0]);
+            hash.AppendData(toolBytes);
+            return new AgentActionDigest(
+                Convert.ToHexStringLower(hash.GetHashAndReset()));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(profileBytes);
+            CryptographicOperations.ZeroMemory(toolBytes);
+        }
+    }
+
+    private bool IsValidProviderReceipt(
+        AgentMcpToolCallReceipt receipt)
+    {
+        var bytes = Encoding.UTF8.GetBytes(receipt.ProviderJson);
+        try
+        {
+            if (!McpJsonBudget.TryValidateDocument(
+                    bytes,
+                    _clientOptions.MaxJsonDepth,
+                    _clientOptions.MaxJsonNodes,
+                    out var document))
+            {
+                return false;
+            }
+
+            var validDocument = document!;
+            using (validDocument)
+            {
+                return validDocument.RootElement.ValueKind
+                    == System.Text.Json.JsonValueKind.Object;
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+        }
+    }
+
+    private sealed class McpCatalogState
+    {
+        private readonly IReadOnlyDictionary<
+            McpServerProfileId,
+            long> _profiles;
+
+        private McpCatalogState(
+            IReadOnlyDictionary<
+                McpServerProfileId,
+                long> profiles)
+        {
+            _profiles = profiles;
+        }
+
+        public static McpCatalogState Capture(
+            DefinitionCatalogSnapshot snapshot) =>
+            new(
+                snapshot.McpServerProfiles
+                    .Where(stored =>
+                        stored.Value.IsEnabled
+                        && stored.Value.EnabledTools.Count > 0)
+                    .ToDictionary(
+                    stored => stored.Value.Id,
+                    stored => stored.Revision));
+
+        public bool HasSameAuthorityFingerprint(
+            McpCatalogState other)
+        {
+            if (_profiles.Count != other._profiles.Count)
+            {
+                return false;
+            }
+
+            foreach (var pair in _profiles)
+            {
+                if (!other._profiles.TryGetValue(
+                        pair.Key,
+                        out var candidate)
+                    || candidate != pair.Value)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public bool Matches(
+            IReadOnlyList<ProfileSession> profiles)
+        {
+            if (profiles.Count != _profiles.Count)
+            {
+                return false;
+            }
+
+            return profiles.All(profile =>
+                _profiles.TryGetValue(
+                    profile.Stored.Value.Id,
+                    out var current)
+                && current == profile.Stored.Revision);
+        }
+    }
+
+    private readonly record struct McpTestProfileFingerprint(
+        long Revision,
+        bool IsEnabled);
+
+    private sealed class RunSession : IAsyncDisposable
+    {
+        private readonly IReadOnlyDictionary<
+            string,
+            ProfileToolBinding> _tools;
+        private readonly IReadOnlyList<ProfileSession> _profiles;
+        private readonly SemaphoreSlim _operationGate = new(1, 1);
+        private readonly CancellationTokenSource _shutdown = new();
+        private int _closing;
+
+        public RunSession(
+            AgentMcpRunManifest manifest,
+            ActorDescriptor agent,
+            long policyGeneration,
+            CancellationToken authorityRevocationToken,
+            IReadOnlyList<ProfileSession> profiles)
+        {
+            Manifest = manifest;
+            Agent = agent;
+            PolicyGeneration = policyGeneration;
+            AuthorityRevocationToken = authorityRevocationToken;
+            _profiles = new ReadOnlyCollection<ProfileSession>(
+                profiles.ToArray());
+            _tools = profiles
+                .SelectMany(profile => profile.Manifests.Select(
+                    tool => new ProfileToolBinding(
+                        profile,
+                        tool,
+                        profile.ProtocolToolNames[tool.ProviderAlias])))
+                .ToDictionary(
+                    binding => binding.Manifest.ProviderAlias,
+                    StringComparer.Ordinal);
+        }
+
+        public AgentMcpRunManifest Manifest { get; }
+
+        public ActorDescriptor Agent { get; }
+
+        public long PolicyGeneration { get; }
+
+        public CancellationToken AuthorityRevocationToken { get; }
+
+        public CancellationToken ShutdownToken => _shutdown.Token;
+
+        public bool IsClosing => Volatile.Read(ref _closing) != 0;
+
+        public bool CleanupUncertain { get; private set; }
+
+        public async ValueTask<bool> TryEnterAsync(
+            CancellationToken cancellationToken)
+        {
+            await _operationGate.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (IsClosing)
+            {
+                _operationGate.Release();
+                return false;
+            }
+
+            return true;
+        }
+
+        public void Exit() => _operationGate.Release();
+
+        public bool TryResolve(
+            string providerAlias,
+            out ProfileSession profile,
+            out AgentMcpToolManifest manifest,
+            out string protocolToolName)
+        {
+            if (_tools.TryGetValue(providerAlias, out var binding))
+            {
+                profile = binding.Profile;
+                manifest = binding.Manifest;
+                protocolToolName = binding.ProtocolToolName;
+                return true;
+            }
+
+            profile = null!;
+            manifest = null!;
+            protocolToolName = null!;
+            return false;
+        }
+
+        public bool ReferencesSecret(SecretRef reference) =>
+            _profiles.Any(profile =>
+                profile.Stored.Value.Environment.Any(variable =>
+                    variable.Reference == reference));
+
+        public bool HasCurrentProfiles(
+            McpCatalogState state) =>
+            state.Matches(_profiles);
+
+        public void BeginClose()
+        {
+            if (Interlocked.Exchange(ref _closing, 1) == 0)
+            {
+                try
+                {
+                    _shutdown.Cancel();
+                }
+                catch (AggregateException)
+                {
+                    // Closing remains effective when a callback fails.
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Disposal already completed.
+                }
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            BeginClose();
+            await _operationGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                foreach (var profile in _profiles)
+                {
+                    await profile.DisposeAsync().ConfigureAwait(false);
+                    CleanupUncertain |= profile.CleanupUncertain;
+                }
+            }
+            finally
+            {
+                _operationGate.Release();
+                _operationGate.Dispose();
+                _shutdown.Dispose();
+            }
+        }
+    }
+
+    private sealed record ProfileToolBinding(
+        ProfileSession Profile,
+        AgentMcpToolManifest Manifest,
+        string ProtocolToolName);
+
+    private sealed class ProfileSession(
+        StoredDefinition<McpServerProfile> stored,
+        McpStdioClient client,
+        McpSecretRedactor redactor,
+        IReadOnlyList<AgentMcpToolManifest> manifests,
+        IReadOnlyDictionary<string, string> protocolToolNames,
+        int discoveredToolCount) : IAsyncDisposable
+    {
+        public StoredDefinition<McpServerProfile> Stored { get; } = stored;
+
+        public McpStdioClient Client { get; } = client;
+
+        public McpSecretRedactor Redactor { get; } = redactor;
+
+        public IReadOnlyList<AgentMcpToolManifest> Manifests { get; } =
+            new ReadOnlyCollection<AgentMcpToolManifest>(
+                manifests.ToArray());
+
+        public IReadOnlyDictionary<string, string> ProtocolToolNames { get; } =
+            new ReadOnlyDictionary<string, string>(
+                new Dictionary<string, string>(
+                    protocolToolNames,
+                    StringComparer.Ordinal));
+
+        public int DiscoveredToolCount { get; } = discoveredToolCount;
+
+        public bool CleanupUncertain { get; private set; }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await Client.DisposeAsync().ConfigureAwait(false);
+                CleanupUncertain = Client.CleanupUncertain;
+            }
+            finally
+            {
+                Redactor.Dispose();
+            }
+        }
+    }
+
+    private sealed class ResolvedEnvironment(
+        Dictionary<string, string> values,
+        List<char[]> literals) : IDisposable
+    {
+        private bool _redactorDetached;
+
+        public IReadOnlyDictionary<string, string> Values { get; } =
+            new ReadOnlyDictionary<string, string>(values);
+
+        public McpSecretRedactor Redactor { get; } = new(literals);
+
+        public void DropLaunchValues() => values.Clear();
+
+        public McpSecretRedactor DetachRedactor()
+        {
+            _redactorDetached = true;
+            return Redactor;
+        }
+
+        public void Dispose()
+        {
+            values.Clear();
+            if (!_redactorDetached)
+            {
+                Redactor.Dispose();
+            }
+        }
+    }
+
+    private sealed class McpHostFailureException(
+        string stableCode,
+        string message,
+        Exception? innerException = null) : Exception(message, innerException)
+    {
+        public string StableCode { get; } = stableCode;
+    }
+}

@@ -1,0 +1,151 @@
+diff --git a/build.zig b/build.zig
+index f9d861b..c068df8 100644
+--- a/build.zig
++++ b/build.zig
+@@ -136,18 +136,25 @@ pub fn build(b: *std.Build) !void {
+         // As such, these build steps are lacking. For example, the Darwin
+         // build only produces an xcframework.
+ 
+-        // We shouldn't have this guard but we don't currently
+-        // build on macOS this way ironically so we need to fix that.
+         if (!config.target.result.os.tag.isDarwin()) {
+             libghostty_shared.installHeader(); // Only need one header
+             libghostty_shared.install("libghostty.so");
+             libghostty_static.install("libghostty.a");
++        } else if (!config.emit_xcframework and !config.emit_macos_app) {
++            // GhostShell loads a native macOS dynamic library through a small
++            // Objective-C view shim. Building an XCFramework would also require
++            // the iOS SDKs even though this host only consumes macOS.
++            libghostty_shared.installHeader();
++            libghostty_shared.install("libghostty.dylib");
++            resources.install();
+         }
+     }
+ 
+     // macOS only artifacts. These will error if they're initialized for
+     // other targets.
+-    if (config.target.result.os.tag.isDarwin()) {
++    if (config.target.result.os.tag.isDarwin() and
++        (config.emit_xcframework or config.emit_macos_app))
++    {
+         // Ghostty xcframework
+         const xcframework = try buildpkg.GhosttyXCFramework.init(
+             b,
+@@ -202,7 +209,9 @@ pub fn build(b: *std.Build) !void {
+ 
+         // On macOS we can run the macOS app. For "run" we always force
+         // a native-only build so that we can run as quickly as possible.
+-        if (config.target.result.os.tag.isDarwin()) {
++        if (config.target.result.os.tag.isDarwin() and
++            (config.emit_xcframework or config.emit_macos_app))
++        {
+             const xcframework_native = try buildpkg.GhosttyXCFramework.init(
+                 b,
+                 &deps,
+diff --git a/src/build/MetallibStep.zig b/src/build/MetallibStep.zig
+index fcf3055..e028521 100644
+--- a/src/build/MetallibStep.zig
++++ b/src/build/MetallibStep.zig
+@@ -43,6 +43,14 @@ pub fn create(b: *std.Build, opts: Options) ?*MetallibStep {
+ 
+     const self = b.allocator.create(MetallibStep) catch @panic("OOM");
+ 
++    if (b.graph.env_map.get("GHOSTTY_PRECOMPILED_METALLIB")) |path| {
++        self.* = .{
++            .step = b.step("ghostty-precompiled-metallib", "Use a precompiled Ghostty Metal library"),
++            .output = .{ .cwd_relative = path },
++        };
++        return self;
++    }
++
+     const min_version = if (opts.target.query.os_version_min) |v|
+         b.fmt("{f}", .{v.semver})
+     else switch (opts.target.result.os.tag) {
+diff --git a/src/build/SharedDeps.zig b/src/build/SharedDeps.zig
+index 9276c99..dd6cb25 100644
+--- a/src/build/SharedDeps.zig
++++ b/src/build/SharedDeps.zig
+@@ -379,6 +379,7 @@ pub fn add(
+     // This makes things like `os/log.h` available for cross-compiling.
+     if (step.rootModuleTarget().os.tag.isDarwin()) {
+         try @import("apple_sdk").addPaths(b, step);
++        step.linkFramework("Metal");
+ 
+         const metallib = self.metallib.?;
+         metallib.output.addStepDependencies(&step.step);
+diff --git a/include/ghostty.h b/include/ghostty.h
+index 40ff55c..548d6b1 100644
+--- a/include/ghostty.h
++++ b/include/ghostty.h
+@@ -461,6 +461,15 @@ typedef struct {
+   uint32_t cell_height_px;
+ } ghostty_surface_size_s;
+ 
++typedef struct {
++  uint32_t columns;
++  uint32_t rows;
++  uint32_t cursor_column;
++  uint32_t cursor_row;
++  uint32_t alternate_screen;
++  uint32_t bracketed_paste;
++} ghostty_surface_screen_state_s;
++
+ // Config types
+ 
+ // config.Path
+@@ -1087,6 +1096,7 @@ void ghostty_surface_set_focus(ghostty_surface_t, bool);
+ void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
+ void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
+ ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
++ghostty_surface_screen_state_s ghostty_surface_screen_state(ghostty_surface_t);
+ void ghostty_surface_set_color_scheme(ghostty_surface_t,
+                                       ghostty_color_scheme_e);
+ ghostty_input_mods_e ghostty_surface_key_translation_mods(ghostty_surface_t,
+diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
+index 0d5a4f8..c69085e 100644
+--- a/src/apprt/embedded.zig
++++ b/src/apprt/embedded.zig
+@@ -1281,6 +1281,17 @@ pub const CAPI = struct {
+         cell_height_px: u32,
+     };
+ 
++    // A small state snapshot used by embedding hosts that need to automate
++    // interactive terminal applications without reaching into renderer state.
++    const SurfaceScreenState = extern struct {
++        columns: u32,
++        rows: u32,
++        cursor_column: u32,
++        cursor_row: u32,
++        alternate_screen: u32,
++        bracketed_paste: u32,
++    };
++
+     // ghostty_clipboard_content_s
+     const ClipboardContent = extern struct {
+         mime: [*:0]const u8,
+@@ -1709,6 +1720,25 @@ pub const CAPI = struct {
+         };
+     }
+ 
++    /// Return canonical terminal state needed by an embedding automation
++    /// client. This is read under the same renderer-state lock as read_text.
++    export fn ghostty_surface_screen_state(surface: *Surface) SurfaceScreenState {
++        const core_surface = &surface.core_surface;
++        core_surface.renderer_state.mutex.lock();
++        defer core_surface.renderer_state.mutex.unlock();
++
++        const terminal_state = core_surface.renderer_state.terminal;
++        const screen = terminal_state.screens.active;
++        return .{
++            .columns = @intCast(screen.pages.cols),
++            .rows = @intCast(screen.pages.rows),
++            .cursor_column = @intCast(screen.cursor.x),
++            .cursor_row = @intCast(screen.cursor.y),
++            .alternate_screen = @intFromBool(terminal_state.screens.active_key == .alternate),
++            .bracketed_paste = @intFromBool(terminal_state.modes.get(.bracketed_paste)),
++        };
++    }
++
+     /// Update the color scheme of the surface.
+     export fn ghostty_surface_set_color_scheme(surface: *Surface, scheme_raw: c_int) void {
+         const scheme = std.meta.intToEnum(apprt.ColorScheme, scheme_raw) catch {

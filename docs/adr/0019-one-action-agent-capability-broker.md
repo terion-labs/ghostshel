@@ -1,0 +1,331 @@
+# ADR 0019: One-action agent capability broker
+
+- Status: Accepted
+- Date: 2026-07-23
+- Extends:
+  [ADR 0017](0017-native-dotnet-agent-runtime.md),
+  [ADR 0018](0018-native-ai-provider-and-chat-boundary.md)
+- Security basis:
+  [Agent-to-tool threat model](../security/agent-tool-threat-model.md)
+
+## Context
+
+The native agent loop can assemble provider tool proposals, but those proposals
+are untrusted data. Target context, a model-supplied tool name, a UI permission
+mode, or an old approval cannot by itself authorize a terminal or application
+operation.
+
+Desktop v1 needs a provider-neutral authorization boundary that remains useful
+for future headless transports. It must not depend on Avalonia dialogs, provider
+payloads, terminal engines, or generic string-based execution.
+
+## Decision
+
+GhostSHELL uses a closed application-owned tool catalog. Trusted descriptors
+assign each tool a capability and risk; model/provider risk labels are ignored.
+The catalog covers exact workspace/tab/panel inspection, bounded terminal
+screen/wait/input/interrupt/resize operations, browser state/navigation and
+candidate exact-object interactions, and bounded read-only File Viewer
+list/stat/text-preview observations. Adding a tool is a code and test change,
+not runtime schema expansion from provider content.
+Within the workspace-graph family, only `panel.inspect` and `panel.focus` are
+currently production-reachable. `workspace.list`, `workspace.inspect`,
+`tab.list`, and `panel.list` remain closed catalog entries and are not
+advertised to providers.
+
+Capabilities distinguish terminal reads, terminal input, destructive terminal
+actions, file reads/writes, Git mutation, browser navigation/data, network
+fetch, Docker, processes, MCP, and secret use. Policy modes are `Off`, `Ask`,
+`Auto`, and `Yolo` (displayed as `YOLO`). Default terminal input is `Ask`.
+`Auto` authorizes trusted observation/routine classifications only; mutation,
+destructive, and privileged classifications require approval. `YOLO` may
+authorize those classifications but never bypasses target binding, expiry,
+policy generation, cancellation, secret isolation, or audit.
+
+Effective policy resolves from global, workspace, screen, and run layers. The
+most specific explicit capability value wins. The broker then owns the
+effective run policy, exact target scope, policy generation, agent identity,
+and approving desktop-client identity for the life of the run. Proposal and
+execution callers cannot supply replacement policy. Older durable policies
+remain readable; newly introduced capabilities absent from an old policy fail
+closed or inherit a more general explicit layer. Malformed layers are rejected
+rather than partially applied.
+
+`YOLO` is not authorized by the enum value alone. Enabling it requires a
+short-lived human confirmation bound to the run, exact target identity,
+approving desktop client, policy generation, and expiry. A policy update or run
+stop revokes pending approvals and issued tokens and cancels active permits
+before waiting for broker audit I/O.
+
+An `AgentActionProposal` binds:
+
+- authenticated agent actor and run;
+- closed tool name;
+- immutable requested target;
+- a digest of the exact resolved target/session revision set;
+- a digest of canonical material arguments;
+- a bounded, non-persisted approval presentation;
+- policy generation, creation time, and deadline.
+
+Only trusted application composers can create an executable proposal. The
+terminal, browser, File Viewer, and panel composers accept closed typed request
+unions, select one exact compatible session from the resolved scope, narrow a
+broader scope to that panel, and derive both the canonical argument digest and
+complete approval presentation from the same ordered fields. Their canonical
+encodings are versioned, length-prefixed, and culture invariant. Panel action
+digests contain only the closed tool and trusted panel identity; request
+material in the other families additionally rejects unrepresentable,
+oversized, or likely literal-secret values as applicable. Prepared actions,
+executable proposals, and execution bindings have no public constructors.
+
+The broker durably claims `requested` before making authority available. `Off`
+records `denied`. `Ask` creates a bounded approval request for the run's bound
+desktop client; desktop v1 initially supports only a one-action duration.
+`Auto`, a confirmed `YOLO`, or a matching human approval can issue a random
+opaque authorization bound to the exact proposal. The token expires quickly
+and is atomically consumed once. Durable action IDs prevent a process restart
+from minting a second authorization for the same action.
+
+Immediately before a typed operation starts, the session host re-resolves the
+exact target and live session under the host graph gate, recomputes an
+execution binding from the same prepared request, captures the exact terminal,
+browser, or File Viewer typed port where applicable, and consumes the
+authorization itself. No permit can be paired with
+out-of-band arguments. Mismatch, replay, expiry, revocation, policy change,
+lease/attachment loss, missing audit storage, or cancellation fails closed.
+The broker records `started` before returning a permit. The host links caller,
+run/policy, session-lifecycle, attachment, and input-lease cancellation,
+dispatches only through the captured typed port or guarded workspace graph, and
+attempts to record exactly one `succeeded`, `failed`, or `cancelled` outcome
+without retrying the tool operation. If the completion audit cannot be
+confirmed, the broker removes
+the action from the active set but retains the exact immutable completion and
+deterministic audit event in a bounded quarantine. It suspends the run, rotates
+the run's same-generation authority signal, cancels the old signal, and rejects
+new or already-issued authority until the exact event is reconciled. The host
+may retry only that same completion; changed retries fail closed, and no
+completion retry redispatches the operation. If the bounded host retry remains
+unresolved, the runtime cancels the run and stops provider continuation with
+`agent_completion_audit_unavailable`.
+
+Above the host permit boundary, the governed runtime gives each authorized
+dispatch its own linked, identity-tracked cancellation source. The user may
+request cancellation once from the exact visible active-tool card. The host
+records the cancelled tool outcome and the provider receives a structured
+`caller_cancelled` result, allowing the run to continue without reusing the
+one-action authorization. Duplicate or post-completion requests are typed
+no-ops. Run-wide Stop remains a separate operation: if it races action
+cancellation, whole-turn revocation wins and no provider continuation occurs.
+The host normalizes cancelled waits and cancellation exceptions to a failed
+result bearing the exact audited cause. Permit, runtime, and input-scope
+revocation outrank caller cancellation, so provider results cannot contradict
+the durable audit.
+
+Agent-action phase IDs and durable state transitions are deterministic and
+idempotent. SQLite atomically enforces
+`requested -> approved/denied -> started -> succeeded/failed/cancelled`.
+Startup reconciles an incomplete `started` action to `cancelled` with the
+stable `application_restart` code before provider or UI work begins.
+
+Audit details are a closed, explicitly encoded value shape. They contain the
+run, trusted capability/risk, permission/decision, policy generation,
+target-identity digest, opaque approval/authorization ID digests, approval
+duration, authority expiry, execution duration, optional bounded counts or
+artifact references, authorization source, and stable result code. They do not
+contain prompts, screen/command output, raw arguments, approval display values,
+or secrets.
+
+The desktop composition registers the broker, its SQLite audit dependency, the
+session-host executor, a composition-owned human approval principal, and the
+provider-neutral `IGovernedAgentRuntime`. The runtime supplies only its closed,
+capability-filtered tool definitions. It turns a model proposal into a trusted
+typed request and returns a bounded structured result only after the host
+consumes the exact one-action authorization. Provider adapters receive neither
+the broker nor an executor.
+
+The first production surface is deliberately narrower than the complete M3
+catalog: its visible run selector offers the active terminal, current live tab,
+current workspace, or `Selected terminals`, and exposes `panel.inspect`,
+`panel.focus`, read-screen, wait, send-text, paste, send-key, send-mouse,
+interrupt, and resize. `Selected terminals` is a checkbox-built subset of 1 to
+64 current live terminals from one
+window/workspace. The desktop shows each choice's exact stable tab and panel IDs
+and marks its terminal/tab labels as untrusted; it accepts no free-form target
+IDs. A prepared connection plan or pending ensure request is not a live choice;
+the desktop waits for an exact active host-session observation. Scope and
+selection controls lock when the run binds. The runtime
+canonicalizes and pins the exact selected membership, then re-resolves those
+same panel/session identities before each tool composition. A disappeared
+panel, invalidated or replaced session, or membership mismatch fails closed
+without automatic removal, substitution, or widening. The user must explicitly
+review and reselect stale choices before binding, or clear a bound/failed run
+before choosing again. The initial ordered live terminal/session membership is
+fixed for every bound scope; panel creation, closure, or session replacement
+therefore requires a cleared/new run rather than changing an existing run. The
+provider receives a bounded host-generated manifest of panel IDs and
+descriptive title, tab, connection, and working-directory metadata plus
+supported operations. Those labels remain untrusted content.
+
+The two production panel tools have no generic graph-command or provider
+execution path. For an exact panel/session target their schemas are closed empty
+objects. For any broader target they require exactly one `panel_id`, whose enum
+contains only current active graph-backed panels, even when the enum has one
+value. The parser rejects unknown fields and out-of-scope IDs; the trusted
+composer narrows the request to that exact graph panel. `panel.inspect` is a
+`Search` observation and returns fresh host-owned identity, revision,
+lifecycle, health, visibility, focus, and activity state. Descriptive titles,
+connection boundary, and working directory are individually bounded and
+redacted and the envelope is marked
+`content_origin=untrusted_panel_metadata`. `panel.focus` is a `RunCommands`
+routine action. The host holds its graph gate while it resolves and binds the
+exact panel, consumes the one-action permit, re-resolves and compares the
+binding, and performs the adjacent cancellation check. Only then may it call
+the expected-revision synchronous graph activation, which is the commit point.
+Revision/session drift or permit mismatch therefore cannot focus a panel.
+Cancellation after commit cannot erase the receipt, and an already-focused
+panel returns `changed=false` without advancing graph revision or sequence. The
+provider receives only the committed window/workspace/tab/panel identity,
+revision, sequence, and change flag.
+
+An exact single-terminal tool schema omits `panel_id`. Every broader
+tab/workspace/selected-terminal schema requires `panel_id` and enumerates only
+panels that support that tool's capability, even when one terminal is
+currently eligible. The parser checks the selected ID against a fresh target
+resolution immediately before composition. The trusted composer then narrows
+the enclosing scope to one exact panel and session; approval presents that
+exact action target, and the structured result includes the trusted panel ID.
+Tools that inject terminal input are advertised only when the selected live
+renderer can uphold the human-preemption invariant.
+The host exposes that proof as the explicit `terminal.agent_input_barrier`
+capability rather than inferring it from a renderer name. Both the managed
+renderer and the macOS libghostty shim implement the barrier; a renderer
+without it receives no agent input tools. Resize is governed independently by
+exact interactive-attachment authority and the serialized resize transaction.
+
+Send-mouse is one closed terminal-cell event, not generic cursor or desktop
+automation. Its schema permits only a fixed button/event vocabulary, bounded
+zero-based column and row, and unique known modifiers. The trusted composer
+binds every one of those fields plus the exact session into the approval and
+argument digest. The host independently requires both `terminal.mouse` and
+`terminal.agent_input_barrier`, consumes the exact authorization, and acquires a
+one-action input lease before typed dispatch. Human input preempts the lease;
+success returns only a receipt and terminal-outcome uncertainty follows the
+same quarantine path as other input mutations.
+
+Paste is a distinct governed mutation, not an alias for send-text and not an
+ambient clipboard read. Its provider schema accepts one non-empty, well-formed
+Unicode value of at most 2,048 UTF-8 bytes; tab, carriage return, and line feed
+are the only permitted control characters. The trusted composer revalidates
+that shape, rejects likely literal-secret material, binds the exact raw text to
+the argument digest, and renders controls and formatting characters with
+reversible escaping for approval. The tool is advertised only when the live
+terminal exposes both `terminal.paste` and
+`terminal.agent_input_barrier`. The catalog marks it as a mutation, so ordinary
+`Auto` cannot authorize it; the host additionally accepts only an exact
+`HumanApproval` or already-confirmed run-local `YoloPolicy` source. After
+rechecking both capabilities, the host acquires one one-action input lease and
+passes `ConfirmedUnsafe` to the typed paste port only at that final trusted
+boundary. The portable engine keeps the caller/lease token on each queued
+mutation through the PTY write, which is its irreversible commit point. A
+normal receipt remains gated by flush, but post-commit cancellation or flush
+failure completes that committed receipt before failing the session; this
+prevents an already-written command from being presented as safely retryable.
+Queued cancellation, writer failure, and shutdown still settle every
+uncommitted acknowledgement. The macOS
+shim performs the equivalent current-epoch check on the AppKit thread, and its
+native smoke covers both current-epoch guarded paste and stale-epoch rejection
+after physical input advances authority. A successful paste returns only a
+receipt. Engine confirmation refusal, invalid results, audit uncertainty, or
+cancellation never causes a second paste dispatch.
+
+Resize is a closed mutation rather than a provider-selected renderer action.
+Its schema contains exact integer `columns` from 2 to 1,000 and `rows` from 1
+to 1,000, plus the existing enumerated `panel_id` in a broad scope. The runtime advertises
+it only when the terminal reports `terminal.resize` and a fresh host snapshot
+contains exactly one interactive attachment owned by the authenticated visible
+desktop client. The runtime preserves that attachment's trusted logical
+dimensions and render scale; the provider cannot supply or observe the
+attachment identity. The composer binds the exact attachment and every
+viewport field into the approval and argument digest. The host captures the
+same attachment authority and exact session revision immediately before
+dispatch, then serializes renderer, human, and governed resizes through one
+per-session gate that covers both the terminal-engine call and attachment
+metadata commit. An unrelated revision or late caller cancellation after a
+successful engine return cannot split those states; changed attachment
+authority still fails closed. The macOS shim applies and verifies the exact
+Ghostty cell grid. Absence, ambiguity, replacement, revocation, or native
+exact-grid failure never causes inference, substitution, or a second resize.
+
+The desktop renders the pinned ordered scope in an expandable context
+inspector. Its immutable rows expose exact identities, state, and advertised
+operations alongside bounded/redacted untrusted labels. This projection is
+descriptive evidence only: it carries no attachment, permit, authorization, or
+execution path, and it disappears when the run is cleared.
+
+Run-local YOLO is an ephemeral runtime overlay, not a durable setting. The
+runtime rejects any baseline policy containing YOLO and deliberately rejects
+tab/workspace/selected-terminal runs. Enabling it requires an already
+registered idle exact-panel run and a confirmation from the composition-owned
+authenticated desktop principal. The current UI offers one fixed 15-minute
+window while the application contract caps any future choice at one hour.
+Disable and expiry advance the broker-owned policy generation even while a tool
+is active, cancel the old generation and permit, and restore the baseline
+per-action policy before another action can start.
+
+Each policy change stays suspended until a deterministic, secret-free
+transition record is durable. That record binds the run, generation, exact
+target-identity digest, transition (`enabled`, `disabled`, `expired`, or other
+update), and optional YOLO expiry. A retry after ambiguous storage completion
+accepts only the exact previously committed event. The live agent surface
+shows the exact target plus trusted connection boundary/current working
+directory, and keeps an unmistakable YOLO warning, expiry, Disable, and Stop
+visible for the whole window.
+
+## Consequences
+
+- Provider adapters and the native loop remain unable to execute application
+  operations directly.
+- Approval replay and changed target/argument use fail because authorizations
+  are exact, expiring, generation-bound, and single-use.
+- Audit availability is part of authorization availability.
+- Trusted risk classification and policy evaluation are testable without UI or
+  terminal engines.
+- A descriptive agent context snapshot is not reusable authority.
+- The typed terminal composer, execution-time fingerprint recomputation,
+  session-host consume-and-execute bridge, active cancellation, human input
+  preemption, and restart-safe action audit state are implemented and covered
+  by end-to-end broker/host tests.
+- The governed `panel.inspect` and `panel.focus` slice is implemented through a
+  closed typed composer and session-host port. Exact/broad schema selection,
+  permit-before-focus, revision drift, committed receipts, already-focused
+  revision stability, and bounded redacted inspection results have focused
+  automated coverage. The other four workspace-graph catalog tools are not
+  production-reachable.
+- Governed provider tool composition, native structured result continuation,
+  the visible one-action approval/run surface, exact active-tool cancellation,
+  and a separate persistent run-wide Stop control are implemented for
+  active-panel, current-tab, current-workspace, and explicitly selected
+  live-terminal scopes.
+  Multi-terminal actions are selected with capability-specific panel IDs and
+  narrowed to exact panel/session approvals and execution.
+- Exact-panel host/working-directory context and the complete visible run-local
+  `YOLO` lifecycle, including immediate in-flight disable, automatic expiry,
+  and policy-transition audit, are implemented.
+- Completion-audit uncertainty quarantines the immutable result, revokes run
+  authority, prevents provider continuation, and never retries terminal input.
+- Saved-screen-template targeting beyond the live current-tab scope and
+  session/persistent approvals remain separate M3 work. Broader-scope YOLO is
+  intentionally not enabled by this decision.
+
+## Alternatives rejected
+
+- Passing an `IServiceProvider`, session-host client, or terminal object to the
+  agent loop creates ambient authority.
+- Trusting provider tool schemas or risk labels lets prompt injection redefine
+  permissions.
+- Long-lived bearer permissions make replay and scope drift difficult to
+  contain.
+- Recording only successful actions omits denied, cancelled, and partially
+  started security evidence.
+- Treating context graph revision or a disabled button as authorization leaves
+  execution vulnerable to stale state and non-UI callers.

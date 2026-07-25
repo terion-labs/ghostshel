@@ -1,0 +1,2 @@
+tty=/dev/pts/0
+is_tty=yes

@@ -1,0 +1,276 @@
+<Window
+    x:Class="GhostShell.App.Views.McpServerProfileEditorDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    Title="MCP server"
+    Width="840"
+    Height="820"
+    MinWidth="700"
+    MinHeight="620"
+    CanResize="True"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner"
+    Opened="OnOpened">
+  <Grid RowDefinitions="62,*,72">
+    <Grid Margin="20,0" ColumnDefinitions="*,Auto">
+      <StackPanel VerticalAlignment="Center" Spacing="2">
+        <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
+        <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
+      </StackPanel>
+      <Button
+          Grid.Column="1"
+          Classes="IconButton"
+          Click="OnCancelClick"
+          IsCancel="True"
+          ToolTip.Tip="Close editor"
+          AutomationProperties.Name="Close MCP-server editor">
+        <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
+      </Button>
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="20,8,20,24" Spacing="14">
+        <Border Classes="SettingsCard">
+          <StackPanel Margin="16" Spacing="12">
+            <StackPanel Spacing="4">
+              <TextBlock FontWeight="SemiBold" Text="Name" />
+              <TextBox
+                  x:Name="McpServerNameInput"
+                  Text="{Binding Name}"
+                  PlaceholderText="Local tools"
+                  AutomationProperties.Name="MCP server name" />
+            </StackPanel>
+            <StackPanel Spacing="4">
+              <TextBlock FontWeight="SemiBold" Text="Executable" />
+              <TextBox
+                  Classes="Monospace"
+                  Text="{Binding Executable}"
+                  PlaceholderText="/absolute/path/to/server"
+                  AutomationProperties.Name="MCP server executable path" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Enter one fully qualified executable path. GhostSHELL launches it directly; this field is not a shell command."
+                  TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Spacing="4">
+              <TextBlock FontWeight="SemiBold" Text="Working directory" />
+              <TextBox
+                  Classes="Monospace"
+                  Text="{Binding WorkingDirectory}"
+                  PlaceholderText="Optional absolute directory"
+                  AutomationProperties.Name="MCP server working directory" />
+            </StackPanel>
+            <CheckBox
+                IsChecked="{Binding IsEnabled}"
+                Content="Enable this server for future governed agent runs"
+                AutomationProperties.Name="Enable MCP server" />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="SettingsCard">
+          <StackPanel Margin="16" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="3">
+                <TextBlock Classes="SectionHeading" Text="ORDERED ARGUMENTS" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Text="Each row is one exact argv value. Rows are never joined into a shell command."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+              <Button
+                  Grid.Column="1"
+                  Classes="SecondaryButton"
+                  Click="OnAddArgumentClick"
+                  Content="Add argument"
+                  AutomationProperties.Name="Add MCP server argument" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Arguments}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="0,4,0,0" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
+                    <TextBlock
+                        MinWidth="24"
+                        VerticalAlignment="Center"
+                        Classes="Monospace Muted"
+                        Text="{Binding Position, StringFormat={}#{0}}" />
+                    <TextBox
+                        Grid.Column="1"
+                        Classes="Monospace"
+                        Text="{Binding Value}"
+                        PlaceholderText="One argument"
+                        AutomationProperties.Name="{Binding AccessibleName}" />
+                    <Button
+                        Grid.Column="2"
+                        Classes="IconButton"
+                        Click="OnMoveArgumentUpClick"
+                        ToolTip.Tip="Move argument up"
+                        AutomationProperties.Name="{Binding AccessibleName, StringFormat={}Move {0} up}">
+                      <icons:SymbolIcon Symbol="ArrowUp" FontSize="13" />
+                    </Button>
+                    <Button
+                        Grid.Column="3"
+                        Classes="IconButton"
+                        Click="OnMoveArgumentDownClick"
+                        ToolTip.Tip="Move argument down"
+                        AutomationProperties.Name="{Binding AccessibleName, StringFormat={}Move {0} down}">
+                      <icons:SymbolIcon Symbol="ArrowDown" FontSize="13" />
+                    </Button>
+                    <Button
+                        Grid.Column="4"
+                        Classes="DangerButton"
+                        Click="OnRemoveArgumentClick"
+                        ToolTip.Tip="Remove argument"
+                        AutomationProperties.Name="{Binding AccessibleName, StringFormat={}Remove {0}}">
+                      <icons:SymbolIcon Symbol="Delete" FontSize="13" />
+                    </Button>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="SettingsCard">
+          <StackPanel Margin="16" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="3">
+                <TextBlock Classes="SectionHeading" Text="ENVIRONMENT BINDINGS" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Text="Map a portable variable name to an opaque SecretRef. Credential values remain in the operating-system vault and are never shown here."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+              <Button
+                  Grid.Column="1"
+                  Classes="SecondaryButton"
+                  Click="OnAddEnvironmentBindingClick"
+                  Content="Add binding"
+                  AutomationProperties.Name="Add MCP environment binding" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Environment}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="0,4,0,0" ColumnDefinitions="2*,3*,Auto" ColumnSpacing="8">
+                    <TextBox
+                        Classes="Monospace"
+                        Text="{Binding Name}"
+                        PlaceholderText="VARIABLE_NAME"
+                        AutomationProperties.Name="{Binding NameAccessibleName}" />
+                    <TextBox
+                        Grid.Column="1"
+                        Classes="Monospace"
+                        Text="{Binding SecretReference}"
+                        PlaceholderText="Opaque SecretRef"
+                        AutomationProperties.Name="{Binding SecretReferenceAccessibleName}"
+                        AutomationProperties.HelpText="This is an opaque vault reference, never the secret value." />
+                    <Button
+                        Grid.Column="2"
+                        Classes="DangerButton"
+                        Click="OnRemoveEnvironmentBindingClick"
+                        ToolTip.Tip="Remove environment binding"
+                        AutomationProperties.Name="{Binding RemoveAccessibleName}">
+                      <icons:SymbolIcon Symbol="Delete" FontSize="13" />
+                    </Button>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="SettingsCard">
+          <StackPanel Margin="16" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="3">
+                <TextBlock Classes="SectionHeading" Text="ENABLED TOOL ALLOWLIST" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Text="Only exact, case-sensitive names in this list can enter a frozen agent-run manifest."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+              <Button
+                  Grid.Column="1"
+                  Classes="SecondaryButton"
+                  Click="OnAddEnabledToolClick"
+                  Content="Add tool"
+                  AutomationProperties.Name="Add enabled MCP tool" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding EnabledTools}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="0,4,0,0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox
+                        Classes="Monospace"
+                        Text="{Binding Name}"
+                        PlaceholderText="exact.tool.name"
+                        AutomationProperties.Name="{Binding NameAccessibleName}" />
+                    <Button
+                        Grid.Column="1"
+                        Classes="DangerButton"
+                        Click="OnRemoveEnabledToolClick"
+                        ToolTip.Tip="Remove enabled tool"
+                        AutomationProperties.Name="{Binding RemoveAccessibleName}">
+                      <icons:SymbolIcon Symbol="Delete" FontSize="13" />
+                    </Button>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="NoticeCard">
+          <Grid Margin="14" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <icons:SymbolIcon Symbol="Shield" FontSize="17" Foreground="{DynamicResource ShellAccentBrush}" />
+            <TextBlock
+                Grid.Column="1"
+                Classes="Muted"
+                FontSize="{DynamicResource ShellFontSize10}"
+                Text="Adding a server or expanding its launch details, environment access, or tool allowlist opens a separate trusted review before anything is saved."
+                TextWrapping="Wrap" />
+          </Grid>
+        </Border>
+
+        <TextBlock
+            x:Name="ValidationError"
+            Foreground="{DynamicResource ShellDangerBrush}"
+            Focusable="True"
+            IsVisible="False"
+            TextWrapping="Wrap"
+            AutomationProperties.LiveSetting="Assertive"
+            AutomationProperties.Name="MCP server validation error" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid Margin="20,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <TextBlock
+            VerticalAlignment="Center"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="Command and ordered arguments stay separate."
+            TextWrapping="Wrap" />
+        <Button
+            Grid.Column="1"
+            MinWidth="92"
+            Click="OnCancelClick"
+            Content="Cancel"
+            IsCancel="True"
+            AutomationProperties.Name="Cancel MCP-server changes" />
+        <Button
+            Grid.Column="2"
+            MinWidth="132"
+            Classes="PrimaryButton"
+            Click="OnSaveClick"
+            Content="Review and save"
+            IsDefault="True"
+            AutomationProperties.Name="Review and save MCP server" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -1,0 +1,30 @@
+namespace GhostShell.Files;
+
+public enum FileProviderErrorCode
+{
+    UnsupportedCapability,
+    InvalidLocation,
+    InvalidName,
+    OutsideRoot,
+    RootMutationNotAllowed,
+    NotFound,
+    AlreadyExists,
+    Conflict,
+    PreconditionFailed,
+    RangeNotSatisfiable,
+    LimitExceeded,
+    AccessDenied,
+    HostKeyUnknown,
+    HostKeyChanged,
+    HostKeyStoreInvalid,
+    NotDirectory,
+    IsDirectory,
+    DirectoryNotEmpty,
+    LinkNotAllowed,
+    SharingViolation,
+    QuotaExceeded,
+    UnexpectedEndOfStream,
+    PartialTransfer,
+    Cancelled,
+    IoFailure,
+}

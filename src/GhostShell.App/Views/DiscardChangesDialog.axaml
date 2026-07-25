@@ -1,0 +1,34 @@
+<Window
+    x:Class="GhostShell.App.Views.DiscardChangesDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Discard changes?"
+    Width="470"
+    SizeToContent="Height"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Grid Margin="24" RowDefinitions="Auto,Auto" RowSpacing="18">
+    <StackPanel Spacing="6">
+      <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="{Binding Heading}" />
+      <TextBlock
+          Classes="Muted"
+          Text="{Binding Detail}"
+          TextWrapping="Wrap" />
+    </StackPanel>
+    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+      <Button
+          MinWidth="96"
+          Click="OnKeepEditingClick"
+          Content="Keep editing"
+          IsCancel="True"
+          AutomationProperties.Name="Keep editing" />
+      <Button
+          MinWidth="120"
+          Classes="DestructiveButton"
+          Click="OnDiscardClick"
+          Content="Discard changes"
+          AutomationProperties.Name="Discard unsaved changes" />
+    </StackPanel>
+  </Grid>
+</Window>

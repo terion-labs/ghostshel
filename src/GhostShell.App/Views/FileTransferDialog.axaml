@@ -1,0 +1,50 @@
+<Window
+    x:Class="GhostShell.App.Views.FileTransferDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="620"
+    Height="430"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner"
+    Title="Queue transfer">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Classes="TopChrome">
+      <StackPanel Margin="18,12" Spacing="2">
+        <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Queue file transfer" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Transfers are bounded, cancellable, and preserve provider conflict semantics." />
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="1" Margin="20" Spacing="15">
+      <Border x:Name="ValidationCard" Classes="NoticeCard" IsVisible="False"><TextBlock x:Name="ValidationMessage" Margin="12" Foreground="#F29C9C" TextWrapping="Wrap" /></Border>
+      <Border Classes="NoticeCard">
+        <StackPanel Margin="12" Spacing="3">
+          <TextBlock Classes="Eyebrow" Text="SOURCE" />
+          <TextBlock Classes="Monospace" Text="{Binding Source.Name}" />
+          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SourceLocation}" />
+        </StackPanel>
+      </Border>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+        <StackPanel Spacing="4"><TextBlock FontWeight="SemiBold" Text="Operation" /><ComboBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Operation}" /></StackPanel>
+        <StackPanel Grid.Column="1" Spacing="4"><TextBlock FontWeight="SemiBold" Text="When destination exists" /><ComboBox ItemsSource="{Binding ConflictPolicies}" SelectedItem="{Binding ConflictPolicy}" /></StackPanel>
+      </Grid>
+      <StackPanel Spacing="4">
+        <TextBlock FontWeight="SemiBold" Text="Destination provider" />
+        <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedDestinationProfile}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+      </StackPanel>
+      <StackPanel Spacing="4">
+        <TextBlock FontWeight="SemiBold" Text="Destination location" />
+        <TextBox Classes="Monospace" Text="{Binding Destination}" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The location is parsed into a structured provider address; it is never appended to a local command string." />
+      </StackPanel>
+    </StackPanel>
+
+    <Border Grid.Row="2" BorderBrush="#29292D" BorderThickness="0,1,0,0">
+      <Grid Margin="16,12" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+        <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />
+        <Button Grid.Column="2" Classes="PrimaryButton" Click="OnQueueClick" Content="Queue transfer" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

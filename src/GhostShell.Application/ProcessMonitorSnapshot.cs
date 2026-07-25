@@ -1,0 +1,8 @@
+namespace GhostShell.Application;
+
+public sealed record ProcessMonitorSnapshot(
+    DateTimeOffset CapturedAtUtc,
+    IReadOnlyList<ProcessMonitorEntry> Processes,
+    int EnumeratedProcessCount,
+    int ObservedProcessCount,
+    bool IsTruncated);
