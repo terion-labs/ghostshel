@@ -37,6 +37,7 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/GhostShell.AccessibilityAcceptance/GhostShell.AccessibilityAcceptance.csproj" />
+    <Project Path="tools/GhostShell.DesignQa/GhostShell.DesignQa.csproj" />
     <Project Path="tools/GhostShell.Packaging/GhostShell.Packaging.csproj" />
     <Project Path="tools/GhostShell.SingleInstanceTestHost/GhostShell.SingleInstanceTestHost.csproj" />
     <Project Path="tools/GhostShell.TerminalAcceptance/GhostShell.TerminalAcceptance.csproj" />

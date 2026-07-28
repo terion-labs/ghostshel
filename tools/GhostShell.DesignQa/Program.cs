@@ -1,0 +1,488 @@
+using System.Reflection;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Media.Imaging;
+using Avalonia.Styling;
+using Avalonia.Input;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using GhostShell.App.ViewModels;
+using GhostShell.App.Views;
+using GhostShell.Application;
+using GhostShell.Core;
+
+namespace GhostShell.DesignQa;
+
+/// <summary>
+/// Presentation-only capture harness. It renders the product's real
+/// <see cref="MainWindow"/>, styles, and view models against a deterministic
+/// in-memory fixture and writes one PNG per route. Rendering happens in-process
+/// through <see cref="RenderTargetBitmap"/>, so it needs no screen-recording
+/// permission and never captures unrelated windows.
+/// </summary>
+internal static class Program
+{
+    public static string OutputDirectory { get; private set; } = string.Empty;
+
+    public static string[] RequestedRoutes { get; private set; } = [];
+
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        OutputDirectory = Path.GetFullPath(
+            args.FirstOrDefault() ?? Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "design-qa", "current"));
+        RequestedRoutes = args.Skip(1).ToArray();
+
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
+    }
+
+    private static AppBuilder BuildAvaloniaApp() =>
+        AppBuilder.Configure<QaApplication>()
+            .UsePlatformDetect()
+            .WithInterFont()
+            .LogToTrace();
+}
+
+internal sealed record RouteCapture(
+    string Name,
+    Action<MainWindowViewModel> Apply,
+    string? FocusFirst = null,
+    int Height = 900,
+    ThemePreference? Theme = null);
+
+internal sealed class QaApplication : Avalonia.Application
+{
+    private static readonly QaAiProfileRuntime AgentProfiles = new();
+
+    private static readonly QaOfflineAgentRuntime AgentRuntime = new();
+
+    private static readonly RouteCapture[] Routes =
+    [
+        new("launcher-home", vm => vm.ShowLauncher()),
+        new("launcher-connections", vm => vm.ShowLauncherConnections()),
+        new("launcher-screens", vm => vm.ShowLauncherScreens()),
+        new("launcher-history", vm => vm.ShowLauncherHistory()),
+        new("settings-appearance", vm => vm.ShowSettings(SettingsPage.Appearance)),
+        new("settings-workspaces", vm => vm.ShowSettings(SettingsPage.Workspaces)),
+        new("settings-terminal", vm => vm.ShowSettings(SettingsPage.Terminal)),
+        new("settings-quick-terminal", vm => vm.ShowSettings(SettingsPage.QuickTerminal)),
+        new("settings-keybindings", vm => vm.ShowSettings(SettingsPage.Keybindings)),
+        new("settings-files", vm => vm.ShowSettings(SettingsPage.Files)),
+        new("settings-agent", vm => vm.ShowSettings(SettingsPage.Agent)),
+        new("settings-mcp", vm => vm.ShowSettings(SettingsPage.Mcp)),
+        new("settings-secrets", vm => vm.ShowSettings(SettingsPage.Secrets)),
+        new("settings-diagnostics", vm => vm.ShowSettings(SettingsPage.Diagnostics)),
+        new("settings-about", vm => vm.ShowSettings(SettingsPage.About)),
+        new("overlay-command-palette", vm =>
+        {
+            vm.ShowWorkspace();
+            vm.ShowOverlay(ShellOverlay.CommandPalette);
+        }),
+        new("overlay-new-item", vm =>
+        {
+            vm.ShowLauncher();
+            vm.ShowOverlay(ShellOverlay.NewItem);
+        }),
+        new("overlay-new-panel", vm =>
+        {
+            vm.ShowWorkspace();
+            vm.ShowOverlay(ShellOverlay.NewPanel);
+        }),
+        // Opened on a real layout: an empty designer hides every defect the
+        // populated one would show.
+        new("overlay-layout-designer", vm =>
+        {
+            vm.ShowWorkspace();
+            vm.BeginEditLayout(new LayoutId("grid-four"));
+        }),
+        new("workspace", vm => vm.ShowWorkspace()),
+        // The agent panel's conversation layout is otherwise unreviewable: the
+        // harness has no provider and reaches no endpoint, so every other route
+        // can only render the panel's empty state.
+        new("workspace-agent", vm =>
+        {
+            vm.ShowWorkspace();
+            AgentProfiles.PublishSampleProfile();
+            AgentRuntime.PublishSampleConversation();
+        }),
+        new("settings-workspace-editor", vm =>
+        {
+            vm.ShowSettings(SettingsPage.Workspaces);
+            vm.BeginEditWorkspace(new WorkspaceId("operations"));
+        }, Height: 1200),
+        // Keyboard focus has its own visuals; capturing it keeps the focus ring
+        // reviewable instead of only reachable by hand.
+        new("settings-appearance-focused", vm => vm.ShowSettings(SettingsPage.Appearance), FocusFirst: "SettingsBackButton"),
+        // Long settings pages are also captured whole, so a section below the
+        // fold is reviewable without scrolling by hand.
+        new("settings-appearance-full", vm => vm.ShowSettings(SettingsPage.Appearance), Height: 2100),
+        new("settings-terminal-full", vm => vm.ShowSettings(SettingsPage.Terminal), Height: 1500),
+        // The corner and density settings are only worth having if they visibly
+        // reshape the interface. Capturing both extremes makes a regression that
+        // silently disconnects them show up as two identical images.
+        new(
+            "appearance-corners-tight",
+            vm => vm.ShowLauncher(),
+            Theme: AppearanceExtreme(cornerRadius: 0, InterfaceDensity.Compact)),
+        new(
+            "appearance-corners-round",
+            vm => vm.ShowLauncher(),
+            Theme: AppearanceExtreme(cornerRadius: 20, InterfaceDensity.Comfortable)),
+    ];
+
+    /// <summary>
+    /// A theme that differs from the default only in corner radius and density,
+    /// so a comparison between the two captures isolates those two settings.
+    /// </summary>
+    private static ThemePreference AppearanceExtreme(
+        double cornerRadius,
+        InterfaceDensity density) =>
+        new(
+            ThemePreference.Default.Id,
+            ThemePreference.Default.Name,
+            AppearanceMode.Dark,
+            PlatformProfile.Automatic,
+            AccentPreference.FollowHost,
+            cornerRadiusOverride: cornerRadius,
+            density: density);
+
+    /// <summary>
+    /// Modal editors and confirmations are their own windows, so they are
+    /// captured directly rather than through a shell route.
+    /// </summary>
+    private static readonly (string Name, Func<Window> Create, ThemePreference? Theme)[] Dialogs =
+    [
+        ("dialog-connection-editor", () => new ConnectionEditorDialog(
+            new ConnectionEditorViewModel(new UnusedConnectionRuntime())), null),
+        ("dialog-connection-editor-existing", () => new ConnectionEditorDialog(
+            new ConnectionEditorViewModel(
+                new UnusedConnectionRuntime(),
+                QaData.Connections[0].Value,
+                QaData.Connections[0].Revision)), null),
+        ("dialog-ai-provider-editor", () => new AiProviderProfileEditorDialog(
+            new AiProviderProfileEditorViewModel(new QaAiProfileRuntime(), [])), null),
+        ("dialog-mcp-server-editor", () => new McpServerProfileEditorDialog(
+            new McpServerProfileEditorViewModel()), null),
+        ("dialog-saved-screen-editor", () => new SavedScreenEditorDialog(
+            new SavedScreenEditorViewModel(
+                QaData.Screens[0].Value,
+                QaData.Screens[0].Revision,
+                QaData.Connections.Select(item => item.Value).ToArray(),
+                [],
+                QaData.Layouts.Select(item => item.Value).ToArray()),
+            // The harness never persists; capture is presentation only.
+            static (_, _) => throw new NotSupportedException(
+                "The design QA harness does not save definitions.")), null),
+        // The design system itself, so a changed radius, gap, or tone shows up as a
+        // diff in one image rather than as drift discovered later in a screenshot.
+        ("design-system", static () => new DesignSystemGalleryWindow(), null),
+        ("dialog-definition-delete", () => new DefinitionDeleteDialog(
+            "connection",
+            QaData.Connections[0].Value.Name), null),
+        // The same gallery at the two density extremes. The spacing scale, the
+        // radii, and the control metrics all derive from the settings, so if any
+        // of them stops doing so these two become the same image — which is the
+        // only way to notice that a token quietly went back to being a literal.
+        ("design-system-compact",
+            static () => new DesignSystemGalleryWindow(),
+            AppearanceExtreme(cornerRadius: 0, InterfaceDensity.Compact)),
+        ("design-system-comfortable",
+            static () => new DesignSystemGalleryWindow(),
+            AppearanceExtreme(cornerRadius: 20, InterfaceDensity.Comfortable)),
+    ];
+
+    public override void Initialize()
+    {
+        // Load the product's compiled resources and styles rather than a
+        // harness copy that could drift from the shipped application.
+        var productApplication = new GhostShell.App.App();
+        productApplication.Initialize();
+        _productApplication = productApplication;
+
+        // The shipped app publishes its ShellFontSize*/metric resources from the
+        // appearance pipeline at composition time. The harness has no composition
+        // root, so it runs that same private mapping here; without it every
+        // DynamicResource size silently falls back and the capture misreports
+        // the real typography.
+        ApplyProductAppearanceResources(productApplication, ThemePreference.Default);
+
+        ((IResourceProvider)productApplication.Resources).RemoveOwner(productApplication);
+        Resources = productApplication.Resources;
+        while (productApplication.Styles.Count > 0)
+        {
+            var style = productApplication.Styles[0];
+            productApplication.Styles.RemoveAt(0);
+            Styles.Add(style);
+        }
+
+        RequestedThemeVariant = ThemeVariant.Dark;
+    }
+
+    private static GhostShell.App.App? _productApplication;
+
+    /// <summary>
+    /// Re-publishes the application resources for <paramref name="theme"/>. The
+    /// resource dictionary is shared with this harness application, so the live
+    /// window picks the new metrics up exactly as it does in the product.
+    /// </summary>
+    private static void ApplyTheme(ThemePreference theme)
+    {
+        if (_productApplication is { } productApplication)
+        {
+            ApplyProductAppearanceResources(productApplication, theme);
+        }
+    }
+
+    private static void ApplyProductAppearanceResources(
+        GhostShell.App.App productApplication,
+        ThemePreference theme)
+    {
+        // The reference frames were drawn with #FF8400 as the example host accent.
+        // Supplying it here keeps captures directly comparable; the product's own
+        // bronze fallback still applies whenever a host reports no accent.
+        var host = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Dark,
+            new RgbColor(0xFF, 0x84, 0x00),
+            supportsAdvancedMaterials: true);
+        var effectiveTheme = theme.Resolve(host);
+
+        var appAssembly = typeof(GhostShell.App.App).Assembly;
+        var mapper = appAssembly.GetType(
+                "GhostShell.App.EffectiveAppearanceResourceMapper",
+                throwOnError: true)!;
+        var mapped = mapper
+            .GetMethod("Map", BindingFlags.Public | BindingFlags.Static)!
+            .Invoke(null, [effectiveTheme]);
+
+        typeof(GhostShell.App.App)
+            .GetMethod(
+                "ApplyApplicationResources",
+                BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(productApplication, [mapped]);
+    }
+
+    public override void OnFrameworkInitializationCompleted()
+    {
+        if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            throw new InvalidOperationException("A desktop lifetime is required.");
+        }
+
+        var viewModel = CreateViewModel();
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Title = "GhostSHELL · design QA",
+            Width = 1440,
+            Height = 900,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Position = new PixelPoint(40, 40),
+        };
+
+        desktop.MainWindow = window;
+        window.Opened += async (_, _) => await CaptureAllAsync(desktop, window, viewModel);
+        window.Show();
+
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private static MainWindowViewModel CreateViewModel()
+    {
+        var catalog = new QaDefinitionCatalog(QaData.Snapshot);
+        var files = new EmptyFileClients();
+        var viewModel = new MainWindowViewModel(
+            DispatchProxy.Create<ISessionHostClient, UnusedProxy>(),
+            catalog,
+            new UnusedConnectionRuntime(),
+            new MemoryOnlySecretVault(),
+            files,
+            files,
+            new TerminalStartupCommandDispatcher(new MemoryOnlyAuditStore(), TimeProvider.System),
+            uiThreadDispatcher: new ImmediateUiDispatcher(),
+            recentSessionHistory: new GhostShell.App.RecentSessionHistory(
+                new QaRecentSessionStore(),
+                new QaTimeProvider()),
+            timeProvider: new QaTimeProvider(),
+            aiProviderRuntime: AgentProfiles,
+            agentChatRuntime: AgentRuntime);
+
+        // Real connection pills, so the row that carries them is reviewable
+        // rather than rendering empty.
+        var workspace = new RuntimeWorkspaceViewModel(
+            new WorkspaceInstanceId("qa-workspace"),
+            "Operations",
+            "Bronze",
+            viewModel.Connections.Take(2).ToArray());
+        // Real tabs so the tab strip is reviewable at every placement.
+        foreach (var (id, title, source) in new[]
+                 {
+                     ("qa-tab-api", "production-api", "production-api"),
+                     ("qa-tab-web", "staging-web", "staging-web"),
+                     ("qa-tab-db", "postgres-primary", "postgres-primary"),
+                 })
+        {
+            workspace.Tabs.Add(new RuntimeTabViewModel(new TabInstanceId(id), title, source));
+        }
+
+        // Real panels, so the panel card and its header are actually rendered. The
+        // harness cannot run a PTY, but the chrome around one is Avalonia's and is
+        // exactly where the rounded corner is either clipped or not.
+        var panels = new[]
+        {
+            new UnavailableRuntimePanelViewModel(
+                new PanelInstanceId("qa-panel-terminal"),
+                PanelKind.Terminal,
+                "production-api",
+                "LOCAL",
+                "This harness renders panel chrome without a live session."),
+            new UnavailableRuntimePanelViewModel(
+                new PanelInstanceId("qa-panel-browser"),
+                PanelKind.Browser,
+                "Browser",
+                "BROWSER",
+                "This harness renders panel chrome without a live session."),
+        };
+        foreach (var panel in panels)
+        {
+            workspace.Tabs[0].AddPanel(panel);
+        }
+
+        _ = workspace.Tabs[0].ActivatePanel(panels[0].Id);
+        workspace.Tabs[0].NotifyPanelLayoutChanged();
+        workspace.Tabs[0].IsActive = true;
+        // The active tab is what the canvas presents, and its setter is internal.
+        typeof(RuntimeWorkspaceViewModel)
+            .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(workspace, [workspace.Tabs[0]]);
+
+        typeof(MainWindowViewModel)
+            .GetProperty(nameof(MainWindowViewModel.RuntimeWorkspace))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(viewModel, [workspace]);
+
+        return viewModel;
+    }
+
+    /// <summary>
+    /// Shows a modal editor off-screen, lets it settle, then renders it at its
+    /// own arranged size so the capture reflects the dialog's real geometry.
+    /// </summary>
+    private static async Task CaptureDialogAsync(string name, Window dialog)
+    {
+        dialog.WindowStartupLocation = WindowStartupLocation.Manual;
+        dialog.Position = new PixelPoint(-4000, -4000);
+        dialog.ShowInTaskbar = false;
+        dialog.Show();
+        await Task.Delay(260);
+        Dispatcher.UIThread.RunJobs();
+        dialog.UpdateLayout();
+        await Task.Delay(140);
+
+        var width = (int)Math.Ceiling(Math.Max(dialog.Bounds.Width, 1));
+        var height = (int)Math.Ceiling(Math.Max(dialog.Bounds.Height, 1));
+        var path = Path.Combine(Program.OutputDirectory, $"{name}.png");
+        using (var bitmap = new RenderTargetBitmap(new PixelSize(width, height), new Vector(96, 96)))
+        {
+            bitmap.Render(dialog);
+            bitmap.Save(path);
+        }
+
+        dialog.Close();
+        Console.WriteLine($"CAPTURE {name} -> {path} ({width}x{height})");
+    }
+
+    private static async Task CaptureAllAsync(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        MainWindow window,
+        MainWindowViewModel viewModel)
+    {
+        var exitCode = 0;
+        try
+        {
+            Directory.CreateDirectory(Program.OutputDirectory);
+            await Task.Delay(800);
+
+            var requested = Program.RequestedRoutes;
+            var selected = requested.Length == 0
+                ? Routes
+                : Routes.Where(route => requested.Contains(route.Name)).ToArray();
+            var selectedDialogs = requested.Length == 0
+                ? Dialogs
+                : Dialogs.Where(dialog => requested.Contains(dialog.Name)).ToArray();
+
+            if (selected.Length == 0 && selectedDialogs.Length == 0)
+            {
+                var known = Routes.Select(r => r.Name).Concat(Dialogs.Select(d => d.Name));
+                throw new InvalidOperationException(
+                    $"No route matched. Known routes: {string.Join(", ", known)}");
+            }
+
+            foreach (var route in selected)
+            {
+                ApplyTheme(route.Theme ?? ThemePreference.Default);
+                // The sample agent conversation belongs to the one route that asks
+                // for it. Resetting first keeps that route from leaking a connected
+                // agent into whatever is captured after it, whatever the order.
+                AgentProfiles.Reset();
+                AgentRuntime.Reset();
+                route.Apply(viewModel);
+                await Task.Delay(220);
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                await Task.Delay(120);
+
+                if (route.FocusFirst is { } focusTarget)
+                {
+                    var control = window.GetVisualDescendants()
+                        .OfType<Control>()
+                        .FirstOrDefault(candidate => candidate.Name == focusTarget)
+                        ?? throw new InvalidOperationException(
+                            $"The route wanted to focus '{focusTarget}', which is not in the tree.");
+                    control.Focus(NavigationMethod.Tab);
+                    await Task.Delay(140);
+                    Dispatcher.UIThread.RunJobs();
+                }
+
+                if (window.Height != route.Height)
+                {
+                    window.Height = route.Height;
+                    await Task.Delay(200);
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                    await Task.Delay(120);
+                }
+
+                var path = Path.Combine(Program.OutputDirectory, $"{route.Name}.png");
+                using (var bitmap = new RenderTargetBitmap(new PixelSize(1440, route.Height), new Vector(96, 96)))
+                {
+                    bitmap.Render(window);
+                    bitmap.Save(path);
+                }
+
+                Console.WriteLine($"CAPTURE {route.Name} -> {path}");
+            }
+
+            foreach (var dialog in selectedDialogs)
+            {
+                ApplyTheme(dialog.Theme ?? ThemePreference.Default);
+                await CaptureDialogAsync(dialog.Name, dialog.Create());
+            }
+
+            ApplyTheme(ThemePreference.Default);
+        }
+        catch (Exception ex)
+        {
+            exitCode = 1;
+            Console.Error.WriteLine($"FAILED {ex}");
+        }
+        finally
+        {
+            viewModel.Dispose();
+            desktop.Shutdown(exitCode);
+        }
+    }
+}
