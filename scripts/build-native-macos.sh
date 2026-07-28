@@ -191,17 +191,23 @@ shim_compile_options=(
     -mmacosx-version-min=13.0
     -dynamiclib
 )
+shim_sources=(
+    "${repository_dir}/native/macos/GhostShellGhostty.m"
+    "${repository_dir}/native/macos/GhostShellMacInputAdapter.m"
+)
 shim_link_options=(
     -lghostty
     -framework AppKit
     -framework Foundation
+    # CAShapeLayer, for masking the terminal to its host panel's corner radius.
+    -framework QuartzCore
     -Wl,-rpath,@loader_path
     -Wl,-install_name,@rpath/libghostshell-ghostty.dylib
 )
 "${clang}" \
     "${shim_compile_options[@]}" \
     -isysroot "${macos_sdk}" \
-    "${repository_dir}/native/macos/GhostShellGhostty.m" \
+    "${shim_sources[@]}" \
     -I "${repository_dir}/native/macos" \
     -I "${ghostty_install_dir}/include" \
     -L "${ghostty_install_dir}/lib" \
@@ -259,6 +265,7 @@ shim_receipt_options=(
     "${shim_compile_options[@]}"
     "-isysroot=${sdk_identity}"
     "source=GhostShellGhostty.m"
+    "source=GhostShellMacInputAdapter.m"
     "-I=ghostshell-native-macos"
     "-I=ghostty-install-include"
     "-L=ghostty-install-lib"

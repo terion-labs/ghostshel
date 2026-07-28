@@ -12,4 +12,16 @@ public interface ITerminalRendererAttachment
     ValueTask DetachRendererAsync(CancellationToken cancellationToken);
 
     ValueTask FocusAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Applies typography and palette to the running terminal.
+    ///
+    /// Returns false where the engine cannot reconfigure a live surface, so the
+    /// caller can leave the terminal as it is rather than restarting the session
+    /// and losing its scrollback to a font change.
+    /// </summary>
+    ValueTask<bool> UpdateRenderProfileAsync(
+        TerminalRenderProfileSnapshot renderProfile,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(false);
 }

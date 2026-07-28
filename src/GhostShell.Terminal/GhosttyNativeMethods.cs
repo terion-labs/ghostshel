@@ -72,6 +72,34 @@ internal static class GhosttyNativeMethods
     [DllImport(LibraryName, EntryPoint = "ghostshell_terminal_input_epoch_v1")]
     internal static extern ulong TerminalInputEpochV1(GhosttyTerminalHandle terminal);
 
+    [DllImport(
+        LibraryName,
+        EntryPoint = "ghostshell_terminal_update_render_profile_v1")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool TerminalUpdateRenderProfileV1(
+        GhosttyTerminalHandle terminal,
+        nint renderProfile);
+
+    [DllImport(
+        LibraryName,
+        EntryPoint = "ghostshell_terminal_set_host_corner_radii_v1")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool TerminalSetHostCornerRadiiV1(
+        GhosttyTerminalHandle terminal,
+        double topLeft,
+        double topRight,
+        double bottomRight,
+        double bottomLeft);
+
+    [DllImport(
+        LibraryName,
+        EntryPoint = "ghostshell_terminal_set_focus_observer_v1")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static extern bool TerminalSetFocusObserverV1(
+        GhosttyTerminalHandle terminal,
+        nint observer,
+        nint userdata);
+
     [DllImport(LibraryName, EntryPoint = "ghostshell_terminal_focus")]
     internal static extern void TerminalFocus(GhosttyTerminalHandle terminal);
 

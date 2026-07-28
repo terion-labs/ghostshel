@@ -1,6 +1,8 @@
 #import "GhostShellGhostty.h"
+#import "GhostShellMacInputAdapter.h"
 
 #import <AppKit/AppKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <dispatch/dispatch.h>
 
 #include "ghostty.h"
@@ -231,8 +233,38 @@ static bool gs_add_size(size_t *total, size_t amount) {
     return true;
 }
 
-// libghostty 1.3.1 accepts only a shell command for embedded surfaces. Quote
-// every structured argv word so the compatibility shell cannot expand it.
+// A word that only contains these can be passed through as it is: the shell
+// libghostty wraps the command in cannot do anything with them.
+static bool gs_shell_word_is_bare(const char *word, size_t length) {
+    if (length == 0) return false;
+    for (size_t index = 0; index < length; index++) {
+        const char character = word[index];
+        const bool safe =
+            (character >= 'A' && character <= 'Z') ||
+            (character >= 'a' && character <= 'z') ||
+            (character >= '0' && character <= '9') ||
+            character == '/' || character == '.' ||
+            character == '-' || character == '_';
+        if (!safe) return false;
+    }
+    return true;
+}
+
+// libghostty 1.3.1 accepts only a shell command for embedded surfaces, and it
+// puts that string to two different readers: /bin/sh, which runs it, and its own
+// argument parser, which reads the first word to work out which shell this is and
+// inject the matching shell integration.
+//
+// Those two disagree about quoting. The parser is Zig's, configured without
+// single-quote support, so it treats ' as an ordinary character — quoting every
+// word, as this did, turned `/bin/zsh` into `'/bin/zsh'` and left the parser
+// reading a shell named `zsh'`. It recognised nothing, injected nothing, and with
+// no shell integration there are no prompt markers, so the terminal could never
+// tell an idle prompt from a running command and asked to confirm every close.
+//
+// A word that cannot be expanded is therefore passed through bare, which both
+// readers agree on. Anything else is still quoted: being unable to detect the
+// shell is a much smaller problem than letting a path expand.
 static char *gs_build_shell_command(const ghostshell_terminal_options_v1 *options) {
     if (options->executable == NULL) return NULL;
 
@@ -267,6 +299,13 @@ static char *gs_build_shell_command(const ghostshell_terminal_options_v1 *option
     for (size_t index = 0; index < wordCount; index++) {
         if (index > 0) *output++ = ' ';
         const char *word = index == 0 ? options->executable : options->arguments[index - 1];
+        size_t length = strnlen(word, gs_max_shell_command_bytes + 1);
+        if (gs_shell_word_is_bare(word, length)) {
+            memcpy(output, word, length);
+            output += length;
+            continue;
+        }
+
         *output++ = '\'';
         for (const char *character = word; *character != '\0'; character++) {
             if (*character == '\'') {
@@ -369,9 +408,10 @@ static bool gs_apply_hosted_input_policy(ghostty_config_t config) {
     return true;
 }
 
-static bool gs_apply_render_profile(
+static bool gs_apply_render_profile_ex(
     ghostty_config_t config,
-    const ghostshell_terminal_render_profile_v1 *profile) {
+    const ghostshell_terminal_render_profile_v1 *profile,
+    bool include_font_size) {
     if (profile == NULL) return true;
 
     char path[] = "/tmp/ghostshell-terminal-profile.XXXXXX";
@@ -413,6 +453,11 @@ static bool gs_apply_render_profile(
             fprintf(file, "\n") >= 0;
     }
 
+    if (written && include_font_size) {
+        // At creation the size travels on the surface config; a live update has
+        // no surface config, so it goes through the same file as everything else.
+        written = fprintf(file, "font-size = %.4f\n", (double)profile->font_size) >= 0;
+    }
     if (written && GS_PROFILE_HAS(profile, font_family)) {
         written = fprintf(file, "font-family = \"\"\nfont-family = ") >= 0 &&
             gs_write_config_string(file, profile->font_family) &&
@@ -557,6 +602,66 @@ static bool gs_apply_terminal_keymap(
     return true;
 }
 
+static bool gs_apply_render_profile(
+    ghostty_config_t config,
+    const ghostshell_terminal_render_profile_v1 *profile) {
+    return gs_apply_render_profile_ex(config, profile, false);
+}
+
+// Writes the hosted keybindings plus a retained launch keymap. Used when a live
+// config rebuild has to reproduce what the surface launched with.
+static bool gs_apply_retained_keymap(
+    ghostty_config_t config,
+    NSArray<NSString *> *keybindings) {
+    if (keybindings == nil) return true;
+
+    char path[] = "/tmp/ghostshell-terminal-keymap.XXXXXX";
+    int descriptor = mkstemp(path);
+    if (descriptor < 0) {
+        gs_set_error(@"Unable to create the terminal keymap input");
+        return false;
+    }
+    (void)fchmod(descriptor, S_IRUSR | S_IWUSR);
+
+    FILE *file = fdopen(descriptor, "w");
+    if (file == NULL) {
+        close(descriptor);
+        unlink(path);
+        gs_set_error(@"Unable to write the terminal keymap input");
+        return false;
+    }
+
+    bool written = fprintf(file, "keybind = clear\n") >= 0;
+    for (size_t index = 0;
+         written && index < sizeof(gs_hosted_terminal_keybindings) /
+            sizeof(gs_hosted_terminal_keybindings[0]);
+         index++) {
+        written = fprintf(
+            file,
+            "keybind = %s\n",
+            gs_hosted_terminal_keybindings[index]) >= 0;
+    }
+    for (NSString *binding in keybindings) {
+        if (!written) break;
+        written = fprintf(file, "keybind = %s\n", binding.UTF8String) >= 0;
+    }
+    if (fclose(file) != 0) written = false;
+    if (!written) {
+        unlink(path);
+        gs_set_error(@"Unable to write the terminal keymap input");
+        return false;
+    }
+
+    uint32_t diagnosticsBefore = ghostty_config_diagnostics_count(config);
+    ghostty_config_load_file(config, path);
+    unlink(path);
+    if (ghostty_config_diagnostics_count(config) > diagnosticsBefore) {
+        gs_set_error(@"libghostty rejected the retained terminal keymap");
+        return false;
+    }
+    return true;
+}
+
 static ghostty_input_mods_e gs_modifiers(NSEventModifierFlags flags) {
     uint32_t mods = GHOSTTY_MODS_NONE;
     if ((flags & NSEventModifierFlagShift) != 0) mods |= GHOSTTY_MODS_SHIFT;
@@ -565,23 +670,6 @@ static ghostty_input_mods_e gs_modifiers(NSEventModifierFlags flags) {
     if ((flags & NSEventModifierFlagCommand) != 0) mods |= GHOSTTY_MODS_SUPER;
     if ((flags & NSEventModifierFlagCapsLock) != 0) mods |= GHOSTTY_MODS_CAPS;
     return (ghostty_input_mods_e)mods;
-}
-
-static uint32_t gs_host_key_modifiers(NSEventModifierFlags flags) {
-    uint32_t modifiers = GHOSTSHELL_KEY_MODIFIER_NONE;
-    if ((flags & NSEventModifierFlagShift) != 0) {
-        modifiers |= GHOSTSHELL_KEY_MODIFIER_SHIFT;
-    }
-    if ((flags & NSEventModifierFlagOption) != 0) {
-        modifiers |= GHOSTSHELL_KEY_MODIFIER_ALT;
-    }
-    if ((flags & NSEventModifierFlagControl) != 0) {
-        modifiers |= GHOSTSHELL_KEY_MODIFIER_CONTROL;
-    }
-    if ((flags & NSEventModifierFlagCommand) != 0) {
-        modifiers |= GHOSTSHELL_KEY_MODIFIER_META;
-    }
-    return modifiers;
 }
 
 static bool gs_terminal_modifiers_are_valid(uint32_t modifiers) {
@@ -721,17 +809,6 @@ static bool gs_get_character_chord_modifiers(
     }
 }
 
-static uint32_t gs_first_codepoint(NSString *text) {
-    if (text.length == 0) return 0;
-
-    NSData *utf32 = [text dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
-    if (utf32.length < sizeof(uint32_t)) return 0;
-
-    uint32_t value = 0;
-    [utf32 getBytes:&value length:sizeof(value)];
-    return value;
-}
-
 static void gs_send_enter(ghostty_surface_t surface) {
     ghostty_input_key_s key = {0};
     key.action = GHOSTTY_ACTION_PRESS;
@@ -787,39 +864,86 @@ static BOOL gs_confirm_user_action(
 @interface GhostShellTerminalView : NSView <NSTextInputClient, NSSearchFieldDelegate>
 @property(nonatomic, assign) ghostty_app_t app;
 @property(nonatomic, assign) ghostty_surface_t surface;
+// The keybindings this surface launched with. A live config rebuild has to
+// reapply them, or changing the font would clear the terminal's keymap.
+@property(nonatomic, strong) NSArray<NSString *> *launchKeybindings;
+@property(nonatomic, assign) BOOL hasLaunchKeymap;
+@property(nonatomic, assign) double cornerTopLeft;
+@property(nonatomic, assign) double cornerTopRight;
+@property(nonatomic, assign) double cornerBottomRight;
+@property(nonatomic, assign) double cornerBottomLeft;
+@property(nonatomic, assign) ghostshell_terminal_focus_observer_v1 focusObserver;
+@property(nonatomic, assign) void *focusObserverUserdata;
 @property(nonatomic, strong) NSTrackingArea *terminalTrackingArea;
-@property(nonatomic, strong) NSMutableAttributedString *markedText;
-@property(nonatomic, strong) NSMutableArray<NSString *> *keyTextAccumulator;
+@property(nonatomic, strong) GhostShellMacInputAdapter *inputAdapter;
 @property(nonatomic, strong) NSSearchField *searchField;
 @property(nonatomic, assign) ssize_t searchTotal;
 @property(nonatomic, assign) ssize_t searchSelected;
 @property(nonatomic, strong) id eventMonitor;
 @property(nonatomic, assign) BOOL suppressNextLeftMouseUp;
-@property(nonatomic, assign) BOOL imeEnabled;
 @property(nonatomic, assign) uint32_t linkPolicy;
 @property(nonatomic, assign) uint32_t bellMode;
 @property(nonatomic, assign) double contentScale;
 @property(nonatomic, copy) NSString *workingDirectory;
-@property(nonatomic, assign) ghostshell_terminal_host_key_interceptor_v1 hostKeyInterceptor;
-@property(nonatomic, assign) void *hostKeyInterceptorUserdata;
-@property(nonatomic, assign) ghostshell_terminal_physical_input_gate_v1 physicalInputGate;
-@property(nonatomic, assign) void *physicalInputGateUserdata;
-@property(nonatomic, assign) uint64_t physicalInputEpoch;
-@property(nonatomic, strong) NSMutableIndexSet *interceptedPhysicalKeys;
-@property(nonatomic, assign) BOOL bypassHostKeyInterceptor;
-@property(nonatomic, assign) BOOL deliveringPhysicalKey;
-@property(nonatomic, assign) BOOL physicalInputDeniedDuringInterpretation;
 - (BOOL)startWithOptions:(const ghostshell_terminal_options_v1 *)options
           loadUserConfig:(BOOL)loadUserConfig;
 - (void)shutdown;
 - (void)updateSurfaceGeometryWithWidth:(double)width height:(double)height scale:(double)scale;
 - (NSEvent *)handleLocalEvent:(NSEvent *)event;
 - (BOOL)acceptPhysicalInput:(ghostshell_terminal_physical_input_kind_v1)kind;
+- (void)updateHostCornerMask;
 - (void)clearMarkedText;
 - (void)showSearchWithNeedle:(NSString *)needle;
 - (void)hideSearch;
 - (void)updateSearchAccessibility;
 @end
+
+
+// The terminal's rounded-corner mask, as a pure function so its geometry can be
+// tested without a window. Radii are per corner because the terminal usually sits
+// below a panel header: only its bottom corners are at the panel's edge, and
+// rounding all four carves notches into the middle of the panel.
+//
+// Returns NULL when every corner is square, which the caller reads as "no mask".
+CGPathRef gs_host_corner_path(
+    CGRect bounds,
+    double topLeft,
+    double topRight,
+    double bottomRight,
+    double bottomLeft,
+    bool flipped) {
+    CGFloat limit = MIN(CGRectGetWidth(bounds), CGRectGetHeight(bounds)) / 2;
+    CGFloat tl = MIN(MAX(0, topLeft), limit);
+    CGFloat tr = MIN(MAX(0, topRight), limit);
+    CGFloat br = MIN(MAX(0, bottomRight), limit);
+    CGFloat bl = MIN(MAX(0, bottomLeft), limit);
+    if (tl <= 0 && tr <= 0 && br <= 0 && bl <= 0) return NULL;
+
+    CGFloat minX = CGRectGetMinX(bounds), maxX = CGRectGetMaxX(bounds);
+    // Which edge is visually the top depends on the view's orientation, not on
+    // AppKit's default. A path built against the wrong one rounds exactly the two
+    // corners it was meant to leave square.
+    CGFloat topY = flipped ? CGRectGetMinY(bounds) : CGRectGetMaxY(bounds);
+    CGFloat bottomY = flipped ? CGRectGetMaxY(bounds) : CGRectGetMinY(bounds);
+
+    // Each edge stops a radius short of the corner it is heading for, then the
+    // arc turns through it. Running the line all the way into the corner first
+    // leaves the arc no room and the corner comes out square.
+    CGFloat down = (bottomY > topY) ? 1 : -1;
+
+    CGMutablePathRef path = CGPathCreateMutable();
+    CGPathMoveToPoint(path, NULL, minX + tl, topY);
+    CGPathAddLineToPoint(path, NULL, maxX - tr, topY);
+    if (tr > 0) CGPathAddArcToPoint(path, NULL, maxX, topY, maxX, topY + down * tr, tr);
+    CGPathAddLineToPoint(path, NULL, maxX, bottomY - down * br);
+    if (br > 0) CGPathAddArcToPoint(path, NULL, maxX, bottomY, maxX - br, bottomY, br);
+    CGPathAddLineToPoint(path, NULL, minX + bl, bottomY);
+    if (bl > 0) CGPathAddArcToPoint(path, NULL, minX, bottomY, minX, bottomY - down * bl, bl);
+    CGPathAddLineToPoint(path, NULL, minX, topY + down * tl);
+    if (tl > 0) CGPathAddArcToPoint(path, NULL, minX, topY, minX + tl, topY, tl);
+    CGPathCloseSubpath(path);
+    return path;
+}
 
 @implementation GhostShellTerminalView
 
@@ -827,8 +951,7 @@ static BOOL gs_confirm_user_action(
     self = [super initWithFrame:frameRect];
     if (self == nil) return nil;
 
-    self.markedText = [[NSMutableAttributedString alloc] init];
-    self.interceptedPhysicalKeys = [[NSMutableIndexSet alloc] init];
+    self.inputAdapter = [[GhostShellMacInputAdapter alloc] initWithView:self];
     self.contentScale = 1;
     self.searchField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
     self.searchField.hidden = YES;
@@ -855,8 +978,63 @@ static BOOL gs_confirm_user_action(
     return YES;
 }
 
+// Avalonia clips its own visuals to the panel card's rounded border, but this is
+// a native child view and paints straight through the corners the card draws
+// round. The layer has to be told the same radius.
+- (void)applyHostCornerTopLeft:(double)topLeft
+                      topRight:(double)topRight
+                   bottomRight:(double)bottomRight
+                    bottomLeft:(double)bottomLeft {
+    self.cornerTopLeft = MAX(0, topLeft);
+    self.cornerTopRight = MAX(0, topRight);
+    self.cornerBottomRight = MAX(0, bottomRight);
+    self.cornerBottomLeft = MAX(0, bottomLeft);
+    [self updateHostCornerMask];
+}
+
+// A mask, not cornerRadius. The surface draws through a Metal layer, and Metal
+// content is not clipped by a layer's corner radius — the rounding would be
+// applied to a layer whose drawable still paints square right through it. A shape
+// mask clips whatever the layer contains, and is resized with the view because a
+// stale mask would crop the terminal instead of rounding it.
+- (void)updateHostCornerMask {
+    self.wantsLayer = YES;
+    if (self.layer == nil) return;
+
+    // An empty bounds carries no shape, and a zero-area mask hides the whole
+    // surface rather than rounding it. The radii are set as soon as the host
+    // binds them, which is before the first layout, so this is the normal path
+    // in and not a defensive check — the mask is installed from -layout once the
+    // view has a size.
+    if (NSIsEmptyRect(self.bounds)) {
+        self.layer.mask = nil;
+        return;
+    }
+
+    CGPathRef path = gs_host_corner_path(
+        self.bounds,
+        self.cornerTopLeft,
+        self.cornerTopRight,
+        self.cornerBottomRight,
+        self.cornerBottomLeft,
+        self.isFlipped);
+    if (path == NULL) {
+        self.layer.mask = nil;
+        return;
+    }
+
+    CAShapeLayer *mask = [CAShapeLayer layer];
+    mask.path = path;
+    CGPathRelease(path);
+    self.layer.mask = mask;
+}
+
 - (void)layout {
     [super layout];
+    // The mask is geometry, so it is stale the moment the view resizes. Rebuilding
+    // it here rather than only when the radii change keeps the rounding on the
+    // corners instead of cropping the terminal at whatever size it was first given.
+    [self updateHostCornerMask];
     CGFloat available = MAX(0, self.bounds.size.width - 24);
     CGFloat width = MIN(320, available);
     self.searchField.frame = NSMakeRect(
@@ -944,7 +1122,8 @@ doCommandBySelector:(SEL)commandSelector {
     if (!ghostshell_ghostty_initialize()) return NO;
 
     const ghostshell_terminal_render_profile_v1 *profile = options->render_profile;
-    self.imeEnabled = profile == NULL || !GS_PROFILE_HAS(profile, ime_enabled)
+    self.inputAdapter.imeEnabled =
+        profile == NULL || !GS_PROFILE_HAS(profile, ime_enabled)
         ? YES
         : profile->ime_enabled != 0;
     self.linkPolicy = profile != NULL && GS_PROFILE_HAS(profile, link_policy)
@@ -980,6 +1159,21 @@ doCommandBySelector:(SEL)commandSelector {
     if (!gs_apply_terminal_keymap(appConfig, options)) {
         ghostty_config_free(appConfig);
         return NO;
+    }
+
+    self.hasLaunchKeymap = GS_OPTIONS_HAS(options, terminal_keymap_present) &&
+        options->terminal_keymap_present != 0;
+    if (self.hasLaunchKeymap) {
+        NSMutableArray<NSString *> *bindings =
+            [NSMutableArray arrayWithCapacity:options->terminal_keybinding_count];
+        for (size_t index = 0; index < options->terminal_keybinding_count; index++) {
+            const char *binding = options->terminal_keybindings[index];
+            if (binding == NULL) continue;
+            [bindings addObject:[NSString stringWithUTF8String:binding]];
+        }
+        self.launchKeybindings = bindings;
+    } else {
+        self.launchKeybindings = nil;
     }
     ghostty_config_finalize(appConfig);
 
@@ -1026,6 +1220,7 @@ doCommandBySelector:(SEL)commandSelector {
         [self shutdown];
         return NO;
     }
+    self.inputAdapter.surface = self.surface;
 
     [self updateSurfaceGeometry];
     ghostty_surface_set_occlusion(self.surface, true);
@@ -1033,11 +1228,7 @@ doCommandBySelector:(SEL)commandSelector {
 }
 
 - (void)shutdown {
-    self.hostKeyInterceptor = NULL;
-    self.hostKeyInterceptorUserdata = NULL;
-    self.physicalInputGate = NULL;
-    self.physicalInputGateUserdata = NULL;
-    [self.interceptedPhysicalKeys removeAllIndexes];
+    [self.inputAdapter reset];
 
     ghostty_surface_t surface = self.surface;
     self.surface = NULL;
@@ -1053,20 +1244,7 @@ doCommandBySelector:(SEL)commandSelector {
 }
 
 - (BOOL)acceptPhysicalInput:(ghostshell_terminal_physical_input_kind_v1)kind {
-    if (self.bypassHostKeyInterceptor) return YES;
-    if (self.physicalInputEpoch == UINT64_MAX) return NO;
-
-    self.physicalInputEpoch++;
-    if (self.physicalInputGate == NULL) return NO;
-
-    const ghostshell_terminal_physical_input_event_v1 event = {
-        .struct_size = sizeof(event),
-        .version = GHOSTSHELL_TERMINAL_PHYSICAL_INPUT_EVENT_VERSION_1,
-        .kind = (uint32_t)kind,
-        .reserved = 0,
-        .authority_epoch = self.physicalInputEpoch,
-    };
-    return self.physicalInputGate(self.physicalInputGateUserdata, &event);
+    return [self.inputAdapter acceptPhysicalInput:kind];
 }
 
 - (void)dealloc {
@@ -1082,6 +1260,7 @@ doCommandBySelector:(SEL)commandSelector {
 - (void)setFrameSize:(NSSize)newSize {
     [super setFrameSize:newSize];
     [self updateSurfaceGeometry];
+    [self updateHostCornerMask];
 }
 
 - (void)viewDidChangeBackingProperties {
@@ -1110,6 +1289,11 @@ doCommandBySelector:(SEL)commandSelector {
 
 - (BOOL)becomeFirstResponder {
     BOOL result = [super becomeFirstResponder];
+    if (result && self.focusObserver != NULL) {
+        // Clicking a native view never reaches Avalonia's focus system, so the
+        // shell would otherwise never learn which panel the keyboard is in.
+        self.focusObserver(self.focusObserverUserdata);
+    }
     if (result && self.surface != NULL) {
         if (!self.searchField.hidden) {
             static const char endSearch[] = "end_search";
@@ -1161,8 +1345,16 @@ doCommandBySelector:(SEL)commandSelector {
 
     if (event.type != NSEventTypeLeftMouseDown || event.window != self.window) return event;
 
-    NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];
-    if ([self hitTest:location] != self) return event;
+    // -hitTest: takes a point in the *superview's* coordinate space, not the
+    // receiver's. Converting into self meant the test only agreed with reality
+    // while this view sat at its superview's origin; once it was inset by the
+    // panel chrome the click landed outside the tested rect, the view never became
+    // first responder, and every keystroke went somewhere else.
+    NSView *reference = self.superview;
+    if (reference != nil) {
+        NSPoint location = [reference convertPoint:event.locationInWindow fromView:nil];
+        if ([self hitTest:location] != self) return event;
+    }
 
     self.suppressNextLeftMouseUp = NO;
     if (self.window.firstResponder == self) return event;
@@ -1206,8 +1398,13 @@ doCommandBySelector:(SEL)commandSelector {
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_MOUSE_BUTTON_DOWN]) return;
+    // Focus first, gate second. Taking focus is the host's business — it decides
+    // which panel the keyboard belongs to — while the gate decides whether input
+    // reaches the shell. Gating focus too meant a click on the terminal body did
+    // nothing at all: the panel could only be focused from its title bar, and a
+    // terminal that never took focus never received a keystroke either.
     [self.window makeFirstResponder:self];
+    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_MOUSE_BUTTON_DOWN]) return;
     [self sendMouseButton:event state:GHOSTTY_MOUSE_PRESS button:GHOSTTY_MOUSE_LEFT];
 }
 
@@ -1256,380 +1453,73 @@ doCommandBySelector:(SEL)commandSelector {
     ghostty_surface_mouse_scroll(self.surface, x, y, scrollMods);
 }
 
-- (ghostty_input_key_s)keyEvent:(NSEvent *)event
-                         action:(ghostty_input_action_e)action
-           translationModifiers:(NSEventModifierFlags)translationModifiers {
-    ghostty_input_key_s key = {0};
-    key.action = action;
-    key.keycode = event.keyCode;
-    key.mods = gs_modifiers(event.modifierFlags);
-    key.consumed_mods = gs_modifiers(
-        translationModifiers & ~(NSEventModifierFlagControl | NSEventModifierFlagCommand));
-    key.unshifted_codepoint = gs_first_codepoint([event charactersByApplyingModifiers:0]);
-    return key;
-}
-
-- (ghostty_input_key_s)keyEvent:(NSEvent *)event action:(ghostty_input_action_e)action {
-    return [self keyEvent:event action:action translationModifiers:event.modifierFlags];
-}
-
-- (NSString *)textForKeyEvent:(NSEvent *)event {
-    NSString *text = event.characters;
-    if (text.length != 1) return text;
-
-    uint32_t codepoint = gs_first_codepoint(text);
-    if (codepoint < 0x20) {
-        return [event charactersByApplyingModifiers:
-            event.modifierFlags & ~NSEventModifierFlagControl];
-    }
-    if (codepoint >= 0xF700 && codepoint <= 0xF8FF) return nil;
-    return text;
-}
-
-- (NSEvent *)translationEventForKeyEvent:(NSEvent *)event {
-    ghostty_input_mods_e translatedGhostty =
-        ghostty_surface_key_translation_mods(self.surface, gs_modifiers(event.modifierFlags));
-    uint32_t translated = (uint32_t)translatedGhostty;
-    NSEventModifierFlags flags = event.modifierFlags;
-
-    struct {
-        NSEventModifierFlags eventFlag;
-        uint32_t ghosttyFlag;
-    } mappings[] = {
-        {NSEventModifierFlagShift, GHOSTTY_MODS_SHIFT},
-        {NSEventModifierFlagControl, GHOSTTY_MODS_CTRL},
-        {NSEventModifierFlagOption, GHOSTTY_MODS_ALT},
-        {NSEventModifierFlagCommand, GHOSTTY_MODS_SUPER},
-    };
-    for (size_t index = 0; index < sizeof(mappings) / sizeof(mappings[0]); index++) {
-        if ((translated & mappings[index].ghosttyFlag) != 0) {
-            flags |= mappings[index].eventFlag;
-        } else {
-            flags &= ~mappings[index].eventFlag;
-        }
-    }
-
-    if (flags == event.modifierFlags) return event;
-
-    return [NSEvent
-        keyEventWithType:event.type
-                location:event.locationInWindow
-           modifierFlags:flags
-               timestamp:event.timestamp
-            windowNumber:event.windowNumber
-                 context:nil
-              characters:[event charactersByApplyingModifiers:flags] ?: @""
-     charactersIgnoringModifiers:event.charactersIgnoringModifiers ?: @""
-               isARepeat:event.isARepeat
-                 keyCode:event.keyCode] ?: event;
-}
-
-- (void)sendKeyEvent:(NSEvent *)event
-     translationEvent:(NSEvent *)translationEvent
-                action:(ghostty_input_action_e)action
-                  text:(NSString *)text
-             composing:(BOOL)composing {
-    ghostty_input_key_s key = [self keyEvent:event
-                                         action:action
-                           translationModifiers:translationEvent.modifierFlags];
-    key.composing = composing;
-    const char *utf8 = text.UTF8String;
-    key.text = utf8 != NULL && (unsigned char)utf8[0] >= 0x20 ? utf8 : NULL;
-    BOOL previousPhysicalDelivery = self.deliveringPhysicalKey;
-    self.deliveringPhysicalKey = !self.bypassHostKeyInterceptor;
-    @try {
-        ghostty_surface_key(self.surface, key);
-    } @finally {
-        self.deliveringPhysicalKey = previousPhysicalDelivery;
-    }
-}
-
-- (BOOL)interceptHostKeyDown:(NSEvent *)event {
-    if (self.bypassHostKeyInterceptor) return NO;
-
-    // A consumed press owns its repeats and matching release. Re-entering the
-    // application resolver for auto-repeat can accidentally turn a held prefix
-    // into a second sequence stroke. It can also send a repeat to libghostty
-    // without the press that established the key state.
-    if (event.isARepeat && [self.interceptedPhysicalKeys containsIndex:event.keyCode]) {
-        return YES;
-    }
-    if (!event.isARepeat) {
-        // Recover if AppKit did not deliver a prior release after focus moved.
-        [self.interceptedPhysicalKeys removeIndex:event.keyCode];
-    }
-    if (self.hostKeyInterceptor == NULL) return NO;
-
-    // Keep Shift when deriving the semantic character (for %, &, and similar
-    // application bindings), while Control/Option/Command remain modifiers.
-    NSString *characters = event.characters;
-    uint32_t codepoint = gs_first_codepoint(characters);
-    if (codepoint > 0 && codepoint < 0x20 &&
-        (event.modifierFlags &
-            (NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagCommand)) != 0) {
-        characters = [event charactersByApplyingModifiers:
-            event.modifierFlags & NSEventModifierFlagShift];
-        codepoint = gs_first_codepoint(characters);
-    }
-    ghostshell_terminal_host_key_event_v1 keyEvent = {
-        .struct_size = sizeof(keyEvent),
-        .version = GHOSTSHELL_TERMINAL_HOST_KEY_EVENT_VERSION_1,
-        .physical_key = event.keyCode,
-        .codepoint = codepoint,
-        .modifiers = gs_host_key_modifiers(event.modifierFlags),
-        .is_repeat = event.isARepeat ? 1U : 0U,
-    };
-    if (!self.hostKeyInterceptor(self.hostKeyInterceptorUserdata, &keyEvent)) return NO;
-
-    [self.interceptedPhysicalKeys addIndex:event.keyCode];
-    return YES;
-}
-
 - (void)keyDown:(NSEvent *)event {
-    if (self.surface == NULL) return;
-    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_KEY_DOWN]) return;
-    if ([self interceptHostKeyDown:event]) return;
-
-    NSEvent *translationEvent = [self translationEventForKeyEvent:event];
-    ghostty_input_action_e action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS;
-    if (!self.imeEnabled) {
-        [self sendKeyEvent:event
-           translationEvent:translationEvent
-                      action:action
-                        text:[self textForKeyEvent:translationEvent]
-                   composing:NO];
-        return;
-    }
-
-    BOOL hadMarkedText = self.markedText.length > 0;
-
-    self.physicalInputDeniedDuringInterpretation = NO;
-    self.keyTextAccumulator = [[NSMutableArray alloc] init];
-    [self interpretKeyEvents:@[translationEvent]];
-    if (self.physicalInputDeniedDuringInterpretation) {
-        self.keyTextAccumulator = nil;
-        self.physicalInputDeniedDuringInterpretation = NO;
-        return;
-    }
-    [self syncPreeditClearingIfEmpty:hadMarkedText];
-
-    NSArray<NSString *> *committedText = [self.keyTextAccumulator copy];
-    self.keyTextAccumulator = nil;
-    if (committedText.count > 0) {
-        for (NSString *text in committedText) {
-            [self sendKeyEvent:event
-               translationEvent:translationEvent
-                          action:action
-                            text:text
-                       composing:NO];
-        }
-        return;
-    }
-
-    [self sendKeyEvent:event
-       translationEvent:translationEvent
-                  action:action
-                    text:[self textForKeyEvent:translationEvent]
-               composing:hadMarkedText || self.markedText.length > 0];
+    [self.inputAdapter keyDown:event];
 }
 
 - (void)keyUp:(NSEvent *)event {
-    if (self.surface == NULL) return;
-    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_KEY_UP]) {
-        [self.interceptedPhysicalKeys removeIndex:event.keyCode];
-        return;
-    }
-    if (!self.bypassHostKeyInterceptor &&
-        [self.interceptedPhysicalKeys containsIndex:event.keyCode]) {
-        [self.interceptedPhysicalKeys removeIndex:event.keyCode];
-        return;
-    }
-    ghostty_surface_key(self.surface, [self keyEvent:event action:GHOSTTY_ACTION_RELEASE]);
+    [self.inputAdapter keyUp:event];
 }
 
 - (void)flagsChanged:(NSEvent *)event {
-    if (self.surface == NULL || self.markedText.length > 0) return;
-    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_MODIFIERS_CHANGED]) return;
-
-    NSEventModifierFlags flag = 0;
-    switch (event.keyCode) {
-        case 0x38:
-        case 0x3C: flag = NSEventModifierFlagShift; break;
-        case 0x3B:
-        case 0x3E: flag = NSEventModifierFlagControl; break;
-        case 0x3A:
-        case 0x3D: flag = NSEventModifierFlagOption; break;
-        case 0x37:
-        case 0x36: flag = NSEventModifierFlagCommand; break;
-        case 0x39: flag = NSEventModifierFlagCapsLock; break;
-        default: return;
-    }
-
-    ghostty_input_action_e action = (event.modifierFlags & flag) != 0
-        ? GHOSTTY_ACTION_PRESS
-        : GHOSTTY_ACTION_RELEASE;
-    ghostty_input_key_s key = {0};
-    key.action = action;
-    key.keycode = event.keyCode;
-    key.mods = gs_modifiers(event.modifierFlags);
-    ghostty_surface_key(self.surface, key);
+    [self.inputAdapter flagsChanged:event];
 }
 
 - (BOOL)hasMarkedText {
-    return self.imeEnabled && self.markedText.length > 0;
+    return self.inputAdapter.hasMarkedText;
 }
 
 - (NSRange)markedRange {
-    return !self.imeEnabled || self.markedText.length == 0
-        ? NSMakeRange(NSNotFound, 0)
-        : NSMakeRange(0, self.markedText.length);
+    return self.inputAdapter.markedRange;
 }
 
 - (NSRange)selectedRange {
-    if (self.surface == NULL) return NSMakeRange(NSNotFound, 0);
-
-    ghostty_text_s text = {0};
-    if (!ghostty_surface_read_selection(self.surface, &text)) {
-        return NSMakeRange(NSNotFound, 0);
-    }
-
-    NSRange range = NSMakeRange((NSUInteger)text.offset_start, (NSUInteger)text.offset_len);
-    ghostty_surface_free_text(self.surface, &text);
-    return range;
+    return self.inputAdapter.selectedRange;
 }
 
 - (void)setMarkedText:(id)string
         selectedRange:(NSRange)selectedRange
       replacementRange:(NSRange)replacementRange {
-    (void)selectedRange;
-    (void)replacementRange;
-    if (!self.imeEnabled) {
-        if (self.markedText.length > 0) [self.markedText.mutableString setString:@""];
-        if (self.surface != NULL) ghostty_surface_preedit(self.surface, NULL, 0);
-        return;
-    }
-
-    NSAttributedString *attributedValue = nil;
-    if ([string isKindOfClass:NSAttributedString.class]) {
-        attributedValue = (NSAttributedString *)string;
-    } else if ([string isKindOfClass:NSString.class]) {
-        attributedValue = [[NSAttributedString alloc] initWithString:(NSString *)string];
-    } else {
-        return;
-    }
-    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_IME_PREEDIT]) {
-        self.physicalInputDeniedDuringInterpretation = YES;
-        return;
-    }
-
-    self.markedText = [[NSMutableAttributedString alloc]
-        initWithAttributedString:attributedValue];
-
-    if (self.keyTextAccumulator == nil) [self syncPreeditClearingIfEmpty:YES];
+    [self.inputAdapter setMarkedText:string
+                       selectedRange:selectedRange
+                     replacementRange:replacementRange];
 }
 
 - (void)clearMarkedText {
-    if (self.markedText.length == 0) return;
-    [self.markedText.mutableString setString:@""];
-    [self syncPreeditClearingIfEmpty:YES];
+    [self.inputAdapter clearMarkedText];
 }
 
 - (void)unmarkText {
-    if (self.markedText.length == 0) return;
-    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_IME_PREEDIT]) {
-        self.physicalInputDeniedDuringInterpretation = YES;
-        return;
-    }
-    [self clearMarkedText];
+    [self.inputAdapter unmarkText];
 }
 
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText {
-    return @[];
+    return self.inputAdapter.validAttributesForMarkedText;
 }
 
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range
                                                 actualRange:(NSRangePointer)actualRange {
-    (void)range;
-    if (actualRange != NULL) *actualRange = NSMakeRange(NSNotFound, 0);
-    return nil;
+    return [self.inputAdapter
+        attributedSubstringForProposedRange:range
+                                actualRange:actualRange];
 }
 
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
-    (void)point;
-    return 0;
+    return [self.inputAdapter characterIndexForPoint:point];
 }
 
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
-    if (actualRange != NULL) *actualRange = range;
-    if (self.surface == NULL || self.window == nil) return NSZeroRect;
-
-    double x = 0;
-    double y = 0;
-    double width = 1;
-    double height = 1;
-    ghostty_surface_ime_point(self.surface, &x, &y, &width, &height);
-    NSRect viewRect = NSMakeRect(
-        x,
-        self.bounds.size.height - y,
-        MAX(width, 1),
-        MAX(height, 1));
-    NSRect windowRect = [self convertRect:viewRect toView:nil];
-    return [self.window convertRectToScreen:windowRect];
+    return [self.inputAdapter
+        firstRectForCharacterRange:range
+                       actualRange:actualRange];
 }
 
 - (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
-    (void)replacementRange;
-    if (!self.imeEnabled) return;
-
-    NSString *value = nil;
-    if ([string isKindOfClass:NSAttributedString.class]) {
-        value = ((NSAttributedString *)string).string;
-    } else if ([string isKindOfClass:NSString.class]) {
-        value = (NSString *)string;
-    }
-    if (value == nil) return;
-    if (![self acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_IME_COMMIT]) {
-        self.physicalInputDeniedDuringInterpretation = YES;
-        return;
-    }
-
-    [self clearMarkedText];
-    if (self.keyTextAccumulator != nil) {
-        [self.keyTextAccumulator addObject:value];
-        return;
-    }
-
-    const char *utf8 = value.UTF8String;
-    if (self.surface != NULL && utf8 != NULL) {
-        ghostty_surface_text(
-            self.surface,
-            utf8,
-            [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
-    }
+    [self.inputAdapter insertText:string replacementRange:replacementRange];
 }
 
 - (void)doCommandBySelector:(SEL)selector {
-    (void)selector;
-}
-
-- (void)syncPreeditClearingIfEmpty:(BOOL)clearIfEmpty {
-    if (self.surface == NULL) return;
-
-    if (!self.imeEnabled) {
-        if (clearIfEmpty) ghostty_surface_preedit(self.surface, NULL, 0);
-        return;
-    }
-
-    NSString *value = self.markedText.string;
-    const char *utf8 = value.UTF8String;
-    if (value.length > 0 && utf8 != NULL) {
-        ghostty_surface_preedit(
-            self.surface,
-            utf8,
-            [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
-    } else if (clearIfEmpty) {
-        ghostty_surface_preedit(self.surface, NULL, 0);
-    }
+    [self.inputAdapter doCommandBySelector:selector];
 }
 
 @end
@@ -1782,8 +1672,7 @@ static bool gs_read_clipboard(void *userdata, ghostty_clipboard_e clipboard, voi
     if (clipboard != GHOSTTY_CLIPBOARD_STANDARD) return false;
     GhostShellTerminalView *view = gs_view(userdata);
     if (view.surface == NULL) return false;
-    if (!view.bypassHostKeyInterceptor &&
-        ![view acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_PASTE]) {
+    if (![view acceptPhysicalInput:GHOSTSHELL_PHYSICAL_INPUT_PASTE]) {
         return false;
     }
 
@@ -2021,8 +1910,7 @@ bool ghostshell_terminal_set_host_key_interceptor_v1(
     if (view == nil) return false;
 
     void (^setInterceptor)(void) = ^{
-        view.hostKeyInterceptor = interceptor;
-        view.hostKeyInterceptorUserdata = userdata;
+        [view.inputAdapter setHostKeyInterceptor:interceptor userdata:userdata];
     };
     if (NSThread.isMainThread) {
         setInterceptor();
@@ -2041,8 +1929,7 @@ bool ghostshell_terminal_set_physical_input_gate_v1(
     if (view == nil) return false;
 
     void (^setGate)(void) = ^{
-        view.physicalInputGate = gate;
-        view.physicalInputGateUserdata = userdata;
+        [view.inputAdapter setPhysicalInputGate:gate userdata:userdata];
     };
     if (NSThread.isMainThread) {
         setGate();
@@ -2058,7 +1945,7 @@ uint64_t ghostshell_terminal_input_epoch_v1(void *terminal) {
 
     __block uint64_t epoch = UINT64_MAX;
     void (^readEpoch)(void) = ^{
-        epoch = view.physicalInputEpoch;
+        epoch = view.inputAdapter.inputEpoch;
     };
     if (NSThread.isMainThread) {
         readEpoch();
@@ -2066,6 +1953,102 @@ uint64_t ghostshell_terminal_input_epoch_v1(void *terminal) {
         dispatch_sync(dispatch_get_main_queue(), readEpoch);
     }
     return epoch;
+}
+
+// Reconfigures a live surface's typography and palette without touching the
+// process behind it. Ghostty applies a config to an existing surface, so a font
+// change no longer has to relaunch the shell and take its scrollback with it.
+bool ghostshell_terminal_update_render_profile_v1(
+    void *terminal,
+    const ghostshell_terminal_render_profile_v1 *profile) {
+    GhostShellTerminalView *view = gs_view(terminal);
+    if (view == nil || profile == NULL) {
+        gs_set_error(@"A render-profile update requires a live terminal and a profile");
+        return false;
+    }
+
+    if (!gs_validate_render_profile(profile)) return false;
+
+    __block bool updated = false;
+    void (^applyProfile)(void) = ^{
+        ghostty_surface_t surface = view.surface;
+        if (surface == NULL) {
+            gs_set_error(@"The terminal surface is not live");
+            return;
+        }
+
+        ghostty_config_t config = ghostty_config_new();
+        if (config == NULL) {
+            gs_set_error(@"ghostty_config_new failed");
+            return;
+        }
+
+        // The surface's whole configuration is rebuilt, so every policy applied
+        // at launch has to be reapplied here — including the keymap, which would
+        // otherwise be cleared by a font change.
+        if (!gs_apply_hosted_input_policy(config) ||
+            !gs_apply_render_profile_ex(config, profile, true) ||
+            (view.hasLaunchKeymap &&
+                !gs_apply_retained_keymap(config, view.launchKeybindings))) {
+            ghostty_config_free(config);
+            return;
+        }
+
+        ghostty_config_finalize(config);
+        ghostty_surface_update_config(surface, config);
+        ghostty_config_free(config);
+        ghostty_surface_refresh(surface);
+        updated = true;
+    };
+
+    if (NSThread.isMainThread) {
+        applyProfile();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), applyProfile);
+    }
+    return updated;
+}
+
+bool ghostshell_terminal_set_host_corner_radii_v1(
+    void *terminal,
+    double topLeft,
+    double topRight,
+    double bottomRight,
+    double bottomLeft) {
+    GhostShellTerminalView *view = gs_view(terminal);
+    if (view == nil) return false;
+
+    void (^apply)(void) = ^{
+        [view applyHostCornerTopLeft:topLeft
+                            topRight:topRight
+                         bottomRight:bottomRight
+                          bottomLeft:bottomLeft];
+    };
+    if (NSThread.isMainThread) {
+        apply();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), apply);
+    }
+    return true;
+}
+
+bool ghostshell_terminal_set_focus_observer_v1(
+    void *terminal,
+    ghostshell_terminal_focus_observer_v1 observer,
+    void *userdata) {
+    GhostShellTerminalView *view = gs_view(terminal);
+    if (view == nil) return false;
+
+    void (^bind)(void) = ^{
+        view.focusObserver = observer;
+        view.focusObserverUserdata = userdata;
+    };
+    if (NSThread.isMainThread) {
+        bind();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), bind);
+    }
+    return true;
 }
 
 void ghostshell_terminal_focus(void *terminal) {
@@ -2144,7 +2127,7 @@ static bool gs_send_programmatic_text_at_epoch(
     __block bool sent = false;
     void (^send)(void) = ^{
         if (view.surface == NULL ||
-            (enforceEpoch && view.physicalInputEpoch != expectedEpoch)) {
+            (enforceEpoch && view.inputAdapter.inputEpoch != expectedEpoch)) {
             return;
         }
         gs_send_programmatic_text(view.surface, utf8, length);
@@ -2183,7 +2166,7 @@ static bool gs_paste_programmatic_text_at_epoch(
     __block bool pasted = false;
     void (^paste)(void) = ^{
         if (view.surface == NULL ||
-            (enforceEpoch && view.physicalInputEpoch != expectedEpoch)) {
+            (enforceEpoch && view.inputAdapter.inputEpoch != expectedEpoch)) {
             return;
         }
         ghostty_surface_text(view.surface, utf8, length);
@@ -2272,14 +2255,7 @@ static bool gs_dispatch_programmatic_key(
 
     // Reuse the exact path used by human input. libghostty therefore owns
     // application-cursor/keypad, modifyOtherKeys, and kitty-keyboard modes.
-    BOOL previousBypass = view.bypassHostKeyInterceptor;
-    view.bypassHostKeyInterceptor = YES;
-    @try {
-        [view keyDown:keyDown];
-        [view keyUp:keyUp];
-    } @finally {
-        view.bypassHostKeyInterceptor = previousBypass;
-    }
+    [view.inputAdapter deliverProgrammaticKeyDown:keyDown keyUp:keyUp];
     return true;
 }
 
@@ -2300,7 +2276,7 @@ static bool gs_send_programmatic_key_at_epoch(
     __block bool sent = false;
     void (^send)(void) = ^{
         if (view.surface == NULL ||
-            (enforceEpoch && view.physicalInputEpoch != expectedEpoch)) {
+            (enforceEpoch && view.inputAdapter.inputEpoch != expectedEpoch)) {
             return;
         }
 
@@ -2349,7 +2325,7 @@ bool ghostshell_terminal_send_chord_at_epoch_v1(
     __block bool sent = false;
     void (^send)(void) = ^{
         if (view.surface == NULL ||
-            view.physicalInputEpoch != expected_epoch) {
+            view.inputAdapter.inputEpoch != expected_epoch) {
             return;
         }
 
@@ -2385,7 +2361,7 @@ static bool gs_send_programmatic_mouse_at_epoch(
     void (^send)(void) = ^{
         ghostty_surface_t surface = view.surface;
         if (surface == NULL ||
-            (enforceEpoch && view.physicalInputEpoch != expectedEpoch) ||
+            (enforceEpoch && view.inputAdapter.inputEpoch != expectedEpoch) ||
             !ghostty_surface_mouse_captured(surface)) {
             return;
         }

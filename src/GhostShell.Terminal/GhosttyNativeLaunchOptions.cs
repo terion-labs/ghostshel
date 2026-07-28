@@ -115,6 +115,31 @@ internal sealed class GhosttyNativeLaunchOptions : IDisposable
         return block;
     }
 
+    /// <summary>
+    /// Marshals a render profile on its own, for reconfiguring a surface that is
+    /// already running. The caller owns the returned object and must dispose it
+    /// once the native call has returned.
+    /// </summary>
+    public static GhosttyNativeLaunchOptions ForRenderProfile(
+        TerminalRenderProfileSnapshot profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        var owner = new GhosttyNativeLaunchOptions();
+        try
+        {
+            owner.RenderProfileBlock = owner.AllocateRenderProfile(profile);
+            return owner;
+        }
+        catch
+        {
+            owner.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>The marshalled profile, when this owner carries one alone.</summary>
+    public nint RenderProfileBlock { get; private set; }
+
     private nint AllocateRenderProfile(TerminalRenderProfileSnapshot? profile)
     {
         if (profile is null)

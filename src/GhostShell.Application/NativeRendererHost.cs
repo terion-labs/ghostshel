@@ -7,7 +7,36 @@ public sealed record NativeRendererHost(
     nint Handle,
     ViewportDescriptor Viewport,
     Func<NativeRendererKeyInput, bool>? KeyInterceptor = null,
-    Func<NativeRendererPhysicalInput, bool>? PhysicalInputGate = null);
+    Func<NativeRendererPhysicalInput, bool>? PhysicalInputGate = null,
+    // Presentation the host cannot express through Avalonia: a native child view
+    // is not clipped by its Avalonia parent, and focus moving into one is
+    // invisible to Avalonia's focus system.
+    //
+    // The radii are per corner because a terminal usually sits below a panel
+    // header, so only its bottom corners are at the panel's edge. One radius for
+    // all four rounded the two in the middle of the panel into notches.
+    NativeRendererCorners Corners = default,
+    Action? FocusObserver = null);
+
+/// <summary>
+/// Which of a native view's corners are at its host panel's edge, and how round.
+/// </summary>
+public readonly record struct NativeRendererCorners(
+    double TopLeft,
+    double TopRight,
+    double BottomRight,
+    double BottomLeft)
+{
+    public static NativeRendererCorners Uniform(double radius) =>
+        new(radius, radius, radius, radius);
+
+    /// <summary>A surface whose top edge is covered by a header.</summary>
+    public static NativeRendererCorners BottomOnly(double radius) =>
+        new(0, 0, radius, radius);
+
+    public bool IsSquare =>
+        TopLeft <= 0 && TopRight <= 0 && BottomRight <= 0 && BottomLeft <= 0;
+}
 
 /// <summary>
 /// One physical key press raised by a native renderer before it reaches the terminal engine.

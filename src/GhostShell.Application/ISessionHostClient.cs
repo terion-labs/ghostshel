@@ -90,6 +90,17 @@ public interface ISessionHostClient
         OperationContext context,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Reconfigures a live terminal's typography and palette in place. A restart
+    /// would apply the same values, but would take the session's scrollback with
+    /// it, so a font change must not be one.
+    /// </summary>
+    ValueTask<HostResult<bool>> UpdateTerminalRenderProfileAsync(
+        UpdateTerminalRenderProfileRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(HostResult<bool>.Succeed(false, 0));
+
     ValueTask<HostResult<Unit>> AttachBrowserRendererAsync(
         AttachBrowserRendererRequest request,
         OperationContext context,

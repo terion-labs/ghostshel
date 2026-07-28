@@ -363,6 +363,42 @@ public sealed partial class InMemorySessionHostClient :
         }
     }
 
+    public async ValueTask<HostResult<bool>> UpdateTerminalRenderProfileAsync(
+        UpdateTerminalRenderProfileRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
+        if (!TryGetSession(request.SessionId, out var session))
+        {
+            return NotFound<bool>("session", 0);
+        }
+
+        var revision = session.Snapshot().Descriptor.Revision;
+        var invalid = ValidateContext<bool>(context, cancellationToken, revision);
+        if (invalid is not null)
+        {
+            return invalid;
+        }
+
+        if (!session.HasAttachment(request.AttachmentId, AttachmentKind.Interactive))
+        {
+            return NotFound<bool>("attachment", revision);
+        }
+
+        if (session.Engine.Kind != PanelKind.Terminal
+            || session.Engine is not ITerminalRendererAttachment renderer)
+        {
+            return Unsupported<bool>("The session is not a terminal.", revision);
+        }
+
+        var applied = await renderer
+            .UpdateRenderProfileAsync(request.RenderProfile, cancellationToken)
+            .ConfigureAwait(false);
+        return HostResult<bool>.Succeed(applied, revision);
+    }
+
     public async ValueTask<HostResult<Unit>> AttachTerminalRendererAsync(
         AttachTerminalRendererRequest request,
         OperationContext context,

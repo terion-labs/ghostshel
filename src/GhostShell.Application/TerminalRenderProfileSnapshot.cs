@@ -119,6 +119,23 @@ public sealed record TerminalRenderProfileSnapshot
 
     public TerminalPalette Palette { get; }
 
+    /// <summary>
+    /// Whether two snapshots would draw the same terminal.
+    ///
+    /// Record equality cannot answer this: the palette holds its ANSI colours in
+    /// an array, so two palettes built from identical colours are never equal.
+    /// Without this, re-publishing the saved profile would look like a change on
+    /// every catalog refresh and relayout the terminal each time.
+    /// </summary>
+    public bool RendersSameAs(TerminalRenderProfileSnapshot? other) =>
+        other is not null
+        && string.Equals(FontFamily, other.FontFamily, StringComparison.Ordinal)
+        && FontSize.Equals(other.FontSize)
+        && LineHeight.Equals(other.LineHeight)
+        && CursorStyle == other.CursorStyle
+        && CursorBlink == other.CursorBlink
+        && Palette.Matches(other.Palette);
+
     public TerminalClipboardPolicy ClipboardPolicy { get; }
 
     public TerminalLinkPolicy LinkPolicy { get; }
