@@ -46,7 +46,8 @@ public sealed partial class MainWindow : Window
         IDiagnosticsArtifactPresenter diagnosticsArtifactPresenter,
         IRecentSessionHistoryExporter recentSessionHistoryExporter,
         RecoveryDataControlViewModel recoveryDataControlViewModel,
-        LocalArtifactControlViewModel localArtifactControlViewModel)
+        LocalArtifactControlViewModel localArtifactControlViewModel,
+        IScreenColorSampler screenColorSampler)
         : this()
     {
         _definitionBundles = new DefinitionBundleController(
@@ -68,7 +69,10 @@ public sealed partial class MainWindow : Window
             diagnosticsExportViewModel);
         recoveryDataControlViewModel.Start();
         localArtifactControlViewModel.Start();
+        _screenColorSampler = screenColorSampler;
     }
+
+    private readonly IScreenColorSampler? _screenColorSampler;
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
@@ -266,16 +270,22 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        ViewModel.ShowLauncherOverview();
-        FocusLauncherOverviewSection(LauncherOverviewSection.Connections);
+        ViewModel.ShowLauncherConnections();
+        if (ViewModel.IsLauncherConnectionsVisible)
+        {
+            FocusLauncherWhenReady(static launcher => launcher.FocusConnectionsPage());
+        }
     }
 
     private void OnLauncherScreensClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        ViewModel.ShowLauncherOverview();
-        FocusLauncherOverviewSection(LauncherOverviewSection.Screens);
+        ViewModel.ShowLauncherScreens();
+        if (ViewModel.IsLauncherScreensVisible)
+        {
+            FocusLauncherWhenReady(static launcher => launcher.FocusScreensPage());
+        }
     }
 
     private void OnLauncherHistoryClick(object? sender, RoutedEventArgs e)
@@ -848,29 +858,15 @@ public sealed partial class MainWindow : Window
         _historyExportLifetime?.Cancel();
     }
 
-    private async void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        var result = await ViewModel.CreateWorkspaceAsync(
-            NewItemLauncherOverlay.WorkspaceName,
-            _lifetime.Token);
-        if (result.IsSuccess)
-        {
-            NewItemLauncherOverlay.ClearWorkspaceName();
-            ViewModel.CloseOverlay();
-            FocusCurrentRoute();
-        }
-    }
-
     private async void OnCreateScreenClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
         try
         {
-            var editor = ViewModel.CreateNewSavedScreenEditor(
-                NewItemLauncherOverlay.ScreenName);
+            // Named in the editor itself; there is no longer a name box to carry
+            // one in from.
+            var editor = ViewModel.CreateNewSavedScreenEditor(string.Empty);
             var saved = await new SavedScreenEditorDialog(
                     editor,
                     ViewModel.SaveSavedScreenAsync)
@@ -880,7 +876,6 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            NewItemLauncherOverlay.ClearScreenName();
             ViewModel.CloseOverlay();
             FocusCurrentRoute();
         }
@@ -1008,17 +1003,15 @@ public sealed partial class MainWindow : Window
         _ = ViewModel.LayoutDesignerEditor?.AddSlot();
     }
 
-    private void OnLayoutTogglePaintModeClick(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// Adds a panel without a drag, for anyone not using a pointer. Dragging an
+    /// empty cell does the same thing with a chosen size.
+    /// </summary>
+    private void OnLayoutPaintPanelClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        var editor = ViewModel.LayoutDesignerEditor;
-        if (editor is null || !editor.TogglePaintMode().IsSuccess)
-        {
-            return;
-        }
-
-        if (editor.IsPaintMode)
+        if (ViewModel.LayoutDesignerEditor?.AddSlot().IsSuccess == true)
         {
             LayoutDesignerOverlay.FocusGrid();
         }
@@ -1530,15 +1523,9 @@ public sealed partial class MainWindow : Window
 
         if (e.Key == Key.Escape && ViewModel.IsLayoutDesignerVisible)
         {
-            var cancelledGesture = LayoutDesignerOverlay.CancelPointerGesture();
-            var editor = ViewModel.LayoutDesignerEditor;
-            var cancelledPaintMode = editor?.IsPaintMode == true;
-            if (cancelledPaintMode)
-            {
-                editor!.CancelPaintMode();
-            }
-
-            if (cancelledGesture || cancelledPaintMode)
+            // Escape abandons a drag in progress. With no painting mode left there
+            // is nothing else here for it to cancel.
+            if (LayoutDesignerOverlay.CancelPointerGesture())
             {
                 e.Handled = true;
                 return;

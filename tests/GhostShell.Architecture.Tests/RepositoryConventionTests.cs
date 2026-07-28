@@ -111,7 +111,11 @@ public sealed partial class RepositoryConventionTests
             var document = XDocument.Load(file, LoadOptions.SetLineInfo);
             var unboundedOverlays = document
                 .Descendants()
-                .Where(element => HasClass(element, "OverlayCard"))
+                .Where(element => element.Name.LocalName == "SurfaceCard"
+                    && string.Equals(
+                        AttributeValue(element, "Elevation"),
+                        "Overlay",
+                        StringComparison.Ordinal))
                 .Where(element => !string.Equals(
                     AttributeValue(element, "KeyboardNavigation.TabNavigation"),
                     "Cycle",
@@ -181,22 +185,27 @@ public sealed partial class RepositoryConventionTests
                     "AgentChatTranscript",
                     StringComparison.Ordinal));
         Assert.Equal("2", AttributeValue(activityScroller, "Grid.Row"));
+
+        // The authority notice and the capability boundary are anchored to the
+        // panel, not to the transcript. Inside the scroller they were the first
+        // items in a list that grows, so a live YOLO grant scrolled out of sight
+        // as soon as the run said anything — the moment it most needs to be read.
         Assert.Contains(
-            activityScroller.Descendants(),
+            agentLayout.Descendants(),
             element => element.Name.LocalName == "Border"
                 && string.Equals(
                     AttributeValue(element, "IsVisible"),
                     "{Binding AgentChat.HasYoloAuthority}",
                     StringComparison.Ordinal));
         Assert.Contains(
-            activityScroller.Descendants(),
+            agentLayout.Descendants(),
             element => element.Name.LocalName == "Border"
                 && string.Equals(
                     AttributeValue(element, "IsVisible"),
                     "{Binding AgentChat.HasCapabilityNotice}",
                     StringComparison.Ordinal));
         var contextInspector = Assert.Single(
-            activityScroller.Descendants(),
+            agentLayout.Descendants(),
             element => element.Name.LocalName == "Expander"
                 && string.Equals(
                     AttributeValue(element, "Name"),
@@ -264,11 +273,11 @@ public sealed partial class RepositoryConventionTests
             StringComparison.Ordinal);
         Assert.Contains(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
+            element => element.Name.LocalName == "StatusChip"
                 && (AttributeValue(element, "AutomationProperties.Name") ?? string.Empty)
                     .Contains("AgentChat.ConnectionStatus", StringComparison.Ordinal));
         Assert.Contains(
-            activityScroller.Descendants(),
+            agentLayout.Descendants(),
             element => element.Name.LocalName == "Border"
                 && (AttributeValue(element, "AutomationProperties.Name") ?? string.Empty)
                     .Contains("AgentChat.YoloAuthority.Scope", StringComparison.Ordinal));
@@ -426,7 +435,7 @@ public sealed partial class RepositoryConventionTests
             .FindUniqueNamedElement("SavedScreenDeleteUndoNotice")
             .Element;
 
-        Assert.Equal("Border", notice.Name.LocalName);
+        Assert.Equal("SurfaceCard", notice.Name.LocalName);
         Assert.Equal(
             "{Binding SavedScreenDeleteUndo.HasPending}",
             AttributeValue(notice, "IsVisible"));
@@ -476,14 +485,27 @@ public sealed partial class RepositoryConventionTests
     [Fact]
     public void RuntimeTabReorderingHasPointerFeedbackAndKeyboardParity()
     {
+        // The strip is one reusable control hosted at whichever edge the profile
+        // selects, so the tab template lives in that component rather than being
+        // copied per edge.
         var ownedTabStrip = ApplicationViews.FindUniqueNamedElement(
-            "RuntimeTabStrip");
-        var mainWindow = ownedTabStrip.Owner.Document;
+            "TabScrollViewer");
         var tabStrip = ownedTabStrip.Element;
 
+        // The reorder live region belongs to the shell route that hosts the strip.
+        var workspace = ApplicationViews
+            .FindUniqueNamedElement("RuntimeTabStripSide")
+            .Owner
+            .Document;
+
         Assert.Equal("ScrollViewer", tabStrip.Name.LocalName);
-        Assert.Equal("Auto", AttributeValue(tabStrip, "HorizontalScrollBarVisibility"));
-        Assert.Equal("Disabled", AttributeValue(tabStrip, "VerticalScrollBarVisibility"));
+        // Scroll bars follow the strip's orientation instead of being fixed.
+        Assert.Equal(
+            "{Binding HorizontalScrollBars, ElementName=Root}",
+            AttributeValue(tabStrip, "HorizontalScrollBarVisibility"));
+        Assert.Equal(
+            "{Binding VerticalScrollBars, ElementName=Root}",
+            AttributeValue(tabStrip, "VerticalScrollBarVisibility"));
         Assert.False(
             string.IsNullOrWhiteSpace(
                 AttributeValue(tabStrip, "AutomationProperties.Name")));
@@ -494,16 +516,16 @@ public sealed partial class RepositoryConventionTests
                 && HasClass(element, "RuntimeTabDropTarget"));
         Assert.Equal("True", AttributeValue(dropTarget, "DragDrop.AllowDrop"));
         Assert.Equal(
-            "OnRuntimeTabDragEnter",
+            "OnDragEnter",
             AttributeValue(dropTarget, "DragDrop.DragEnter"));
         Assert.Equal(
-            "OnRuntimeTabDragLeave",
+            "OnDragLeave",
             AttributeValue(dropTarget, "DragDrop.DragLeave"));
         Assert.Equal(
-            "OnRuntimeTabDragOver",
+            "OnDragOver",
             AttributeValue(dropTarget, "DragDrop.DragOver"));
         Assert.Equal(
-            "OnRuntimeTabDrop",
+            "OnDrop",
             AttributeValue(dropTarget, "DragDrop.Drop"));
 
         var indicators = dropTarget
@@ -529,16 +551,16 @@ public sealed partial class RepositoryConventionTests
             element => element.Name.LocalName == "Border"
                 && string.Equals(
                     AttributeValue(element, "PointerPressed"),
-                    "OnRuntimeTabDragPointerPressed",
+                    "OnDragPointerPressed",
                     StringComparison.Ordinal));
         Assert.Equal(
-            "OnRuntimeTabDragPointerMoved",
+            "OnDragPointerMoved",
             AttributeValue(dragHandle, "PointerMoved"));
         Assert.Equal(
-            "OnRuntimeTabDragPointerReleased",
+            "OnDragPointerReleased",
             AttributeValue(dragHandle, "PointerReleased"));
         Assert.Equal(
-            "OnRuntimeTabDragPointerCaptureLost",
+            "OnDragPointerCaptureLost",
             AttributeValue(dragHandle, "PointerCaptureLost"));
         Assert.False(
             string.IsNullOrWhiteSpace(
@@ -585,7 +607,7 @@ public sealed partial class RepositoryConventionTests
             element => element.Name.LocalName == "Button"
                 && string.Equals(
                     AttributeValue(element, "Click"),
-                    "OnCloseRuntimeTabClick",
+                    "OnClose",
                     StringComparison.Ordinal));
         Assert.Contains(
             "Title",
@@ -596,7 +618,7 @@ public sealed partial class RepositoryConventionTests
                 AttributeValue(close, "AutomationProperties.HelpText")));
 
         var status = Assert.Single(
-            mainWindow.Descendants(),
+            workspace.Descendants(),
             element => element.Name.LocalName == "TextBlock"
                 && string.Equals(
                     AttributeValue(element, "Text"),

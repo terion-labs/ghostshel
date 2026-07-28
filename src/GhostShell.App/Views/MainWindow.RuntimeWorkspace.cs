@@ -542,6 +542,16 @@ public sealed partial class MainWindow
         await ActivateRuntimePanelAsync(sender);
     }
 
+    /// <summary>
+    /// The terminal surface took focus natively. Avalonia never sees that, so
+    /// this is the only signal that the keyboard has moved into this panel.
+    /// </summary>
+    private async void OnRuntimePanelTerminalFocused(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ActivateRuntimePanelAsync(sender);
+    }
+
     private async void OnRuntimePanelGotFocus(object? sender, FocusChangedEventArgs e)
     {
         _ = e;
@@ -562,6 +572,104 @@ public sealed partial class MainWindow
             {
             }
         }
+    }
+
+    /// <summary>
+    /// Places an empty panel against an edge of the canvas. It asks what to open
+    /// once it is there, so the choice happens in the space the panel will fill.
+    /// </summary>
+    private void OnAddPanelToSideRequested(object? sender, PanelSide side)
+    {
+        _ = sender;
+        if (ViewModel.RuntimeWorkspace?.ActiveTab is { } tab)
+        {
+            _ = tab.AddPlaceholder(side);
+            FocusActivePanel();
+        }
+    }
+
+    /// <summary>
+    /// Splits a panel, leaving an empty one beside it for the user to fill.
+    /// </summary>
+    private void OnSplitRuntimePanelRequested(object? sender, PanelSplitOrientation orientation)
+    {
+        if (sender is not Control { DataContext: RuntimePanelViewModel panel }
+            || ViewModel.RuntimeWorkspace?.ActiveTab is not { } tab)
+        {
+            return;
+        }
+
+        _ = tab.SplitWithPlaceholder(panel.Id, orientation);
+        FocusActivePanel();
+    }
+
+    /// <summary>
+    /// Turns a placeholder into a real panel. The tab is told which placeholder is
+    /// being answered so the created panel takes its cell rather than being
+    /// appended wherever the layout would have put it.
+    ///
+    /// These are the panel-level operations deliberately: the toolbar's "new
+    /// terminal" action opens a whole tab, which is right when nothing is being
+    /// answered and wrong here — it left the placeholder sitting empty and put the
+    /// terminal in a new tab instead of the cell the user had just placed.
+    /// </summary>
+    private async Task ChoosePlaceholderAsync(object? sender, Func<Task<bool>> create)
+    {
+        if (sender is not Control { DataContext: PanelPlaceholderViewModel placeholder }
+            || ViewModel.RuntimeWorkspace?.ActiveTab is not { } tab)
+        {
+            return;
+        }
+
+        tab.ReplaceTarget = placeholder.Id;
+        try
+        {
+            await create();
+        }
+        finally
+        {
+            tab.ReplaceTarget = null;
+        }
+    }
+
+    private async void OnPlaceholderTerminalClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddLocalTerminalPanelAsync(_lifetime.Token));
+    }
+
+    private async void OnPlaceholderBrowserClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddBrowserPanelAsync(_lifetime.Token));
+    }
+
+    private async void OnPlaceholderStatisticsClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddStatisticsPanelAsync(_lifetime.Token));
+    }
+
+    private async void OnPlaceholderFileViewerClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddFilePanelAsync(_lifetime.Token));
+    }
+
+    private async void OnPlaceholderProcessMonitorClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddProcessMonitorPanelAsync(_lifetime.Token));
     }
 
     private async void OnCloseRuntimePanelClick(object? sender, RoutedEventArgs e)
@@ -651,24 +759,23 @@ public sealed partial class MainWindow
 
     private async void OnBrowserAddressKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter
-            || sender is not TextBox
-            {
-                DataContext: BrowserPresentationHost browser,
-            } addressBox)
+        // The view raises this with its presentation host as the sender, and the
+        // address box writes straight to the host, so the typed text is already
+        // there to navigate to.
+        if (e.Key != Key.Enter || sender is not BrowserPresentationHost browser)
         {
             return;
         }
 
         e.Handled = true;
         await RunBrowserOperationAsync(token =>
-            browser.NavigateAddressAsync(addressBox.Text, token));
+            browser.NavigateAddressAsync(browser.AddressText, token));
     }
 
     private async void OnBrowserBackClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is Control { DataContext: BrowserPresentationHost browser })
+        if (sender is BrowserPresentationHost browser)
         {
             await RunBrowserOperationAsync(browser.GoBackAsync);
         }
@@ -677,7 +784,7 @@ public sealed partial class MainWindow
     private async void OnBrowserForwardClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is Control { DataContext: BrowserPresentationHost browser })
+        if (sender is BrowserPresentationHost browser)
         {
             await RunBrowserOperationAsync(browser.GoForwardAsync);
         }
@@ -686,7 +793,7 @@ public sealed partial class MainWindow
     private async void OnBrowserReloadClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is Control { DataContext: BrowserPresentationHost browser })
+        if (sender is BrowserPresentationHost browser)
         {
             await RunBrowserOperationAsync(browser.ReloadAsync);
         }
@@ -695,7 +802,7 @@ public sealed partial class MainWindow
     private async void OnBrowserStopClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is Control { DataContext: BrowserPresentationHost browser })
+        if (sender is BrowserPresentationHost browser)
         {
             await RunBrowserOperationAsync(browser.StopAsync);
         }
@@ -1001,6 +1108,20 @@ public sealed partial class MainWindow
         }
     }
 
+    private async void OnAddConnectionPanelClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control { DataContext: LauncherConnectionViewModel connection })
+        {
+            return;
+        }
+
+        if (await ViewModel.AddConnectionPanelAsync(connection.Id, _lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
     private async void OnAddFilePanelClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -1132,6 +1253,19 @@ public sealed partial class MainWindow
             {
                 browser.RequestInputFocus();
                 return;
+            }
+
+            // Reaching here for a terminal panel means the host lookup above failed
+            // to recognise its own surface, and focus is about to be handed to a
+            // plain Avalonia control instead. On macOS that makes the native view
+            // resign first responder, and the terminal stops accepting keystrokes
+            // while still drawing output — so say so rather than fail silently.
+            if (activePanel is TerminalRuntimePanelViewModel)
+            {
+                Console.Error.WriteLine(
+                    "[ghostshell:input] focus fell back to a non-terminal control for "
+                    + $"panel {activePanel.Id}; its terminal surface was not found in "
+                    + "the visual tree, so the keyboard has left the terminal");
             }
 
             this.GetVisualDescendants()

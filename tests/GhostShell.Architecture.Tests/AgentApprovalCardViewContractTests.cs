@@ -42,7 +42,7 @@ public sealed class AgentApprovalCardViewContractTests
         var root = Assert.IsType<XElement>(document.Root);
         var card = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "Border");
+            element => element.Name.LocalName == "SurfaceCard");
 
         Assert.Null(AttributeValue(root, "DataContext"));
         Assert.Equal("True", AttributeValue(card, "Focusable"));

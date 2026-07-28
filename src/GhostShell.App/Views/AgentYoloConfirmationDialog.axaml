@@ -2,6 +2,7 @@
     x:Class="GhostShell.App.Views.AgentYoloConfirmationDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Title="Enable YOLO for this run"
     Width="560"
@@ -12,12 +13,12 @@
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner"
     Opened="OnOpened">
-  <Grid Margin="24" RowDefinitions="*,Auto" RowSpacing="18">
+  <Grid Margin="{controls:Inset Xl}" RowDefinitions="*,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
     <ScrollViewer
         HorizontalScrollBarVisibility="Disabled"
         VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="12">
-      <StackPanel Spacing="5">
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock
             FontSize="{DynamicResource ShellFontSize18}"
             FontWeight="SemiBold"
@@ -30,17 +31,17 @@
       </StackPanel>
 
       <Border
-          Padding="14"
+          Padding="{controls:Inset Md}"
           Background="{DynamicResource ShellDangerSoftBrush}"
           BorderBrush="{DynamicResource ShellDangerBorderBrush}"
           BorderThickness="1"
-          CornerRadius="9">
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+          CornerRadius="{DynamicResource ShellCardCornerRadius}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <icons:SymbolIcon
               Symbol="Warning"
               FontSize="18"
               Foreground="{DynamicResource ShellDangerBrush}" />
-          <StackPanel Grid.Column="1" Spacing="5">
+          <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellDangerBrush}" Text="HIGH-RISK RUN OVERRIDE" />
             <TextBlock
                 Text="Terminal input and destructive terminal actions can execute without per-action approval until this window expires."
@@ -54,8 +55,8 @@
         </Grid>
       </Border>
 
-      <Border Classes="SettingsCard">
-        <StackPanel Margin="14" Spacing="6">
+      <controls:SurfaceCard Padding="0">
+        <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="Eyebrow" Text="EXACT TERMINAL SCOPE" />
           <TextBlock x:Name="TargetTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
           <TextBlock
@@ -63,7 +64,7 @@
               Classes="Muted Monospace"
               FontSize="{DynamicResource ShellFontSize9}"
               TextWrapping="Wrap" />
-          <StackPanel Margin="0,5,0,0" Spacing="2">
+          <StackPanel Margin="{controls:Inset Top=Xs}" Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock Classes="Eyebrow" Text="CONNECTION" />
             <TextBlock
                 x:Name="ConnectionBoundary"
@@ -71,7 +72,7 @@
                 FontSize="{DynamicResource ShellFontSize9}"
                 TextWrapping="Wrap" />
           </StackPanel>
-          <StackPanel Spacing="2">
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock Classes="Eyebrow" Text="WORKING DIRECTORY" />
             <TextBlock
                 x:Name="WorkingDirectory"
@@ -79,10 +80,10 @@
                 FontSize="{DynamicResource ShellFontSize9}"
                 TextWrapping="Wrap" />
           </StackPanel>
-          <TextBlock Classes="Eyebrow" Margin="0,5,0,0" Text="DURATION" />
+          <TextBlock Classes="Eyebrow" Margin="{controls:Inset Top=Xs}" Text="DURATION" />
           <TextBlock Classes="Monospace" Text="15 minutes · this run only" />
         </StackPanel>
-      </Border>
+      </controls:SurfaceCard>
 
       <CheckBox
           x:Name="Acknowledgement"
@@ -96,7 +97,7 @@
       </StackPanel>
     </ScrollViewer>
 
-    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <Button
           Classes="SecondaryButton"
           Click="OnCancelClick"

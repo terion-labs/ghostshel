@@ -27,9 +27,13 @@ public sealed partial class CloseConfirmationDialog : Window
             CloseScopeKind.Session => "Close this session?",
             _ => "Close active sessions?",
         };
+        // Not "has active work" — that claims more than the signal supports. The
+        // terminal answers this from whether its cursor is at a shell prompt, which
+        // needs the shell to emit prompt markers; without them the honest statement
+        // is that idleness could not be confirmed.
         Detail = confirmation.Sessions.Count == 1
-            ? "The terminal still has active work. Closing it will terminate that process."
-            : $"{confirmation.Sessions.Count} sessions still have active work. Closing will terminate those processes.";
+            ? "This session could not be confirmed idle. Closing it ends the session."
+            : $"{confirmation.Sessions.Count} sessions could not be confirmed idle. Closing ends them.";
         SessionSummary = string.Join(
             Environment.NewLine,
             confirmation.Sessions.Select(item => $"• {item.Title} — {item.Detail}"));

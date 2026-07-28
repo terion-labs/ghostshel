@@ -1,0 +1,120 @@
+<UserControl
+    x:Class="GhostShell.App.Views.Components.RuntimeTabStripView"
+    x:Name="Root"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    Focusable="False"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+  <ScrollViewer
+      x:Name="TabScrollViewer"
+      HorizontalScrollBarVisibility="{Binding HorizontalScrollBars, ElementName=Root}"
+      VerticalScrollBarVisibility="{Binding VerticalScrollBars, ElementName=Root}"
+      AutomationProperties.Name="Open runtime tabs">
+    <StackPanel Orientation="{Binding Orientation, ElementName=Root}" Spacing="{DynamicResource ShellSpaceXs}">
+      <ItemsControl ItemsSource="{Binding Tabs, ElementName=Root}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="{Binding Orientation, ElementName=Root}" Spacing="{DynamicResource ShellSpaceXs}" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <Grid
+              Width="190"
+              Height="32"
+              Classes="RuntimeTabDropTarget"
+              ColumnDefinitions="24,*,28"
+              DragDrop.AllowDrop="True"
+              DragDrop.DragEnter="OnDragEnter"
+              DragDrop.DragLeave="OnDragLeave"
+              DragDrop.DragOver="OnDragOver"
+              DragDrop.Drop="OnDrop">
+            <!-- Stretched, or the chip shrinks to its label and the close button
+                 that belongs to this tab renders outside it. Avalonia buttons do
+                 not stretch by default. -->
+            <Button
+                Grid.ColumnSpan="3"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Padding="{controls:Inset Horizontal=Xxl}"
+                Background="{Binding TabBackground}"
+                BorderThickness="0"
+                Classes="RuntimeTabActivator"
+                Click="OnActivate"
+                HorizontalContentAlignment="Left"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="{Binding Title, StringFormat={}Activate tab {0}}"
+                AutomationProperties.HelpText="Use the reorder handle to drag this tab, or use Move tab left and Move tab right from the command palette.">
+              <!-- A horizontal StackPanel stretches its children vertically, which
+                   leaves the label drawn against the top of the tab rather than
+                   beside the icon. -->
+              <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                <icons:SymbolIcon VerticalAlignment="Center" Symbol="WindowConsole" FontSize="13" Foreground="{Binding TabForeground}" />
+                <TextBlock VerticalAlignment="Center" Foreground="{Binding TabForeground}" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </Button>
+            <Border
+                Grid.ColumnSpan="3"
+                Width="3"
+                Margin="{controls:Inset Vertical=Xs}"
+                HorizontalAlignment="Left"
+                Background="{DynamicResource ShellAccentBrush}"
+                Classes="RuntimeTabDropIndicator Before"
+                IsHitTestVisible="False"
+                IsVisible="False" />
+            <Border
+                Grid.ColumnSpan="3"
+                Width="3"
+                Margin="{controls:Inset Vertical=Xs}"
+                HorizontalAlignment="Right"
+                Background="{DynamicResource ShellAccentBrush}"
+                Classes="RuntimeTabDropIndicator After"
+                IsHitTestVisible="False"
+                IsVisible="False" />
+            <Border
+                Grid.Column="0"
+                Background="Transparent"
+                PointerCaptureLost="OnDragPointerCaptureLost"
+                PointerMoved="OnDragPointerMoved"
+                PointerPressed="OnDragPointerPressed"
+                PointerReleased="OnDragPointerReleased"
+                ToolTip.Tip="Drag to reorder tab"
+                AutomationProperties.Name="{Binding Title, StringFormat={}Reorder tab {0}}"
+                AutomationProperties.HelpText="Drag to change this tab's position without activating it.">
+              <icons:SymbolIcon
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Symbol="ReOrderDotsVertical"
+                  FontSize="12"
+                  Foreground="{Binding TabForeground}" />
+            </Border>
+            <Button
+                Grid.Column="2"
+                Classes="IconButton"
+                Click="OnClose"
+                ToolTip.Tip="Close tab"
+                AutomationProperties.Name="{Binding Title, StringFormat={}Close tab {0}}"
+                AutomationProperties.HelpText="Close this runtime tab using the normal session close policy.">
+              <icons:SymbolIcon Symbol="Dismiss" FontSize="11" />
+            </Button>
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <Button
+          x:Name="AddTabButton"
+          Width="32"
+          Height="32"
+          Padding="0"
+          Classes="IconButton"
+          Click="OnAddTab"
+          ToolTip.Tip="New tab"
+          AutomationProperties.Name="Open a new tab">
+        <icons:SymbolIcon Symbol="Add" FontSize="14" />
+      </Button>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

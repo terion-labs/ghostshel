@@ -2,21 +2,21 @@
     x:Class="GhostShell.App.Views.Overlays.NewItemLauncherView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Border
+  <controls:SurfaceCard Elevation="Overlay" Padding="0"
       Margin="90,54"
       MaxWidth="1120"
       MaxHeight="760"
       HorizontalAlignment="Stretch"
       VerticalAlignment="Stretch"
-      Classes="OverlayCard"
       KeyboardNavigation.TabNavigation="Cycle">
-    <Grid Margin="22" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="16">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+    <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="{DynamicResource ShellSpaceLg}">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <Button Classes="SearchButton" HorizontalContentAlignment="Stretch" Click="OnShowCommandPaletteClick" AutomationProperties.Name="Search commands, connections, screens, workspaces, and session history">
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <icons:SymbolIcon Symbol="Search" FontSize="16" />
             <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize13}" Text="Search connections, screens, workspaces, sessions, or commands…" />
             <Border Grid.Column="2" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding CommandPaletteShortcut}" /></Border>
@@ -25,29 +25,29 @@
         <Button Grid.Column="1" Classes="IconButton Large" Click="OnCloseClick" ToolTip.Tip="Close launcher" AutomationProperties.Name="Close new tab or session launcher"><icons:SymbolIcon Symbol="Dismiss" FontSize="14" /></Button>
       </Grid>
 
-      <StackPanel Grid.Row="1" Spacing="10">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="{Binding NewItemLauncherTitle}" />
-        <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
+      <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceSm}">
+        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Start something new" />
+        <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <Button x:Name="NewTerminalButton" Classes="ChooserButton LauncherChooser" Click="OnNewLocalTerminalClick" AutomationProperties.Name="Open a new local terminal">
-            <StackPanel Spacing="10"><Border Width="38" Height="38" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="New terminal" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Open the default local shell" /></StackPanel>
+            <StackPanel Spacing="{DynamicResource ShellSpaceSm}"><Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="New terminal" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Open the default local shell" /></StackPanel>
           </Button>
           <Button Grid.Column="1" Classes="ChooserButton LauncherChooser" AutomationProperties.Name="Open a new native browser" Click="OnNewBrowserClick" IsEnabled="{Binding CanCreateBrowserPanel}">
-            <StackPanel Spacing="10"><Border Width="38" Height="38" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="New browser" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Operating-system webview panel" /></StackPanel>
+            <StackPanel Spacing="{DynamicResource ShellSpaceSm}"><Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="New browser" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Operating-system webview panel" /></StackPanel>
           </Button>
           <Button Grid.Column="2" Classes="ChooserButton LauncherChooser" Click="OnNewStatisticsClick" AutomationProperties.Name="Open local host statistics">
-            <StackPanel Spacing="10"><Border Width="38" Height="38" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="PulseSquare" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="Statistics" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Live system metrics" /></StackPanel>
+            <StackPanel Spacing="{DynamicResource ShellSpaceSm}"><Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="PulseSquare" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="Statistics" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Live system metrics" /></StackPanel>
           </Button>
           <Button Grid.Column="3" Classes="ChooserButton LauncherChooser" Click="OnNewFileViewerClick" AutomationProperties.Name="Open a new File Viewer">
-            <StackPanel Spacing="10"><Border Width="38" Height="38" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="File Viewer" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Browse configured providers" /></StackPanel>
+            <StackPanel Spacing="{DynamicResource ShellSpaceSm}"><Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="File Viewer" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Browse configured providers" /></StackPanel>
           </Button>
           <Button Grid.Column="4" Classes="ChooserButton LauncherChooser" Click="OnNewProcessMonitorClick" AutomationProperties.Name="Open local process monitor">
-            <StackPanel Spacing="10"><Border Width="38" Height="38" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="Process monitor" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Watch running processes" /></StackPanel>
+            <StackPanel Spacing="{DynamicResource ShellSpaceSm}"><Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="19" /></Border><TextBlock FontWeight="SemiBold" Text="Process monitor" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Watch running processes" /></StackPanel>
           </Button>
         </Grid>
       </StackPanel>
 
-      <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8"><TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Workspaces" /><Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Workspaces.Count}" /></Border></StackPanel>
+      <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Workspaces" /><controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Content="{Binding Workspaces.Count}" /></StackPanel>
         <ScrollViewer
             Grid.Column="1"
             HorizontalScrollBarVisibility="Auto"
@@ -55,7 +55,7 @@
             IsVisible="{Binding HasWorkspaces}"
             AutomationProperties.Name="Saved workspaces">
           <ItemsControl ItemsSource="{Binding Workspaces}">
-            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <Button Width="38" Height="38" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}"><icons:SymbolIcon Symbol="{Binding IconSymbol}" FontSize="15" /></Button>
@@ -66,99 +66,80 @@
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" IsVisible="{Binding HasNoWorkspaces}" Text="No saved workspaces yet." />
       </Grid>
 
-      <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="18">
-        <StackPanel Spacing="9">
-          <Grid ColumnDefinitions="*,Auto"><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Saved connections" /><Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Connections.Count}" /></Border></StackPanel><Button Grid.Column="1" Classes="TextButton" Click="OnAddConnectionClick" Content="Add" /></Grid>
-          <Border Classes="ListCard">
-            <ScrollViewer MaxHeight="255">
+      <Grid Grid.Row="3" VerticalAlignment="Top" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+        <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
+          <Grid ColumnDefinitions="*,Auto"><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Saved connections" /><controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Content="{Binding Connections.Count}" /></StackPanel><Button Grid.Column="1" Classes="TextButton" Click="OnAddConnectionClick" Content="Add" /></Grid>
+          <controls:SurfaceCard Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
               <ItemsControl ItemsSource="{Binding Connections}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Button
-                        Padding="12,9"
-                        Background="Transparent"
-                        BorderBrush="{DynamicResource ShellBorderBrush}"
-                        BorderThickness="0,0,0,1"
-                        CornerRadius="0"
-                        HorizontalContentAlignment="Stretch"
+                        Classes="ListRow"
                         Click="OnOpenConnectionClick"
                         IsEnabled="{Binding CanOpen}"
                         AutomationProperties.Name="{Binding Name, StringFormat=Open saved connection {0} in a tab}">
-                      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                        <Border Width="28" Height="28" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="13" /></Border>
-                        <StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" /></StackPanel>
-                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding Kind}" />
+                      <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                        <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding Kind}" />
                       </Grid>
                     </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
-          </Border>
-        </StackPanel>
+          </controls:SurfaceCard>
+        </Grid>
 
-        <StackPanel Grid.Column="1" Spacing="9">
-          <Grid ColumnDefinitions="*,Auto"><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Saved screens" /><Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Screens.Count}" /></Border></StackPanel><Button Grid.Column="1" Classes="TextButton" Click="OnShowLayoutDesignerClick" Content="Layouts" /></Grid>
-          <Border Classes="ListCard">
-            <ScrollViewer MaxHeight="255">
+        <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
+          <Grid ColumnDefinitions="*,Auto"><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Saved screens" /><controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Content="{Binding Screens.Count}" /></StackPanel><Button Grid.Column="1" Classes="TextButton" Click="OnShowLayoutDesignerClick" Content="Layouts" /></Grid>
+          <controls:SurfaceCard Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
               <ItemsControl ItemsSource="{Binding Screens}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Button
-                        Padding="12,9"
-                        Background="Transparent"
-                        BorderBrush="{DynamicResource ShellBorderBrush}"
-                        BorderThickness="0,0,0,1"
-                        CornerRadius="0"
-                        HorizontalContentAlignment="Stretch"
+                        Classes="ListRow"
                         Click="OnOpenScreenClick"
                         AutomationProperties.Name="{Binding Name, StringFormat=Open saved screen {0} in a tab}">
-                      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                        <Border Width="38" Height="28" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Grid" FontSize="13" /></Border>
-                        <StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Description}" TextTrimming="CharacterEllipsis" /></StackPanel>
-                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding PanelCount, StringFormat={}{0} PANELS}" />
+                      <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                        <Border
+                            Width="44"
+                            Height="30"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource ShellBackgroundBrush}"
+                            BorderBrush="{DynamicResource ShellBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource ShellInnerCornerRadius}"
+                            ClipToBounds="True">
+                          <ItemsControl ItemsSource="{Binding PreviewPanels}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:ScreenLayoutPreviewPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate>
+                                <Border Margin="1" Classes="ScreenPreviewPanel" Classes.primary="{Binding IsPrimary}" />
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+
                       </Grid>
                     </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
-          </Border>
-        </StackPanel>
+          </controls:SurfaceCard>
+        </Grid>
       </Grid>
 
-      <Border Grid.Row="4" Classes="NoticeCard">
-        <Grid Margin="12" ColumnDefinitions="Auto,170,Auto,Auto,170,Auto,*,Auto" ColumnSpacing="8">
-          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Create" />
-          <TextBox
-              x:Name="NewWorkspaceName"
-              Grid.Column="1"
-              MinHeight="30"
-              PlaceholderText="Workspace name"
-              AutomationProperties.Name="New workspace name" />
-          <Button
-              Grid.Column="2"
-              Classes="SecondaryButton"
-              Click="OnCreateWorkspaceClick"
-              Content="Workspace"
-              AutomationProperties.Name="Create workspace" />
-          <Border Grid.Column="3" Width="1" Margin="4,0" Background="{DynamicResource ShellBorderBrush}" />
-          <TextBox
-              x:Name="NewScreenName"
-              Grid.Column="4"
-              MinHeight="30"
-              PlaceholderText="Saved screen name"
-              AutomationProperties.Name="New saved screen name" />
-          <Button
-              Grid.Column="5"
-              Classes="SecondaryButton"
-              Click="OnCreateScreenClick"
-              Content="Screen"
-              AutomationProperties.Name="Create saved screen" />
-          <TextBlock Grid.Column="6" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Definitions are durable; every open creates fresh runtime IDs." TextWrapping="Wrap" />
-          <Button Grid.Column="7" Classes="TextButton Accent" Click="OnAddConnectionClick" Content="Connection…" />
-        </Grid>
-      </Border>
     </Grid>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

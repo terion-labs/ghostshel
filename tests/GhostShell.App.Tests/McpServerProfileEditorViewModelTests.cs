@@ -420,8 +420,9 @@ public sealed class McpServerProfileEditorViewModelTests
                 && !string.IsNullOrWhiteSpace(
                     navigationItem.Attribute("AutomationName")?.Value));
         Assert.Contains(
-            section.Descendants(view + "TextBlock"),
-            element => element.Attribute("Text")?.Value == "No MCP server configured");
+            section.Descendants(),
+            element => element.Name.LocalName == "EmptyStatePanel"
+                && element.Attribute("Heading")?.Value == "No MCP server configured");
         Assert.Contains(
             section.Descendants(view + "TextBlock"),
             element => element.Attribute("Text")?.Value?.Contains(

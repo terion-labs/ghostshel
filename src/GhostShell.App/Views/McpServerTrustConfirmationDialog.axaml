@@ -2,6 +2,7 @@
     x:Class="GhostShell.App.Views.McpServerTrustConfirmationDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Title="Trust MCP server changes"
     Width="620"
@@ -12,10 +13,10 @@
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner"
     Opened="OnOpened">
-  <Grid Margin="24" RowDefinitions="*,Auto" RowSpacing="18">
+  <Grid Margin="{controls:Inset Xl}" RowDefinitions="*,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="13">
-        <StackPanel Spacing="5">
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock
               FontSize="{DynamicResource ShellFontSize18}"
               FontWeight="SemiBold"
@@ -28,14 +29,14 @@
         </StackPanel>
 
         <Border
-            Padding="14"
+            Padding="{controls:Inset Md}"
             Background="{DynamicResource ShellWarningSoftBrush}"
             BorderBrush="{DynamicResource ShellWarningBorderBrush}"
             BorderThickness="1"
-            CornerRadius="9">
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            CornerRadius="{DynamicResource ShellCardCornerRadius}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <icons:SymbolIcon Symbol="Warning" FontSize="18" Foreground="{DynamicResource ShellWarningBrush}" />
-            <StackPanel Grid.Column="1" Spacing="5">
+            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellWarningBrush}" Text="LOCAL PROCESS AUTHORITY" />
               <TextBlock
                   Text="GhostSHELL may launch this executable and provide the selected vault-backed environment variables during a governed agent run."
@@ -49,23 +50,23 @@
           </Grid>
         </Border>
 
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="14" Spacing="8">
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
             <TextBlock Classes="SectionHeading" Text="AUTHORITY CHANGES" />
             <ItemsControl ItemsSource="{Binding Changes}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <TextBlock Margin="0,2,0,0" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
+                  <TextBlock Margin="{controls:Inset Top=Xs}" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="14" Spacing="9">
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
             <TextBlock Classes="SectionHeading" Text="DIRECT LAUNCH" />
-            <StackPanel Spacing="3">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock Classes="Eyebrow" Text="EXECUTABLE" />
               <TextBox
                   Classes="Monospace"
@@ -73,7 +74,7 @@
                   Text="{Binding Executable}"
                   AutomationProperties.Name="Trusted MCP executable" />
             </StackPanel>
-            <StackPanel Spacing="3">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock Classes="Eyebrow" Text="WORKING DIRECTORY" />
               <TextBox
                   Classes="Monospace"
@@ -81,7 +82,7 @@
                   Text="{Binding WorkingDirectory}"
                   AutomationProperties.Name="Trusted MCP working directory" />
             </StackPanel>
-            <TextBlock Classes="Eyebrow" Margin="0,4,0,0" Text="ORDERED ARGUMENTS" />
+            <TextBlock Classes="Eyebrow" Margin="{controls:Inset Top=Xs}" Text="ORDERED ARGUMENTS" />
             <TextBlock
                 Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize10}"
@@ -90,7 +91,7 @@
             <ItemsControl ItemsSource="{Binding Arguments}" IsVisible="{Binding HasArguments}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Grid Margin="0,2,0,0" ColumnDefinitions="100,*" ColumnSpacing="8">
+                  <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="100,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Label}" />
                     <TextBlock Grid.Column="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Value}" TextWrapping="Wrap" />
                   </Grid>
@@ -98,10 +99,10 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="14" Spacing="9">
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
             <TextBlock Classes="SectionHeading" Text="VAULT-BACKED ENVIRONMENT" />
             <TextBlock
                 Classes="Muted"
@@ -118,19 +119,19 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Border
-                      Margin="0,3,0,0"
-                      Padding="9,7"
+                      Margin="{controls:Inset Top=Xs}"
+                      Padding="{controls:Inset Sm}"
                       BorderBrush="{DynamicResource ShellBorderBrush}"
                       BorderThickness="1"
-                      CornerRadius="6"
+                      CornerRadius="{DynamicResource ShellControlCornerRadius}"
                       AutomationProperties.Name="{Binding AutomationName}">
-                    <Grid ColumnDefinitions="160,*" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="160,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                       <TextBlock
                           Classes="Monospace"
                           FontSize="{DynamicResource ShellFontSize10}"
                           Text="{Binding VariableName}"
                           TextWrapping="Wrap" />
-                      <StackPanel Grid.Column="1" Spacing="2">
+                      <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                         <TextBlock
                             Classes="Muted Monospace"
                             FontSize="{DynamicResource ShellFontSize9}"
@@ -151,7 +152,7 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <TextBlock Classes="SectionHeading" Margin="0,5,0,0" Text="ENABLED TOOL ALLOWLIST" />
+            <TextBlock Classes="SectionHeading" Margin="{controls:Inset Top=Xs}" Text="ENABLED TOOL ALLOWLIST" />
             <TextBlock
                 Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize10}"
@@ -160,12 +161,12 @@
             <ItemsControl ItemsSource="{Binding EnabledTools}" IsVisible="{Binding HasEnabledTools}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <TextBlock Margin="0,2,0,0" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
+                  <TextBlock Margin="{controls:Inset Top=Xs}" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
         <CheckBox
             x:Name="Acknowledgement"
@@ -179,7 +180,7 @@
       </StackPanel>
     </ScrollViewer>
 
-    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <Button
           Classes="SecondaryButton"
           Click="OnCancelClick"

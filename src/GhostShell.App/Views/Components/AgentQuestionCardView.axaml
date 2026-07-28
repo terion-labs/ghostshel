@@ -2,22 +2,22 @@
     x:Class="GhostShell.App.Views.Components.AgentQuestionCardView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Focusable="False"
     HorizontalContentAlignment="Stretch">
-  <Border
+  <controls:SurfaceCard Tone="Notice"
       x:Name="AgentPendingQuestion"
-      Padding="12,11"
-      Classes="NoticeCard"
+      Padding="{controls:Inset Md}"
       Focusable="True"
       KeyboardNavigation.IsTabStop="True"
       IsVisible="{Binding AgentChat.HasPendingQuestion}"
       AutomationProperties.LiveSetting="Assertive"
       AutomationProperties.Name="{Binding AgentChat.PendingQuestion.AccessibleName}"
       AutomationProperties.HelpText="{Binding AgentChat.PendingQuestion.ResponseWarning}">
-    <StackPanel Spacing="8">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-        <StackPanel Spacing="2">
+    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="Eyebrow" Text="INPUT NEEDED" />
           <TextBlock
               FontSize="{DynamicResource ShellFontSize13}"
@@ -25,9 +25,7 @@
               Text="Untrusted model question"
               TextWrapping="Wrap" />
         </StackPanel>
-        <Border Grid.Column="1" VerticalAlignment="Top" Classes="StatusPill" Classes.Warning="True">
-          <TextBlock Text="NOT APPROVAL" />
-        </Border>
+        <controls:StatusChip Grid.Column="1" VerticalAlignment="Top" Classes.Warning="True" Content="NOT APPROVAL" />
       </Grid>
       <TextBlock Text="{Binding AgentChat.PendingQuestion.Question}" TextWrapping="Wrap" />
       <TextBlock
@@ -36,12 +34,12 @@
           Text="{Binding AgentChat.PendingQuestion.ExpiresAt, StringFormat={}Expires · {0}}"
           TextWrapping="Wrap" />
       <Border
-          Padding="8"
+          Padding="{controls:Inset Sm}"
           Background="{DynamicResource ShellWarningSoftBrush}"
           BorderBrush="{DynamicResource ShellWarningBorderBrush}"
           BorderThickness="1"
-          CornerRadius="6">
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+          CornerRadius="{DynamicResource ShellControlCornerRadius}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <icons:SymbolIcon Symbol="Warning" FontSize="14" Foreground="{DynamicResource ShellWarningBrush}" />
           <TextBlock
               Grid.Column="1"
@@ -51,12 +49,12 @@
               TextWrapping="Wrap" />
         </Grid>
       </Border>
-      <StackPanel Spacing="4">
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock Classes="Eyebrow" Text="YOUR ANSWER" />
         <TextBox
             x:Name="AgentQuestionResponseInput"
             MinHeight="36"
-            Padding="8"
+            Padding="{controls:Inset Sm}"
             AcceptsReturn="False"
             MaxLength="2048"
             Text="{Binding AgentChat.QuestionResponseDraft, Mode=TwoWay}"
@@ -67,7 +65,7 @@
             AutomationProperties.Name="Answer the AI agent question"
             AutomationProperties.HelpText="Single-line non-sensitive clarification only. This is not approval. Do not enter credentials." />
       </StackPanel>
-      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Button
             Classes="SecondaryButton"
             Click="OnDeclineAgentQuestionClick"
@@ -87,5 +85,5 @@
             AutomationProperties.HelpText="Sends clarification only; it does not approve an action" />
       </Grid>
     </StackPanel>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

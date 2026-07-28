@@ -65,7 +65,7 @@ public sealed partial class LayoutDesignerView : UserControl
 
     public event EventHandler<RoutedEventArgs>? SlotSelectedRequested;
 
-    public event EventHandler<RoutedEventArgs>? TogglePaintModeRequested;
+    public event EventHandler<RoutedEventArgs>? PaintPanelRequested;
 
     internal void FocusNameEditor() =>
         NewLayoutName.Focus(NavigationMethod.Tab);
@@ -160,6 +160,6 @@ public sealed partial class LayoutDesignerView : UserControl
     private void OnLayoutSlotClick(object? sender, RoutedEventArgs e) =>
         SlotSelectedRequested?.Invoke(sender, e);
 
-    private void OnLayoutTogglePaintModeClick(object? sender, RoutedEventArgs e) =>
-        TogglePaintModeRequested?.Invoke(sender, e);
+    private void OnLayoutPaintPanelClick(object? sender, RoutedEventArgs e) =>
+        PaintPanelRequested?.Invoke(sender, e);
 }

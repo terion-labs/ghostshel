@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Globalization;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using GhostShell.App;
 using GhostShell.App.Views.SettingsPages;
 using GhostShell.App.ViewModels;
@@ -147,9 +149,18 @@ public sealed partial class MainWindow
             return;
         }
 
-        SettingsRoute.ApplyAppearance(
-            theme,
-            ResolveApplicationTextScaleOption(theme.TextScaleOverride));
+        _applyingAppearanceControls = true;
+        try
+        {
+            SettingsRoute.ApplyAppearance(
+                theme,
+                ResolveApplicationTextScaleOption(theme.TextScaleOverride));
+        }
+        finally
+        {
+            _applyingAppearanceControls = false;
+        }
+
         _appearanceControlsSource = theme;
     }
 
@@ -500,10 +511,189 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void OnSaveAppearanceClick(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// The palette field waiting for a sampled colour, or null when the
+    /// eyedropper is not armed.
+    /// </summary>
+    private string? _pendingColorSampleField;
+
+    private async void OnPickColorRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control { Tag: string field })
+        {
+            return;
+        }
+
+        // Prefer the host's own screen picker so a colour can be lifted from
+        // anywhere, not only from this window.
+        if (_screenColorSampler is { IsAvailable: true } sampler)
+        {
+            try
+            {
+                var picked = await sampler.SampleAsync(_lifetime.Token);
+                if (picked is { } screenColor)
+                {
+                    ApplySampledColor(field, screenColor);
+                }
+            }
+            catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+            {
+            }
+
+            return;
+        }
+
+        // Without a host picker, sampling falls back to this window: the next
+        // click chooses the colour, so one can still be lifted from terminal
+        // output or the preview.
+        _pendingColorSampleField = field;
+        Cursor = new Cursor(StandardCursorType.Cross);
+        ViewModel.ShowApplicationKeySequenceHint(
+            $"Click anywhere to sample the {field.ToLowerInvariant()} colour · Esc to cancel");
+        AddHandler(PointerPressedEvent, OnColorSamplePointerPressed, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnColorSampleKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    private void OnColorSamplePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _ = sender;
+        if (_pendingColorSampleField is not { } field)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var sampled = ColorSampling.Sample(this, e.GetPosition(this));
+        EndColorSample();
+        if (sampled is not { } color)
+        {
+            return;
+        }
+
+        ApplySampledColor(field, color);
+    }
+
+    /// <summary>
+    /// The workspace editor's eyedropper reaches the same sampling path as the
+    /// palette's, so screen picking behaves identically wherever a colour is
+    /// chosen. The editor raises an intent rather than sampling itself, because
+    /// screen capture is a host capability.
+    /// </summary>
+    private void OnWorkspaceAccentPickRequested(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
+        OnPickColorRequested(
+            new Border { Tag = WorkspaceAccentSampleField },
+            new RoutedEventArgs());
+    }
+
+    private const string WorkspaceAccentSampleField = "WorkspaceAccent";
+
+    private void ApplySampledColor(string field, Avalonia.Media.Color color)
+    {
+        if (field == WorkspaceAccentSampleField)
+        {
+            this.FindControl<WorkspaceEditorView>("WorkspaceDefinitionEditor")
+                ?.ApplySampledAccent(color);
+            return;
+        }
+
+        // The accent lives on the theme, not the terminal profile, so it is
+        // written through the page that owns its field.
+        if (field == "Accent")
+        {
+            SettingsRoute.SetCustomAccent(color);
+            return;
+        }
+
+        if (ViewModel.TerminalSettingsEditor is not { } editor)
+        {
+            return;
+        }
+
+        switch (field)
+        {
+            case "Background": editor.BackgroundColor = color; break;
+            case "Foreground": editor.ForegroundColor = color; break;
+            case "Cursor": editor.CursorColor = color; break;
+            case "Selection": editor.SelectionColor = color; break;
+            default: return;
+        }
+
+        OnAppearanceChanged(this, new RoutedEventArgs());
+    }
+
+    private void OnColorSampleKeyDown(object? sender, KeyEventArgs e)
+    {
+        _ = sender;
+        if (_pendingColorSampleField is null || e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        EndColorSample();
+    }
+
+    private void EndColorSample()
+    {
+        _pendingColorSampleField = null;
+        Cursor = Cursor.Default;
+        RemoveHandler(PointerPressedEvent, OnColorSamplePointerPressed);
+        RemoveHandler(KeyDownEvent, OnColorSampleKeyDown);
+        ViewModel.ClearApplicationKeySequenceHint();
+    }
+
+    /// <summary>
+    /// Appearance has no save button, so edits are coalesced briefly before they
+    /// reach the store. Dragging a slider would otherwise write once per pixel,
+    /// and every write reapplies the whole theme.
+    /// </summary>
+    private DispatcherTimer? _appearanceCommitTimer;
+
+    /// <summary>
+    /// Set while the page is being filled in from the stored profile, so that
+    /// writing a value into a control does not read as the user editing it.
+    ///
+    /// Without this the page commits in a loop: a commit saves the theme, saving
+    /// notifies the catalog, the notification refills the controls, and refilling
+    /// raises the very change events that schedule the next commit. It settles at
+    /// about eight writes a second and pins a core.
+    /// </summary>
+    private bool _applyingAppearanceControls;
+
+    private void OnAppearanceChanged(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (_applyingAppearanceControls)
+        {
+            return;
+        }
+
+        _appearanceCommitTimer ??= CreateAppearanceCommitTimer();
+        _appearanceCommitTimer.Stop();
+        _appearanceCommitTimer.Start();
+    }
+
+    private DispatcherTimer CreateAppearanceCommitTimer()
+    {
+        var timer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(220),
+        };
+        timer.Tick += async (_, _) =>
+        {
+            timer.Stop();
+            await CommitAppearanceAsync();
+        };
+        return timer;
+    }
+
+    private async Task CommitAppearanceAsync()
+    {
         try
         {
             var selection = SettingsRoute.CaptureAppearance();
@@ -512,17 +702,51 @@ public sealed partial class MainWindow
                 selection.PlatformProfile,
                 selection.Accent,
                 selection.TextScale,
-                _lifetime.Token);
-            if (result.IsSuccess)
+                _lifetime.Token,
+                new ThemeChromePreference(
+                    selection.CornerRadius,
+                    selection.Density,
+                    selection.ShowTabBar,
+                    selection.ShowWorkspacesPanel,
+                    selection.TabStripPlacement,
+                    selection.WorkspacePanelPlacement));
+            if (!result.IsSuccess)
             {
-                _appearanceControlsSource = null;
-                RefreshAppearanceControlsFromStoredProfile();
+                return;
             }
+
+            // The page also edits the terminal palette, font, and cursor, which
+            // live on the terminal profile. Saving only the theme would discard
+            // everything the page shows below Theme.
+            if (ViewModel.TerminalSettingsEditor is not null)
+            {
+                _ = await ViewModel.SaveTerminalProfileAsync(_lifetime.Token);
+            }
+
+            // The controls are already showing what was just captured from them,
+            // so there is nothing to refill — only the record of what they show.
+            _appearanceControlsSource = ViewModel.ActiveTheme;
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
         }
         catch (Exception exception) when (exception is
             ArgumentException or FormatException or InvalidOperationException)
         {
             ViewModel.SetError(exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// Applying a preset only rewrites the open editor; it reaches the store when
+    /// the user chooses Save profile, like every other field on the page.
+    /// </summary>
+    private void OnSelectTerminalPaletteClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control { DataContext: TerminalPaletteOption option })
+        {
+            ViewModel.TerminalSettingsEditor?.ApplyPalettePreset(option.Palette);
         }
     }
 

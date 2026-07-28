@@ -12,19 +12,6 @@ namespace GhostShell.App.ViewModels;
 public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
 {
     private static readonly FileProviderProfileId BuiltInHomeId = new("builtin.files.home");
-    private static readonly IReadOnlyList<WorkspaceIconOption> SupportedIcons =
-    [
-        new(WorkspaceDefinition.DefaultIcon, "Workspace"),
-        new("terminal", "Terminal"),
-        new("server", "Server"),
-        new("code", "Code"),
-        new("cloud", "Cloud"),
-        new("database", "Database"),
-        new("folder", "Folder"),
-        new("globe", "Globe"),
-        new("star", "Star"),
-    ];
-
     private readonly WorkspaceDefinition _original;
     private readonly IReadOnlyDictionary<ScreenId, ScreenDefinition> _screens;
     private readonly ObservableCollection<WorkspaceEntryEditorViewModel> _entries = [];
@@ -33,6 +20,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private string _description;
     private string _accent;
     private string _icon;
+    private string _iconSearch = string.Empty;
     private bool _isDirty;
     private IReadOnlyList<DefinitionValidationIssue> _validationIssues = [];
     private string? _lastOperationError;
@@ -97,6 +85,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         ScreenOptions = BuildScreenOptions(workspace, screens, LayoutOptions);
         FileProviderOptions = BuildFileProviderOptions(workspace, screens, fileProviders);
         RestoreEntries();
+        RefreshIconChoices();
+        RefreshChoiceSelection();
         PublishState();
     }
 
@@ -108,7 +98,71 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
 
     public bool IsNew => ExpectedRevision is null;
 
-    public IReadOnlyList<WorkspaceIconOption> IconOptions => SupportedIcons;
+    public IReadOnlyList<WorkspaceIconOption> IconOptions => WorkspaceIcons.All;
+
+    /// <summary>
+    /// The catalog size as its own property, for the same reason as
+    /// <see cref="LayoutDesignerViewModel.PanelCount"/>: the catalog is an array,
+    /// so a <c>Count</c> binding over it resolves to nothing.
+    /// </summary>
+    public int IconCount => WorkspaceIcons.All.Count;
+
+    /// <summary>The icon grid's own tiles, filtered by <see cref="IconSearch"/>.</summary>
+    public ObservableCollection<WorkspaceIconChoiceViewModel> IconChoices { get; } = [];
+
+    /// <summary>
+    /// The accent presets the picker offers. Free choice stays available through
+    /// the custom colour and the eyedropper, so this is a shortcut rather than a
+    /// restriction.
+    /// </summary>
+    public IReadOnlyList<WorkspaceAccentChoiceViewModel> AccentChoices { get; } =
+        WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option)).ToArray();
+
+    /// <summary>
+    /// Filters the icon grid. The catalog is large enough that scanning it is
+    /// slower than naming what you want.
+    /// </summary>
+    public string IconSearch
+    {
+        get => _iconSearch;
+        set
+        {
+            if (SetProperty(ref _iconSearch, value))
+            {
+                RefreshIconChoices();
+            }
+        }
+    }
+
+    public bool HasNoMatchingIcons => IconChoices.Count == 0;
+
+    private void RefreshIconChoices()
+    {
+        var matches = WorkspaceIcons.Search(_iconSearch);
+        IconChoices.Clear();
+        foreach (var option in matches)
+        {
+            IconChoices.Add(new WorkspaceIconChoiceViewModel(option)
+            {
+                IsSelected = string.Equals(option.Id, _icon, StringComparison.Ordinal),
+            });
+        }
+
+        OnPropertyChanged(nameof(HasNoMatchingIcons));
+    }
+
+    private void RefreshChoiceSelection()
+    {
+        foreach (var choice in IconChoices)
+        {
+            choice.IsSelected = string.Equals(choice.Id, _icon, StringComparison.Ordinal);
+        }
+
+        foreach (var choice in AccentChoices)
+        {
+            choice.IsSelected = string.Equals(choice.Hex, _accent, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
 
@@ -162,6 +216,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _accent, value))
             {
+                RefreshChoiceSelection();
                 Changed();
             }
         }
@@ -174,6 +229,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _icon, value))
             {
+                RefreshChoiceSelection();
                 Changed();
             }
         }

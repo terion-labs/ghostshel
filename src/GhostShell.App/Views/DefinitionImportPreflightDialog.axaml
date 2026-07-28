@@ -2,6 +2,7 @@
     x:Class="GhostShell.App.Views.DefinitionImportPreflightDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     Title="Review definition import"
     Width="680"
     MaxHeight="720"
@@ -9,45 +10,45 @@
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid Margin="24" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="16">
-    <StackPanel Spacing="6">
+  <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
       <TextBlock FontSize="{DynamicResource ShellFontSize19}" FontWeight="SemiBold" Text="Review definition import" />
       <TextBlock Classes="Muted" Text="Preflight is complete. Nothing has been imported yet." />
     </StackPanel>
 
-    <Border Grid.Row="1" Classes="SettingsCard">
-      <Grid Margin="14,12" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="5">
+    <controls:SurfaceCard Padding="0" Grid.Row="1">
+      <Grid Margin="{controls:Inset Md}" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontWeight="SemiBold" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
         <Border Grid.Column="1" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding ModeLabel}" /></Border>
         <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Directory}" TextTrimming="CharacterEllipsis" />
         <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Summary}" />
       </Grid>
-    </Border>
+    </controls:SurfaceCard>
 
     <Grid Grid.Row="2" MaxHeight="330">
-      <Border Classes="NoticeCard" IsVisible="{Binding HasNoIssues}">
-        <TextBlock Margin="14" Text="No conflicts or compatibility issues were found." />
-      </Border>
+      <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoIssues}">
+        <TextBlock Margin="{controls:Inset Md}" Text="No conflicts or compatibility issues were found." />
+      </controls:SurfaceCard>
       <ScrollViewer IsVisible="{Binding HasIssues}" VerticalScrollBarVisibility="Auto">
         <ItemsControl ItemsSource="{Binding Issues}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Margin="0,0,0,8" Classes="SettingsCard">
-                <Grid Margin="14,11" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+              <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
+                <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Label}" /></Border>
-                  <StackPanel Grid.Column="1" Spacing="3">
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                     <TextBlock FontWeight="SemiBold" Text="{Binding Heading}" />
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Message}" TextWrapping="Wrap" />
                   </StackPanel>
                 </Grid>
-              </Border>
+              </controls:SurfaceCard>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </ScrollViewer>
     </Grid>
 
-    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
       <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding CommitHint}" TextWrapping="Wrap" />
       <Button Grid.Column="1" MinWidth="88" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
       <Button Grid.Column="2" MinWidth="150" Classes="PrimaryButton" Click="OnImportClick" Content="Import definitions" IsEnabled="{Binding CanApply}" />

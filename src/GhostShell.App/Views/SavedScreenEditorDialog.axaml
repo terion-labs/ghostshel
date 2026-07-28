@@ -12,40 +12,40 @@
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="62,*,68">
-    <Grid Margin="20,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
-      <StackPanel VerticalAlignment="Center" Spacing="2">
+    <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Choose a layout, then configure the panel assigned to each slot." />
       </StackPanel>
-      <Border Grid.Column="1" VerticalAlignment="Center" Classes="StatusPill">
-        <TextBlock
-            Text="{Binding DirtyStatus}"
-            AutomationProperties.LiveSetting="Polite"
-            AutomationProperties.Name="{Binding DirtyStatus, StringFormat=Saved screen editor status: {0}}" />
-      </Border>
+      <controls:StatusChip
+          Grid.Column="1"
+          VerticalAlignment="Center"
+          Content="{Binding DirtyStatus}"
+          AutomationProperties.LiveSetting="Polite"
+          AutomationProperties.Name="{Binding DirtyStatus, StringFormat=Saved screen editor status: {0}}" />
       <Button Grid.Column="2" Classes="IconButton" Click="OnCancelClick" Content="×" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Close saved screen editor" />
     </Grid>
 
     <ScrollViewer Grid.Row="1" IsEnabled="{Binding CanEdit}">
-      <StackPanel Margin="20,8,20,22" Spacing="14">
+      <StackPanel Margin="{controls:Inset Horizontal=Lg, Top=Sm, Bottom=Xl}" Spacing="{DynamicResource ShellSpaceMd}">
         <TextBlock Classes="SectionHeading" Text="DETAILS" />
-        <Border Classes="SettingsCard">
-          <Grid Margin="16" ColumnDefinitions="*,*" ColumnSpacing="10">
-            <StackPanel Spacing="4">
+        <controls:SurfaceCard Padding="0">
+          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Name" />
               <TextBox Text="{Binding Name}" AutomationProperties.Name="Saved screen name" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Spacing="4">
+            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Description" />
               <TextBox Text="{Binding Description}" AutomationProperties.Name="Saved screen description" />
             </StackPanel>
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
 
         <TextBlock Classes="SectionHeading" Text="LAYOUT" />
-        <Border Classes="SettingsCard">
-          <Grid Margin="16" ColumnDefinitions="*,260" ColumnSpacing="16">
-            <StackPanel Spacing="4">
+        <controls:SurfaceCard Padding="0">
+          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,260" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Saved layout" />
               <ComboBox
                   ItemsSource="{Binding LayoutOptions}"
@@ -66,9 +66,9 @@
                 Background="{DynamicResource ShellBackgroundBrush}"
                 BorderBrush="{DynamicResource ShellBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="8"
+                CornerRadius="{DynamicResource ShellControlCornerRadius}"
                 ClipToBounds="True">
-              <ItemsControl Margin="5" ItemsSource="{Binding PreviewPanels}">
+              <ItemsControl Margin="{controls:Inset Xs}" ItemsSource="{Binding PreviewPanels}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
                     <controls:ScreenLayoutPreviewPanel />
@@ -77,7 +77,7 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Border
-                        Margin="2"
+                        Margin="{controls:Inset Xs}"
                         Classes="ScreenPreviewPanel"
                         Classes.primary="{Binding IsPrimary}" />
                   </DataTemplate>
@@ -85,11 +85,11 @@
               </ItemsControl>
             </Border>
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="NoticeCard" IsVisible="{Binding HasMissingLayout}">
-          <Grid Margin="13" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-            <TextBlock Foreground="#FF8577" FontWeight="Bold" Text="!" />
+        <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasMissingLayout}">
+          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <TextBlock Foreground="{DynamicResource ShellDangerBrush}" FontWeight="Bold" Text="!" />
             <TextBlock
                 Grid.Column="1"
                 Classes="Muted"
@@ -98,11 +98,11 @@
                 AutomationProperties.LiveSetting="Assertive"
                 AutomationProperties.Name="The saved screen layout is unavailable" />
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="NoticeCard" IsVisible="{Binding HasMissingDefinitions}">
-          <Grid Margin="13" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-            <TextBlock Foreground="#FF8577" FontWeight="Bold" Text="!" />
+        <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasMissingDefinitions}">
+          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <TextBlock Foreground="{DynamicResource ShellDangerBrush}" FontWeight="Bold" Text="!" />
             <TextBlock
                 Grid.Column="1"
                 Classes="Muted"
@@ -111,11 +111,11 @@
                 AutomationProperties.LiveSetting="Assertive"
                 AutomationProperties.Name="{Binding MissingDefinitionCount, StringFormat={}{0} saved screen panel definition(s) require repair}" />
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="NoticeCard" IsVisible="{Binding HasInvalidBrowserAddresses}">
-          <Grid Margin="13" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-            <TextBlock Foreground="#FF8577" FontWeight="Bold" Text="!" />
+        <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasInvalidBrowserAddresses}">
+          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <TextBlock Foreground="{DynamicResource ShellDangerBrush}" FontWeight="Bold" Text="!" />
             <TextBlock
                 Grid.Column="1"
                 Classes="Muted"
@@ -124,15 +124,22 @@
                 AutomationProperties.LiveSetting="Assertive"
                 AutomationProperties.Name="One or more browser panel startup addresses are invalid" />
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
 
         <TextBlock Classes="SectionHeading" Text="AGENT POLICY" />
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="16" Spacing="12">
-            <CheckBox
-                Content="Override the agent policy for this saved screen"
-                IsChecked="{Binding AgentPolicy.IsEnabled, Mode=TwoWay}"
-                AutomationProperties.Name="Override the AI agent policy for this saved screen" />
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock FontWeight="SemiBold" Text="Override the agent policy for this saved screen" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #ScreenAgentPolicyOverrideSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
+              </StackPanel>
+              <ToggleSwitch
+                  x:Name="ScreenAgentPolicyOverrideSwitch"
+                  Grid.Column="1"
+                  IsChecked="{Binding AgentPolicy.IsEnabled, Mode=TwoWay}"
+                  AutomationProperties.Name="Override the AI agent policy for this saved screen" />
+            </Grid>
             <TextBlock
                 Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
@@ -140,9 +147,9 @@
                 TextWrapping="Wrap" />
             <Grid
                 ColumnDefinitions="*,*"
-                ColumnSpacing="10"
+                ColumnSpacing="{DynamicResource ShellSpaceSm}"
                 IsVisible="{Binding AgentPolicy.IsEnabled}">
-              <StackPanel Spacing="4">
+              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock FontWeight="SemiBold" Text="Provider profile" />
                 <ComboBox
                     ItemsSource="{Binding AgentPolicy.ProviderOptions}"
@@ -155,7 +162,7 @@
                   </ComboBox.ItemTemplate>
                 </ComboBox>
               </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="4">
+              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock FontWeight="SemiBold" Text="Policy model" />
                 <TextBox
                     MaxLength="256"
@@ -164,7 +171,7 @@
               </StackPanel>
             </Grid>
             <TextBlock
-                Foreground="#FF8577"
+                Foreground="{DynamicResource ShellDangerBrush}"
                 FontSize="{DynamicResource ShellFontSize9}"
                 IsVisible="{Binding !AgentPolicy.IsValid}"
                 Text="Choose an available, enabled provider profile and enter a valid model identifier."
@@ -176,7 +183,7 @@
                 IsVisible="{Binding AgentPolicy.IsEnabled}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Grid Margin="0,3" ColumnDefinitions="*,180" ColumnSpacing="12">
+                  <Grid Margin="{controls:Inset Vertical=Xs}" ColumnDefinitions="*,180" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                     <TextBlock
                         VerticalAlignment="Center"
                         Text="{Binding DisplayName}"
@@ -197,7 +204,7 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Classes="SectionHeading" Text="PANELS &amp; CONNECTIONS" />
@@ -207,17 +214,17 @@
         <ItemsControl ItemsSource="{Binding Panels}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Margin="0,0,0,10" Classes="SettingsCard">
-                <StackPanel Margin="16" Spacing="12">
-                  <Grid ColumnDefinitions="Auto,*,220" ColumnSpacing="10">
+              <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
+                <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                  <Grid ColumnDefinitions="Auto,*,220" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <Border Width="28" Height="28" Classes="IconTile">
                       <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="#" />
                     </Border>
-                    <StackPanel Grid.Column="1" Spacing="2">
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                       <TextBlock Classes="Eyebrow" Text="{Binding PanelLabel}" />
                       <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Panel identity follows this layout slot." />
                     </StackPanel>
-                    <StackPanel Grid.Column="2" Spacing="4">
+                    <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}">
                       <TextBlock FontWeight="SemiBold" Text="Panel type" />
                       <ComboBox
                           ItemsSource="{Binding KindOptions}"
@@ -232,12 +239,12 @@
                     </StackPanel>
                   </Grid>
 
-                  <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                    <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                       <TextBlock FontWeight="SemiBold" Text="Panel title" />
                       <TextBox Text="{Binding Title}" AutomationProperties.Name="{Binding PanelLabel, StringFormat=Title for {0}}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding IsTerminal}">
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding IsTerminal}">
                       <TextBlock FontWeight="SemiBold" Text="Connection" />
                       <ComboBox ItemsSource="{Binding ConnectionOptions}" SelectedItem="{Binding SelectedConnection}" AutomationProperties.Name="{Binding PanelLabel, StringFormat=Connection for {0}}">
                         <ComboBox.ItemTemplate>
@@ -247,7 +254,7 @@
                         </ComboBox.ItemTemplate>
                       </ComboBox>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding IsFileViewer}">
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding IsFileViewer}">
                       <TextBlock FontWeight="SemiBold" Text="File provider" />
                       <ComboBox ItemsSource="{Binding FileProviderOptions}" SelectedItem="{Binding SelectedFileProvider}" AutomationProperties.Name="{Binding PanelLabel, StringFormat=File provider for {0}}">
                         <ComboBox.ItemTemplate>
@@ -259,7 +266,7 @@
                     </StackPanel>
                   </Grid>
 
-                  <StackPanel Spacing="4" IsVisible="{Binding SupportsLocation}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding SupportsLocation}">
                     <TextBlock FontWeight="SemiBold" Text="Startup location" />
                     <TextBox
                         Classes="Monospace"
@@ -267,7 +274,7 @@
                         PlaceholderText="Working directory, URL, or provider path"
                         AutomationProperties.Name="{Binding PanelLabel, StringFormat=Startup location for {0}}" />
                     <TextBlock
-                        Foreground="#FF8577"
+                        Foreground="{DynamicResource ShellDangerBrush}"
                         FontSize="{DynamicResource ShellFontSize9}"
                         IsVisible="{Binding HasInvalidBrowserAddress}"
                         Text="Enter a complete HTTP or HTTPS URL, or leave this empty for about:blank."
@@ -276,9 +283,9 @@
                   </StackPanel>
                   <Grid
                       ColumnDefinitions="*,Auto"
-                      ColumnSpacing="12"
+                      ColumnSpacing="{DynamicResource ShellSpaceMd}"
                       IsVisible="{Binding IsTerminal}">
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                       <TextBlock FontWeight="SemiBold" Text="Startup commands" />
                       <TextBox
                           MinHeight="82"
@@ -289,7 +296,7 @@
                           PlaceholderText="One command per line"
                           AutomationProperties.Name="{Binding PanelLabel, StringFormat=Startup commands for {0}}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" MinWidth="260" Spacing="4">
+                    <StackPanel Grid.Column="1" MinWidth="260" Spacing="{DynamicResource ShellSpaceXs}">
                       <TextBlock FontWeight="SemiBold" Text="On delivery failure" />
                       <ComboBox
                           MinWidth="260"
@@ -311,24 +318,24 @@
                     </StackPanel>
                   </Grid>
                 </StackPanel>
-              </Border>
+              </controls:SurfaceCard>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
         <TextBlock
             x:Name="ValidationError"
-            Foreground="#FF8577"
+            Foreground="{DynamicResource ShellDangerBrush}"
             IsVisible="False"
             TextWrapping="Wrap"
             AutomationProperties.LiveSetting="Assertive"
             AutomationProperties.Name="Saved screen validation error" />
 
-        <Border Classes="NoticeCard" IsVisible="{Binding HasPersistenceError}">
-          <Grid Margin="13" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-            <TextBlock Foreground="#FF8577" FontWeight="Bold" Text="!" />
-            <StackPanel Grid.Column="1" Spacing="3">
-              <TextBlock Classes="Eyebrow" Foreground="#FF8577" Text="{Binding PersistenceErrorLabel}" />
+        <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasPersistenceError}">
+          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <TextBlock Foreground="{DynamicResource ShellDangerBrush}" FontWeight="Bold" Text="!" />
+            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellDangerBrush}" Text="{Binding PersistenceErrorLabel}" />
               <TextBlock
                   Classes="Muted"
                   Text="{Binding PersistenceError.Message}"
@@ -338,12 +345,12 @@
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Your draft is still open. Resolve the issue and retry." />
             </StackPanel>
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
       </StackPanel>
     </ScrollViewer>
 
-    <Border Grid.Row="2" BorderBrush="#2C2C30" BorderThickness="0,1,0,0">
-      <Grid Margin="20,0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Saving changes only future opens; running instances stay independent." />
         <Button
             Grid.Column="1"

@@ -1,8 +1,13 @@
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Controls.Presenters;
+using Avalonia.Media;
+using Avalonia.VisualTree;
 using GhostShell.App.ViewModels;
 using GhostShell.Core;
+
+using GhostShell.App.Controls;
 
 namespace GhostShell.App.Views;
 
@@ -14,7 +19,7 @@ namespace GhostShell.App.Views;
 public sealed partial class WorkspaceEditorView : UserControl
 {
     private WorkspaceEditorViewModel? _observedEditor;
-    private bool _syncingIcon;
+    private bool _syncingAccent;
 
     public WorkspaceEditorView()
     {
@@ -37,6 +42,12 @@ public sealed partial class WorkspaceEditorView : UserControl
     /// <summary>Raised after the original workspace snapshot has been restored.</summary>
     public event EventHandler? ResetRequested;
 
+    /// <summary>
+    /// Asks the host to sample a colour from the screen. Screen sampling is a
+    /// platform capability, so the editor requests it rather than owning it.
+    /// </summary>
+    public event EventHandler? PickAccentRequested;
+
     public WorkspaceEditorViewModel? Editor => DataContext as WorkspaceEditorViewModel;
 
     public bool FocusInitialControl() =>
@@ -47,7 +58,7 @@ public sealed partial class WorkspaceEditorView : UserControl
     private ScrollViewer SelectedEntryEditorControl =>
         this.FindControl<ScrollViewer>("SelectedEntryEditor")!;
 
-    private Border NoEntrySelectionControl => this.FindControl<Border>("NoEntrySelection")!;
+    private SurfaceCard NoEntrySelectionControl => this.FindControl<SurfaceCard>("NoEntrySelection")!;
 
     private void ObserveEditor()
     {
@@ -69,7 +80,6 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void ConfigurePickers()
     {
         var editor = Editor;
-        var iconPicker = this.FindControl<ComboBox>("IconPicker")!;
         var addConnectionPicker = this.FindControl<ComboBox>("AddConnectionPicker")!;
         var addScreenPicker = this.FindControl<ComboBox>("AddScreenPicker")!;
         var addLayoutPicker = this.FindControl<ComboBox>("AddLayoutPicker")!;
@@ -78,7 +88,6 @@ public sealed partial class WorkspaceEditorView : UserControl
 
         if (editor is null)
         {
-            iconPicker.ItemsSource = null;
             addConnectionPicker.ItemsSource = null;
             addScreenPicker.ItemsSource = null;
             addLayoutPicker.ItemsSource = null;
@@ -87,7 +96,6 @@ public sealed partial class WorkspaceEditorView : UserControl
             return;
         }
 
-        iconPicker.ItemsSource = editor.IconOptions;
         addConnectionPicker.ItemsSource = editor.ConnectionOptions;
         addScreenPicker.ItemsSource = editor.ScreenOptions;
         addLayoutPicker.ItemsSource = editor.LayoutOptions;
@@ -99,18 +107,103 @@ public sealed partial class WorkspaceEditorView : UserControl
         SynchronizeIconPicker();
     }
 
-    private void SynchronizeIconPicker()
+    /// <summary>
+    /// Selection in the icon and accent grids is bound declaratively, so only the
+    /// colour picker — which holds its own value — needs pushing.
+    /// </summary>
+    private void SynchronizeIconPicker() => SynchronizeAccentPicker();
+
+    private void SynchronizeAccentPicker()
     {
         var editor = Editor;
-        if (editor is null)
+        if (editor is null || _syncingAccent)
         {
             return;
         }
 
-        _syncingIcon = true;
-        this.FindControl<ComboBox>("IconPicker")!.SelectedItem =
-            editor.IconOptions.SingleOrDefault(option => option.Id == editor.Icon);
-        _syncingIcon = false;
+        // A workspace with no accent yet still needs a sensible starting colour in
+        // the picker; a half-typed hex is not a colour, so the picker keeps its
+        // previous value rather than jumping to black on every keystroke.
+        if (string.IsNullOrWhiteSpace(editor.Accent))
+        {
+            SetPickerColor(Color.Parse(ThemePreference.BronzeFallback.ToString()));
+            return;
+        }
+
+        if (!Color.TryParse(editor.Accent, out var color))
+        {
+            return;
+        }
+
+        SetPickerColor(color);
+    }
+
+    private void SetPickerColor(Color color)
+    {
+        _syncingAccent = true;
+        try
+        {
+            this.FindControl<ColorPicker>("AccentColorPicker")!.Color = color;
+        }
+        finally
+        {
+            _syncingAccent = false;
+        }
+    }
+
+    private void OnIconChoiceClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (Editor is { } editor
+            && sender is Button { DataContext: WorkspaceIconOption option })
+        {
+            editor.Icon = option.Id;
+        }
+    }
+
+    private void OnAccentPresetClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (Editor is { } editor
+            && sender is Button { DataContext: WorkspaceAccentOption option })
+        {
+            editor.Accent = option.Hex;
+        }
+    }
+
+    private void OnAccentColorChanged(object? sender, ColorChangedEventArgs e)
+    {
+        _ = sender;
+        if (Editor is not { } editor || _syncingAccent)
+        {
+            return;
+        }
+
+        _syncingAccent = true;
+        try
+        {
+            editor.Accent = $"#{e.NewColor.R:X2}{e.NewColor.G:X2}{e.NewColor.B:X2}";
+        }
+        finally
+        {
+            _syncingAccent = false;
+        }
+    }
+
+    private void OnPickAccentClick(object? sender, RoutedEventArgs e) =>
+        PickAccentRequested?.Invoke(sender, e);
+
+    /// <summary>
+    /// Applies a colour sampled by the host. Kept separate from
+    /// <see cref="OnAccentColorChanged"/> so a sample is a deliberate edit rather
+    /// than a picker echo.
+    /// </summary>
+    public void ApplySampledAccent(Color color)
+    {
+        if (Editor is { } editor)
+        {
+            editor.Accent = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        }
     }
 
     private void EnsureEntrySelection()
@@ -135,7 +228,7 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.PropertyName == nameof(WorkspaceEditorViewModel.Icon))
+        if (e.PropertyName is nameof(WorkspaceEditorViewModel.Accent))
         {
             SynchronizeIconPicker();
         }
@@ -145,18 +238,6 @@ public sealed partial class WorkspaceEditorView : UserControl
         }
     }
 
-    private void OnIconSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        _ = e;
-        if (_syncingIcon
-            || sender is not ComboBox { SelectedItem: WorkspaceIconOption option }
-            || Editor is not { } editor)
-        {
-            return;
-        }
-
-        editor.Icon = option.Id;
-    }
 
     private void OnEntrySelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -437,12 +518,12 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void ShowInteractionError(string message)
     {
         this.FindControl<TextBlock>("InteractionErrorText")!.Text = message;
-        this.FindControl<Border>("InteractionErrorCard")!.IsVisible = true;
+        this.FindControl<SurfaceCard>("InteractionErrorCard")!.IsVisible = true;
     }
 
     private void ClearInteractionError()
     {
         this.FindControl<TextBlock>("InteractionErrorText")!.Text = string.Empty;
-        this.FindControl<Border>("InteractionErrorCard")!.IsVisible = false;
+        this.FindControl<SurfaceCard>("InteractionErrorCard")!.IsVisible = false;
     }
 }

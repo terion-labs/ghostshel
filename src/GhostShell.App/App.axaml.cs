@@ -29,6 +29,7 @@ public sealed partial class App : Avalonia.Application
     private readonly LocalArtifactControlViewModel? _localArtifactControlViewModel;
     private readonly QuickTerminalController? _quickTerminalController;
     private readonly IHostAccessibilityPreferencesSource? _hostAccessibilityPreferences;
+    private readonly IScreenColorSampler? _screenColorSampler;
     private IPlatformSettings? _platformSettings;
     private AvaloniaHostAppearanceAdapter? _hostAppearance;
     private INotifyCollectionChanged? _windowCollection;
@@ -73,7 +74,8 @@ public sealed partial class App : Avalonia.Application
         RecoveryDataControlViewModel recoveryDataControlViewModel,
         LocalArtifactControlViewModel localArtifactControlViewModel,
         QuickTerminalController quickTerminalController,
-        IHostAccessibilityPreferencesSource hostAccessibilityPreferences)
+        IHostAccessibilityPreferencesSource hostAccessibilityPreferences,
+        IScreenColorSampler screenColorSampler)
     {
         ArgumentNullException.ThrowIfNull(mainWindowViewModel);
         ArgumentNullException.ThrowIfNull(startupState);
@@ -88,6 +90,7 @@ public sealed partial class App : Avalonia.Application
         ArgumentNullException.ThrowIfNull(localArtifactControlViewModel);
         ArgumentNullException.ThrowIfNull(quickTerminalController);
         ArgumentNullException.ThrowIfNull(hostAccessibilityPreferences);
+        ArgumentNullException.ThrowIfNull(screenColorSampler);
         _mainWindowViewModel = mainWindowViewModel;
         _startupState = startupState;
         _recoveryCoordinator = recoveryCoordinator;
@@ -101,6 +104,7 @@ public sealed partial class App : Avalonia.Application
         _localArtifactControlViewModel = localArtifactControlViewModel;
         _quickTerminalController = quickTerminalController;
         _hostAccessibilityPreferences = hostAccessibilityPreferences;
+        _screenColorSampler = screenColorSampler;
     }
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -137,7 +141,10 @@ public sealed partial class App : Avalonia.Application
                         "The desktop composition root did not provide recovery data controls."),
                 _localArtifactControlViewModel
                     ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide app-managed storage controls."))
+                        "The desktop composition root did not provide app-managed storage controls."),
+                _screenColorSampler
+                    ?? throw new InvalidOperationException(
+                        "The desktop composition root did not provide a screen colour sampler."))
             {
                 DataContext = mainWindowViewModel,
             };
@@ -392,7 +399,49 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellControlMinHeight"] = resources.ControlMinHeight;
         Resources["ShellControlCornerRadius"] = resources.ControlCornerRadius;
         Resources["ShellControlPadding"] = resources.ControlPadding;
+        Resources["ShellButtonPadding"] = resources.ButtonPadding;
         Resources["ShellCardCornerRadius"] = resources.CardCornerRadius;
+        Resources["ShellPillCornerRadius"] = resources.PillCornerRadius;
+        Resources["ShellInnerCornerRadius"] = resources.InnerCornerRadius;
+
+        // The spacing scale, in both forms the framework needs: a number for the
+        // Spacing/ColumnSpacing/RowSpacing properties, and a Thickness for Margin
+        // and Padding. Publishing only one of the two is why the markup fell back
+        // to literals — half the properties could not consume the token.
+        var spacing = resources.Spacing;
+        foreach (var (name, value) in new (string, double)[]
+                 {
+                     // A published zero, so an inset can name every edge the same
+                     // way whether or not that edge has a value.
+                     ("None", 0),
+                     ("Xs", spacing.ExtraSmall),
+                     ("Sm", spacing.Small),
+                     ("Md", spacing.Medium),
+                     ("Lg", spacing.Large),
+                     ("Xl", spacing.ExtraLarge),
+                     ("Xxl", spacing.Huge),
+                 })
+        {
+            Resources[$"ShellSpace{name}"] = value;
+            Resources[$"ShellInset{name}"] = new Thickness(value);
+        }
+
+        // Named insets, for the three shapes that recur often enough that spelling
+        // them out at each use site is how they drifted apart in the first place.
+        Resources["ShellCardPadding"] = new Thickness(spacing.Medium);
+        Resources["ShellPagePadding"] = new Thickness(spacing.Large);
+        Resources["ShellRowPadding"] = new Thickness(spacing.Medium, spacing.Small);
+        Resources["ShellPillPadding"] = new Thickness(spacing.Small, spacing.ExtraSmall);
+
+        // For a native child view that has to round its own layer because Avalonia
+        // cannot clip it. Only the bottom corners are at the panel's edge — a
+        // header covers the top two — so rounding all four would carve notches
+        // into the middle of the panel rather than shaping its outline.
+        Resources["ShellPanelBottomCornerRadius"] = new CornerRadius(
+            0,
+            0,
+            resources.CardCornerRadius.BottomRight,
+            resources.CardCornerRadius.BottomLeft);
         Resources["ShellAppearanceStatus"] = resources.AppearanceStatus;
         Resources["ShellAccentStatus"] = resources.AccentStatus;
         Resources["ShellPlatformProfileClass"] = resources.ProfileClass;
@@ -401,7 +450,7 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellAdvancedMaterialsEnabled"] = resources.AdvancedMaterialsEnabled;
     }
 
-    private static void ApplyToWindow(
+    private void ApplyToWindow(
         Window window,
         EffectiveAppearanceResources resources)
     {
@@ -425,6 +474,7 @@ public sealed partial class App : Avalonia.Application
         {
             window.Classes.Add("materials-enabled");
         }
+
     }
 
     private static SolidColorBrush Brush(Color color) => new(color);

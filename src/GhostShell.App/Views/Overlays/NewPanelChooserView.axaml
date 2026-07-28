@@ -2,16 +2,16 @@
     x:Class="GhostShell.App.Views.Overlays.NewPanelChooserView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Border
+  <controls:SurfaceCard Elevation="Overlay" Padding="0"
       Width="900"
       HorizontalAlignment="Center"
       VerticalAlignment="Center"
-      Classes="OverlayCard"
       KeyboardNavigation.TabNavigation="Cycle">
-    <StackPanel Margin="22" Spacing="18">
+    <StackPanel Margin="{controls:Inset Xl}" Spacing="{DynamicResource ShellSpaceLg}">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel>
           <TextBlock FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="Add a panel" />
@@ -21,9 +21,9 @@
           <icons:SymbolIcon Symbol="Dismiss" FontSize="14" />
         </Button>
       </Grid>
-      <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
+      <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Button x:Name="NewPanelTerminalButton" Classes="ChooserButton PanelChooser" Click="OnAddTerminalPanelClick">
-          <StackPanel Spacing="9">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="18" />
             </Border>
@@ -32,7 +32,7 @@
           </StackPanel>
         </Button>
         <Button Grid.Column="1" Classes="ChooserButton PanelChooser" AutomationProperties.Name="Add native browser panel" Click="OnAddBrowserPanelClick" IsEnabled="{Binding CanCreateBrowserPanel}">
-          <StackPanel Spacing="9">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="18" />
             </Border>
@@ -41,7 +41,7 @@
           </StackPanel>
         </Button>
         <Button Grid.Column="2" Classes="ChooserButton PanelChooser" Click="OnAddStatisticsPanelClick" AutomationProperties.Name="Add Statistics panel">
-          <StackPanel Spacing="9">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="PulseSquare" FontSize="18" />
             </Border>
@@ -50,7 +50,7 @@
           </StackPanel>
         </Button>
         <Button Grid.Column="3" Classes="ChooserButton PanelChooser" Click="OnAddFilePanelClick">
-          <StackPanel Spacing="9">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="18" />
             </Border>
@@ -59,7 +59,7 @@
           </StackPanel>
         </Button>
         <Button Grid.Column="4" Classes="ChooserButton PanelChooser" Click="OnAddProcessMonitorPanelClick" AutomationProperties.Name="Add Process Monitor panel">
-          <StackPanel Spacing="9">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="18" />
             </Border>
@@ -68,7 +68,75 @@
           </StackPanel>
         </Button>
       </Grid>
+      <!-- A new panel is not only a blank adapter: a saved connection or screen
+           is just as likely to be what belongs here, so both are offered
+           alongside the adapters rather than behind another navigation step. -->
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+        <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+            <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="Connections" />
+            <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Content="{Binding Connections.Count}" />
+          </StackPanel>
+          <!-- Five rows exactly. A height that ends mid-row reads as a clipped
+               list rather than a scrollable one. -->
+          <controls:SurfaceCard Padding="0" Grid.Row="1">
+            <ScrollViewer MaxHeight="210" HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding Connections}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button
+                        Classes="ListRow"
+                        Click="OnAddConnectionPanelClick"
+                        IsEnabled="{Binding CanOpen}"
+                        AutomationProperties.Name="{Binding Name, StringFormat=Open saved connection {0} in this panel}">
+                      <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                        <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding Kind}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </controls:SurfaceCard>
+        </Grid>
+
+        <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+            <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="Screens" />
+            <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Content="{Binding Screens.Count}" />
+          </StackPanel>
+          <controls:SurfaceCard Padding="0" Grid.Row="1">
+            <ScrollViewer MaxHeight="210" HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding Screens}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button
+                        Classes="ListRow"
+                        Click="OnOpenScreenClick"
+                        AutomationProperties.Name="{Binding Name, StringFormat=Open saved screen {0} in a tab}">
+                      <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                        <Border Width="26" Height="26" Classes="IconTile Neutral"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Grid" FontSize="12" /></Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding PanelCount, StringFormat={}{0} panels}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </controls:SurfaceCard>
+        </Grid>
+      </Grid>
+
       <Button Classes="TextButton Accent" Click="OnShowLayoutDesignerClick" Content="Open layout designer instead" />
     </StackPanel>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

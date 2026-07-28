@@ -1,0 +1,231 @@
+<Window
+    x:Class="GhostShell.App.Views.DesignSystemGalleryWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    Title="GhostSHELL design system"
+    Width="880"
+    SizeToContent="Height"
+    CanResize="False"
+    ShowInTaskbar="False"
+    Background="{DynamicResource ShellBackgroundBrush}">
+  <!--
+    Every component the shell is built from, on one page.
+
+    It exists so the design system can be looked at rather than reasoned about. A
+    component that only ever appears inside a running window is a component whose
+    drift nobody notices until a screenshot arrives; here a changed radius, a
+    changed gap, or a tone that stopped resolving shows up in one image.
+
+    It also states the rule the rest of the markup follows: not a single literal
+    size, gap, radius, or colour below this line.
+  -->
+    <StackPanel Margin="{DynamicResource ShellInsetXl}" Spacing="{DynamicResource ShellSpaceXl}">
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+        <TextBlock
+            FontSize="{DynamicResource ShellFontSize18}"
+            FontWeight="SemiBold"
+            Text="Design system" />
+        <TextBlock
+            Classes="Muted"
+            Text="Every value on this page comes from a published token, so it moves with the platform profile, the density, the text scale, and the corner-radius setting."
+            TextWrapping="Wrap" />
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Surfaces" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="One card. A view names what it is, never what it looks like." />
+        <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}" RowSpacing="{DynamicResource ShellSpaceMd}">
+          <controls:SurfaceCard>
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock FontWeight="SemiBold" Text="Default" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Content grouped on the page." TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Raised">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock FontWeight="SemiBold" Text="Raised" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="A control inside another card." TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock FontWeight="SemiBold" Text="Sunken" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="A well the page recedes into." TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Notice">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock FontWeight="SemiBold" Text="Notice" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Read this before acting." TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Warning">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock FontWeight="SemiBold" Text="Warning" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="This will ask before it proceeds." TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Danger">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock FontWeight="SemiBold" Text="Danger" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="This cannot be undone." TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+        </UniformGrid>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Status" />
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+          <controls:StatusChip Content="CONNECTED" />
+          <controls:StatusChip Tone="Warning" Content="NEEDS ATTENTION" />
+          <controls:StatusChip Tone="Danger" Content="YOLO ENABLED" />
+          <controls:StatusChip Tone="Notice" Content="claude-opus-4-5" />
+          <controls:StatusChip Tone="Default" Content="ASK" />
+          <controls:StatusChip Shape="Rounded" Content="SSH" />
+          <controls:StatusChip Shape="Rounded" Content="Docker" />
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Actions" />
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+          <Button Classes="PrimaryButton" Content="Save" />
+          <Button Classes="SecondaryButton" Content="Test connection" />
+          <Button Classes="TextButton" Content="Clear" />
+          <Button Classes="DestructiveButton" Content="Delete" />
+          <Button Classes="SecondaryButton" Content="Disabled" IsEnabled="False" />
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Settings" />
+        <controls:SettingsGroup
+            Heading="Quick Terminal"
+            Description="The group owns the column width and the separators, so no row has to know where it sits."
+            ControlWidth="240">
+          <controls:SettingRow
+              Label="Global hotkey"
+              Description="Press the shortcut that summons the panel from anywhere.">
+            <TextBox Classes="Monospace" Text="Ctrl+Alt+T" />
+          </controls:SettingRow>
+          <controls:SettingRow
+              Label="Show on display"
+              Description="Follow the GhostSHELL window or always use the primary display.">
+            <ComboBox HorizontalAlignment="Stretch" SelectedIndex="0">
+              <ComboBoxItem Content="Follow the window" />
+              <ComboBoxItem Content="Primary display" />
+            </ComboBox>
+          </controls:SettingRow>
+          <controls:SettingRow
+              Label="Retain the session"
+              Description="Keep the shell running when the panel is dismissed.">
+            <ToggleSwitch HorizontalAlignment="Right" IsChecked="True" />
+          </controls:SettingRow>
+        </controls:SettingsGroup>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Panel chrome" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="A filled header inside a rounded card, shown as the active panel. If the card does not clip, the header squares off the two corners the border draws round; if the active class does not reach it, the accent outline is missing." />
+        <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0" Height="90" Classes="active">
+          <Grid RowDefinitions="36,*">
+            <Border Grid.Row="0" Classes="PanelHeader">
+              <TextBlock
+                  Margin="{controls:Inset Horizontal=Md}"
+                  VerticalAlignment="Center"
+                  FontWeight="SemiBold"
+                  Text="Local terminal" />
+            </Border>
+          </Grid>
+        </controls:SurfaceCard>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Fields" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="A field names the control above it; a row names it beside. Separate on purpose — merging them behind a flag would make every use site say which it meant." />
+        <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+          <controls:SurfaceCard Tone="Raised">
+            <controls:LabeledField Label="Platform profile" Hint="Closest host-native chrome, radii, and density.">
+              <ComboBox HorizontalAlignment="Stretch" SelectedIndex="0">
+                <ComboBoxItem Content="Automatic" />
+              </ComboBox>
+            </controls:LabeledField>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Raised">
+            <controls:LabeledField Label="Family">
+              <ComboBox HorizontalAlignment="Stretch" SelectedIndex="0">
+                <ComboBoxItem Content="JetBrains Mono" />
+              </ComboBox>
+            </controls:LabeledField>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Raised">
+            <controls:LabeledField Label="Size">
+              <NumericUpDown Minimum="8" Maximum="32" Value="14" />
+            </controls:LabeledField>
+          </controls:SurfaceCard>
+        </UniformGrid>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Empty states" />
+        <controls:SurfaceCard Height="260" Padding="0">
+          <controls:EmptyStatePanel
+              Glyph="Bot"
+              Heading="Connect an AI provider"
+              Body="Add an Anthropic, OpenAI, or compatible endpoint. Credentials stay in the OS vault and panel actions remain broker-governed.">
+            <Button Classes="PrimaryButton" Content="Open provider settings" />
+          </controls:EmptyStatePanel>
+        </controls:SurfaceCard>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Spacing scale" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="Derived from the host's own grid step, scaled by density and text size. Six steps, because a scale with a value for every occasion is the same as no scale."
+            TextWrapping="Wrap" />
+        <controls:SurfaceCard>
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <Grid ColumnDefinitions="70,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <TextBlock Classes="Eyebrow" Text="XS" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Height="{DynamicResource ShellSpaceXs}" HorizontalAlignment="Left" Width="{DynamicResource ShellSpaceXs}" Background="{DynamicResource ShellAccentBrush}" />
+            </Grid>
+            <Grid ColumnDefinitions="70,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <TextBlock Classes="Eyebrow" Text="SM" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Height="{DynamicResource ShellSpaceXs}" HorizontalAlignment="Left" Width="{DynamicResource ShellSpaceSm}" Background="{DynamicResource ShellAccentBrush}" />
+            </Grid>
+            <Grid ColumnDefinitions="70,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <TextBlock Classes="Eyebrow" Text="MD" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Height="{DynamicResource ShellSpaceXs}" HorizontalAlignment="Left" Width="{DynamicResource ShellSpaceMd}" Background="{DynamicResource ShellAccentBrush}" />
+            </Grid>
+            <Grid ColumnDefinitions="70,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <TextBlock Classes="Eyebrow" Text="LG" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Height="{DynamicResource ShellSpaceXs}" HorizontalAlignment="Left" Width="{DynamicResource ShellSpaceLg}" Background="{DynamicResource ShellAccentBrush}" />
+            </Grid>
+            <Grid ColumnDefinitions="70,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <TextBlock Classes="Eyebrow" Text="XL" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Height="{DynamicResource ShellSpaceXs}" HorizontalAlignment="Left" Width="{DynamicResource ShellSpaceXl}" Background="{DynamicResource ShellAccentBrush}" />
+            </Grid>
+            <Grid ColumnDefinitions="70,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <TextBlock Classes="Eyebrow" Text="XXL" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Height="{DynamicResource ShellSpaceXs}" HorizontalAlignment="Left" Width="{DynamicResource ShellSpaceXxl}" Background="{DynamicResource ShellAccentBrush}" />
+            </Grid>
+          </StackPanel>
+        </controls:SurfaceCard>
+      </StackPanel>
+
+    </StackPanel>
+</Window>

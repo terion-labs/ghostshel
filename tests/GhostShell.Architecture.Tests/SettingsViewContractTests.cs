@@ -58,12 +58,14 @@ public sealed class SettingsViewContractTests
             ["RetryFileTransferRequested"] = "OnRetryFileTransferClick",
             ["ReviewHistoryPrivacyRequested"] = "OnReviewHistoryPrivacyClick",
             ["ReviewOnboardingRequested"] = "OnReviewOnboardingClick",
-            ["SaveAppearanceRequested"] = "OnSaveAppearanceClick",
+            ["AppearanceChangedRequested"] = "OnAppearanceChanged",
+            ["PickColorRequested"] = "OnPickColorRequested",
             ["SaveKeybindingsRequested"] = "OnSaveKeybindingsClick",
             ["SaveQuickTerminalSettingsRequested"] =
                 "OnSaveQuickTerminalSettingsClick",
             ["SaveTerminalProfileRequested"] = "OnSaveTerminalProfileClick",
             ["SecretsSettingsRequested"] = "OnSecretsSettingsClick",
+            ["SelectTerminalPaletteRequested"] = "OnSelectTerminalPaletteClick",
             ["SettingsBackRequested"] = "OnSettingsBackClick",
             ["ShowCommandPaletteRequested"] = "OnShowCommandPaletteClick",
             ["ShowLayoutDesignerRequested"] = "OnShowLayoutDesignerClick",
@@ -151,9 +153,11 @@ public sealed class SettingsViewContractTests
         Assert.Equal(
             "{Binding IsAppearanceSettingsVisible}",
             AttributeValue(appearancePage, "IsVisible"));
+        // Appearance has no save step; each change is forwarded as it happens.
         Assert.Equal(
-            "OnAppearanceSaveRequested",
-            AttributeValue(appearancePage, "SaveRequested"));
+            "OnAppearanceChangedRequested",
+            AttributeValue(appearancePage, "AppearanceChanged"));
+        Assert.Null(AttributeValue(appearancePage, "SaveRequested"));
 
         var quickTerminalPage = Assert.Single(
             root.Descendants(),
@@ -242,7 +246,12 @@ public sealed class SettingsViewContractTests
         var content = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "StackPanel");
-        Assert.Equal("22", AttributeValue(content, "Spacing"));
+        // Sections are one step apart on the spacing scale. This page and Quick
+        // Terminal used to say 22 and 20 for the same intent, which is the drift
+        // the scale exists to stop; a literal pinned here would reintroduce it.
+        Assert.Equal(
+            "{DynamicResource ShellSpaceXl}",
+            AttributeValue(content, "Spacing"));
         Assert.Null(AttributeValue(content, "Margin"));
         Assert.Null(AttributeValue(content, "IsVisible"));
 
@@ -251,7 +260,7 @@ public sealed class SettingsViewContractTests
             element => element.Name.LocalName == "SettingsPageHeader");
         Assert.Equal("Appearance", AttributeValue(header, "Heading"));
         Assert.Equal(
-            "Follow the host automatically or select an explicit cross-platform profile.",
+            "Customize how the app looks — colour scheme, accent, and window chrome.",
             AttributeValue(header, "Description"));
 
         foreach (var controlName in AppearanceControlNames)
@@ -266,7 +275,9 @@ public sealed class SettingsViewContractTests
 
         foreach (var (controlName, automationName) in new[]
                  {
-                     ("AppearanceModePicker", "Color mode"),
+                     ("AppearanceModeSystem", "Color mode System"),
+                     ("AppearanceModeDark", "Color mode Dark"),
+                     ("AppearanceModeLight", "Color mode Light"),
                      ("PlatformProfilePicker", "Platform profile"),
                      ("AccentModePicker", "Accent mode"),
                      ("CustomAccentText", "Custom accent color"),
@@ -280,13 +291,20 @@ public sealed class SettingsViewContractTests
                     "AutomationProperties.Name"));
         }
 
-        var appearanceMode = FindNamedElement(root, "AppearanceModePicker");
-        Assert.Equal(
-            new[] { "System", "Dark", "Light" },
-            appearanceMode.Elements()
-                .Where(element => element.Name.LocalName == "ComboBoxItem")
-                .Select(element => AttributeValue(element, "Content"))
-                .ToArray());
+        // The colour-mode tiles are the control: one exclusive group, so the
+        // preview a user clicks is the same element that carries the choice.
+        foreach (var tileName in new[]
+                 {
+                     "AppearanceModeSystem",
+                     "AppearanceModeDark",
+                     "AppearanceModeLight",
+                 })
+        {
+            var tile = FindNamedElement(root, tileName);
+            Assert.Equal("RadioButton", tile.Name.LocalName);
+            Assert.Equal("AppearanceMode", AttributeValue(tile, "GroupName"));
+            Assert.Equal("PresetCard", AttributeValue(tile, "Classes"));
+        }
 
         var accentMode = FindNamedElement(root, "AccentModePicker");
         Assert.Equal(
@@ -299,17 +317,14 @@ public sealed class SettingsViewContractTests
                 .Select(element => AttributeValue(element, "Content"))
                 .ToArray());
 
-        Assert.Contains(
+        // Appearance applies as you edit, so the page must not carry a save
+        // button that implies changes are pending until it is pressed.
+        Assert.DoesNotContain(
             root.Descendants(),
             element => element.Name.LocalName == "Button"
-                && string.Equals(
-                    AttributeValue(element, "Content"),
-                    "Save appearance",
-                    StringComparison.Ordinal)
-                && string.Equals(
-                    AttributeValue(element, "Click"),
-                    "OnSaveAppearanceClick",
-                    StringComparison.Ordinal));
+                && (AttributeValue(element, "Content") ?? string.Empty)
+                    .Contains("Save", StringComparison.Ordinal));
+
         foreach (var binding in new[] { "ThemeMode", "ThemeProfile", "ThemeTextScale" })
         {
             Assert.Contains(
@@ -321,7 +336,7 @@ public sealed class SettingsViewContractTests
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
             "public sealed partial class AppearanceSettingsPageView");
         Assert.Contains(
-            "SaveRequested?.Invoke(sender, e);",
+            "AppearanceChanged?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -353,7 +368,12 @@ public sealed class SettingsViewContractTests
         var content = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "StackPanel");
-        Assert.Equal("20", AttributeValue(content, "Spacing"));
+        // The gap between sections comes from the spacing scale, not from a number
+        // written here. A literal is a gap the density and text-scale settings
+        // cannot reach, and pinning one in a test is how it would stay that way.
+        Assert.Equal(
+            "{DynamicResource ShellSpaceXl}",
+            AttributeValue(content, "Spacing"));
         Assert.Null(AttributeValue(content, "Margin"));
         Assert.Null(AttributeValue(content, "IsVisible"));
 
@@ -553,7 +573,9 @@ public sealed class SettingsViewContractTests
     private static readonly string[] AppearanceControlNames =
     [
         "AccentModePicker",
-        "AppearanceModePicker",
+        "AppearanceModeDark",
+        "AppearanceModeLight",
+        "AppearanceModeSystem",
         "ApplicationTextScalePicker",
         "CustomAccentText",
         "PlatformProfilePicker",

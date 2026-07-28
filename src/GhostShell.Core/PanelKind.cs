@@ -7,4 +7,11 @@ public enum PanelKind
     FileViewer,
     Statistics,
     ProcessMonitor,
+
+    /// <summary>
+    /// A panel that has been placed but not yet told what to be. It exists so the
+    /// choice of adapter happens where the panel will live rather than in a modal
+    /// over the whole window; appended last so persisted history keeps its values.
+    /// </summary>
+    Placeholder,
 }

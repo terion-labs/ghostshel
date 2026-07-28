@@ -2,14 +2,15 @@
     x:Class="GhostShell.App.Views.OperationErrorDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     Title="GhostSHELL error"
     Width="460"
     SizeToContent="Height"
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="Auto,Auto" Margin="24" RowSpacing="18">
-    <StackPanel Spacing="7">
+  <Grid RowDefinitions="Auto,Auto" Margin="{controls:Inset Xl}" RowSpacing="{DynamicResource ShellSpaceLg}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
       <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="Unable to close" />
       <TextBlock Classes="Muted" Text="{Binding Message}" TextWrapping="Wrap" />
     </StackPanel>

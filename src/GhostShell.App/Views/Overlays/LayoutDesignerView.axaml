@@ -3,18 +3,19 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Border Width="1000" Height="648" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="OverlayCard" KeyboardNavigation.TabNavigation="Cycle">
+  <controls:SurfaceCard Elevation="Overlay" Padding="0" Width="1000" Height="648" HorizontalAlignment="Center" VerticalAlignment="Center" KeyboardNavigation.TabNavigation="Cycle">
     <Grid RowDefinitions="60,Auto,*,60">
       <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-        <Grid Margin="20,0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-          <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="11">
-            <Border Width="30" Height="30" Background="{DynamicResource ShellAccentSoftBrush}" CornerRadius="8">
+        <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+          <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceMd}">
+            <Border Width="30" Height="30" Background="{DynamicResource ShellAccentSoftBrush}" CornerRadius="{DynamicResource ShellControlCornerRadius}">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Grid" FontSize="16" Foreground="{DynamicResource ShellAccentBrush}" />
             </Border>
-            <StackPanel Spacing="1">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontSize="{DynamicResource ShellFontSize16}" FontWeight="Bold" Text="Design custom layout" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Paint panels onto the grid" />
             </StackPanel>
@@ -27,17 +28,17 @@
       </Border>
 
       <Border Grid.Row="1" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-        <StackPanel Margin="20,14" Spacing="12">
-          <StackPanel Spacing="6">
+        <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceMd}">
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="Layout name" />
             <TextBox x:Name="NewLayoutName" Text="{Binding LayoutDesignerEditor.Name, Mode=TwoWay}" PlaceholderText="My layout" />
           </StackPanel>
-          <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
               <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Columns" />
               <NumericUpDown Width="110" x:Name="LayoutColumnsPicker" Minimum="1" Maximum="12" Value="{Binding LayoutDesignerEditor.Columns}" ValueChanged="OnLayoutGridSizeChanged" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
               <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Rows" />
               <NumericUpDown Width="110" x:Name="LayoutRowsPicker" Minimum="1" Maximum="12" Value="{Binding LayoutDesignerEditor.Rows}" ValueChanged="OnLayoutGridSizeChanged" />
             </StackPanel>
@@ -48,14 +49,14 @@
 
       <Grid Grid.Row="2" ColumnDefinitions="*,300">
         <Border Background="{DynamicResource ShellBackgroundBrush}">
-          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceMd}">
             <Border
                 Width="560"
                 Height="324"
                 Background="{DynamicResource ShellBackgroundBrush}"
                 BorderBrush="{DynamicResource ShellBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="10"
+                CornerRadius="{DynamicResource ShellCardCornerRadius}"
                 ClipToBounds="True">
               <Grid>
                 <controls:LayoutDesignerGridVisual
@@ -100,12 +101,12 @@
                           Click="OnLayoutSlotClick"
                           AutomationProperties.Name="{Binding PositionLabel}">
                         <Grid>
-                          <Border Margin="7" Padding="7,3" HorizontalAlignment="Left" VerticalAlignment="Top" Background="#59000000" CornerRadius="6">
+                          <Border Margin="{controls:Inset Sm}" Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}" HorizontalAlignment="Left" VerticalAlignment="Top" Background="#59000000" CornerRadius="{DynamicResource ShellControlCornerRadius}">
                             <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding OrderLabel}" />
                           </Border>
-                          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5">
+                          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
                             <TextBlock HorizontalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize28}" FontWeight="Bold" Text="{Binding Order}" />
-                            <TextBlock MaxWidth="180" HorizontalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding PositionLabel}" TextAlignment="Center" TextWrapping="Wrap" />
+                            <TextBlock HorizontalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="{Binding SizeLabel}" TextAlignment="Center" />
                           </StackPanel>
                         </Grid>
                       </Button>
@@ -114,32 +115,32 @@
                 </ItemsControl>
               </Grid>
             </Border>
-            <Border Padding="14,8" Background="{DynamicResource ShellSurfaceRaisedBrush}" CornerRadius="999">
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Drag across empty cells to paint a panel · drag edges to resize" />
+            <Border Padding="{controls:Inset Horizontal=Md, Vertical=Sm}" Background="{DynamicResource ShellSurfaceRaisedBrush}" CornerRadius="{DynamicResource ShellPillCornerRadius}">
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding LayoutDesignerEditor.GridHint}" />
             </Border>
           </StackPanel>
         </Border>
 
         <Border Grid.Column="1" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1,0,0,0">
           <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="18,16" Spacing="12">
+            <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Panels" />
-                <Border Grid.Column="1" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding LayoutDesignerEditor.Slots.Count}" /></Border>
+                <components:CountPill Grid.Column="1" VerticalAlignment="Center" Value="{Binding LayoutDesignerEditor.PanelCount}" />
               </Grid>
 
               <ItemsControl ItemsSource="{Binding LayoutDesignerEditor.Slots}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Button
-                        Margin="0,0,0,6"
-                        Padding="10,8"
+                        Margin="{controls:Inset Bottom=Xs}"
+                        Padding="{controls:Inset Sm}"
                         HorizontalContentAlignment="Stretch"
                         Classes="SecondaryButton"
                         Classes.active="{Binding IsSelected}"
                         Click="OnLayoutSlotClick"
                         AutomationProperties.Name="{Binding PositionLabel}">
-                      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                         <Border
                             Width="24"
                             Height="24"
@@ -148,14 +149,14 @@
                             Classes.blue="{Binding UsesBluePalette}"
                             Classes.green="{Binding UsesGreenPalette}"
                             Classes.pink="{Binding UsesPinkPalette}"
-                            CornerRadius="6">
+                            CornerRadius="{DynamicResource ShellControlCornerRadius}">
                           <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Classes="Monospace" FontWeight="Bold" Foreground="{DynamicResource ShellBackgroundBrush}" Text="{Binding Order}" />
                         </Border>
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
                           <TextBlock FontWeight="SemiBold" Text="{Binding OrderLabel}" />
                           <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding PositionLabel}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <icons:SymbolIcon Grid.Column="2" VerticalAlignment="Center" Symbol="ChevronRight" FontSize="12" />
+                        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" VerticalAlignment="Center" Content="{Binding SizeLabel}" />
                       </Grid>
                     </Button>
                   </DataTemplate>
@@ -165,27 +166,26 @@
               <Button
                   HorizontalAlignment="Stretch"
                   Classes="SecondaryButton"
-                  Classes.painting="{Binding LayoutDesignerEditor.IsPaintMode}"
-                  Click="OnLayoutTogglePaintModeClick"
-                  AutomationProperties.Name="Toggle paint new panel mode">
-                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                  Click="OnLayoutPaintPanelClick"
+                  AutomationProperties.Name="Paint a new panel">
+                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                   <icons:SymbolIcon Symbol="Edit" FontSize="14" />
-                  <TextBlock Text="{Binding LayoutDesignerEditor.PaintModeLabel}" />
+                  <TextBlock Text="Paint new panel" />
                 </StackPanel>
               </Button>
 
-              <Border Classes="NoticeCard">
-                <TextBlock Margin="12" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Panels are generic regions — assign connections later when you open the screen." TextWrapping="Wrap" />
-              </Border>
+              <controls:SurfaceCard Tone="Notice" Padding="0">
+                <TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Panels are generic regions — assign connections later when you open the screen." TextWrapping="Wrap" />
+              </controls:SurfaceCard>
 
-              <Border Classes="SettingsCard">
-                <StackPanel Margin="12" Spacing="9">
+              <controls:SurfaceCard Padding="0">
+                <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel>
                       <TextBlock FontWeight="SemiBold" Text="{Binding LayoutDesignerEditor.SelectedSlot.OrderLabel}" />
                       <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding LayoutDesignerEditor.SelectedSlot.PositionLabel}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                       <Button Classes="IconButton" Click="OnLayoutMoveEarlierClick" IsEnabled="{Binding LayoutDesignerEditor.CanMoveSelectedEarlier}" ToolTip.Tip="Earlier in keyboard order" AutomationProperties.Name="Move selected panel earlier">
                         <icons:SymbolIcon Symbol="ArrowUp" FontSize="13" />
                       </Button>
@@ -196,7 +196,7 @@
                   </Grid>
 
                   <TextBlock Classes="SectionHeading" Text="MOVE ONE CELL" />
-                  <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="5">
+                  <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceXs}">
                     <Button Classes="SecondaryButton" Click="OnLayoutMoveLeftClick" AutomationProperties.Name="Move panel left"><icons:SymbolIcon Symbol="ArrowLeft" FontSize="13" /></Button>
                     <Button Grid.Column="1" Classes="SecondaryButton" Click="OnLayoutMoveUpClick" AutomationProperties.Name="Move panel up"><icons:SymbolIcon Symbol="ArrowUp" FontSize="13" /></Button>
                     <Button Grid.Column="2" Classes="SecondaryButton" Click="OnLayoutMoveDownClick" AutomationProperties.Name="Move panel down"><icons:SymbolIcon Symbol="ArrowDown" FontSize="13" /></Button>
@@ -204,14 +204,14 @@
                   </Grid>
 
                   <TextBlock Classes="SectionHeading" Text="RESIZE ONE CELL" />
-                  <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
-                    <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                       <Button Classes="TextButton" Click="OnLayoutGrowLeftClick" Content="Grow left" />
                       <Button Classes="TextButton" Click="OnLayoutGrowRightClick" Content="Grow right" />
                       <Button Classes="TextButton" Click="OnLayoutGrowTopClick" Content="Grow top" />
                       <Button Classes="TextButton" Click="OnLayoutGrowBottomClick" Content="Grow bottom" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="4">
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                       <Button Classes="TextButton" Click="OnLayoutShrinkLeftClick" Content="Shrink left" />
                       <Button Classes="TextButton" Click="OnLayoutShrinkRightClick" Content="Shrink right" />
                       <Button Classes="TextButton" Click="OnLayoutShrinkTopClick" Content="Shrink top" />
@@ -219,24 +219,24 @@
                     </StackPanel>
                   </Grid>
 
-                  <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceXs}">
                     <Button HorizontalAlignment="Stretch" Classes="SecondaryButton" Click="OnLayoutAddSlotClick" Content="Add 1 cell" />
                     <Button Grid.Column="1" HorizontalAlignment="Stretch" Classes="DestructiveButton" Click="OnLayoutRemoveSlotClick" Content="Remove" />
                   </Grid>
                 </StackPanel>
-              </Border>
+              </controls:SurfaceCard>
 
               <TextBlock
                   Classes="Muted"
                   FontSize="{DynamicResource ShellFontSize9}"
-                  Text="{Binding LayoutDesignerEditor.PaintModeStatus}"
+                  Text="{Binding LayoutDesignerEditor.GridHint}"
                   TextWrapping="Wrap"
                   AutomationProperties.LiveSetting="Polite"
                   AutomationProperties.Name="Layout painting status" />
               <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="Alt+arrows move · Shift+arrows grow · Ctrl+arrows shrink · Page Up/Down selects" TextWrapping="Wrap" />
-              <Border Classes="NoticeCard" IsVisible="{Binding LayoutDesignerEditor.HasOperationError}">
-                <TextBlock Margin="12" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LayoutDesignerEditor.LastOperationIssue.Message}" TextWrapping="Wrap" />
-              </Border>
+              <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding LayoutDesignerEditor.HasOperationError}">
+                <TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LayoutDesignerEditor.LastOperationIssue.Message}" TextWrapping="Wrap" />
+              </controls:SurfaceCard>
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LayoutDesignerEditor.ValidationSummary}" TextWrapping="Wrap" />
               <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding LayoutDesignerEditor.MinimumCanvasWidth, StringFormat={}Minimum width {0:0}px}" />
               <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding LayoutDesignerEditor.MinimumCanvasHeight, StringFormat={}Minimum height {0:0}px}" />
@@ -245,8 +245,8 @@
               <ItemsControl ItemsSource="{Binding Layouts}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Button Margin="0,0,0,6" Padding="10,8" Classes="SecondaryButton" HorizontalContentAlignment="Stretch" Click="OnEditLayoutClick">
-                      <Grid ColumnDefinitions="*,70" ColumnSpacing="8">
+                    <Button Margin="{controls:Inset Bottom=Xs}" Padding="{controls:Inset Sm}" Classes="SecondaryButton" HorizontalContentAlignment="Stretch" Click="OnEditLayoutClick">
+                      <Grid ColumnDefinitions="*,70" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                         <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                         <TextBlock Grid.Column="1" Classes="Eyebrow" Text="{Binding SlotCount, StringFormat={}{0} SLOTS}" TextAlignment="Right" />
                       </Grid>
@@ -260,12 +260,12 @@
       </Grid>
 
       <Border Grid.Row="3" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-        <Grid Margin="20,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+        <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
           <TextBlock VerticalAlignment="Center" Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding LayoutDesignerEditor.GridSummary}" />
           <Button Grid.Column="1" VerticalAlignment="Center" Classes="SecondaryButton" Click="OnCloseOverlayClick" Content="Cancel" />
           <Button Grid.Column="2" VerticalAlignment="Center" Classes="PrimaryButton" Click="OnSaveLayoutDesignerClick" Content="Save layout" IsEnabled="{Binding LayoutDesignerEditor.CanSave}" />
         </Grid>
       </Border>
     </Grid>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

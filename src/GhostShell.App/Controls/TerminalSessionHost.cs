@@ -21,6 +21,14 @@ public sealed class TerminalSessionHost : NativeControlHost
     public static readonly StyledProperty<ISessionHostClient?> SessionClientProperty =
         AvaloniaProperty.Register<TerminalSessionHost, ISessionHostClient?>(nameof(SessionClient));
 
+    /// <summary>
+    /// The live render profile, applied to the running surface. Separate from the
+    /// session request because a font change must not restart the session.
+    /// </summary>
+    public static readonly StyledProperty<TerminalRenderProfileSnapshot?> RenderProfileProperty =
+        AvaloniaProperty.Register<TerminalSessionHost, TerminalRenderProfileSnapshot?>(
+            nameof(RenderProfile));
+
     public static readonly StyledProperty<EnsureTerminalSessionRequest?> SessionRequestProperty =
         AvaloniaProperty.Register<TerminalSessionHost, EnsureTerminalSessionRequest?>(nameof(SessionRequest));
 
@@ -121,6 +129,12 @@ public sealed class TerminalSessionHost : NativeControlHost
     {
         get => GetValue(SessionClientProperty);
         set => SetValue(SessionClientProperty, value);
+    }
+
+    public TerminalRenderProfileSnapshot? RenderProfile
+    {
+        get => GetValue(RenderProfileProperty);
+        set => SetValue(RenderProfileProperty, value);
     }
 
     public EnsureTerminalSessionRequest? SessionRequest
@@ -224,15 +238,25 @@ public sealed class TerminalSessionHost : NativeControlHost
         return RequireSuccess(result).PlainText;
     }
 
+    /// <summary>
+    /// Gives the terminal the keyboard.
+    ///
+    /// Avalonia never sees focus move into a native child view, so <c>IsFocused</c>
+    /// is false even while the surface owns the keyboard. Treating that as "not
+    /// focused yet" and calling <see cref="InputElement.Focus"/> alone moved the
+    /// keyboard to Avalonia's own top-level view and never handed it back — the
+    /// surface stopped receiving key events entirely, while still drawing output.
+    /// Every caller of this is a panel becoming active, so it happened constantly.
+    ///
+    /// Both steps are needed: Avalonia's logical focus keeps the shell's own
+    /// tracking honest, and the native focus is the only thing that makes the
+    /// surface first responder and able to receive keys at all.
+    /// </summary>
     internal bool RequestInputFocus()
     {
-        if (IsFocused)
-        {
-            _ = FocusTerminalAsync();
-            return true;
-        }
-
-        return Focus();
+        var focused = IsFocused || Focus();
+        _ = FocusTerminalAsync();
+        return focused;
     }
 
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
@@ -264,6 +288,10 @@ public sealed class TerminalSessionHost : NativeControlHost
         {
             _ = ResizeTerminalAsync();
         }
+        else if (change.Property == RenderProfileProperty)
+        {
+            _ = ApplyRenderProfileAsync();
+        }
         else if (change.Property == SessionClientProperty
             || change.Property == SessionRequestProperty
             || change.Property == ClientIdProperty)
@@ -292,6 +320,78 @@ public sealed class TerminalSessionHost : NativeControlHost
                 _initializationGeneration,
                 lifetime.Token);
         }
+    }
+
+    /// <summary>
+    /// Pushes new typography to the running surface. A terminal that is not yet
+    /// attached needs nothing: it will launch with the profile it is given.
+    /// </summary>
+    private async Task ApplyRenderProfileAsync()
+    {
+        if (RenderProfile is not { } profile
+            || _attachedClient is not { } client
+            || _attachedSessionId is not { } sessionId
+            || _attachmentId is not { } attachmentId
+            || _attachmentLifetime is not { } lifetime)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = await client.UpdateTerminalRenderProfileAsync(
+                new UpdateTerminalRenderProfileRequest(sessionId, attachmentId, profile),
+                NewContext(),
+                lifetime.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The panel closed while the change was in flight.
+        }
+    }
+
+    /// <summary>
+    /// The radius the panel card draws, so the native view can round its own
+    /// layer to match. Avalonia clips its own visuals to the card, but a native
+    /// child view is not one of them.
+    /// </summary>
+    public static readonly StyledProperty<CornerRadius> HostCornerRadiusProperty =
+        AvaloniaProperty.Register<TerminalSessionHost, CornerRadius>(nameof(HostCornerRadius));
+
+    public CornerRadius HostCornerRadius
+    {
+        get => GetValue(HostCornerRadiusProperty);
+        set => SetValue(HostCornerRadiusProperty, value);
+    }
+
+    private NativeRendererCorners HostCorners => new(
+        HostCornerRadius.TopLeft,
+        HostCornerRadius.TopRight,
+        HostCornerRadius.BottomRight,
+        HostCornerRadius.BottomLeft);
+
+    /// <summary>
+    /// Raised on the UI thread when the native view takes focus, so the shell can
+    /// mark this panel active. Clicking a native view is invisible to Avalonia.
+    /// </summary>
+    public event EventHandler? NativeFocusGained;
+
+    private static int _nativeFocusReported;
+
+    private void NotifyNativeFocus()
+    {
+        // The native view only raises this once it is genuinely the window's first
+        // responder, which is the one precondition for it receiving a keystroke at
+        // all. Reporting the first few makes the difference between "focus never
+        // reached the surface" and "focus reached it and the keys went missing
+        // later" visible, instead of both looking like silence.
+        if (Interlocked.Increment(ref _nativeFocusReported) <= 3)
+        {
+            Console.Error.WriteLine(
+                "[ghostshell:input] the terminal surface took the keyboard");
+        }
+
+        Dispatcher.UIThread.Post(() => NativeFocusGained?.Invoke(this, EventArgs.Empty));
     }
 
     private void RestartSession(IPlatformHandle host)
@@ -377,7 +477,10 @@ public sealed class TerminalSessionHost : NativeControlHost
                         handleDescriptor,
                         host.Handle,
                         CurrentViewport(),
-                        InterceptApplicationKey)),
+                        InterceptApplicationKey,
+                        PhysicalInputGate: null,
+                        HostCorners,
+                        FocusObserver: NotifyNativeFocus)),
                 NewContext(),
                 cancellationToken);
             _ = RequireSuccess(rendererAttached);
@@ -535,6 +638,16 @@ public sealed class TerminalSessionHost : NativeControlHost
         }
     }
 
+    /// <summary>
+    /// Failing to focus the terminal is exactly as visible to the user as a dead
+    /// keyboard: the surface keeps drawing and ignores every keystroke. This used to
+    /// go to <see cref="Trace"/>, which nothing in this application listens to, so
+    /// the one failure that explains the symptom was the one nobody could see.
+    /// </summary>
+    private static void ReportFocusFailure(string reason) =>
+        Console.Error.WriteLine(
+            $"[ghostshell:input] the terminal could not take the keyboard: {reason}");
+
     private async Task FocusTerminalAsync()
     {
         if (!IsLive || SessionClient is null || SessionRequest is null)
@@ -558,6 +671,10 @@ public sealed class TerminalSessionHost : NativeControlHost
                 {
                     _inputLeaseId = decision.Lease.Id;
                 }
+                else
+                {
+                    ReportFocusFailure($"the input lease was refused — {decision.Detail}");
+                }
             }
 
             var result = await SessionClient.FocusTerminalAsync(
@@ -571,7 +688,7 @@ public sealed class TerminalSessionHost : NativeControlHost
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to focus the terminal session: {0}", exception);
+            ReportFocusFailure(exception.Message);
         }
     }
 

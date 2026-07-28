@@ -9,18 +9,17 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}">
-  <Border
-      Classes="PanelCard"
+  <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="36,*">
       <Border Grid.Row="0" Classes="PanelHeader">
-        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="11,0">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" Margin="{controls:Inset Horizontal=Md}">
           <Ellipse
               Width="7"
               Height="7"
               VerticalAlignment="Center"
               Fill="{Binding StatusBrush, ElementName=RuntimeTerminal}" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
             <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
             <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
             <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
@@ -31,7 +30,7 @@
                 Text="WARNING"
                 ToolTip.Tip="{Binding WarningMessage}" />
           </StackPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
             <TextBlock
                 VerticalAlignment="Center"
                 Classes="Monospace Muted"
@@ -39,13 +38,32 @@
                 Text="{Binding StatusText, ElementName=RuntimeTerminal}"
                 AutomationProperties.LiveSetting="Polite"
                 AutomationProperties.Name="Terminal session status" />
-            <Button
-                Classes="IconButton"
-                Click="OnCloseClick"
-                ToolTip.Tip="Close panel"
-                AutomationProperties.Name="Close panel">
-              <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-            </Button>
+            <StackPanel
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="{DynamicResource ShellSpaceXs}">
+              <Button
+                  AutomationProperties.Name="Split this panel left and right"
+                  Classes="IconButton"
+                  Click="OnSplitLeftRightClick"
+                  ToolTip.Tip="Split left/right">
+                <icons:SymbolIcon FontSize="12" Symbol="SplitVertical" />
+              </Button>
+              <Button
+                  AutomationProperties.Name="Split this panel top and bottom"
+                  Classes="IconButton"
+                  Click="OnSplitTopBottomClick"
+                  ToolTip.Tip="Split top/bottom">
+                <icons:SymbolIcon FontSize="12" Symbol="SplitHorizontal" />
+              </Button>
+              <Button
+                  Classes="IconButton"
+                  Click="OnCloseClick"
+                  ToolTip.Tip="Close panel"
+                  AutomationProperties.Name="Close panel">
+                <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
+              </Button>
+            </StackPanel>
           </StackPanel>
         </Grid>
       </Border>
@@ -58,17 +76,20 @@
             StartupCommandDispatchState="{Binding StartupCommandDispatchState}"
             StartupCommandDispatcher="{Binding StartupCommandDispatcher}"
             SessionRequest="{Binding SessionRequest}"
+            RenderProfile="{Binding RenderProfile}"
+            HostCornerRadius="{DynamicResource ShellPanelBottomCornerRadius}"
+            TerminalFocusGained="OnTerminalFocusGained"
             ApplicationKeyPressed="OnApplicationKeyPressed"
             SessionSnapshotChanged="OnSessionSnapshotChanged"
             SessionInitializationFailed="OnSessionInitializationFailed" />
         <Border
             Margin="1"
-            Padding="24"
-            Background="#0D0D0E"
+            Padding="{controls:Inset Xl}"
+            Background="{DynamicResource ShellBackgroundBrush}"
             IsHitTestVisible="False"
             IsVisible="{Binding ShowFallback, ElementName=RuntimeTerminal}">
-          <StackPanel MaxWidth="440" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-            <icons:SymbolIcon Symbol="WindowConsole" FontSize="24" Foreground="#7B7B82" />
+          <StackPanel MaxWidth="440" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+            <icons:SymbolIcon Symbol="WindowConsole" FontSize="24" Foreground="{DynamicResource ShellMutedBrush}" />
             <TextBlock
                 Classes="Monospace Muted"
                 FontSize="{DynamicResource ShellFontSize11}"
@@ -78,25 +99,25 @@
             </StackPanel>
         </Border>
         <Border
-            Margin="12"
-            Padding="12,9"
+            Margin="{controls:Inset Md}"
+            Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
             HorizontalAlignment="Right"
             VerticalAlignment="Top"
             MaxWidth="420"
             Background="#E6291D18"
-            BorderBrush="#9B5B36"
+            BorderBrush="{DynamicResource ShellWarningBorderBrush}"
             BorderThickness="1"
-            CornerRadius="8"
+            CornerRadius="{DynamicResource ShellControlCornerRadius}"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="Startup command delivery status"
             IsHitTestVisible="False"
             IsVisible="{Binding HasStartupCommandError}">
-          <StackPanel Spacing="3">
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock
                 Classes="Monospace"
                 FontSize="{DynamicResource ShellFontSize10}"
                 FontWeight="SemiBold"
-                Foreground="#FFB06A"
+                Foreground="{DynamicResource ShellWarningBrush}"
                 Text="{Binding StartupCommandErrorTitle}" />
             <TextBlock
                 Classes="Muted"
@@ -106,29 +127,29 @@
             </StackPanel>
         </Border>
         <Border
-            Margin="12"
-            Padding="10,7"
+            Margin="{controls:Inset Md}"
+            Padding="{controls:Inset Sm}"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             Background="#E6291D18"
-            BorderBrush="#9B5B36"
+            BorderBrush="{DynamicResource ShellWarningBorderBrush}"
             BorderThickness="1"
-            CornerRadius="8"
+            CornerRadius="{DynamicResource ShellControlCornerRadius}"
             IsHitTestVisible="False"
             IsVisible="{Binding IsCopyMode}">
           <TextBlock
               Classes="Monospace"
               FontSize="{DynamicResource ShellFontSize9}"
-              Foreground="#FFB06A"
+              Foreground="{DynamicResource ShellWarningBrush}"
               Text="COPY MODE · scroll/select with the pointer · copy normally · Esc exits" />
         </Border>
         <Border
             Margin="1"
-            Padding="24"
-            Background="#0D0D0E"
+            Padding="{controls:Inset Xl}"
+            Background="{DynamicResource ShellBackgroundBrush}"
             IsVisible="{Binding HasConnectionOverlay}">
-          <StackPanel MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="9">
-            <icons:SymbolIcon Symbol="WindowConsole" FontSize="25" Foreground="#D79B57" />
+          <StackPanel MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+            <icons:SymbolIcon Symbol="WindowConsole" FontSize="25" Foreground="{DynamicResource ShellWarningBrush}" />
             <TextBlock
                 FontSize="{DynamicResource ShellFontSize15}"
                 FontWeight="SemiBold"
@@ -145,17 +166,17 @@
                 Text="{Binding RecoveryLabel}"
                 TextAlignment="Center"
                 TextWrapping="Wrap" />
-            <Border Classes="SettingsCard" IsVisible="{Binding HasHostKeyReview}">
-              <StackPanel Margin="12" Spacing="6">
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding HasHostKeyReview}">
+              <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock FontWeight="SemiBold" Text="{Binding HostKeyReviewTitle}" TextAlignment="Center" />
                 <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HostKeyReview.Presented.Algorithm}" TextAlignment="Center" />
                 <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextAlignment="Center" TextWrapping="Wrap" />
                 <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding TrustedHostKeyFingerprint}" TextAlignment="Center" TextWrapping="Wrap" />
                 <Button Classes="SecondaryButton" Click="OnTrustHostKeyClick" Content="{Binding TrustHostKeyLabel}" IsVisible="{Binding CanTrustHostKey}" />
               </StackPanel>
-            </Border>
+            </controls:SurfaceCard>
             <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ReconnectStatus}" IsVisible="{Binding IsReconnecting}" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
               <Button
                   Classes="SecondaryButton"
                   Click="OnRetryConnectionClick"
@@ -171,5 +192,5 @@
         </Border>
       </Grid>
     </Grid>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

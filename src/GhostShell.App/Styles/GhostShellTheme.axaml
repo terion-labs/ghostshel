@@ -1,4 +1,16 @@
-<Styles xmlns="https://github.com/avaloniaui">
+<Styles
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:converters="using:GhostShell.App.Converters"
+    xmlns:icons="using:FluentIcons.Avalonia">
+  <Styles.Resources>
+    <converters:EnumDisplayConverter x:Key="EnumDisplayConverter" />
+    <converters:HexColorBrushConverter x:Key="HexColorBrushConverter" />
+    <converters:OnOffConverter x:Key="OnOffConverter" />
+    <converters:CornerRadiusConverter x:Key="CornerRadiusConverter" />
+  </Styles.Resources>
+
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
@@ -16,7 +28,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
-    <Setter Property="Padding" Value="{DynamicResource ShellControlPadding}" />
+    <Setter Property="Padding" Value="{DynamicResource ShellButtonPadding}" />
     <Setter Property="MinHeight" Value="{DynamicResource ShellControlMinHeight}" />
   </Style>
 
@@ -24,15 +36,41 @@
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
   </Style>
 
+  <!--
+    Avalonia draws a hard high-contrast rectangle outside the control by default.
+    It ignores the control's shape and reads as damage on dark chrome, so the
+    shell suppresses it and expresses focus as an accent ring on the control
+    itself, which still satisfies visible-focus requirements.
+  -->
+  <Style Selector="Button, ToggleButton, CheckBox, RadioButton, ComboBox, TextBox, NumericUpDown, ListBoxItem, TabItem">
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+  </Style>
+
   <Style Selector="Button:focus-visible">
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Button.IconButton:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
     <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Button.IconButton:focus-visible /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
   </Style>
 
   <Style Selector="Button:disabled">
     <Setter Property="Opacity" Value="0.48" />
   </Style>
 
+  <!-- An icon button is a fixed square whose whole content is one glyph, so it
+       centres both ways. Inheriting the shell's stretch alignment left each glyph
+       resting wherever its own metrics put it, which reads as buttons that are
+       not aligned with each other. -->
   <Style Selector="Button.IconButton">
     <Setter Property="Width" Value="28" />
     <Setter Property="Height" Value="28" />
@@ -40,6 +78,12 @@
     <Setter Property="Padding" Value="0" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.IconButton > icons|SymbolIcon">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
   <Style Selector="Button.IconButton.Large">
@@ -52,12 +96,13 @@
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Padding" Value="13,7" />
+    <Setter Property="Padding" Value="{DynamicResource ShellButtonPadding}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
   </Style>
 
   <Style Selector="Button.SecondaryButton">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
-    <Setter Property="Padding" Value="12,7" />
+    <Setter Property="Padding" Value="{DynamicResource ShellButtonPadding}" />
   </Style>
 
   <Style Selector="Button.SecondaryButton.painting">
@@ -71,28 +116,67 @@
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
 
-  <Style Selector="Button.DangerButton">
-    <Setter Property="Width" Value="32" />
-    <Setter Property="Height" Value="30" />
-    <Setter Property="Padding" Value="0" />
+  <!--
+    Destructive icon actions stay quiet at rest — a row of outlined red boxes
+    reads as an error state — and take their danger tint on hover or focus.
+  -->
+  <!--
+    Tone, on the icon button. This was a class of its own called DangerButton, a
+    fixed 32x30 box with no padding — an icon button wearing a text button's name.
+    Ten of its eleven uses were icons, and the eleventh was a labelled button whose
+    text the fixed width cut off. Shape and tone are separate axes: a destructive
+    action that carries a label is a DestructiveButton, and one that carries a
+    glyph is this.
+  -->
+  <Style Selector="Button.IconButton.Danger">
     <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
   </Style>
 
+  <Style Selector="Button.IconButton.Danger > icons|SymbolIcon">
+    <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
+  </Style>
+
+  <Style Selector="Button.IconButton.Danger:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
+  </Style>
+
+  <Style Selector="Button.IconButton.Danger:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!--
+    Destructive actions read as danger without shouting louder than the accent
+    primary action, so they use the soft danger surface rather than a solid fill
+    that competes with it for the eye.
+  -->
   <Style Selector="Button.DestructiveButton">
-    <Setter Property="Background" Value="{DynamicResource ShellDangerBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource ShellDangerForegroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Padding" Value="12,7" />
+    <Setter Property="Padding" Value="{DynamicResource ShellButtonPadding}" />
   </Style>
 
+  <Style Selector="Button.DestructiveButton /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
+  </Style>
+
+  <Style Selector="Button.DestructiveButton:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellDangerBrush}" />
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource ShellDangerForegroundBrush}" />
+  </Style>
+
+  <!--
+    A text button is a button without chrome, not a button of another size. It kept
+    a literal inset and no minimum height, so it sat a few pixels short of every
+    control beside it and no row of actions ever lined up.
+  -->
   <Style Selector="Button.TextButton">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="Padding" Value="6,4" />
-    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="{DynamicResource ShellButtonPadding}" />
+    <Setter Property="MinHeight" Value="{DynamicResource ShellControlMinHeight}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
   </Style>
@@ -101,17 +185,27 @@
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
 
+  <!--
+    A search field fills the width it is given. Stretching only its content left
+    the button itself sized to its placeholder, so the field stopped short of the
+    panel it belongs to.
+  -->
   <Style Selector="Button.SearchButton">
-    <Setter Property="MinHeight" Value="34" />
-    <Setter Property="Padding" Value="11,0" />
-    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
 
   <Style Selector="ListBoxItem">
     <Setter Property="Padding" Value="0" />
     <Setter Property="Margin" Value="4,0" />
     <Setter Property="CornerRadius" Value="8" />
+    <!-- Rows fill the list so trailing badges and shortcuts stay right-aligned. -->
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
   </Style>
 
   <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
@@ -135,24 +229,30 @@
     <Setter Property="AutomationProperties.ItemStatus" Value="Current page" />
   </Style>
 
+  <!-- The current route's icon carries the accent, as in the reference nav. -->
+  <Style Selector="Button.NavButton.active icons|SymbolIcon">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
   <Style Selector="Button.ChooserButton">
     <Setter Property="MinHeight" Value="116" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="16" />
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
   </Style>
 
   <Style Selector="Button.ChooserButton.LauncherChooser">
     <Setter Property="MinHeight" Value="124" />
     <Setter Property="Padding" Value="16" />
-    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
   </Style>
 
   <Style Selector="Button.ChooserButton.PanelChooser">
     <Setter Property="MinHeight" Value="110" />
     <Setter Property="Padding" Value="14" />
-    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
   </Style>
 
   <Style Selector="Button.LayoutSlotButton">
@@ -221,8 +321,48 @@
     <Setter Property="MinHeight" Value="{DynamicResource ShellControlMinHeight}" />
   </Style>
 
+  <!--
+    Single-line inputs centre their text; without this the value sits against the
+    top edge whenever the control is taller than its line height. These stay
+    separate one-type selectors because a grouped selector resolves to
+    TemplatedControl, which does not declare VerticalContentAlignment.
+  -->
+  <Style Selector="TextBox">
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBox[AcceptsReturn=True]">
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+  </Style>
+
+  <Style Selector="ComboBox">
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
   <Style Selector="TextBox:focus, ComboBox:focus, NumericUpDown:focus">
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <!--
+    ComboBox sizes to its widest item by default, which leaves settings grids with
+    ragged control widths that shift as the selection changes. Filling the cell
+    keeps each column aligned; compact cases opt out with an explicit width.
+  -->
+  <Style Selector="ComboBox">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <!--
+      Option lists bind straight to enum values, so the default text is the
+      identifier. A ComboBox that needs richer items sets its own ItemTemplate,
+      which takes precedence over this one.
+    -->
+    <Setter Property="ItemTemplate">
+      <DataTemplate>
+        <TextBlock
+            Text="{Binding Converter={StaticResource EnumDisplayConverter}}"
+            TextTrimming="CharacterEllipsis" />
+      </DataTemplate>
+    </Setter>
   </Style>
 
   <Style Selector="TextBlock.Muted">
@@ -257,88 +397,400 @@
     <Setter Property="BorderThickness" Value="0,0,0,1" />
   </Style>
 
-  <Style Selector="Border.LaunchCard">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
+  <!--
+    Launcher cards use the design's raised surface and 16px shape. The platform
+    card radius stays reserved for window chrome and settings surfaces.
+  -->
+
+  <!--
+    The card body is the primary target, so the whole surface activates. Secondary
+    actions sit above it and reveal on hover or keyboard focus, which keeps the
+    resting card as uncluttered as the design.
+  -->
+  <Style Selector="Button.CardSurface">
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+  </Style>
+
+  <!--
+    The card border owns the card's fill, so every Button visual state keeps its
+    own presenter transparent. Without this the theme's disabled and rest
+    backgrounds paint a lighter rectangle inside the card.
+  -->
+  <Style Selector="Button.CardSurface /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
   </Style>
 
-  <Style Selector="Border.ListCard">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  <Style Selector="Button.CardSurface:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
   </Style>
 
-  <Style Selector="Border.SettingsCard">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  <Style Selector="Button.CardSurface:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
   </Style>
 
-  <Style Selector="Border.NoticeCard">
+  <Style Selector="Button.CardSurface:disabled">
+    <Setter Property="Opacity" Value="0.62" />
+  </Style>
+
+  <!--
+    A launch card reveals its actions on hover or focus. This is the one card
+    behaviour the surface component does not model, because it is a statement
+    about the content rather than about the surface.
+
+    The ancestor is qualified by class, not left as the bare card. A descendant
+    selector is re-matched up the tree whenever anything it could match changes
+    state, so leaving it as every SurfaceCard put a tree walk behind every pointer
+    move over any of the 195 of them — which is what made hovering lag.
+  -->
+  <Style Selector="controls|SurfaceCard.LaunchCard:pointerover StackPanel.CardActions">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <Style Selector="controls|SurfaceCard.LaunchCard:focus-within StackPanel.CardActions">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <Style Selector="StackPanel.CardActions">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+
+
+  <!-- Neutral kind/protocol badge: SSH, Local, Docker, WSL. -->
+
+
+  <!-- Free-form connection tag. -->
+
+
+  <!-- Connection liveness/availability indicator. -->
+  <Style Selector="Border.StatusDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Background" Value="{DynamicResource ShellMutedBrush}" />
+  </Style>
+
+  <Style Selector="Border.StatusDot.available">
+    <Setter Property="Background" Value="{DynamicResource ShellSuccessBrush}" />
+  </Style>
+
+
+  <!--
+    A single setting on the raised surface. Settings pages group these under a
+    section heading rather than stacking every control in one long card, which is
+    how the reference composes its preference screens.
+  -->
+
+  <!--
+    A preset tile that is itself the choice: the preview is the control, not a
+    decoration sitting above a separate drop-down. The default radio bullet is
+    replaced by the card's own selected border, as in the reference.
+  -->
+  <Style Selector="RadioButton.PresetCard">
+    <Setter Property="Width" Value="212" />
+    <Setter Property="Padding" Value="12" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border
+            Name="PresetRoot"
+            Background="{DynamicResource ShellSurfaceRaisedBrush}"
+            BorderBrush="{DynamicResource ShellBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource ShellCardCornerRadius}"
+            Padding="{TemplateBinding Padding}">
+          <ContentPresenter
+              Content="{TemplateBinding Content}"
+              ContentTemplate="{TemplateBinding ContentTemplate}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+
+  <Style Selector="RadioButton.PresetCard:pointerover /template/ Border#PresetRoot">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellMutedBrush}" />
+  </Style>
+
+  <Style Selector="RadioButton.PresetCard:checked /template/ Border#PresetRoot">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="RadioButton.PresetCard:focus-visible /template/ Border#PresetRoot">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!-- The name turns accent on the selected tile, and its check appears. -->
+  <Style Selector="RadioButton.PresetCard TextBlock.PresetName">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize12}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="RadioButton.PresetCard:checked TextBlock.PresetName">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="RadioButton.PresetCard icons|SymbolIcon.PresetCheck">
+    <Setter Property="IsVisible" Value="False" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="RadioButton.PresetCard:checked icons|SymbolIcon.PresetCheck">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+
+  <!-- The picker presents itself as the swatch it edits. -->
+  <!-- A workspace accent preset: the colour is the whole control, so it is a
+       circle with no text and its selected state is a ring rather than a fill,
+       which would be invisible against the colour itself. -->
+  <Style Selector="Button.AccentSwatch">
+    <Setter Property="Width" Value="30" />
+    <Setter Property="Height" Value="30" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.AccentSwatch:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+  </Style>
+  <Style Selector="Button.AccentSwatch.selected">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellTextBrush}" />
+  </Style>
+
+  <!-- One tile in the workspace icon grid. -->
+  <Style Selector="Button.IconChoice">
+    <Setter Property="Width" Value="38" />
+    <Setter Property="Height" Value="38" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+  <Style Selector="Button.IconChoice:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.IconChoice.selected">
     <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellNoticeBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="8" />
-  </Style>
-
-  <Style Selector="Border.NoticeCard:focus-visible">
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
 
-  <Style Selector="Border.AgentProgressCard">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellNoticeBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="9" />
+  <!-- A centred empty state. A StackPanel is only as wide as its widest child, so
+       a long wrapped sentence sets the width and every shorter child — heading,
+       icon, action — left-aligns against it unless it is centred too. -->
+
+  <!-- The switch is the state. Avalonia's default On/Off labels sit beside it and
+       duplicate the status text these rows already carry, so they are cleared
+       here rather than on every instance — the repetition was already being
+       forgotten. -->
+  <Style Selector="ToggleSwitch">
+    <Setter Property="OnContent" Value="" />
+    <Setter Property="OffContent" Value="" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
-  <Style Selector="Border.AgentProgressCard:focus-visible">
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
+  <!-- Expanders sit inside cards that already carry a surface and a border, so
+       the Fluent default's own filled, bordered chrome reads as a second card
+       nested in the first. The header keeps its affordance; the box goes. -->
+  <Style Selector="Expander">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <!-- The header toggle and the content host are named differently across
+       Avalonia's themes, so both are matched by type rather than by part name. -->
+  <Style Selector="Expander /template/ ToggleButton">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton:pointerover">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton:checked">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Expander /template/ Border">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
   </Style>
 
-  <Style Selector="Border.OverlayCard">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+  <Style Selector="ColorPicker.Swatch">
+    <Setter Property="Width" Value="46" />
+    <Setter Property="Height" Value="40" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <!-- Colour swatch shown beside the hex value it renders. -->
+  <Style Selector="Border.Swatch">
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Height" Value="36" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="12" />
-    <Setter Property="BoxShadow" Value="0 18 54 0 #A0000000" />
   </Style>
 
-  <Style Selector="Border.PanelCard">
+  <Style Selector="Border.Swatch.Ansi">
+    <Setter Property="Width" Value="NaN" />
+    <Setter Property="Height" Value="30" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+
+  <!--
+    Segmented picker: one visible group of mutually exclusive options, used where
+    the reference shows a inline choice rather than a drop-down.
+  -->
+  <Style Selector="Border.Segmented">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+    <Setter Property="Padding" Value="3" />
+    <!-- The track owns the shape, so a segment can never paint outside it. -->
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
+  <!--
+    An explicit template rather than the theme's ToggleButton visuals: the
+    segments have to tile the track exactly, and a themed button brings its own
+    padding, border, and corner geometry that overflows a 3px inset track.
+  -->
+  <Style Selector="ToggleButton.Segment">
+    <Setter Property="MinHeight" Value="0" />
     <Setter Property="Margin" Value="0" />
-    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize11}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border
+            Name="SegmentRoot"
+            Background="Transparent"
+            CornerRadius="{DynamicResource ShellControlCornerRadius}"
+            Padding="{TemplateBinding Padding}">
+          <ContentPresenter
+              Content="{TemplateBinding Content}"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
   </Style>
 
-  <Style Selector="Border.PanelCard.active">
+  <Style Selector="ToggleButton.Segment:pointerover /template/ Border#SegmentRoot">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+  </Style>
+
+  <Style Selector="ToggleButton.Segment:checked">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="ToggleButton.Segment:checked /template/ Border#SegmentRoot">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="ToggleButton.Segment:focus-visible /template/ Border#SegmentRoot">
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
   </Style>
 
+  <!-- Sliders track the accent so a value reads at a glance. -->
+  <Style Selector="Slider">
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Slider /template/ Track#PART_Track RepeatButton#PART_DecreaseButton">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <Style Selector="Slider /template/ Track#PART_Track RepeatButton#PART_IncreaseButton">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+
+
+
+  <!--
+    "Nothing here yet" is not a notice. Empty states stay on the neutral surface
+    so the accent tint keeps meaning "read this", and a page of empty sections
+    does not look like a page of warnings.
+  -->
+
+
+
+
+
+  <!-- The card owns the rounded shape, so its content is clipped to it. Without
+       this the header and the terminal square off the corners the border draws
+       round. -->
+
+
+  <!-- Square, because the card clips it. A literal radius here also disagreed
+       with the card's own once the corner-radius setting could change it. -->
   <Style Selector="Border.PanelHeader">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
-    <Setter Property="CornerRadius" Value="9,9,0,0" />
+    <Setter Property="CornerRadius" Value="0" />
   </Style>
 
   <Style Selector="Border.AgentPanel">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="11" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
   </Style>
 
   <Style Selector="Border.IconTile">
     <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
-    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <Style Selector="Border.IconTile.Neutral">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <!--
+    List rows are separated by a leading rule so a list never draws a divider
+    against its container's own rounded bottom edge.
+  -->
+  <Style Selector="Button.ListRow">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+
+  <Style Selector="Button.ListRow:nth-child(1)">
+    <Setter Property="BorderThickness" Value="0" />
   </Style>
 
   <Style Selector="Border.ChooserIconTile">
@@ -348,22 +800,28 @@
 
   <Style Selector="Border.ScreenPreviewPanel">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="3" />
   </Style>
 
   <Style Selector="Border.ScreenPreviewPanel.primary">
     <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
   </Style>
 
+  <!--
+    A keycap sits beside text, so it sizes to its own content. Without this it
+    stretches to the line height of whatever it is next to and a one-character
+    label renders as a tall lozenge.
+  -->
   <Style Selector="Border.Keycap">
+    <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Padding" Value="6,3" />
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
   </Style>
 
   <Style Selector="Border.Keycap TextBlock">
@@ -371,35 +829,31 @@
     <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
   </Style>
 
-  <Style Selector="Border.StatusPill">
-    <Setter Property="Padding" Value="8,4" />
-    <Setter Property="Background" Value="{DynamicResource ShellSuccessSoftBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellSuccessBorderBrush}" />
+  <!--
+    A chip is a setting that reads as status: it names the value in place and only
+    becomes a control when it is pressed. The agent panel's footer uses them for the
+    model and the run scope, which belong beside the conversation rather than in a
+    labelled form above it, where they competed with the panel's own heading.
+  -->
+  <Style Selector="Button.Chip, ComboBox.Chip">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize9}" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
   </Style>
 
-  <Style Selector="Border.StatusPill TextBlock">
-    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize8}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Foreground" Value="{DynamicResource ShellSuccessBrush}" />
+  <Style Selector="Button.Chip:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
   </Style>
 
-  <Style Selector="Border.StatusPill.Warning">
-    <Setter Property="Background" Value="{DynamicResource ShellWarningSoftBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellWarningBorderBrush}" />
-  </Style>
 
-  <Style Selector="Border.StatusPill.Warning TextBlock">
-    <Setter Property="Foreground" Value="{DynamicResource ShellWarningBrush}" />
-  </Style>
 
-  <Style Selector="Border.StatusPill.Danger">
-    <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
-  </Style>
 
-  <Style Selector="Border.StatusPill.Danger TextBlock">
-    <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
-  </Style>
+
+
 </Styles>

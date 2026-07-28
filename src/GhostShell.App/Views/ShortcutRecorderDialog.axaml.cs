@@ -3,6 +3,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using GhostShell.Core;
 
+using GhostShell.App.Controls;
+
 namespace GhostShell.App.Views;
 
 public sealed partial class ShortcutRecorderDialog : Window
@@ -32,7 +34,7 @@ public sealed partial class ShortcutRecorderDialog : Window
 
         _maximumStrokes = maximumStrokes;
         InitializeComponent();
-        Opened += (_, _) => this.FindControl<Border>("CaptureArea")?.Focus();
+        Opened += (_, _) => this.FindControl<SurfaceCard>("CaptureArea")?.Focus();
         if (initial is not null)
         {
             _strokes.AddRange(initial.Strokes);
@@ -91,7 +93,7 @@ public sealed partial class ShortcutRecorderDialog : Window
         _ = e;
         _strokes.Clear();
         Refresh();
-        this.FindControl<Border>("CaptureArea")?.Focus();
+        this.FindControl<SurfaceCard>("CaptureArea")?.Focus();
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)

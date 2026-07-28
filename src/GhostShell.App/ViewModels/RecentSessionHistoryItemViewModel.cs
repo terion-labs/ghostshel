@@ -1,4 +1,5 @@
 using System.Globalization;
+using FluentIcons.Common;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -7,7 +8,9 @@ namespace GhostShell.App.ViewModels;
 public sealed record RecentSessionHistoryItemViewModel(
     RecentSessionRecord Record,
     bool CanOpen,
-    DateTimeOffset ObservedAt)
+    DateTimeOffset ObservedAt,
+    string? SourceTransport = null,
+    string? SourceEndpoint = null)
 {
     public SessionId SessionId => Record.SessionId;
 
@@ -25,7 +28,36 @@ public sealed record RecentSessionHistoryItemViewModel(
 
     public string Detail => $"{PanelKindName} · {OutcomeName}";
 
-    public string SourceKind => SourceKindLabel(SourceDefinition.Kind);
+    /// <summary>
+    /// What reopening this row would actually connect to. A row identifies a
+    /// session by the definition behind it, so the endpoint is resolved from the
+    /// saved definition rather than stored in history — history keeps metadata,
+    /// and an endpoint copied at session time would go stale the moment the
+    /// connection was edited.
+    /// </summary>
+    public string Endpoint => SourceEndpoint ?? SourceIdentifier;
+
+    public bool HasEndpoint => !string.IsNullOrWhiteSpace(Endpoint);
+
+    /// <summary>
+    /// The transport badge — SSH, Docker, Local — falling back to the definition
+    /// kind for a session whose definition has since been deleted, where there is
+    /// no transport left to name.
+    /// </summary>
+    public string SourceKind => SourceTransport ?? SourceKindLabel(SourceDefinition.Kind);
+
+    /// <summary>
+    /// Rows are scanned by shape before they are read, so the glyph has to track
+    /// the transport rather than being a terminal icon on every row.
+    /// </summary>
+    public Symbol SourceGlyph => SourceTransport switch
+    {
+        "Docker" => Symbol.Box,
+        "Local" or "WSL" => Symbol.Desktop,
+        null when SourceDefinition.Kind == ScreenDefinition.Kind => Symbol.Grid,
+        null when SourceDefinition.Kind == WorkspaceDefinition.Kind => Symbol.Layer,
+        _ => Symbol.WindowConsole,
+    };
 
     public string SourceIdentifier => SourceDefinition.Value;
 
@@ -46,6 +78,24 @@ public sealed record RecentSessionHistoryItemViewModel(
     public string ReopenStatus => CanOpen
         ? "Reopening launches the current saved definition; history retains metadata, not a session snapshot."
         : "The current saved definition no longer exists or is unavailable on this platform; metadata remains available for review.";
+
+    /// <summary>
+    /// Whether the row would look identical.
+    ///
+    /// Record equality cannot say: every refresh stamps a new
+    /// <see cref="ObservedAt"/>, so two projections of the same session never
+    /// compare equal and the list rebuilds every row — which drops whatever the
+    /// pointer was hovering.
+    /// </summary>
+    public bool PresentsSameAs(RecentSessionHistoryItemViewModel other) =>
+        other is not null
+        && SessionId == other.SessionId
+        && CanOpen == other.CanOpen
+        && string.Equals(Title, other.Title, StringComparison.Ordinal)
+        && string.Equals(Endpoint, other.Endpoint, StringComparison.Ordinal)
+        && string.Equals(SourceKind, other.SourceKind, StringComparison.Ordinal)
+        && string.Equals(LastUsed, other.LastUsed, StringComparison.Ordinal)
+        && SourceGlyph == other.SourceGlyph;
 
     private static string FormatTimestamp(DateTimeOffset timestamp) =>
         timestamp.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture);

@@ -2,6 +2,7 @@
     x:Class="GhostShell.App.Views.McpServerProfileEditorDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Title="MCP server"
     Width="840"
@@ -13,8 +14,8 @@
     WindowStartupLocation="CenterOwner"
     Opened="OnOpened">
   <Grid RowDefinitions="62,*,72">
-    <Grid Margin="20,0" ColumnDefinitions="*,Auto">
-      <StackPanel VerticalAlignment="Center" Spacing="2">
+    <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto">
+      <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
         <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
       </StackPanel>
@@ -30,10 +31,10 @@
     </Grid>
 
     <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Margin="20,8,20,24" Spacing="14">
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="16" Spacing="12">
-            <StackPanel Spacing="4">
+      <StackPanel Margin="{controls:Inset Horizontal=Lg, Top=Sm, Bottom=Xl}" Spacing="{DynamicResource ShellSpaceMd}">
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Name" />
               <TextBox
                   x:Name="McpServerNameInput"
@@ -41,7 +42,7 @@
                   PlaceholderText="Local tools"
                   AutomationProperties.Name="MCP server name" />
             </StackPanel>
-            <StackPanel Spacing="4">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Executable" />
               <TextBox
                   Classes="Monospace"
@@ -54,7 +55,7 @@
                   Text="Enter one fully qualified executable path. GhostSHELL launches it directly; this field is not a shell command."
                   TextWrapping="Wrap" />
             </StackPanel>
-            <StackPanel Spacing="4">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Working directory" />
               <TextBox
                   Classes="Monospace"
@@ -62,17 +63,20 @@
                   PlaceholderText="Optional absolute directory"
                   AutomationProperties.Name="MCP server working directory" />
             </StackPanel>
-            <CheckBox
-                IsChecked="{Binding IsEnabled}"
-                Content="Enable this server for future governed agent runs"
-                AutomationProperties.Name="Enable MCP server" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock FontWeight="SemiBold" Text="Enable this server for future governed agent runs" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #McpServerEnabledSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
+              </StackPanel>
+              <ToggleSwitch x:Name="McpServerEnabledSwitch" Grid.Column="1" IsChecked="{Binding IsEnabled}" AutomationProperties.Name="Enable this server for future governed agent runs" />
+            </Grid>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="16" Spacing="10">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-              <StackPanel Spacing="3">
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock Classes="SectionHeading" Text="ORDERED ARGUMENTS" />
                 <TextBlock
                     Classes="Muted"
@@ -90,7 +94,7 @@
             <ItemsControl ItemsSource="{Binding Arguments}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Grid Margin="0,4,0,0" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
+                  <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
                     <TextBlock
                         MinWidth="24"
                         VerticalAlignment="Center"
@@ -120,7 +124,7 @@
                     </Button>
                     <Button
                         Grid.Column="4"
-                        Classes="DangerButton"
+                        Classes="IconButton Danger"
                         Click="OnRemoveArgumentClick"
                         ToolTip.Tip="Remove argument"
                         AutomationProperties.Name="{Binding AccessibleName, StringFormat={}Remove {0}}">
@@ -131,12 +135,12 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="16" Spacing="10">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-              <StackPanel Spacing="3">
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock Classes="SectionHeading" Text="ENVIRONMENT BINDINGS" />
                 <TextBlock
                     Classes="Muted"
@@ -154,7 +158,7 @@
             <ItemsControl ItemsSource="{Binding Environment}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Grid Margin="0,4,0,0" ColumnDefinitions="2*,3*,Auto" ColumnSpacing="8">
+                  <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="2*,3*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <TextBox
                         Classes="Monospace"
                         Text="{Binding Name}"
@@ -169,7 +173,7 @@
                         AutomationProperties.HelpText="This is an opaque vault reference, never the secret value." />
                     <Button
                         Grid.Column="2"
-                        Classes="DangerButton"
+                        Classes="IconButton Danger"
                         Click="OnRemoveEnvironmentBindingClick"
                         ToolTip.Tip="Remove environment binding"
                         AutomationProperties.Name="{Binding RemoveAccessibleName}">
@@ -180,12 +184,12 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="SettingsCard">
-          <StackPanel Margin="16" Spacing="10">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-              <StackPanel Spacing="3">
+        <controls:SurfaceCard Padding="0">
+          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock Classes="SectionHeading" Text="ENABLED TOOL ALLOWLIST" />
                 <TextBlock
                     Classes="Muted"
@@ -203,7 +207,7 @@
             <ItemsControl ItemsSource="{Binding EnabledTools}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Grid Margin="0,4,0,0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <TextBox
                         Classes="Monospace"
                         Text="{Binding Name}"
@@ -211,7 +215,7 @@
                         AutomationProperties.Name="{Binding NameAccessibleName}" />
                     <Button
                         Grid.Column="1"
-                        Classes="DangerButton"
+                        Classes="IconButton Danger"
                         Click="OnRemoveEnabledToolClick"
                         ToolTip.Tip="Remove enabled tool"
                         AutomationProperties.Name="{Binding RemoveAccessibleName}">
@@ -222,10 +226,10 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Border Classes="NoticeCard">
-          <Grid Margin="14" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+        <controls:SurfaceCard Tone="Notice" Padding="0">
+          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <icons:SymbolIcon Symbol="Shield" FontSize="17" Foreground="{DynamicResource ShellAccentBrush}" />
             <TextBlock
                 Grid.Column="1"
@@ -234,7 +238,7 @@
                 Text="Adding a server or expanding its launch details, environment access, or tool allowlist opens a separate trusted review before anything is saved."
                 TextWrapping="Wrap" />
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
 
         <TextBlock
             x:Name="ValidationError"
@@ -248,7 +252,7 @@
     </ScrollViewer>
 
     <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid Margin="20,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <TextBlock
             VerticalAlignment="Center"
             Classes="Muted"

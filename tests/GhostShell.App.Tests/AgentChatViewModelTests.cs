@@ -8,7 +8,7 @@ using GhostShell.Testing;
 
 namespace GhostShell.App.Tests;
 
-public sealed class AgentChatViewModelTests
+public sealed partial class AgentChatViewModelTests
 {
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();
@@ -154,11 +154,12 @@ public sealed class AgentChatViewModelTests
     public void Progress_card_has_keyboard_and_polite_live_accessibility_bindings()
     {
         XNamespace viewNamespace = "https://github.com/avaloniaui";
+        XNamespace ControlsNamespace = "using:GhostShell.App.Controls";
         var card = ApplicationViews
             .FindUniqueNamedElement("AgentCurrentProgress")
             .Element;
 
-        Assert.Equal(viewNamespace + "Border", card.Name);
+        Assert.Equal(ControlsNamespace + "SurfaceCard", card.Name);
         Assert.Equal("True", card.Attribute("Focusable")?.Value);
         Assert.Equal(
             "True",
@@ -202,11 +203,15 @@ public sealed class AgentChatViewModelTests
                 "GhostShell.App",
                 "Styles",
                 "GhostShellTheme.axaml"));
+        // A visible focus ring is the card component's guarantee now, stated once
+        // for every card rather than per style class. The theme file this used to
+        // live in no longer decides what a card looks like.
         Assert.Contains(
-            theme.Descendants(viewNamespace + "Style"),
+            DesignSystem().Descendants()
+                .Where(element => element.Name.LocalName == "Style"),
             style => string.Equals(
                 style.Attribute("Selector")?.Value,
-                "Border.AgentProgressCard:focus-visible",
+                "^:focus-visible",
                 StringComparison.Ordinal));
     }
 
@@ -410,12 +415,13 @@ public sealed class AgentChatViewModelTests
     public void Question_card_is_assertive_single_line_and_keyboard_accessible()
     {
         XNamespace viewNamespace = "https://github.com/avaloniaui";
+        XNamespace ControlsNamespace = "using:GhostShell.App.Controls";
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var card = ApplicationViews
             .FindUniqueNamedElement("AgentPendingQuestion")
             .Element;
 
-        Assert.Equal(viewNamespace + "Border", card.Name);
+        Assert.Equal(ControlsNamespace + "SurfaceCard", card.Name);
         Assert.Equal("True", card.Attribute("Focusable")?.Value);
         Assert.Equal(
             "True",
@@ -495,11 +501,15 @@ public sealed class AgentChatViewModelTests
                 "GhostShell.App",
                 "Styles",
                 "GhostShellTheme.axaml"));
+        // A visible focus ring is the card component's guarantee now, stated once
+        // for every card rather than per style class. The theme file this used to
+        // live in no longer decides what a card looks like.
         Assert.Contains(
-            theme.Descendants(viewNamespace + "Style"),
+            DesignSystem().Descendants()
+                .Where(element => element.Name.LocalName == "Style"),
             style => string.Equals(
                 style.Attribute("Selector")?.Value,
-                "Border.NoticeCard:focus-visible",
+                "^:focus-visible",
                 StringComparison.Ordinal));
     }
 
@@ -740,11 +750,12 @@ public sealed class AgentChatViewModelTests
     public void Capability_request_card_uses_trusted_bindings_and_does_not_take_focus()
     {
         XNamespace viewNamespace = "https://github.com/avaloniaui";
+        XNamespace ControlsNamespace = "using:GhostShell.App.Controls";
         var card = ApplicationViews
             .FindUniqueNamedElement("AgentPendingCapabilityRequest")
             .Element;
 
-        Assert.Equal(viewNamespace + "Border", card.Name);
+        Assert.Equal(ControlsNamespace + "SurfaceCard", card.Name);
         Assert.Equal("True", card.Attribute("Focusable")?.Value);
         Assert.Equal(
             "True",
@@ -3052,4 +3063,12 @@ public sealed class AgentChatViewModelTests
             return Task.CompletedTask;
         }
     }
+
+    private static XDocument DesignSystem() => XDocument.Load(
+        Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "DesignSystem.axaml"));
 }

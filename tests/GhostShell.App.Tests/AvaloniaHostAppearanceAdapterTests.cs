@@ -111,10 +111,56 @@ public sealed class AvaloniaHostAppearanceAdapterTests
         Assert.Equal(15, resources.BaseFontSize);
         Assert.Equal(1.25, resources.TextScale);
         Assert.Equal(31.25, resources.ScaleFontSize(25));
-        Assert.Contains("Segoe UI", resources.FontFamily.Name, StringComparison.Ordinal);
+        Assert.Equal(FontFamily.Default, resources.FontFamily);
         Assert.True(resources.AdvancedMaterialsEnabled);
         Assert.Contains("Windows11", resources.AppearanceStatus, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// A host-native profile takes the host's own interface font. Naming one did
+    /// not work: "SF Pro Text" is not a family macOS resolves by name, so the
+    /// stack fell through to the bundled Inter and the application looked subtly
+    /// foreign on every platform it claimed to match.
+    /// </summary>
+    [Theory]
+    [InlineData(PlatformProfile.MacOsClassic)]
+    [InlineData(PlatformProfile.MacOsLiquidGlass)]
+    [InlineData(PlatformProfile.Windows11)]
+    [InlineData(PlatformProfile.Gnome)]
+    [InlineData(PlatformProfile.Kde)]
+    public void A_host_native_profile_uses_the_host_interface_font(PlatformProfile profile)
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            ProfilePreference(profile).Resolve(NativeHost));
+
+        Assert.Equal(FontFamily.Default, resources.FontFamily);
+    }
+
+    /// <summary>
+    /// GhostSHELL's own profile is deliberately not the host's: it ships a known
+    /// typeface so the product looks the same everywhere it runs.
+    /// </summary>
+    [Fact]
+    public void The_products_own_profile_names_its_typeface()
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            ProfilePreference(PlatformProfile.GhostShell).Resolve(NativeHost));
+
+        Assert.NotEqual(FontFamily.Default, resources.FontFamily);
+        Assert.Contains("Inter", resources.FontFamily.Name, StringComparison.Ordinal);
+    }
+
+    private static HostAppearance NativeHost { get; } = new(
+        HostOperatingSystem.MacOS,
+        HostColorScheme.Dark,
+        accent: null);
+
+    private static ThemePreference ProfilePreference(PlatformProfile profile) => new(
+        ThemePreference.Default.Id,
+        ThemePreference.Default.Name,
+        AppearanceMode.Dark,
+        profile,
+        AccentPreference.GhostShellBronze);
 
     [Fact]
     public void Application_text_scale_override_reaches_Avalonia_metrics()
@@ -156,6 +202,69 @@ public sealed class AvaloniaHostAppearanceAdapterTests
 
         Assert.Equal("130%", imported.DisplayName);
         Assert.Equal(1.3, imported.Scale);
+    }
+
+    private static EffectiveTheme Bronze(
+        EffectiveAppearanceMode appearance,
+        bool highContrast = false) =>
+        new(
+            appearance,
+            PlatformProfile.GhostShell,
+            RgbColor.Parse("#FF8400"),
+            AccentSource.Host,
+            HighContrast: highContrast,
+            MotionEnabled: true,
+            AdvancedMaterialsEnabled: false,
+            TextScale: 1);
+
+    /// <summary>
+    /// What sits on a filled accent control. Measured contrast puts near-black on
+    /// the bronze accent, which is what the reference frames draw — but on a dark
+    /// interface that reads as a warning label rather than the primary action.
+    /// </summary>
+    [Fact]
+    public void A_dark_theme_puts_white_on_a_filled_accent_control()
+    {
+        Assert.Equal(
+            Colors.White,
+            EffectiveAppearanceResourceMapper.Map(
+                Bronze(EffectiveAppearanceMode.Dark)).AccentForeground);
+    }
+
+    [Fact]
+    public void A_light_theme_keeps_the_measured_choice()
+    {
+        Assert.Equal(
+            Colors.Black,
+            EffectiveAppearanceResourceMapper.Map(
+                Bronze(EffectiveAppearanceMode.Light)).AccentForeground);
+    }
+
+    /// <summary>
+    /// White on the bronze accent is about 2.5:1, under the 4.5:1 normal text is
+    /// meant to clear. High contrast is the one setting where that is not a
+    /// trade anyone should be making on the user's behalf.
+    /// </summary>
+    [Fact]
+    public void High_contrast_keeps_the_measured_choice_even_in_the_dark()
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            Bronze(EffectiveAppearanceMode.Dark, highContrast: true));
+
+        Assert.True(
+            EffectiveAppearanceResourceMapper.ContrastRatio(
+                resources.Accent,
+                resources.AccentForeground) >= 4.5);
+    }
+
+    [Fact]
+    public void A_button_is_inset_more_generously_than_an_input()
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            Bronze(EffectiveAppearanceMode.Dark));
+
+        Assert.True(resources.ButtonPadding.Left > resources.ControlPadding.Left);
+        Assert.True(resources.ButtonPadding.Top > resources.ControlPadding.Top);
     }
 
     [Fact]

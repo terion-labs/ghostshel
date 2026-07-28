@@ -57,7 +57,7 @@ public sealed class AgentSafetyCardViewContractTests
         Assert.Contains(
             card.Descendants(),
             element => string.Equals(
-                AttributeValue(element, "Text"),
+                AttributeValue(element, "Content"),
                 "NOT APPROVAL",
                 StringComparison.Ordinal));
 

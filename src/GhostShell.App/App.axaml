@@ -70,7 +70,7 @@
           <SolidColorBrush x:Key="ShellTextBrush" Color="#FFFFFF" />
           <SolidColorBrush x:Key="ShellMutedBrush" Color="#B8B9B6" />
           <SolidColorBrush x:Key="ShellAccentBrush" Color="#FF8400" />
-          <SolidColorBrush x:Key="ShellAccentForegroundBrush" Color="#111111" />
+          <SolidColorBrush x:Key="ShellAccentForegroundBrush" Color="#FFFFFF" />
           <SolidColorBrush x:Key="ShellAccentSoftBrush" Color="#291C0F" />
           <SolidColorBrush x:Key="ShellDangerBrush" Color="#FF5C33" />
           <SolidColorBrush x:Key="ShellDangerForegroundBrush" Color="#111111" />
@@ -108,10 +108,46 @@
           <SolidColorBrush x:Key="ShellNoticeBorderBrush" Color="#A06A36" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
+
+      <!--
+        Fallbacks for the tokens the appearance pipeline republishes at composition
+        time. They do not vary with light and dark, so they sit outside the theme
+        dictionaries; they exist so a design-time preview and a window built before
+        the first publish still resolve a real value rather than silently falling
+        back to zero.
+      -->
+      <CornerRadius x:Key="ShellControlCornerRadius">7</CornerRadius>
+      <CornerRadius x:Key="ShellCardCornerRadius">9</CornerRadius>
+      <CornerRadius x:Key="ShellPillCornerRadius">999</CornerRadius>
+      <CornerRadius x:Key="ShellPanelBottomCornerRadius">0,0,9,9</CornerRadius>
+      <CornerRadius x:Key="ShellInnerCornerRadius">5</CornerRadius>
+      <x:Double x:Key="ShellSpaceNone">0</x:Double>
+      <x:Double x:Key="ShellSpaceXs">4</x:Double>
+      <x:Double x:Key="ShellSpaceSm">8</x:Double>
+      <x:Double x:Key="ShellSpaceMd">12</x:Double>
+      <x:Double x:Key="ShellSpaceLg">16</x:Double>
+      <x:Double x:Key="ShellSpaceXl">24</x:Double>
+      <x:Double x:Key="ShellSpaceXxl">32</x:Double>
+      <Thickness x:Key="ShellInsetXs">4</Thickness>
+      <Thickness x:Key="ShellInsetSm">8</Thickness>
+      <Thickness x:Key="ShellInsetMd">12</Thickness>
+      <Thickness x:Key="ShellInsetLg">16</Thickness>
+      <Thickness x:Key="ShellInsetXl">24</Thickness>
+      <Thickness x:Key="ShellInsetXxl">32</Thickness>
+      <Thickness x:Key="ShellCardPadding">12</Thickness>
+      <Thickness x:Key="ShellButtonPadding">16,10</Thickness>
+      <Thickness x:Key="ShellPagePadding">16</Thickness>
+      <Thickness x:Key="ShellRowPadding">12,8</Thickness>
+      <Thickness x:Key="ShellPillPadding">8,4</Thickness>
+      <BoxShadows x:Key="ShellOverlayShadow">0 18 54 0 #A0000000</BoxShadows>
     </ResourceDictionary>
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
+    <!-- The colour picker ships its own theme; without it the swatches render
+         at zero size and the palette cards lose their colour wells. -->
+    <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+    <StyleInclude Source="avares://GhostShell.App/Styles/DesignSystem.axaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellTheme.axaml" />
   </Application.Styles>
 </Application>

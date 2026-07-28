@@ -2,14 +2,15 @@
     x:Class="GhostShell.App.Views.DefinitionImportModeDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     Title="Import definitions"
     Width="560"
     SizeToContent="Height"
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid Margin="24" RowDefinitions="Auto,Auto,Auto" RowSpacing="18">
-    <StackPanel Spacing="6">
+  <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
       <TextBlock FontSize="{DynamicResource ShellFontSize19}" FontWeight="SemiBold" Text="Import definitions" />
       <TextBlock
           Classes="Muted"
@@ -17,33 +18,33 @@
           TextWrapping="Wrap" />
     </StackPanel>
 
-    <StackPanel Grid.Row="1" Spacing="8">
-      <Border Classes="SettingsCard">
+    <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceSm}">
+      <controls:SurfaceCard Padding="0">
         <RadioButton
             x:Name="FailOnConflictOption"
-            Margin="14,12"
+            Margin="{controls:Inset Md}"
             GroupName="ImportMode"
             IsChecked="True">
-          <StackPanel Spacing="3">
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock FontWeight="SemiBold" Text="Stop on conflicts" />
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Safest. Existing definitions are never replaced." />
           </StackPanel>
         </RadioButton>
-      </Border>
-      <Border Classes="SettingsCard">
+      </controls:SurfaceCard>
+      <controls:SurfaceCard Padding="0">
         <RadioButton
             x:Name="ReplaceExistingOption"
-            Margin="14,12"
+            Margin="{controls:Inset Md}"
             GroupName="ImportMode">
-          <StackPanel Spacing="3">
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock FontWeight="SemiBold" Text="Replace matching definitions" />
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Matching stable identities are replaced after preflight and explicit confirmation." TextWrapping="Wrap" />
           </StackPanel>
         </RadioButton>
-      </Border>
+      </controls:SurfaceCard>
     </StackPanel>
 
-    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <Button MinWidth="88" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
       <Button MinWidth="138" Classes="PrimaryButton" Click="OnChooseFileClick" Content="Choose file…" />
     </StackPanel>

@@ -21,4 +21,10 @@ public sealed record EffectiveTheme(
     bool HighContrast,
     bool MotionEnabled,
     bool AdvancedMaterialsEnabled,
-    double TextScale);
+    double TextScale,
+    double? CornerRadiusOverride = null,
+    InterfaceDensity Density = InterfaceDensity.Cozy,
+    bool ShowTabBar = true,
+    bool ShowWorkspacesPanel = true,
+    TabStripPlacement TabStripPlacement = TabStripPlacement.Top,
+    WorkspacePanelPlacement WorkspacePanelPlacement = WorkspacePanelPlacement.Left);

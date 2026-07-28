@@ -2,25 +2,26 @@
     x:Class="GhostShell.App.Views.LocalArtifactClearDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     Title="Clear app-managed storage"
     Width="480"
     SizeToContent="Height"
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid Margin="24" RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
-    <StackPanel Spacing="6">
+  <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
       <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="{Binding Heading}" />
       <TextBlock Classes="Muted" Text="{Binding Detail}" TextWrapping="Wrap" />
     </StackPanel>
-    <Border Grid.Row="1" Classes="NoticeCard">
+    <controls:SurfaceCard Tone="Notice" Padding="0" Grid.Row="1">
       <TextBlock
-          Margin="12"
+          Margin="{controls:Inset Md}"
           Classes="Muted"
           Text="Saved definitions, secrets, history, recovery snapshots, terminal content, OS-managed data, and active sessions are unaffected."
           TextWrapping="Wrap" />
-    </Border>
-    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+    </controls:SurfaceCard>
+    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <Button
           MinWidth="88"
           Click="OnCancelClick"
