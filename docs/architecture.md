@@ -2,7 +2,7 @@
 
 **Status:** Proposed source of truth  
 **Audience:** maintainers and implementation agents  
-**Last updated:** 2026-07-24  
+**Last updated:** 2026-07-28
 **Applies to:** desktop v1 and the architectural path to server and headless modes
 
 This document defines the intended product, target architecture, delivery milestones, and acceptance criteria. It is intentionally more complete than the mockups: a production application needs loading, empty, failure, permission, recovery, and accessibility states that are not drawn.
@@ -242,6 +242,27 @@ Desktop terminal surfaces and their PTYs follow the lifetime of their owning pan
 Use full libghostty behind a small GhostSHELL native shim where it provides a suitable platform renderer. The public GhostSHELL ABI MUST remain smaller and more stable than libghostty's evolving C ABI. Windows and Linux MUST implement the same GhostSHELL terminal contract; platform code must not leak into workspaces, screens, agents, or persistence.
 
 Terminal-profile propagation, additive ABI compatibility, and the exact native-versus-policy enforcement boundary are recorded in [ADR 0001](adr/0001-terminal-session-and-shim-boundary.md).
+
+#### 6.2.1 Platform input adapters
+
+Desktop input is a platform subsystem, not renderer-view glue. Each supported
+desktop backend owns a concrete adapter that translates its native event and
+text-composition APIs into libghostty input while enforcing GhostSHELL's
+physical-input authority and host-key interception.
+
+The macOS adapter owns `NSEvent` translation, `NSTextInputClient` preedit and
+commit state, modifier events, intercepted-key lifetime, and the human-input
+authority epoch. The native terminal view remains AppKit's first responder and
+forwards callbacks to that adapter. Windows will derive its adapter from
+`WM_KEY*` plus TSF, and Linux from the selected Wayland/X11 keyboard and input
+method APIs.
+
+Adapters MUST preserve the semantic distinction between physical keys, text
+preedit, and committed text. They MUST take ownership of committed text before
+mutating platform composition buffers. Shared cross-platform interfaces are
+extracted only after a second concrete adapter demonstrates common behavior;
+platform-specific composition semantics MUST NOT be hidden behind flags in a
+speculative universal keyboard abstraction.
 
 Future server mode requires a PTY/state backend that is independent of a desktop native view. That backend may use libghostty/libghostty-vt or another library-backed implementation and is selected by an M6 ADR and feasibility spike; desktop v1 does not need to keep a terminal alive after its user-visible owner is closed.
 

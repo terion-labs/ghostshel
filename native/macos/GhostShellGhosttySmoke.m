@@ -50,6 +50,7 @@ typedef struct {
 
 static physical_input_gate_state primaryPhysicalInputGate = {.allow = true};
 static physical_input_gate_state secondaryPhysicalInputGate = {.allow = true};
+static physical_input_gate_state idlePhysicalInputGate = {.allow = true};
 static atomic_bool staleAgentSendCompleted;
 static atomic_bool staleAgentSendResult;
 
@@ -511,6 +512,40 @@ int main(void) {
             return 1;
         }
 
+        NSView *idleHost = [[NSView alloc] initWithFrame:NSMakeRect(400, 0, 320, 200)];
+        [window.contentView addSubview:idleHost];
+        ghostshell_terminal_render_profile_v1 idleRenderProfile = renderProfile;
+        idleRenderProfile.ime_enabled = 1;
+        idleRenderProfile.shell_integration = GHOSTSHELL_SHELL_INTEGRATION_DETECT;
+        const ghostshell_terminal_options_v1 idleOptions = {
+            .struct_size = sizeof(idleOptions),
+            .version = GHOSTSHELL_TERMINAL_OPTIONS_VERSION_1,
+            .working_directory = "/tmp",
+            .executable = "/bin/zsh",
+            .environment = environment,
+            .environment_count = sizeof(environment) / sizeof(environment[0]),
+            .render_profile = &idleRenderProfile,
+        };
+        void *idleTerminal = ghostshell_terminal_attach_v1(
+            (__bridge void *)idleHost,
+            &idleOptions);
+        if (idleTerminal == NULL) {
+            fprintf(stderr, "%s\n", ghostshell_ghostty_last_error());
+            ghostshell_terminal_detach(secondaryTerminal);
+            ghostshell_terminal_detach(terminal);
+            return 1;
+        }
+        if (!ghostshell_terminal_set_physical_input_gate_v1(
+                idleTerminal,
+                accept_physical_input,
+                &idlePhysicalInputGate)) {
+            fprintf(stderr, "The idle-shell physical-input gate could not be installed.\n");
+            ghostshell_terminal_detach(idleTerminal);
+            ghostshell_terminal_detach(secondaryTerminal);
+            ghostshell_terminal_detach(terminal);
+            return 1;
+        }
+
         __block int result = 1;
         __block bool finished = false;
         __block bool alternateStatePassed = false;
@@ -519,10 +554,12 @@ int main(void) {
         __block bool searchUiClosed = false;
         __block bool exactGridResizePassed = false;
         __block bool interruptReadinessPassed = false;
+        __block bool idleClosePassed = false;
         void (^finish)(int) = ^(int exitCode) {
             if (finished) return;
             finished = true;
             result = exitCode;
+            ghostshell_terminal_detach(idleTerminal);
             ghostshell_terminal_detach(secondaryTerminal);
             ghostshell_terminal_detach(terminal);
             [window close];
@@ -661,13 +698,33 @@ int main(void) {
             }
 
             id<NSTextInputClient> textInput = (__bridge id<NSTextInputClient>)secondaryTerminal;
-            [textInput setMarkedText:@"pending"
-                       selectedRange:NSMakeRange(0, 7)
+            NSString *textInputCommand =
+                @"printf 'GHOSTSHELL_TEXT_INPUT_CLIENT_OK\\n'";
+            [textInput setMarkedText:textInputCommand
+                       selectedRange:NSMakeRange(0, textInputCommand.length)
                      replacementRange:NSMakeRange(NSNotFound, 0)];
-            [textInput insertText:@"printf 'GHOSTSHELL_TEXT_INPUT_CLIENT_OK\\n'"
+            // AppKit may pass the mutable attributed string that also backs
+            // the client's marked text. Exercise that aliasing behavior so
+            // clearing preedit cannot erase the commit before it is sent.
+            id inputAdapter =
+                [(__bridge id)secondaryTerminal valueForKey:@"inputAdapter"];
+            id aliasedMarkedText = [inputAdapter valueForKey:@"markedText"];
+            [textInput insertText:aliasedMarkedText
                 replacementRange:NSMakeRange(NSNotFound, 0)];
             NSView *terminalView = (__bridge NSView *)secondaryTerminal;
             [window makeFirstResponder:terminalView];
+            dispatch_key(application, window, 36, 0, '\r', '\r');
+
+            NSView *idleView = (__bridge NSView *)idleTerminal;
+            [window makeFirstResponder:idleView];
+            if (!type_ascii(
+                    application,
+                    window,
+                    "printf 'GHOSTSHELL_IME_KEY_INPUT_OK\\n'")) {
+                fprintf(stderr, "The IME keyboard smoke command contains an unmapped key.\n");
+                finish(1);
+                return;
+            }
             dispatch_key(application, window, 36, 0, '\r', '\r');
         });
 
@@ -1250,6 +1307,7 @@ int main(void) {
             if (finished) return;
             char screen[65536] = {0};
             char secondaryScreen[4096] = {0};
+            char idleScreen[4096] = {0};
             ghostshell_terminal_screen_state_v1 state = {
                 .struct_size = sizeof(state),
                 .version = GHOSTSHELL_TERMINAL_SCREEN_STATE_VERSION_1,
@@ -1259,6 +1317,10 @@ int main(void) {
                 secondaryTerminal,
                 secondaryScreen,
                 sizeof(secondaryScreen));
+            ghostshell_terminal_read_screen(
+                idleTerminal,
+                idleScreen,
+                sizeof(idleScreen));
             bool keyInputPassed =
                 screen_has_line(screen, "GHOSTSHELL_KEY_INPUT_OK");
             bool cancelledInputPassed =
@@ -1291,6 +1353,12 @@ int main(void) {
             bool secondaryTextInputPassed = screen_has_line(
                 secondaryScreen,
                 "GHOSTSHELL_TEXT_INPUT_CLIENT_OK");
+            bool imeKeyInputPassed =
+                screen_has_line(idleScreen, "GHOSTSHELL_IME_KEY_INPUT_OK");
+            bool idleShellReady = strlen(idleScreen) > 0;
+            bool idleNeedsClose =
+                ghostshell_terminal_needs_close_confirmation(idleTerminal);
+            idleClosePassed = idleShellReady && !idleNeedsClose;
             bool physicalKindsPassed = observed_every_physical_input_kind();
             bool stateReadPassed =
                 ghostshell_terminal_read_screen_state_v1(terminal, &state);
@@ -1310,12 +1378,14 @@ int main(void) {
                 optionsPassed &&
                 secondaryStartupPassed &&
                 secondaryTextInputPassed &&
+                imeKeyInputPassed &&
                 alternateStatePassed &&
                 bracketedPastePassed &&
                 searchUiPassed &&
                 searchUiClosed &&
                 exactGridResizePassed &&
                 interruptReadinessPassed &&
+                idleClosePassed &&
                 hostKeyInterceptState == 3 &&
                 physicalKindsPassed &&
                 stateReadPassed &&
@@ -1334,7 +1404,7 @@ int main(void) {
                             "host-key interception, physical-input authority, stale-agent cancellation, "
                             "guarded paste, legacy and Kitty-mode guarded character chords, "
                             "stale-input rejection, bracketed paste, "
-                            "exact-grid resize, terminfo, and "
+                            "idle-close detection, exact-grid resize, terminfo, and "
                             "exit smoke tests passed.\n");
                         fflush(stdout);
                         finish(0);
@@ -1359,10 +1429,12 @@ int main(void) {
                     "kitty-chord-check=%d "
                     "physical-paste-check=%d keymap-check=%d terminfo-check=%d "
                     "options-check=%d secondary-start-check=%d secondary-input-check=%d "
+                    "ime-key-input-check=%d "
                     "interrupt-ready-check=%d alt-check=%d paste-check=%d "
-                    "search-open-check=%d search-close-check=%d "
+                    "search-open-check=%d search-close-check=%d idle-ready-check=%d "
+                    "idle-needs-close=%d "
                     "physical-kinds=%d state-read=%d alt=%u paste=%u injection=%d). "
-                    "Primary:\n%s\nSecondary:\n%s\n",
+                    "Primary:\n%s\nSecondary:\n%s\nIdle:\n%s\n",
                     keyInputPassed,
                     cancelledInputPassed,
                     stalePastePassed,
@@ -1376,18 +1448,22 @@ int main(void) {
                     optionsPassed,
                     secondaryStartupPassed,
                     secondaryTextInputPassed,
+                    imeKeyInputPassed,
                     interruptReadinessPassed,
                     alternateStatePassed,
                     bracketedPastePassed,
                     searchUiPassed,
                     searchUiClosed,
+                    idleShellReady,
+                    idleNeedsClose,
                     physicalKindsPassed,
                     stateReadPassed,
                     state.alternate_screen,
                     state.bracketed_paste,
                     injectionPassed ? 0 : 1,
                     screen,
-                    secondaryScreen);
+                    secondaryScreen,
+                    idleScreen);
                 fflush(stderr);
             }
 

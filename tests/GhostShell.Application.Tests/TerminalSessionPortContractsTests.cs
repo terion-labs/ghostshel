@@ -36,8 +36,15 @@ public sealed class TerminalSessionPortContractsTests
                 "UpdateSelectionAsync",
             ],
             OperationNames(typeof(ITerminalState)));
+        // Reconfiguring a live surface belongs with attaching one: both act on the
+        // renderer, not on the process behind it.
         Assert.Equal(
-            ["AttachRendererAsync", "DetachRendererAsync", "FocusAsync"],
+            [
+                "AttachRendererAsync",
+                "DetachRendererAsync",
+                "FocusAsync",
+                "UpdateRenderProfileAsync",
+            ],
             OperationNames(typeof(ITerminalRendererAttachment)));
         Assert.Equal(
             [

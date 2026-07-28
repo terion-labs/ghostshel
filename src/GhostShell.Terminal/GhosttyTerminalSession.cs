@@ -17,6 +17,7 @@ internal sealed class GhosttyTerminalSession : ITerminalPanelSession
             SingleWriter = false,
         });
     private GhosttyTerminalHandle? _terminal;
+    private GhosttyNativeFocusObserver? _focusObserver;
     private GhosttyNativeHostKeyInterceptor? _hostKeyInterceptor;
     private GhosttyNativePhysicalInputGate? _physicalInputGate;
     private SessionFailure? _failure;
@@ -82,6 +83,7 @@ internal sealed class GhosttyTerminalSession : ITerminalPanelSession
                 }
 
                 ReplaceNativeInputCallbacksUnsafe(rendererHost);
+                ApplyNativePresentationUnsafe(rendererHost);
                 _rendererAttached = true;
                 PublishUnsafe(SessionLifecycle.Active, SessionHealth.Healthy, "libghostty renderer attached.");
             }
@@ -131,6 +133,29 @@ internal sealed class GhosttyTerminalSession : ITerminalPanelSession
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Reconfigures the live surface. Ghostty applies a configuration to an
+    /// existing surface, so typography changes without the process behind it
+    /// noticing and without losing the scrollback.
+    /// </summary>
+    public ValueTask<bool> UpdateRenderProfileAsync(
+        TerminalRenderProfileSnapshot renderProfile,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(renderProfile);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_terminal is not { } terminal || terminal.IsInvalid)
+            {
+                return ValueTask.FromResult(false);
+            }
+
+            return ValueTask.FromResult(
+                GhosttyNativeTerminal.UpdateRenderProfile(terminal, renderProfile));
+        }
     }
 
     public ValueTask ResizeAsync(
@@ -544,8 +569,31 @@ internal sealed class GhosttyTerminalSession : ITerminalPanelSession
         }
     }
 
+    /// <summary>
+    /// Applies the presentation the host cannot express through Avalonia: the
+    /// corner radius its parent card draws, and an observer for focus moving into
+    /// the native view.
+    /// </summary>
+    private void ApplyNativePresentationUnsafe(NativeRendererHost rendererHost)
+    {
+        var terminal = RequireTerminal();
+        var corners = rendererHost.Corners;
+        _ = GhosttyNativeMethods.TerminalSetHostCornerRadiiV1(
+            terminal,
+            corners.TopLeft,
+            corners.TopRight,
+            corners.BottomRight,
+            corners.BottomLeft);
+        if (rendererHost.FocusObserver is { } observer)
+        {
+            _focusObserver = GhosttyNativeFocusObserver.Attach(terminal, observer);
+        }
+    }
+
     private void ClearNativeInputCallbacksUnsafe()
     {
+        _focusObserver?.Dispose();
+        _focusObserver = null;
         _hostKeyInterceptor?.Dispose();
         _hostKeyInterceptor = null;
         _physicalInputGate?.Dispose();

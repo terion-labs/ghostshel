@@ -269,6 +269,33 @@ bool ghostshell_terminal_set_physical_input_gate_v1(
     ghostshell_terminal_physical_input_gate_v1 gate,
     void *userdata);
 uint64_t ghostshell_terminal_input_epoch_v1(void *terminal);
+// Invoked on the main thread when the terminal view becomes first responder.
+typedef void (*ghostshell_terminal_focus_observer_v1)(void *userdata);
+
+// Rounds the terminal's own layer so it does not paint through the rounded
+// corners its host panel draws. Radii are per corner because the terminal usually
+// sits below a panel header, so only its bottom corners are at the panel's edge —
+// rounding all four carved notches into the middle of the panel. All zero restores
+// square corners.
+bool ghostshell_terminal_set_host_corner_radii_v1(
+    void *terminal,
+    double topLeft,
+    double topRight,
+    double bottomRight,
+    double bottomLeft);
+
+// Reports first-responder changes to the host, which cannot otherwise see focus
+// move into a native child view.
+bool ghostshell_terminal_set_focus_observer_v1(
+    void *terminal,
+    ghostshell_terminal_focus_observer_v1 observer,
+    void *userdata);
+
+// Applies typography and palette to a live surface. Returns false and sets the
+// last error when the terminal is not live or the profile is rejected.
+bool ghostshell_terminal_update_render_profile_v1(
+    void *terminal,
+    const ghostshell_terminal_render_profile_v1 *profile);
 void ghostshell_terminal_focus(void *terminal);
 void ghostshell_terminal_resize(void *terminal, double width, double height, double scale);
 bool ghostshell_terminal_resize_grid_v1(

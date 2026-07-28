@@ -13,6 +13,37 @@ public sealed record TerminalProfile : IDurableDefinition
 {
     public const int CurrentSchemaVersion = 1;
 
+    /// <summary>
+    /// Whether this profile would store the same thing as <paramref name="other"/>.
+    ///
+    /// Record equality cannot answer it: the palette holds its ANSI colours in a
+    /// list, which records compare by reference, so two profiles built from the
+    /// same values are never equal. Saving on that basis rewrote the profile every
+    /// time it was asked to, and the notification that followed rebuilt the editor,
+    /// whose rebinding asked again.
+    /// </summary>
+    public bool RepresentsSameAs(TerminalProfile other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return Id == other.Id
+            && FontSize == other.FontSize
+            && LineHeight == other.LineHeight
+            && CursorStyle == other.CursorStyle
+            && CursorBlink == other.CursorBlink
+            && ScrollbackLines == other.ScrollbackLines
+            && KeymapId == other.KeymapId
+            && LinkPolicy == other.LinkPolicy
+            && ImeEnabled == other.ImeEnabled
+            && ShellIntegration == other.ShellIntegration
+            && BellMode == other.BellMode
+            && Compatibility == other.Compatibility
+            && string.Equals(Name, other.Name, StringComparison.Ordinal)
+            && string.Equals(FontFamily, other.FontFamily, StringComparison.Ordinal)
+            && string.Equals(Palette.Name, other.Palette.Name, StringComparison.Ordinal)
+            && Palette.Matches(other.Palette)
+            && Equals(ClipboardPolicy, other.ClipboardPolicy);
+    }
+
     public TerminalProfile(
         TerminalProfileId id,
         string name,

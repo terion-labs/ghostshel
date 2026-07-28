@@ -10,6 +10,10 @@ if [[ ! -x "${dotnet}" ]]; then
     exit 1
 fi
 
+# The terminal's corner-mask geometry lives in the Objective-C shim, so no .NET
+# test can reach it. It has been got wrong four times; this checks it.
+"${script_dir}/verify-native-corner-mask.sh"
+
 "${dotnet}" build "${repository_dir}/GhostShell.slnx"
 "${dotnet}" test "${repository_dir}/GhostShell.slnx" --no-build
 "${dotnet}" format "${repository_dir}/GhostShell.slnx" --verify-no-changes --no-restore

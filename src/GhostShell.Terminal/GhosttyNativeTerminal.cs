@@ -112,6 +112,23 @@ internal static class GhosttyNativeTerminal
             (uint)rows);
     }
 
+    /// <summary>
+    /// Applies typography and palette to a running terminal. Returns false when
+    /// the host declines, which leaves the surface exactly as it was rather than
+    /// half-reconfigured.
+    /// </summary>
+    public static bool UpdateRenderProfile(
+        GhosttyTerminalHandle terminal,
+        TerminalRenderProfileSnapshot profile)
+    {
+        ArgumentNullException.ThrowIfNull(terminal);
+        ArgumentNullException.ThrowIfNull(profile);
+        using var marshalled = GhosttyNativeLaunchOptions.ForRenderProfile(profile);
+        return GhosttyNativeMethods.TerminalUpdateRenderProfileV1(
+            terminal,
+            marshalled.RenderProfileBlock);
+    }
+
     public static ulong ReadInputEpoch(GhosttyTerminalHandle terminal)
     {
         ArgumentNullException.ThrowIfNull(terminal);
@@ -308,6 +325,18 @@ internal static class GhosttyNativeTerminal
         }
     }
 
+    /// <summary>
+    /// Publishes the terminal engine's resources directory into the real process
+    /// environment.
+    ///
+    /// <see cref="Environment.SetEnvironmentVariable(string, string)"/> only
+    /// updates the runtime's own copy on Unix; the native environment that
+    /// <c>getenv</c> reads is untouched. The engine reads this variable from
+    /// native code, so setting it the managed way left it invisible — the engine
+    /// then found no resources directory, disabled shell integration, and without
+    /// prompt markers it could never tell that a terminal was sitting idle. That
+    /// is why closing an idle terminal still asked for confirmation.
+    /// </summary>
     private static void ConfigureResourcesDirectory()
     {
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GHOSTTY_RESOURCES_DIR")))
@@ -316,11 +345,37 @@ internal static class GhosttyNativeTerminal
         }
 
         var resourcesDirectory = Path.Combine(AppContext.BaseDirectory, "ghostty");
-        if (Directory.Exists(resourcesDirectory))
+        if (!Directory.Exists(resourcesDirectory))
         {
-            Environment.SetEnvironmentVariable("GHOSTTY_RESOURCES_DIR", resourcesDirectory);
+            return;
         }
+
+        Environment.SetEnvironmentVariable("GHOSTTY_RESOURCES_DIR", resourcesDirectory);
+        if (!OperatingSystem.IsWindows())
+        {
+            _ = SetNativeEnvironmentVariable("GHOSTTY_RESOURCES_DIR", resourcesDirectory, 1);
+        }
+
+        // Read it back the way the engine will, so the value that matters is
+        // reported rather than the one we believe we set. Printed once per process:
+        // whether the engine can see this directory decides whether shell
+        // integration runs at all, and that is worth stating rather than assuming.
+        var seenByNativeCode = OperatingSystem.IsWindows()
+            ? Environment.GetEnvironmentVariable("GHOSTTY_RESOURCES_DIR")
+            : Marshal.PtrToStringAnsi(GetNativeEnvironmentVariable("GHOSTTY_RESOURCES_DIR"));
+        Console.Error.WriteLine(
+            $"[ghostshell:input] resources dir set to {resourcesDirectory}; "
+            + $"native code reads {seenByNativeCode ?? "<null>"}");
     }
+
+    [DllImport("libc", EntryPoint = "getenv", CharSet = CharSet.Ansi)]
+    private static extern nint GetNativeEnvironmentVariable(string name);
+
+    [DllImport("libc", EntryPoint = "setenv", CharSet = CharSet.Ansi)]
+    private static extern int SetNativeEnvironmentVariable(
+        string name,
+        string value,
+        int overwrite);
 }
 
 internal readonly record struct GhosttyTerminalScreenState(

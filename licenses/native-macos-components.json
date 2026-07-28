@@ -89,7 +89,7 @@
       "id": "build-native-script",
       "kind": "repository-file",
       "repositoryRelativePath": "scripts/build-native-macos.sh",
-      "sha256": "848ab5b4440f881573cbb241e8b2bfb250ff6753caa2654e654251cdf6f5f0c5"
+      "sha256": "7e0b83a687ba57e0c43f571a7e721188f4c127064bb18600986cca17bab7bedb"
     },
     {
       "id": "clang-compiler",
@@ -98,22 +98,34 @@
       "sha256": "f30550eab15fdf5ab8c0dc54c52679711241e5d4b636b027e18c09fef531775d"
     },
     {
+      "id": "ghostshell-input-adapter-header",
+      "kind": "repository-file",
+      "repositoryRelativePath": "native/macos/GhostShellMacInputAdapter.h",
+      "sha256": "a539b7b6bebb899aee854a571a8e27981f8c86bf2be4a2787818a69afdfa7c85"
+    },
+    {
+      "id": "ghostshell-input-adapter-source",
+      "kind": "repository-file",
+      "repositoryRelativePath": "native/macos/GhostShellMacInputAdapter.m",
+      "sha256": "060074680942fc2ef53b11344f08095d4207dd21be080208bda98099a19e8437"
+    },
+    {
       "id": "ghostshell-shim-header",
       "kind": "repository-file",
       "repositoryRelativePath": "native/macos/GhostShellGhostty.h",
-      "sha256": "e8fe95695334ef9150cf89cb7245464790668b08a76d42d886aaf938e2223ab2"
+      "sha256": "7735895fe450a0afe504e571a0cb03c26d7ec6293cc06b8247913947e9dad7f6"
     },
     {
       "id": "ghostshell-shim-source",
       "kind": "repository-file",
       "repositoryRelativePath": "native/macos/GhostShellGhostty.m",
-      "sha256": "cbd37c4464e543c43412ecedbdb3044940ee304248b9ddef7e61425bf8e3ecd5"
+      "sha256": "79a12e1710c8e32a618cfce2fc4aeaa53fb52b28eda58592f7f7b2d48413a33f"
     },
     {
       "id": "ghostshell-smoke-source",
       "kind": "repository-file",
       "repositoryRelativePath": "native/macos/GhostShellGhosttySmoke.m",
-      "sha256": "07e20e47c012db6153494fd7580a57be2f2dbc93f5a9219e033fd1872c63634a"
+      "sha256": "703d7b7df1614459caeb5bc14769d6d755e7600b1d6b60f7cdfd3ffe5cf34b40"
     },
     {
       "id": "ghostty-build-script",
@@ -252,6 +264,7 @@
       "-dynamiclib",
       "-isysroot=MacOSX15.4.sdk",
       "source=GhostShellGhostty.m",
+      "source=GhostShellMacInputAdapter.m",
       "-I=ghostshell-native-macos",
       "-I=ghostty-install-include",
       "-L=ghostty-install-lib",
@@ -260,6 +273,8 @@
       "AppKit",
       "-framework",
       "Foundation",
+      "-framework",
+      "QuartzCore",
       "-Wl,-rpath,@loader_path",
       "-Wl,-install_name,@rpath/libghostshell-ghostty.dylib",
       "smoke-isysroot=MacOSX15.4.sdk"
@@ -272,8 +287,8 @@
       "sha256": "6893dea958b8d89b58c0ccefb1bfdb589ba4bb0c6fd1a0d73fe38a1715650918"
     }
   },
-  "expectedArtifactManifestSha256": "7e220189aad7af7278ffe4e19a9b30e6e4a52d436290f89801a1f6562ea6487a",
-  "expectedPackagedPayloadManifestSha256": "c67769e5c1e0c4abd3f15c7310518c6deb4a98a6db419f3bc169714702d11b49",
+  "expectedArtifactManifestSha256": "2f415c9924e2fe59b6028b3a9e1c58b2d2c2e21701aec9f2b61d5256cbb94f0e",
+  "expectedPackagedPayloadManifestSha256": "6d9455d37f788e84faff6f60b6f2e075de9c8b3f9a614c8c8f5aa8a2ca040f0e",
   "components": [
     {
       "id": "apple-sdk",
