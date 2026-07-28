@@ -214,8 +214,10 @@ public sealed class DefinitionBundleTests
         var document = DurableDefinitionFixtures.Document(ThemePreference.Default);
         document = document with
         {
+            // Derived from the definition rather than pinned, so raising a
+            // schema version does not silently turn this into a no-op edit.
             PayloadJson = document.PayloadJson.Replace(
-                "\"schemaVersion\":1",
+                $"\"schemaVersion\":{ThemePreference.CurrentSchemaVersion}",
                 "\"schemaVersion\":999",
                 StringComparison.Ordinal),
         };
