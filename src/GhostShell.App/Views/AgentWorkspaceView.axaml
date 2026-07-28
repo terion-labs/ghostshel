@@ -2,689 +2,581 @@
     x:Class="GhostShell.App.Views.AgentWorkspaceView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <Border Classes="AgentPanel">
+    <!--
+      Five bands, and each one owns a different kind of thing: who the panel is and
+      how it is doing, what is standing and must never scroll away, the conversation,
+      what you say next, and the settings that shape the next run. The provider and
+      scope pickers used to sit in a labelled form directly under the heading, where
+      three competing idioms fought for the top of a narrow panel; they are chips in
+      the footer now, beside the run status they describe.
+    -->
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-      <Grid MinHeight="64" Margin="14,0" ColumnDefinitions="*,Auto">
-        <StackPanel VerticalAlignment="Center" Spacing="1">
-          <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="AI agent" />
-          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.ScopeLabel}" TextTrimming="CharacterEllipsis" />
-          <TextBlock
-              Classes="Muted Monospace"
-              FontSize="{DynamicResource ShellFontSize8}"
-              Text="{Binding AgentChat.TargetContextLabel}"
-              TextTrimming="CharacterEllipsis"
-              IsVisible="{Binding AgentChat.HasTargetContext}" />
-        </StackPanel>
-        <Border
-            Grid.Column="1"
+      <Grid MinHeight="44" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <icons:SymbolIcon
             VerticalAlignment="Center"
-            Classes="StatusPill"
-            Classes.Warning="{Binding AgentChat.NeedsProviderAttention}">
-          <TextBlock
-              Text="{Binding AgentChat.ConnectionStatus}"
-              AutomationProperties.LiveSetting="Polite"
-              AutomationProperties.Name="{Binding AgentChat.ConnectionStatus, StringFormat={}AI agent state · {0}}" />
-        </Border>
-      </Grid>
-      <Grid
-          Grid.Row="1"
-          MinHeight="48"
-          Margin="10,0,10,8"
-          RowDefinitions="Auto,Auto,Auto"
-          ColumnDefinitions="Auto,*"
-          ColumnSpacing="9"
-          RowSpacing="6">
-        <TextBlock VerticalAlignment="Center" Classes="Eyebrow" Text="PROVIDER" />
-        <ComboBox
-            Grid.Column="1"
-            MinWidth="210"
-            HorizontalAlignment="Stretch"
-            ItemsSource="{Binding AgentChat.Providers}"
-            SelectedItem="{Binding AgentChat.SelectedProvider, Mode=TwoWay}"
-            IsEnabled="{Binding AgentChat.CanChangeProvider}"
-            AutomationProperties.Name="AI agent provider">
-          <ComboBox.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
+            Symbol="Bot"
+            FontSize="16"
+            Foreground="{DynamicResource ShellAccentBrush}" />
         <TextBlock
-            Grid.Row="1"
-            VerticalAlignment="Center"
-            Classes="Eyebrow"
-            Text="SCOPE" />
-        <ComboBox
-            Grid.Row="1"
             Grid.Column="1"
-            MinWidth="210"
-            HorizontalAlignment="Stretch"
-            ItemsSource="{Binding AgentRunScopeOptions}"
-            SelectedItem="{Binding SelectedAgentRunScope, Mode=TwoWay}"
-            IsEnabled="{Binding AgentChat.CanChangeProvider}"
-            AutomationProperties.Name="AI agent target scope"
-            AutomationProperties.HelpText="Choose the terminal boundary before starting the governed run">
-          <ComboBox.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
+            VerticalAlignment="Center"
+            FontSize="{DynamicResource ShellFontSize14}"
+            FontWeight="SemiBold"
+            Text="AI agent" />
+        <controls:StatusChip
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            Classes.Warning="{Binding AgentChat.NeedsProviderAttention}"
+            Content="{Binding AgentChat.ConnectionStatus}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="{Binding AgentChat.ConnectionStatus, StringFormat={}AI agent state · {0}}" />
+      </Grid>
+
+      <!--
+        Standing notices. These were inside the transcript, so a live YOLO grant and
+        the capability boundary could both be scrolled out of sight by the next few
+        messages — exactly when they matter most. They hold their own band above it.
+      -->
+      <StackPanel Grid.Row="1" Margin="{controls:Inset Horizontal=Md, Bottom=Sm}" Spacing="{DynamicResource ShellSpaceSm}">
         <Border
-            Grid.Row="2"
-            Grid.ColumnSpan="2"
-            Margin="0,2,0,0"
-            Padding="9"
+            Padding="{controls:Inset Md}"
+            Background="{DynamicResource ShellDangerSoftBrush}"
+            BorderBrush="{DynamicResource ShellDangerBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource ShellCardCornerRadius}"
+            IsVisible="{Binding AgentChat.HasYoloAuthority}"
+            AutomationProperties.LiveSetting="Assertive"
+            AutomationProperties.Name="{Binding AgentChat.YoloAuthority.Scope, StringFormat={}YOLO enabled · exact scope {0}}">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <controls:StatusChip Tone="Danger" HorizontalAlignment="Left" Content="YOLO ENABLED" />
+              <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding AgentChat.YoloAuthority.Duration}" />
+            </Grid>
+            <TextBlock Text="{Binding AgentChat.YoloAuthority.Warning}" TextWrapping="Wrap" />
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="Eyebrow" Text="EXACT SCOPE" />
+              <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding AgentChat.YoloAuthority.Scope}" TextWrapping="Wrap" />
+              <TextBlock
+                  Classes="Muted Monospace"
+                  FontSize="{DynamicResource ShellFontSize8}"
+                  Text="{Binding AgentChat.TargetContextLabel}"
+                  TextWrapping="Wrap"
+                  IsVisible="{Binding AgentChat.HasTargetContext}" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.YoloAuthority.ExpiresAt, StringFormat={}Expires · {0}}" TextWrapping="Wrap" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <Button
+                  Classes="DestructiveButton"
+                  Click="OnDisableAgentYoloClick"
+                  Content="Disable now"
+                  IsEnabled="{Binding AgentChat.CanDisableYolo}"
+                  AutomationProperties.Name="Disable YOLO now" />
+              <Button
+                  Grid.Column="1"
+                  Classes="SecondaryButton"
+                  Click="OnCancelAgentChatClick"
+                  Content="Stop run"
+                  IsEnabled="{Binding AgentChat.CanRequestStop}"
+                  AutomationProperties.Name="Stop AI agent run and revoke YOLO" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!--
+          The capability boundary is one line and a way in. It used to be a card with
+          the exact target, the context, two always-open inspectors, and the YOLO
+          escalation stacked inside it, which pushed the conversation off the bottom
+          of the panel before it had started. The detail is all still here, one press
+          away, where it is read deliberately rather than skimmed past.
+        -->
+        <Border
+            Padding="{controls:Inset Sm}"
             Background="{DynamicResource ShellSurfaceRaisedBrush}"
             BorderBrush="{DynamicResource ShellBorderBrush}"
             BorderThickness="1"
-            CornerRadius="8"
-            IsEnabled="{Binding AgentChat.CanChangeProvider}"
-            IsVisible="{Binding IsAgentSelectedPanelsScope}"
-            AutomationProperties.Name="Selected terminals for the AI agent"
-            AutomationProperties.HelpText="Choose exact live terminals. Terminal and tab labels are untrusted metadata; stable IDs are shown below.">
-          <StackPanel Spacing="6">
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Classes="Eyebrow" Text="SELECT TERMINALS" />
-              <TextBlock
-                  Grid.Column="1"
-                  Classes="Muted Monospace"
-                  FontSize="{DynamicResource ShellFontSize8}"
-                  Text="{Binding AgentTerminalSelectionSummary}" />
-            </Grid>
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize9}"
-                Text="Choose exact live terminals. Names below are untrusted labels."
-                TextWrapping="Wrap" />
-            <ScrollViewer
-                MaxHeight="156"
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto"
-                IsVisible="{Binding HasAgentTerminalSelectionOptions}"
-                AutomationProperties.Name="Available live terminals">
-              <ItemsControl ItemsSource="{Binding AgentTerminalSelectionOptions}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <CheckBox
-                        Margin="0,2"
-                        HorizontalAlignment="Stretch"
-                        IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                        AutomationProperties.Name="{Binding AutomationName}"
-                        AutomationProperties.HelpText="{Binding AutomationHelpText}">
-                      <StackPanel Margin="4,0,0,0" Spacing="1">
-                        <TextBlock Text="{Binding PanelTitle}" TextTrimming="CharacterEllipsis" />
+            CornerRadius="{DynamicResource ShellCardCornerRadius}"
+            IsVisible="{Binding AgentChat.HasCapabilityNotice}"
+            AutomationProperties.Name="{Binding AgentChat.CapabilityNotice, StringFormat={}AI agent terminal capability · {0}}">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <icons:SymbolIcon
+                VerticalAlignment="Center"
+                Symbol="Shield"
+                FontSize="16"
+                Foreground="{DynamicResource ShellWarningBrush}" />
+            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="Eyebrow" Text="{Binding AgentChat.CapabilityLabel}" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding AgentChat.CapabilityNotice}" TextWrapping="Wrap" />
+            </StackPanel>
+            <Button
+                Grid.Column="2"
+                VerticalAlignment="Center"
+                Classes="TextButton"
+                Content="Details"
+                AutomationProperties.Name="Inspect the agent's exact context and effective policy"
+                AutomationProperties.HelpText="Shows the exact fixed terminals, the host-verified operations, and the trusted policy captured for this governed run">
+              <Button.Flyout>
+                <Flyout Placement="Bottom">
+                  <StackPanel Width="330" Spacing="{DynamicResource ShellSpaceSm}">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding AgentChat.HasExactTarget}">
+                      <TextBlock Classes="Eyebrow" Text="EXACT TARGET" />
+                      <TextBlock FontWeight="SemiBold" Text="{Binding AgentChat.TargetTitle}" TextWrapping="Wrap" />
+                      <TextBlock
+                          Classes="Muted Monospace"
+                          FontSize="{DynamicResource ShellFontSize8}"
+                          Text="{Binding AgentChat.ExactTarget}"
+                          TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding AgentChat.HasTargetContext}">
+                      <TextBlock Classes="Eyebrow" Text="CONTEXT" />
+                      <TextBlock
+                          Classes="Muted Monospace"
+                          FontSize="{DynamicResource ShellFontSize8}"
+                          Text="{Binding AgentChat.TargetContextLabel}"
+                          TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Expander
+                        x:Name="AgentContextInspector"
+                        HorizontalContentAlignment="Stretch"
+                        IsExpanded="{Binding AgentChat.IsContextInspectorExpanded, Mode=TwoWay}"
+                        IsVisible="{Binding AgentChat.HasContextItems}"
+                        AutomationProperties.Name="{Binding AgentChat.ContextInspectorAccessibleName}"
+                        AutomationProperties.HelpText="Shows the exact fixed terminals and host-verified operations in this governed run">
+                      <Expander.Header>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <TextBlock FontWeight="SemiBold" Text="Inspect context" />
+                          <TextBlock
+                              Grid.Column="1"
+                              Classes="Muted Monospace"
+                              FontSize="{DynamicResource ShellFontSize8}"
+                              Text="{Binding AgentChat.ContextInspectorSummary}" />
+                        </Grid>
+                      </Expander.Header>
+                      <StackPanel Margin="{controls:Inset Top=Sm}" Spacing="{DynamicResource ShellSpaceXs}">
                         <TextBlock
                             Classes="Muted"
                             FontSize="{DynamicResource ShellFontSize9}"
-                            Text="{Binding TabTitle, StringFormat={}Tab · {0}}"
-                            TextTrimming="CharacterEllipsis" />
+                            Text="Display labels and terminal metadata are untrusted."
+                            TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding AgentChat.ContextItems}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border
+                                  Margin="{controls:Inset Bottom=Xs}"
+                                  Padding="{controls:Inset Sm}"
+                                  Background="{DynamicResource ShellSurfaceBrush}"
+                                  BorderBrush="{DynamicResource ShellBorderBrush}"
+                                  BorderThickness="1"
+                                  CornerRadius="{DynamicResource ShellControlCornerRadius}"
+                                  AutomationProperties.Name="{Binding AccessibleName}">
+                                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                                  <TextBlock
+                                      FontWeight="SemiBold"
+                                      Text="{Binding Title}"
+                                      TextTrimming="CharacterEllipsis" />
+                                  <TextBlock
+                                      Classes="Eyebrow"
+                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      Text="{Binding State}"
+                                      TextWrapping="Wrap" />
+                                  <TextBlock
+                                      Classes="Muted"
+                                      FontSize="{DynamicResource ShellFontSize9}"
+                                      Text="{Binding TabTitle, StringFormat={}Tab · {0}}"
+                                      TextTrimming="CharacterEllipsis" />
+                                  <TextBlock
+                                      Classes="Muted Monospace"
+                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      Text="{Binding ExactIdentity}"
+                                      TextWrapping="Wrap" />
+                                  <TextBlock
+                                      Classes="Muted Monospace"
+                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      Text="{Binding Context}"
+                                      TextWrapping="Wrap" />
+                                  <TextBlock
+                                      Classes="Muted Monospace"
+                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      Text="{Binding Operations, StringFormat={}Operations · {0}}"
+                                      TextWrapping="Wrap" />
+                                </StackPanel>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Expander>
+                    <Expander
+                        HorizontalContentAlignment="Stretch"
+                        AutomationProperties.Name="{Binding AgentChat.EffectivePolicySummary, StringFormat={}Inspect effective agent policy · {0}}"
+                        AutomationProperties.HelpText="Shows the trusted policy captured for the current governed run">
+                      <Expander.Header>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <TextBlock FontWeight="SemiBold" Text="Effective policy" />
+                          <TextBlock
+                              Grid.Column="1"
+                              Classes="Muted Monospace"
+                              FontSize="{DynamicResource ShellFontSize8}"
+                              Text="{Binding AgentChat.PolicyModeLabel}" />
+                        </Grid>
+                      </Expander.Header>
+                      <StackPanel Margin="{controls:Inset Top=Sm}" Spacing="{DynamicResource ShellSpaceXs}">
                         <TextBlock
                             Classes="Muted Monospace"
                             FontSize="{DynamicResource ShellFontSize8}"
-                            Text="{Binding IdentityLabel}"
-                            TextTrimming="CharacterEllipsis" />
+                            Text="{Binding AgentChat.EffectivePolicySummary}"
+                            TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding AgentChat.EffectivePolicyCapabilities}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Grid
+                                  Margin="{controls:Inset Vertical=Xs}"
+                                  ColumnDefinitions="*,Auto"
+                                  ColumnSpacing="{DynamicResource ShellSpaceSm}"
+                                  AutomationProperties.Name="{Binding AccessibleName}">
+                                <TextBlock
+                                    Classes="Muted"
+                                    FontSize="{DynamicResource ShellFontSize9}"
+                                    Text="{Binding Capability}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Classes="Eyebrow"
+                                    FontSize="{DynamicResource ShellFontSize8}"
+                                    Text="{Binding Permission}" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                       </StackPanel>
-                    </CheckBox>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize9}"
-                Text="{Binding AgentTerminalSelectionStatus}"
-                TextWrapping="Wrap"
-                IsVisible="{Binding !HasAgentTerminalSelectionError}"
-                AutomationProperties.LiveSetting="Polite" />
-            <TextBlock
-                Foreground="{DynamicResource ShellDangerBrush}"
-                FontSize="{DynamicResource ShellFontSize9}"
-                Text="{Binding AgentTerminalSelectionStatus}"
-                TextWrapping="Wrap"
-                IsVisible="{Binding HasAgentTerminalSelectionError}"
-                AutomationProperties.LiveSetting="Assertive" />
-          </StackPanel>
+                    </Expander>
+                    <Button
+                        HorizontalAlignment="Left"
+                        Classes="SecondaryButton"
+                        Click="OnEnableAgentYoloClick"
+                        Content="Enable run-only YOLO…"
+                        IsEnabled="{Binding AgentChat.CanEnableYolo}"
+                        IsVisible="{Binding AgentChat.CanOfferYolo}"
+                        AutomationProperties.Name="Review and enable run-only YOLO" />
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+          </Grid>
         </Border>
-      </Grid>
+      </StackPanel>
+
       <ScrollViewer
           x:Name="AgentChatTranscript"
           Grid.Row="2"
+          IsVisible="{Binding AgentChat.HasAgentContent}"
           HorizontalScrollBarVisibility="Disabled"
           VerticalScrollBarVisibility="Auto"
           ScrollChanged="OnAgentChatTranscriptScrollChanged"
           AutomationProperties.LiveSetting="Polite"
           AutomationProperties.Name="{Binding AgentChat.Status, StringFormat={}AI agent activity · {0}}">
-        <StackPanel>
-          <Border
-              Margin="10,0,10,8"
-              Padding="11"
-              Background="{DynamicResource ShellDangerSoftBrush}"
-              BorderBrush="{DynamicResource ShellDangerBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="9"
-              IsVisible="{Binding AgentChat.HasYoloAuthority}"
-              AutomationProperties.LiveSetting="Assertive"
-              AutomationProperties.Name="{Binding AgentChat.YoloAuthority.Scope, StringFormat={}YOLO enabled · exact scope {0}}">
-            <StackPanel Spacing="7">
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <Border Classes="StatusPill Danger" HorizontalAlignment="Left">
-                  <TextBlock Text="YOLO ENABLED" />
-                </Border>
-                <TextBlock Grid.Column="1" Classes="Eyebrow" VerticalAlignment="Center" Text="{Binding AgentChat.YoloAuthority.Duration}" />
-              </Grid>
-              <TextBlock Text="{Binding AgentChat.YoloAuthority.Warning}" TextWrapping="Wrap" />
-              <StackPanel Spacing="2">
-                <TextBlock Classes="Eyebrow" Text="EXACT SCOPE" />
-                <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding AgentChat.YoloAuthority.Scope}" TextWrapping="Wrap" />
-                <TextBlock
-                    Classes="Muted Monospace"
-                    FontSize="{DynamicResource ShellFontSize8}"
-                    Text="{Binding AgentChat.TargetContextLabel}"
-                    TextWrapping="Wrap"
-                    IsVisible="{Binding AgentChat.HasTargetContext}" />
-                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.YoloAuthority.ExpiresAt, StringFormat={}Expires · {0}}" TextWrapping="Wrap" />
-              </StackPanel>
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="7">
-                <Button
-                    Classes="DestructiveButton"
-                    Click="OnDisableAgentYoloClick"
-                    Content="Disable now"
-                    IsEnabled="{Binding AgentChat.CanDisableYolo}"
-                    AutomationProperties.Name="Disable YOLO now" />
-                <Button
-                    Grid.Column="1"
-                    Classes="SecondaryButton"
-                    Click="OnCancelAgentChatClick"
-                    Content="Stop run"
-                    IsEnabled="{Binding AgentChat.CanRequestStop}"
-                    AutomationProperties.Name="Stop AI agent run and revoke YOLO" />
-              </Grid>
-            </StackPanel>
-          </Border>
-          <Border
-              Margin="10,0,10,8"
-              Padding="10"
-              Background="{DynamicResource ShellSurfaceRaisedBrush}"
-              BorderBrush="{DynamicResource ShellBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="8"
-              IsVisible="{Binding AgentChat.HasCapabilityNotice}"
-              AutomationProperties.Name="{Binding AgentChat.CapabilityNotice, StringFormat={}AI agent terminal capability · {0}}">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-              <icons:SymbolIcon Symbol="Shield" FontSize="17" Foreground="{DynamicResource ShellWarningBrush}" />
-              <StackPanel Grid.Column="1" Spacing="3">
-                <TextBlock Classes="Eyebrow" Text="{Binding AgentChat.CapabilityLabel}" />
-                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding AgentChat.CapabilityNotice}" TextWrapping="Wrap" />
-                <TextBlock
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    FontWeight="SemiBold"
-                    Text="{Binding AgentChat.TargetTitle}"
-                    TextWrapping="Wrap"
-                    IsVisible="{Binding AgentChat.HasExactTarget}" />
-                <TextBlock
-                    Classes="Muted Monospace"
-                    FontSize="{DynamicResource ShellFontSize8}"
-                    Text="{Binding AgentChat.ExactTarget}"
-                    TextWrapping="Wrap"
-                    IsVisible="{Binding AgentChat.HasExactTarget}" />
-                <Grid
-                    Margin="0,3,0,0"
-                    ColumnDefinitions="Auto,*"
-                    ColumnSpacing="7"
-                    IsVisible="{Binding AgentChat.HasTargetContext}">
-                  <TextBlock Classes="Eyebrow" FontSize="{DynamicResource ShellFontSize8}" Text="CONTEXT" />
+        <StackPanel
+            Margin="{controls:Inset Horizontal=Md}"
+            Spacing="{DynamicResource ShellSpaceSm}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="{Binding AgentChat.Status, StringFormat={}AI agent transcript and activity · {0}}">
+          <!--
+            What you said is a bubble; what the agent said is the page. Giving both
+            sides a bordered bubble halved the usable width of an already narrow
+            panel and made a paragraph of prose read like a stack of receipts.
+          -->
+          <ItemsControl ItemsSource="{Binding AgentChat.Messages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="{controls:Inset Bottom=Sm}">
+                  <Border
+                      MaxWidth="286"
+                      Padding="{controls:Inset Sm}"
+                      HorizontalAlignment="Right"
+                      Background="{DynamicResource ShellAccentSoftBrush}"
+                      CornerRadius="12,12,3,12"
+                      IsVisible="{Binding IsUser}"
+                      AutomationProperties.Name="{Binding Author}">
+                    <TextBlock Text="{Binding Content}" TextWrapping="Wrap" />
+                  </Border>
                   <TextBlock
-                      Grid.Column="1"
-                      Classes="Muted Monospace"
-                      FontSize="{DynamicResource ShellFontSize8}"
-                      Text="{Binding AgentChat.TargetContextLabel}"
-                      TextWrapping="Wrap" />
+                      HorizontalAlignment="Stretch"
+                      Text="{Binding Content}"
+                      TextWrapping="Wrap"
+                      IsVisible="{Binding IsAssistant}"
+                      AutomationProperties.Name="{Binding Author}" />
                 </Grid>
-                <Expander
-                    x:Name="AgentContextInspector"
-                    Margin="0,4,0,0"
-                    HorizontalContentAlignment="Stretch"
-                    IsExpanded="{Binding AgentChat.IsContextInspectorExpanded, Mode=TwoWay}"
-                    IsVisible="{Binding AgentChat.HasContextItems}"
-                    AutomationProperties.Name="{Binding AgentChat.ContextInspectorAccessibleName}"
-                    AutomationProperties.HelpText="Shows the exact fixed terminals and host-verified operations in this governed run">
-                  <Expander.Header>
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                      <TextBlock FontWeight="SemiBold" Text="Inspect context" />
-                      <TextBlock
-                          Grid.Column="1"
-                          Classes="Muted Monospace"
-                          FontSize="{DynamicResource ShellFontSize8}"
-                          Text="{Binding AgentChat.ContextInspectorSummary}" />
-                    </Grid>
-                  </Expander.Header>
-                  <StackPanel Margin="0,7,0,0" Spacing="6">
-                    <TextBlock
-                        Classes="Muted"
-                        FontSize="{DynamicResource ShellFontSize9}"
-                        Text="Display labels and terminal metadata are untrusted."
-                        TextWrapping="Wrap" />
-                    <ItemsControl ItemsSource="{Binding AgentChat.ContextItems}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <Border
-                              Margin="0,0,0,6"
-                              Padding="9"
-                              Background="{DynamicResource ShellSurfaceBrush}"
-                              BorderBrush="{DynamicResource ShellBorderBrush}"
-                              BorderThickness="1"
-                              CornerRadius="7"
-                              AutomationProperties.Name="{Binding AccessibleName}">
-                            <StackPanel Spacing="3">
-                              <TextBlock
-                                  FontWeight="SemiBold"
-                                  Text="{Binding Title}"
-                                  TextTrimming="CharacterEllipsis" />
-                              <TextBlock
-                                  Classes="Eyebrow"
-                                  FontSize="{DynamicResource ShellFontSize8}"
-                                  Text="{Binding State}"
-                                  TextWrapping="Wrap" />
-                              <TextBlock
-                                  Classes="Muted"
-                                  FontSize="{DynamicResource ShellFontSize9}"
-                                  Text="{Binding TabTitle, StringFormat={}Tab · {0}}"
-                                  TextTrimming="CharacterEllipsis" />
-                              <TextBlock
-                                  Classes="Muted Monospace"
-                                  FontSize="{DynamicResource ShellFontSize8}"
-                                  Text="{Binding ExactIdentity}"
-                                  TextWrapping="Wrap" />
-                              <TextBlock
-                                  Classes="Muted Monospace"
-                                  FontSize="{DynamicResource ShellFontSize8}"
-                                  Text="{Binding Context}"
-                                  TextWrapping="Wrap" />
-                              <TextBlock
-                                  Classes="Muted Monospace"
-                                  FontSize="{DynamicResource ShellFontSize8}"
-                                  Text="{Binding Operations, StringFormat={}Operations · {0}}"
-                                  TextWrapping="Wrap" />
-                            </StackPanel>
-                          </Border>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
-                </Expander>
-                <Expander
-                    Margin="0,4,0,0"
-                    HorizontalContentAlignment="Stretch"
-                    AutomationProperties.Name="{Binding AgentChat.EffectivePolicySummary, StringFormat={}Inspect effective agent policy · {0}}"
-                    AutomationProperties.HelpText="Shows the trusted policy captured for the current governed run">
-                  <Expander.Header>
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                      <TextBlock FontWeight="SemiBold" Text="Effective policy" />
-                      <TextBlock
-                          Grid.Column="1"
-                          Classes="Muted Monospace"
-                          FontSize="{DynamicResource ShellFontSize8}"
-                          Text="{Binding AgentChat.PolicyModeLabel}" />
-                    </Grid>
-                  </Expander.Header>
-                  <StackPanel Margin="0,7,0,0" Spacing="6">
-                    <TextBlock
-                        Classes="Muted Monospace"
-                        FontSize="{DynamicResource ShellFontSize8}"
-                        Text="{Binding AgentChat.EffectivePolicySummary}"
-                        TextWrapping="Wrap" />
-                    <ItemsControl ItemsSource="{Binding AgentChat.EffectivePolicyCapabilities}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <Grid
-                              Margin="0,2"
-                              ColumnDefinitions="*,Auto"
-                              ColumnSpacing="8"
-                              AutomationProperties.Name="{Binding AccessibleName}">
-                            <TextBlock
-                                Classes="Muted"
-                                FontSize="{DynamicResource ShellFontSize9}"
-                                Text="{Binding Capability}"
-                                TextWrapping="Wrap" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Classes="Eyebrow"
-                                FontSize="{DynamicResource ShellFontSize8}"
-                                Text="{Binding Permission}" />
-                          </Grid>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
-                </Expander>
-                <Button
-                    Margin="0,4,0,0"
-                    HorizontalAlignment="Left"
-                    Classes="SecondaryButton"
-                    Click="OnEnableAgentYoloClick"
-                    Content="Enable run-only YOLO…"
-                    IsEnabled="{Binding AgentChat.CanEnableYolo}"
-                    IsVisible="{Binding AgentChat.CanOfferYolo}"
-                    AutomationProperties.Name="Review and enable run-only YOLO" />
-              </StackPanel>
-            </Grid>
-          </Border>
-          <Grid>
-        <StackPanel
-            Margin="18,28"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="10"
-            IsVisible="{Binding AgentChat.HasNoProvider}">
-          <Border Width="54" Height="54" Background="{DynamicResource ShellAccentSoftBrush}" CornerRadius="16"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Bot" FontSize="27" Foreground="{DynamicResource ShellAccentBrush}" /></Border>
-          <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Connect an AI provider" TextAlignment="Center" />
-          <TextBlock MaxWidth="270" Classes="Muted" Text="Add an Anthropic, OpenAI, or compatible endpoint. Credentials stay in the OS vault and panel actions remain broker-governed." TextAlignment="Center" TextWrapping="Wrap" />
-          <Button
-              Classes="PrimaryButton"
-              Click="OnShowAgentSettingsClick"
-              Content="Open provider settings"
-              AutomationProperties.Name="Open AI provider settings"
-              AutomationProperties.HelpText="Configure an AI service for this local GhostSHELL profile. Credentials remain in the operating-system vault." />
-          <Button
-              Classes="TextButton"
-              Click="OnClearAgentChatClick"
-              Content="Clear agent session"
-              IsVisible="{Binding AgentChat.CanClear}"
-              AutomationProperties.Name="Clear the retained AI agent session" />
-        </StackPanel>
-        <StackPanel
-            Margin="18,28"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="10"
-            IsVisible="{Binding AgentChat.CanStartConversation}">
-          <Border Width="54" Height="54" Background="{DynamicResource ShellAccentSoftBrush}" CornerRadius="16"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Bot" FontSize="27" Foreground="{DynamicResource ShellAccentBrush}" /></Border>
-          <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Delegate in this workspace" TextAlignment="Center" />
-          <TextBlock MaxWidth="270" Classes="Muted" Text="The agent stays bound to the selected live panel scope. Reads are bounded, mutations are one action at a time, and risky work waits for your approval." TextAlignment="Center" TextWrapping="Wrap" />
-        </StackPanel>
-            <StackPanel
-                Margin="10,2"
-                Spacing="9"
-                IsVisible="{Binding AgentChat.HasAgentContent}"
-                AutomationProperties.LiveSetting="Polite"
-                AutomationProperties.Name="{Binding AgentChat.Status, StringFormat={}AI agent transcript and activity · {0}}">
-            <ItemsControl ItemsSource="{Binding AgentChat.Messages}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid Margin="0,0,0,9">
-                    <Border
-                        MaxWidth="278"
-                        Padding="11,9"
-                        HorizontalAlignment="Right"
-                        Background="{DynamicResource ShellAccentSoftBrush}"
-                        BorderBrush="{DynamicResource ShellNoticeBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10,10,3,10"
-                        IsVisible="{Binding IsUser}">
-                      <StackPanel Spacing="4">
-                        <TextBlock Classes="Eyebrow Accent" Text="{Binding Author}" />
-                        <TextBlock Text="{Binding Content}" TextWrapping="Wrap" />
-                      </StackPanel>
-                    </Border>
-                    <Border
-                        MaxWidth="292"
-                        Padding="11,9"
-                        HorizontalAlignment="Left"
-                        Background="{DynamicResource ShellSurfaceRaisedBrush}"
-                        BorderBrush="{DynamicResource ShellBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10,10,10,3"
-                        IsVisible="{Binding IsAssistant}">
-                      <StackPanel Spacing="4">
-                        <TextBlock Classes="Eyebrow" Text="{Binding Author}" />
-                        <TextBlock Text="{Binding Content}" TextWrapping="Wrap" />
-                      </StackPanel>
-                    </Border>
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <Border
-                MaxWidth="292"
-                Padding="11,9"
-                HorizontalAlignment="Left"
-                Background="{DynamicResource ShellSurfaceRaisedBrush}"
-                BorderBrush="{DynamicResource ShellAccentBrush}"
-                BorderThickness="1"
-                CornerRadius="10,10,10,3"
-                IsVisible="{Binding AgentChat.HasProvisionalAssistantText}">
-              <StackPanel Spacing="4">
-                <TextBlock Classes="Eyebrow Accent" Text="GHOSTSHELL · RESPONDING" />
-                <TextBlock
-                    Text="{Binding AgentChat.ProvisionalAssistantText}"
-                    TextWrapping="Wrap"
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding AgentChat.HasProvisionalAssistantText}">
+            <TextBlock Classes="Eyebrow Accent" Text="RESPONDING" />
+            <TextBlock
+                Text="{Binding AgentChat.ProvisionalAssistantText}"
+                TextWrapping="Wrap"
                 AutomationProperties.LiveSetting="Polite"
                 AutomationProperties.Name="AI response in progress" />
-              </StackPanel>
-            </Border>
-            <Border
-                x:Name="AgentCurrentProgress"
-                Padding="11,9"
-                Classes="AgentProgressCard"
-                Focusable="True"
-                KeyboardNavigation.IsTabStop="True"
-                IsVisible="{Binding AgentChat.HasCurrentProgress}"
-                AutomationProperties.LiveSetting="Polite"
-                AutomationProperties.Name="{Binding AgentChat.CurrentProgress.AccessibleName}"
-                AutomationProperties.HelpText="Live status reported by the AI model. This text is not durable audit evidence">
-              <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                  <TextBlock Classes="Eyebrow Accent" Text="AGENT PROGRESS" />
-                  <TextBlock
-                      Grid.Column="1"
-                      Classes="Eyebrow Monospace"
-                      Text="{Binding AgentChat.CurrentProgress.PercentLabel}"
-                      IsVisible="{Binding AgentChat.CurrentProgress.HasPercent}" />
-                </Grid>
+          </StackPanel>
+          <controls:SurfaceCard
+              x:Name="AgentCurrentProgress"
+              Tone="Raised"
+              Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
+              Focusable="True"
+              KeyboardNavigation.IsTabStop="True"
+              IsVisible="{Binding AgentChat.HasCurrentProgress}"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="{Binding AgentChat.CurrentProgress.AccessibleName}"
+              AutomationProperties.HelpText="Live status reported by the AI model. This text is not durable audit evidence">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock Classes="Eyebrow Accent" Text="AGENT PROGRESS" />
                 <TextBlock
-                    Text="{Binding AgentChat.CurrentProgress.Message}"
-                    TextWrapping="Wrap" />
-                <ProgressBar
-                    Height="3"
-                    Minimum="0"
-                    Maximum="100"
-                    Value="{Binding AgentChat.CurrentProgress.ProgressValue}"
-                    IsIndeterminate="{Binding AgentChat.CurrentProgress.IsIndeterminate}"
-                    AutomationProperties.Name="{Binding AgentChat.CurrentProgress.AccessibleName}" />
-              </StackPanel>
-            </Border>
-            <components:AgentQuestionCardView
-                DeclineRequested="OnDeclineAgentQuestionClick"
-                ResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
-                SubmitRequested="OnSubmitAgentQuestionClick" />
-            <components:AgentCapabilityRequestCardView
-                EnableAskRequested="OnEnableAgentCapabilityAskClick"
-                KeepOffRequested="OnKeepAgentCapabilityOffClick" />
-            <Border
-                Padding="11,9"
-                Background="{DynamicResource ShellSurfaceRaisedBrush}"
-                BorderBrush="{DynamicResource ShellAccentBrush}"
-                BorderThickness="1"
-                CornerRadius="9"
-                IsVisible="{Binding AgentChat.HasActiveTool}"
-                AutomationProperties.LiveSetting="Polite"
-                AutomationProperties.Name="AI agent tool activity">
-              <StackPanel Spacing="4">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                  <TextBlock Classes="Eyebrow Accent" Text="TOOL ACTIVE" />
-                  <TextBlock Grid.Column="1" Classes="Eyebrow" Text="{Binding AgentChat.ActiveTool.Risk}" />
-                </Grid>
-                <TextBlock FontWeight="SemiBold" Text="{Binding AgentChat.ActiveTool.ToolTitle}" TextWrapping="Wrap" />
-                <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.ActiveTool.ToolName}" TextWrapping="Wrap" />
-                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding AgentChat.ActiveTool.TargetTitle}" TextWrapping="Wrap" />
-                <Button
-                    Margin="0,4,0,0"
-                    HorizontalAlignment="Left"
-                    Classes="SecondaryButton"
-                    Click="OnCancelAgentActionClick"
-                    Content="{Binding AgentChat.ActiveActionCancellationLabel}"
-                    IsEnabled="{Binding AgentChat.CanCancelActiveAction}"
-                    AutomationProperties.Name="{Binding AgentChat.ActiveActionCancellationLabel, StringFormat={}AI agent · {0}}"
-                    AutomationProperties.HelpText="Requests cancellation of only this terminal action; completed terminal effects are not undone. The governed run remains available" />
-              </StackPanel>
-            </Border>
-            <components:AgentApprovalCardView
-                ApproveRequested="OnApproveAgentActionClick"
-                DenyRequested="OnDenyAgentActionClick"
-                IsVisible="{Binding AgentChat.HasPendingApproval}" />
-            <Expander
-                x:Name="AgentRunAudit"
-                Margin="0,2,0,0"
-                HorizontalContentAlignment="Stretch"
-                IsExpanded="{Binding AgentChat.IsAuditExpanded, Mode=TwoWay}"
-                IsVisible="{Binding AgentChat.CanShowAudit}"
-                AutomationProperties.Name="Inspect durable AI agent audit evidence"
-                AutomationProperties.HelpText="Shows bounded secret-free action and policy evidence for the exact current run">
-              <Expander.Header>
-                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                  <icons:SymbolIcon
-                      VerticalAlignment="Center"
-                      Symbol="History"
-                      FontSize="14"
-                      Foreground="{DynamicResource ShellAccentBrush}" />
-                  <TextBlock
-                      Grid.Column="1"
-                      VerticalAlignment="Center"
-                      FontWeight="SemiBold"
-                      Text="Audit evidence" />
-                  <TextBlock
-                      Grid.Column="2"
-                      VerticalAlignment="Center"
-                      Classes="Muted Monospace"
-                      FontSize="{DynamicResource ShellFontSize8}"
-                      Text="{Binding AgentChat.AuditSummary}" />
-                </Grid>
-              </Expander.Header>
-              <StackPanel Margin="0,7,0,0" Spacing="7">
-                <TextBlock
-                    Classes="Muted"
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    Text="Durable phases only. Arguments, terminal content, page data, file data, labels, and actor identifiers are never shown here."
-                    TextWrapping="Wrap" />
-                <ProgressBar
-                    Height="3"
-                    IsIndeterminate="True"
-                    IsVisible="{Binding AgentChat.IsAuditLoading}"
-                    AutomationProperties.Name="Loading durable agent audit evidence" />
-                <ItemsControl ItemsSource="{Binding AgentChat.AuditEntries}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Border
-                          Margin="0,0,0,6"
-                          Padding="9"
-                          Background="{DynamicResource ShellSurfaceBrush}"
-                          BorderBrush="{DynamicResource ShellBorderBrush}"
-                          BorderThickness="1"
-                          CornerRadius="7"
-                          AutomationProperties.Name="{Binding AccessibleName}">
-                        <StackPanel Spacing="3">
-                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="7">
-                            <StackPanel Spacing="2">
-                              <TextBlock
-                                  Classes="Eyebrow Accent"
-                                  FontSize="{DynamicResource ShellFontSize8}"
-                                  Text="{Binding Kind}" />
-                              <TextBlock
-                                  FontWeight="SemiBold"
-                                  Text="{Binding Title}"
-                                  TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Border
-                                Grid.Column="1"
-                                VerticalAlignment="Top"
-                                Classes="StatusPill">
-                              <TextBlock Text="{Binding Outcome}" />
-                            </Border>
-                          </Grid>
-                          <TextBlock
-                              Classes="Muted Monospace"
-                              FontSize="{DynamicResource ShellFontSize8}"
-                              Text="{Binding ToolName}"
-                              TextWrapping="Wrap"
-                              IsVisible="{Binding HasToolName}" />
-                          <TextBlock
-                              Classes="Muted"
-                              FontSize="{DynamicResource ShellFontSize9}"
-                              Text="{Binding Evidence}"
-                              TextWrapping="Wrap" />
-                          <TextBlock
-                              Classes="Monospace"
-                              FontSize="{DynamicResource ShellFontSize8}"
-                              Text="{Binding Timeline}"
-                              TextWrapping="Wrap" />
-                          <TextBlock
-                              Classes="Muted Monospace"
-                              FontSize="{DynamicResource ShellFontSize8}"
-                              Text="{Binding Result}"
-                              TextWrapping="Wrap"
-                              IsVisible="{Binding HasResult}" />
-                          <TextBlock
-                              Classes="Muted Monospace"
-                              FontSize="{DynamicResource ShellFontSize8}"
-                              Text="{Binding TargetBinding}"
-                              TextWrapping="Wrap" />
-                          <TextBlock
-                              Classes="Muted"
-                              FontSize="{DynamicResource ShellFontSize8}"
-                              Text="{Binding OccurredAt}" />
-                        </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock
-                    Classes="Muted"
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    Text="{Binding AgentChat.AuditStatus}"
-                    TextWrapping="Wrap"
-                    AutomationProperties.LiveSetting="Polite"
-                    AutomationProperties.Name="{Binding AgentChat.AuditStatus, StringFormat={}AI agent audit status · {0}}" />
-                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="7">
-                  <Button
-                      Classes="SecondaryButton"
-                      Click="OnRefreshAgentAuditClick"
-                      Content="Refresh"
-                      IsEnabled="{Binding AgentChat.CanRefreshAudit}"
-                      AutomationProperties.Name="Refresh current AI agent audit evidence" />
-                  <Button
-                      Grid.Column="1"
-                      Classes="TextButton"
-                      Click="OnLoadOlderAgentAuditClick"
-                      Content="Load older"
-                      IsEnabled="{Binding AgentChat.CanLoadOlderAudit}"
-                      AutomationProperties.Name="Load older AI agent audit evidence" />
-                </Grid>
-              </StackPanel>
-            </Expander>
+                    Grid.Column="1"
+                    Classes="Eyebrow Monospace"
+                    Text="{Binding AgentChat.CurrentProgress.PercentLabel}"
+                    IsVisible="{Binding AgentChat.CurrentProgress.HasPercent}" />
+              </Grid>
+              <TextBlock
+                  Text="{Binding AgentChat.CurrentProgress.Message}"
+                  TextWrapping="Wrap" />
+              <ProgressBar
+                  Height="3"
+                  Minimum="0"
+                  Maximum="100"
+                  Value="{Binding AgentChat.CurrentProgress.ProgressValue}"
+                  IsIndeterminate="{Binding AgentChat.CurrentProgress.IsIndeterminate}"
+                  AutomationProperties.Name="{Binding AgentChat.CurrentProgress.AccessibleName}" />
             </StackPanel>
-          </Grid>
+          </controls:SurfaceCard>
+          <components:AgentQuestionCardView
+              DeclineRequested="OnDeclineAgentQuestionClick"
+              ResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
+              SubmitRequested="OnSubmitAgentQuestionClick" />
+          <components:AgentCapabilityRequestCardView
+              EnableAskRequested="OnEnableAgentCapabilityAskClick"
+              KeepOffRequested="OnKeepAgentCapabilityOffClick" />
+          <!--
+            A tool call reads as a run record: where it ran, what it is, and how to
+            stop it. It carries the boundary in its own heading so the transcript
+            never has to be read against a separate scope indicator.
+          -->
+          <Border
+              Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
+              Background="{DynamicResource ShellSurfaceRaisedBrush}"
+              BorderBrush="{DynamicResource ShellAccentBrush}"
+              BorderThickness="1"
+              CornerRadius="{DynamicResource ShellCardCornerRadius}"
+              IsVisible="{Binding AgentChat.HasActiveTool}"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="AI agent tool activity">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <icons:SymbolIcon
+                    VerticalAlignment="Center"
+                    Symbol="WindowConsole"
+                    FontSize="13"
+                    Foreground="{DynamicResource ShellAccentBrush}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Classes="Eyebrow Accent"
+                    Text="{Binding AgentChat.ActiveTool.TargetTitle, StringFormat={}RUNNING IN {0}}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding AgentChat.ActiveTool.Risk}" />
+              </Grid>
+              <TextBlock FontWeight="SemiBold" Text="{Binding AgentChat.ActiveTool.ToolTitle}" TextWrapping="Wrap" />
+              <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.ActiveTool.ToolName}" TextWrapping="Wrap" />
+              <Button
+                  Margin="{controls:Inset Top=Xs}"
+                  HorizontalAlignment="Left"
+                  Classes="SecondaryButton"
+                  Click="OnCancelAgentActionClick"
+                  Content="{Binding AgentChat.ActiveActionCancellationLabel}"
+                  IsEnabled="{Binding AgentChat.CanCancelActiveAction}"
+                  AutomationProperties.Name="{Binding AgentChat.ActiveActionCancellationLabel, StringFormat={}AI agent · {0}}"
+                  AutomationProperties.HelpText="Requests cancellation of only this terminal action; completed terminal effects are not undone. The governed run remains available" />
+            </StackPanel>
+          </Border>
+          <components:AgentApprovalCardView
+              ApproveRequested="OnApproveAgentActionClick"
+              DenyRequested="OnDenyAgentActionClick"
+              IsVisible="{Binding AgentChat.HasPendingApproval}" />
+          <Expander
+              x:Name="AgentRunAudit"
+              Margin="{controls:Inset Bottom=Sm}"
+              HorizontalContentAlignment="Stretch"
+              IsExpanded="{Binding AgentChat.IsAuditExpanded, Mode=TwoWay}"
+              IsVisible="{Binding AgentChat.CanShowAudit}"
+              AutomationProperties.Name="Inspect durable AI agent audit evidence"
+              AutomationProperties.HelpText="Shows bounded secret-free action and policy evidence for the exact current run">
+            <Expander.Header>
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <icons:SymbolIcon
+                    VerticalAlignment="Center"
+                    Symbol="History"
+                    FontSize="14"
+                    Foreground="{DynamicResource ShellAccentBrush}" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    Text="Audit evidence" />
+                <TextBlock
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Classes="Muted Monospace"
+                    FontSize="{DynamicResource ShellFontSize8}"
+                    Text="{Binding AgentChat.AuditSummary}" />
+              </Grid>
+            </Expander.Header>
+            <StackPanel Margin="{controls:Inset Top=Sm}" Spacing="{DynamicResource ShellSpaceSm}">
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize9}"
+                  Text="Durable phases only. Arguments, terminal content, page data, file data, labels, and actor identifiers are never shown here."
+                  TextWrapping="Wrap" />
+              <ProgressBar
+                  Height="3"
+                  IsIndeterminate="True"
+                  IsVisible="{Binding AgentChat.IsAuditLoading}"
+                  AutomationProperties.Name="Loading durable agent audit evidence" />
+              <ItemsControl ItemsSource="{Binding AgentChat.AuditEntries}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border
+                        Margin="{controls:Inset Bottom=Xs}"
+                        Padding="{controls:Inset Sm}"
+                        Background="{DynamicResource ShellSurfaceBrush}"
+                        BorderBrush="{DynamicResource ShellBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ShellControlCornerRadius}"
+                        AutomationProperties.Name="{Binding AccessibleName}">
+                      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                            <TextBlock
+                                Classes="Eyebrow Accent"
+                                FontSize="{DynamicResource ShellFontSize8}"
+                                Text="{Binding Kind}" />
+                            <TextBlock
+                                FontWeight="SemiBold"
+                                Text="{Binding Title}"
+                                TextWrapping="Wrap" />
+                          </StackPanel>
+                          <controls:StatusChip
+                              Grid.Column="1"
+                              VerticalAlignment="Top" Content="{Binding Outcome}" />
+                        </Grid>
+                        <TextBlock
+                            Classes="Muted Monospace"
+                            FontSize="{DynamicResource ShellFontSize8}"
+                            Text="{Binding ToolName}"
+                            TextWrapping="Wrap"
+                            IsVisible="{Binding HasToolName}" />
+                        <TextBlock
+                            Classes="Muted"
+                            FontSize="{DynamicResource ShellFontSize9}"
+                            Text="{Binding Evidence}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Classes="Monospace"
+                            FontSize="{DynamicResource ShellFontSize8}"
+                            Text="{Binding Timeline}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Classes="Muted Monospace"
+                            FontSize="{DynamicResource ShellFontSize8}"
+                            Text="{Binding Result}"
+                            TextWrapping="Wrap"
+                            IsVisible="{Binding HasResult}" />
+                        <TextBlock
+                            Classes="Muted Monospace"
+                            FontSize="{DynamicResource ShellFontSize8}"
+                            Text="{Binding TargetBinding}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Classes="Muted"
+                            FontSize="{DynamicResource ShellFontSize8}"
+                            Text="{Binding OccurredAt}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize9}"
+                  Text="{Binding AgentChat.AuditStatus}"
+                  TextWrapping="Wrap"
+                  AutomationProperties.LiveSetting="Polite"
+                  AutomationProperties.Name="{Binding AgentChat.AuditStatus, StringFormat={}AI agent audit status · {0}}" />
+              <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <Button
+                    Classes="SecondaryButton"
+                    Click="OnRefreshAgentAuditClick"
+                    Content="Refresh"
+                    IsEnabled="{Binding AgentChat.CanRefreshAudit}"
+                    AutomationProperties.Name="Refresh current AI agent audit evidence" />
+                <Button
+                    Grid.Column="1"
+                    Classes="TextButton"
+                    Click="OnLoadOlderAgentAuditClick"
+                    Content="Load older"
+                    IsEnabled="{Binding AgentChat.CanLoadOlderAudit}"
+                    AutomationProperties.Name="Load older AI agent audit evidence" />
+              </Grid>
+            </StackPanel>
+          </Expander>
         </StackPanel>
       </ScrollViewer>
+
+      <!--
+        Both empty states are the band's own content rather than the first item in
+        the transcript's scrolling stack, where a vertical centre does nothing and
+        they sat in the top third of an otherwise blank panel.
+      -->
+      <controls:EmptyStatePanel
+          Grid.Row="2"
+          Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
+          VerticalAlignment="Center"
+          IsVisible="{Binding AgentChat.CanStartConversation}"
+          Glyph="Bot"
+          Heading="Delegate in this workspace"
+          Body="The agent stays bound to the selected live panel scope. Reads are bounded, mutations are one action at a time, and risky work waits for your approval." />
+      <controls:EmptyStatePanel
+          Grid.Row="2"
+          Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
+          VerticalAlignment="Center"
+          IsVisible="{Binding AgentChat.HasNoProvider}"
+          Glyph="Bot"
+          Heading="Connect an AI provider"
+          Body="Add an Anthropic, OpenAI, or compatible endpoint. Credentials stay in the OS vault and panel actions remain broker-governed.">
+        <StackPanel HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+          <Button Classes="PrimaryButton" Click="OnShowAgentSettingsClick" Content="Open provider settings" AutomationProperties.Name="Open AI provider settings" AutomationProperties.HelpText="Configure an AI service for this local GhostSHELL profile. Credentials remain in the operating-system vault." />
+          <Button Classes="TextButton" Click="OnClearAgentChatClick" Content="Clear agent session" IsVisible="{Binding AgentChat.CanClear}" AutomationProperties.Name="Clear the retained AI agent session" />
+        </StackPanel>
+      </controls:EmptyStatePanel>
+
+      <!--
+        The field is the composer. Wrapping it in a filled, bordered card drew a
+        second rounded rectangle around the one the input already has, and the
+        whole band read as a card holding a smaller card.
+      -->
       <Border
           Grid.Row="3"
-          Margin="10,7"
-          Padding="9"
-          Background="{DynamicResource ShellSurfaceRaisedBrush}"
-          BorderBrush="{DynamicResource ShellBorderBrush}"
-          BorderThickness="1"
-          CornerRadius="9"
+          Margin="{controls:Inset Horizontal=Md, Bottom=Sm}"
           IsVisible="{Binding AgentChat.HasProvider}">
-        <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="{DynamicResource ShellSpaceSm}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <TextBox
               x:Name="AgentChatPromptInput"
               MinHeight="58"
               MaxHeight="116"
-              Padding="8"
+              Padding="{controls:Inset Sm}"
               AcceptsReturn="True"
               TextWrapping="Wrap"
               MaxLength="65536"
@@ -692,7 +584,20 @@
               IsEnabled="{Binding AgentChat.CanEnterPrompt}"
               PlaceholderText="{Binding AgentChat.PromptPlaceholder}"
               AutomationProperties.Name="AI agent prompt" />
-          <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="7">
+          <Button
+              Grid.Column="1"
+              VerticalAlignment="Bottom"
+              Classes="PrimaryButton"
+              Click="OnSendAgentChatClick"
+              Content="{Binding AgentChat.PrimaryActionLabel}"
+              IsEnabled="{Binding AgentChat.CanSubmitPrompt}"
+              IsVisible="{Binding AgentChat.CanShowPrimaryAction}"
+              AutomationProperties.Name="{Binding AgentChat.PrimaryActionAccessibleName}" />
+          <StackPanel
+              Grid.Row="1"
+              Grid.ColumnSpan="2"
+              Orientation="Horizontal"
+              Spacing="{DynamicResource ShellSpaceSm}">
             <Button
                 Classes="TextButton"
                 Click="OnClearAgentChatClick"
@@ -700,25 +605,22 @@
                 IsEnabled="{Binding AgentChat.CanClear}"
                 AutomationProperties.Name="Clear AI agent run" />
             <Button
-                Grid.Column="1"
                 Classes="SecondaryButton"
                 Click="OnCancelAgentChatClick"
                 Content="Stop"
                 IsEnabled="{Binding AgentChat.CanRequestStop}"
                 IsVisible="{Binding AgentChat.CanStop}"
                 AutomationProperties.Name="Stop AI agent run" />
-            <Button
-                Grid.Column="2"
-                Classes="PrimaryButton"
-                Click="OnSendAgentChatClick"
-                Content="{Binding AgentChat.PrimaryActionLabel}"
-                IsEnabled="{Binding AgentChat.CanSubmitPrompt}"
-                IsVisible="{Binding AgentChat.CanShowPrimaryAction}"
-                AutomationProperties.Name="{Binding AgentChat.PrimaryActionAccessibleName}" />
-          </Grid>
+          </StackPanel>
         </Grid>
       </Border>
-      <Grid Grid.Row="4" MinHeight="30" Margin="12,4" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+
+      <!--
+        The settings that shape the next run, stated the way the run states itself:
+        which model, which boundary, which policy. Pressing a chip is what opens the
+        picker, so the panel is not carrying a form it does not need most of the time.
+      -->
+      <Grid Grid.Row="4" MinHeight="30" Margin="{controls:Inset Horizontal=Md, Bottom=Sm}" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceSm}">
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize9}"
@@ -727,7 +629,132 @@
             ToolTip.Tip="{Binding AgentChat.Status}"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="{Binding AgentChat.Status, StringFormat={}AI agent status · {0}}" />
-        <TextBlock Grid.Column="1" Classes="Eyebrow" Text="{Binding AgentChat.PolicyModeLabel}" />
+        <Grid
+            Grid.Row="1"
+            ColumnDefinitions="Auto,Auto,Auto,*,Auto"
+            ColumnSpacing="{DynamicResource ShellSpaceXs}"
+            IsVisible="{Binding AgentChat.HasProvider}">
+          <ComboBox
+              Classes="Chip"
+              MaxWidth="132"
+              ItemsSource="{Binding AgentChat.Providers}"
+              SelectedItem="{Binding AgentChat.SelectedProvider, Mode=TwoWay}"
+              IsEnabled="{Binding AgentChat.CanChangeProvider}"
+              PlaceholderText="No provider configured"
+              AutomationProperties.Name="AI agent provider">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <ComboBox
+              Grid.Column="1"
+              Classes="Chip"
+              MaxWidth="132"
+              ItemsSource="{Binding AgentRunScopeOptions}"
+              SelectedItem="{Binding SelectedAgentRunScope, Mode=TwoWay}"
+              IsEnabled="{Binding AgentChat.CanChangeProvider}"
+              AutomationProperties.Name="AI agent target scope"
+              AutomationProperties.HelpText="Choose the terminal boundary before starting the governed run">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <!--
+            Naming exact terminals is a list of live panels with untrusted labels and
+            stable IDs beneath each one. It is only reachable for the scope that needs
+            it, and it opens from the chip rather than standing open above the
+            conversation, where it took a third of the panel to say nothing.
+          -->
+          <Button
+              Grid.Column="2"
+              Classes="Chip"
+              Content="{Binding AgentTerminalSelectionSummary}"
+              IsVisible="{Binding IsAgentSelectedPanelsScope}"
+              AutomationProperties.Name="Choose exact terminals for the AI agent">
+            <Button.Flyout>
+              <Flyout Placement="Top">
+                <Border
+                    Width="300"
+                    IsEnabled="{Binding AgentChat.CanChangeProvider}"
+                    IsVisible="{Binding IsAgentSelectedPanelsScope}"
+                    AutomationProperties.Name="Selected terminals for the AI agent"
+                    AutomationProperties.HelpText="Choose exact live terminals. Terminal and tab labels are untrusted metadata; stable IDs are shown below.">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Classes="Eyebrow" Text="SELECT TERMINALS" />
+                      <TextBlock
+                          Grid.Column="1"
+                          Classes="Muted Monospace"
+                          FontSize="{DynamicResource ShellFontSize8}"
+                          Text="{Binding AgentTerminalSelectionSummary}" />
+                    </Grid>
+                    <TextBlock
+                        Classes="Muted"
+                        FontSize="{DynamicResource ShellFontSize9}"
+                        Text="Choose exact live terminals. Names below are untrusted labels."
+                        TextWrapping="Wrap" />
+                    <ScrollViewer
+                        MaxHeight="156"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto"
+                        IsVisible="{Binding HasAgentTerminalSelectionOptions}"
+                        AutomationProperties.Name="Available live terminals">
+                      <ItemsControl ItemsSource="{Binding AgentTerminalSelectionOptions}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <CheckBox
+                                Margin="{controls:Inset Vertical=Xs}"
+                                HorizontalAlignment="Stretch"
+                                IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                AutomationProperties.Name="{Binding AutomationName}"
+                                AutomationProperties.HelpText="{Binding AutomationHelpText}">
+                              <StackPanel Margin="{controls:Inset Left=Xs}" Spacing="{DynamicResource ShellSpaceXs}">
+                                <TextBlock Text="{Binding PanelTitle}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    Classes="Muted"
+                                    FontSize="{DynamicResource ShellFontSize9}"
+                                    Text="{Binding TabTitle, StringFormat={}Tab · {0}}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    Classes="Muted Monospace"
+                                    FontSize="{DynamicResource ShellFontSize8}"
+                                    Text="{Binding IdentityLabel}"
+                                    TextTrimming="CharacterEllipsis" />
+                              </StackPanel>
+                            </CheckBox>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                    <TextBlock
+                        Classes="Muted"
+                        FontSize="{DynamicResource ShellFontSize9}"
+                        Text="{Binding AgentTerminalSelectionStatus}"
+                        TextWrapping="Wrap"
+                        IsVisible="{Binding !HasAgentTerminalSelectionError}"
+                        AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock
+                        Foreground="{DynamicResource ShellDangerBrush}"
+                        FontSize="{DynamicResource ShellFontSize9}"
+                        Text="{Binding AgentTerminalSelectionStatus}"
+                        TextWrapping="Wrap"
+                        IsVisible="{Binding HasAgentTerminalSelectionError}"
+                        AutomationProperties.LiveSetting="Assertive" />
+                  </StackPanel>
+                </Border>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <TextBlock
+              Grid.Column="4"
+              VerticalAlignment="Center"
+              Classes="Eyebrow"
+              Text="{Binding AgentChat.PolicyModeLabel}" />
+        </Grid>
       </Grid>
     </Grid>
   </Border>

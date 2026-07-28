@@ -327,6 +327,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<SecretMetadataViewModel> Secrets { get; } = [];
 
+    public bool HasNoSecrets => Secrets.Count == 0;
+
     public ObservableCollection<FileTransferItemViewModel> FileTransfers { get; } = [];
 
     public ObservableCollection<FileProviderProfileItemViewModel> FileProviderDefinitions { get; } = [];
@@ -451,8 +453,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<ProductComponentViewModel> ProductComponents { get; }
 
+    /// <summary>
+    /// A build composed without a component catalog would otherwise leave the
+    /// About page promising an inventory and then showing nothing at all.
+    /// </summary>
+    public bool HasNoProductComponents => ProductComponents.Count == 0;
+
+    /// <summary>
+    /// Leading inset that clears the host's own window controls. On macOS the
+    /// traffic lights end around 70px, so content starts far enough past them to
+    /// read as a separate group rather than a fourth button.
+    /// </summary>
     public Avalonia.Thickness WindowTitleBarContentMargin => OperatingSystem.IsMacOS()
-        ? new Avalonia.Thickness(76, 0, 10, 0)
+        ? new Avalonia.Thickness(92, 0, 14, 0)
         : OperatingSystem.IsWindows()
             ? new Avalonia.Thickness(10, 0, 148, 0)
             : new Avalonia.Thickness(10, 0);
@@ -460,6 +473,23 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasWorkspaces => Workspaces.Count > 0;
 
     public bool HasNoWorkspaces => !HasWorkspaces;
+
+    /// <summary>
+    /// Home is a summary, so it shows a bounded preview and sends the rest to the
+    /// dedicated page. Without the cap a profile with a hundred connections would
+    /// push every other section off the page.
+    /// </summary>
+    public ObservableCollection<LauncherConnectionViewModel> ConnectionsPreview { get; } = [];
+
+    public ObservableCollection<LauncherScreenViewModel> ScreensPreview { get; } = [];
+
+    private const int HomePreviewConnectionCount = 8;
+
+    private const int HomePreviewScreenCount = 4;
+
+    public bool HasMoreConnectionsThanPreview => Connections.Count > ConnectionsPreview.Count;
+
+    public bool HasMoreScreensThanPreview => Screens.Count > ScreensPreview.Count;
 
     public bool HasConnections => Connections.Count > 0;
 
@@ -682,6 +712,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(IsLauncherVisible));
                 OnPropertyChanged(nameof(IsLauncherOverviewVisible));
+                OnPropertyChanged(nameof(IsLauncherConnectionsVisible));
+                OnPropertyChanged(nameof(IsLauncherScreensVisible));
                 OnPropertyChanged(nameof(IsLauncherHistoryVisible));
                 OnPropertyChanged(nameof(IsWorkspaceVisible));
                 OnPropertyChanged(nameof(IsSettingsVisible));
@@ -698,6 +730,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _launcherPage, value))
             {
                 OnPropertyChanged(nameof(IsLauncherOverviewVisible));
+                OnPropertyChanged(nameof(IsLauncherConnectionsVisible));
+                OnPropertyChanged(nameof(IsLauncherScreensVisible));
                 OnPropertyChanged(nameof(IsLauncherHistoryVisible));
             }
         }
@@ -1056,6 +1090,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool IsLauncherOverviewVisible =>
         IsLauncherVisible && LauncherPage == LauncherPage.Overview;
 
+    public bool IsLauncherConnectionsVisible =>
+        IsLauncherVisible && LauncherPage == LauncherPage.Connections;
+
+    public bool IsLauncherScreensVisible =>
+        IsLauncherVisible && LauncherPage == LauncherPage.Screens;
+
     public bool IsLauncherHistoryVisible =>
         IsLauncherVisible && LauncherPage == LauncherPage.History;
 
@@ -1358,6 +1398,37 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ? textScale.ToString("0.##%", System.Globalization.CultureInfo.InvariantCulture)
         : "Follow host";
 
+    /// <summary>Window-chrome settings the shell layout binds to directly.</summary>
+    public bool ShowTabBar => ActiveTheme.ShowTabBar;
+
+    public bool ShowWorkspacesPanel => ActiveTheme.ShowWorkspacesPanel;
+
+    public bool IsWorkspacePanelOnLeft =>
+        ActiveTheme.WorkspacePanelPlacement == WorkspacePanelPlacement.Left;
+
+    public bool IsWorkspacePanelOnRight => !IsWorkspacePanelOnLeft;
+
+    /// <summary>The rail's dock edge, so the setting moves the real panel.</summary>
+    public Avalonia.Controls.Dock WorkspacePanelDock => IsWorkspacePanelOnLeft
+        ? Avalonia.Controls.Dock.Left
+        : Avalonia.Controls.Dock.Right;
+
+    public bool IsTabStripVisibleOnTop =>
+        ShowTabBar && ActiveTheme.TabStripPlacement == TabStripPlacement.Top;
+
+    public bool IsTabStripVisibleOnBottom =>
+        ShowTabBar && ActiveTheme.TabStripPlacement == TabStripPlacement.Bottom;
+
+    /// <summary>A side strip is one control docked to whichever edge is chosen.</summary>
+    public bool IsTabStripVisibleOnSide =>
+        ShowTabBar && ActiveTheme.TabStripPlacement
+            is TabStripPlacement.Left or TabStripPlacement.Right;
+
+    public Avalonia.Controls.Dock TabStripDock =>
+        ActiveTheme.TabStripPlacement == TabStripPlacement.Right
+            ? Avalonia.Controls.Dock.Right
+            : Avalonia.Controls.Dock.Left;
+
     public string ThemeAccent => ActiveTheme.Accent.Kind == AccentPreferenceKind.Custom
         ? ActiveTheme.Accent.CustomColor?.ToString() ?? ThemePreference.BronzeFallback.ToString()
         : "Follow system accent";
@@ -1376,6 +1447,28 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public void ShowLauncherOverview() => ShowLauncher();
+
+    public void ShowLauncherConnections()
+    {
+        if (!TryDismissOverlayForNavigation())
+        {
+            return;
+        }
+
+        LauncherPage = LauncherPage.Connections;
+        Route = ShellRoute.Launcher;
+    }
+
+    public void ShowLauncherScreens()
+    {
+        if (!TryDismissOverlayForNavigation())
+        {
+            return;
+        }
+
+        LauncherPage = LauncherPage.Screens;
+        Route = ShellRoute.Launcher;
+    }
 
     public void ShowLauncherHistory()
     {
@@ -2069,6 +2162,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (workspace is null || tab is null)
         {
             return false;
+        }
+
+        // A placeholder is a cell the user has placed but not yet filled. It has no
+        // session behind it, and the host's workspace graph has never heard of its
+        // id — asking the host to activate one fails as not_found, and that failure
+        // propagated: the activation error left the client and host revisions out of
+        // step, so the attachment that grants keyboard authority was never
+        // established and the terminal drew output while refusing every keystroke.
+        // A placeholder is activated locally, and the host learns about the panel
+        // when the user chooses what it becomes.
+        if (tab.Panels.SingleOrDefault(panel => panel.Id == panelId)
+            is PanelPlaceholderViewModel)
+        {
+            return tab.ActivatePanel(panelId);
         }
 
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -2966,6 +3073,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                             : $"Used by: {string.Join(", ", dependencies)}",
                         dependencies.Length);
                 }));
+            OnPropertyChanged(nameof(HasNoSecrets));
             RefreshAiProviderDefinitions(_catalog.Snapshot);
             RefreshMcpServerDefinitions(_catalog.Snapshot);
         }
@@ -2975,6 +3083,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception)
         {
             SecretVaultStatus = "The operating-system credential vault could not be queried.";
+            OnPropertyChanged(nameof(HasNoSecrets));
         }
     }
 
@@ -3045,6 +3154,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (exception is ArgumentException or FormatException)
         {
             return Fail<StoredDefinition<TerminalProfile>>(exception.Message);
+        }
+
+        // Nothing to write is not a write. Saving unconditionally notified the
+        // catalog, which rebuilt this editor, whose rebinding read as a fresh edit
+        // and asked to save again — a loop that pinned a core at idle.
+        if (ActiveTerminalProfile is { } stored
+            && stored.RepresentsSameAs(request.Profile))
+        {
+            return DefinitionStoreResult<StoredDefinition<TerminalProfile>>.Success(
+                new StoredDefinition<TerminalProfile>(
+                    stored,
+                    request.ExpectedRevision,
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch));
         }
 
         var result = await _catalog.SaveTerminalProfileAsync(
@@ -3132,18 +3255,37 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PlatformProfile platformProfile,
         AccentPreference accent,
         double? textScaleOverride,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ThemeChromePreference? chrome = null)
     {
         ClearError();
         var stored = _catalog.Snapshot.Themes
             .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id);
+        // A caller that does not supply chrome settings keeps whatever is stored,
+        // so saving from a surface that does not show them cannot silently reset
+        // them to defaults.
+        var existing = stored?.Value ?? ThemePreference.Default;
+        var effective = chrome ?? ThemeChromePreference.From(existing);
         var updated = new ThemePreference(
             ThemePreference.Default.Id,
             ThemePreference.Default.Name,
             appearance,
             platformProfile,
             accent,
-            textScaleOverride);
+            textScaleOverride,
+            effective.CornerRadiusOverride,
+            effective.Density,
+            effective.ShowTabBar,
+            effective.ShowWorkspacesPanel,
+            effective.TabStripPlacement,
+            effective.WorkspacePanelPlacement);
+        // A theme is all scalars, so record equality is enough to tell that this
+        // would rewrite what is already stored.
+        if (stored is not null && stored.Value == updated)
+        {
+            return DefinitionStoreResult<StoredDefinition<ThemePreference>>.Success(stored);
+        }
+
         var result = await _catalog.SaveThemeAsync(
             updated,
             stored?.Revision,
@@ -3381,6 +3523,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (tab is null || panel is null)
             {
                 return false;
+            }
+
+            // An unfilled placeholder exists only on this side, so discarding one is
+            // a local edit. Asking the host to remove a panel it never had fails the
+            // same way activating one does.
+            if (panel is PanelPlaceholderViewModel)
+            {
+                tab.RemovePanel(panelId);
+                return true;
             }
 
             if (tab.Panels.Count == 1)
@@ -3735,6 +3886,53 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     _ = tab.ActivatePanel(panel.Id);
                 }
 
+                StartTrackingRecovery(panel);
+                TrackRecentSession(panel);
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Opens a saved connection as a new panel in the active tab.
+    ///
+    /// A blank adapter is only one of the things a new panel can become: the
+    /// panel chooser offers saved connections too, and choosing one has to open
+    /// that connection rather than a default local shell.
+    /// </summary>
+    public async Task<bool> AddConnectionPanelAsync(
+        ConnectionId id,
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        var connection = FindConnection(id);
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace before adding a panel.");
+            return false;
+        }
+
+        if (connection is null)
+        {
+            SetError("That connection no longer exists.");
+            return false;
+        }
+
+        var panel = CreateTerminalPanel(
+            workspace.Id,
+            tab.Id,
+            connection,
+            connection.Name,
+            PanelStartupBehavior.None);
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            panel,
+            "panel creation",
+            () =>
+            {
+                tab.AddPanel(panel);
+                _ = tab.ActivatePanel(panel.Id);
                 StartTrackingRecovery(panel);
                 TrackRecentSession(panel);
             },
@@ -4351,7 +4549,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public void ClearApplicationKeySequenceHint() => ApplicationKeySequenceHint = null;
 
-    public void SetError(string message) => OperationError = message;
+    /// <summary>
+    /// Raises an operation error.
+    ///
+    /// It is also written to standard error. The banner is transient, sits against
+    /// the window edge, and has been seen showing with nothing legible in it — an
+    /// error the user cannot read is the same as no error at all, and the text is
+    /// the only thing that says what went wrong.
+    /// </summary>
+    public void SetError(string message)
+    {
+        OperationError = message;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            Console.Error.WriteLine($"[ghostshell:error] {message}");
+        }
+    }
 
     public void SetDefinitionBundleStatus(string message)
     {
@@ -5963,32 +6176,49 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         return new WorkspaceInstance(
             workspace.Id,
             workspace.Name,
-            workspace.Tabs.Select(tab => new TabInstance(
-                tab.Id,
-                tab.Title,
-                tab.Panels.Select(panel => new PanelInstance(
-                    panel.Id,
-                    panel.Kind,
-                    panel.Title)),
-                tab.ActivePanelId
-                    ?? throw new InvalidOperationException(
-                        "A runtime tab must have an active panel before registration."))),
+            workspace.Tabs.Select(CaptureRuntimeTab),
             activeTab.Id);
     }
 
+    /// <summary>
+    /// The tab as the session host knows it.
+    ///
+    /// An unfilled placeholder is a cell the user has placed but not yet answered:
+    /// there is no session behind it and the host has never been told it exists, so
+    /// it is left out here. Including one made the captured graph a panel wider than
+    /// the host's, and every receipt compared against it read as invalid — which is
+    /// what surfaced after a few splits.
+    /// </summary>
     private static TabInstance CaptureRuntimeTab(RuntimeTabViewModel tab)
     {
         ArgumentNullException.ThrowIfNull(tab);
+        var panels = tab.Panels
+            .Where(panel => panel is not PanelPlaceholderViewModel)
+            .ToArray();
+        if (panels.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "A runtime tab must have a panel the session host knows about.");
+        }
+
+        // While the user sits on a placeholder there is no host-backed active panel
+        // to name. The one the host last had is the honest answer — naming some
+        // other panel instead made a no-op activation compare against the wrong id
+        // and come back as an invalid receipt.
+        var activePanelId = HostBackedId(tab.ActivePanelId)
+            ?? HostBackedId(tab.HostActivePanelId)
+            ?? panels[0].Id;
+
+        PanelInstanceId? HostBackedId(PanelInstanceId? candidate) =>
+            candidate is { } id && panels.Any(panel => panel.Id == id) ? id : null;
         return new TabInstance(
             tab.Id,
             tab.Title,
-            tab.Panels.Select(panel => new PanelInstance(
+            panels.Select(panel => new PanelInstance(
                 panel.Id,
                 panel.Kind,
                 panel.Title)),
-            tab.ActivePanelId
-                ?? throw new InvalidOperationException(
-                    "A runtime tab must have an active panel before registration."));
+            activePanelId);
     }
 
     private static WorkspaceInstance? BuildTabAppendProposal(
@@ -6353,8 +6583,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             .ToArray();
         HasRecentSessionFailure = false;
         HasUnreadableRecentSessionHistory = false;
-        Replace(HistorySessions, items);
-        Replace(RecentSessions, items.Take(8));
+        ReplaceIfChanged(HistorySessions, items, static (a, b) => a.PresentsSameAs(b));
+        ReplaceIfChanged(
+            RecentSessions,
+            items.Take(8).ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
         RecentSessionStatus = HistorySessions.Count > 0
             ? "Recent sessions store definition metadata only; commands and terminal content are excluded."
             : _storedHistoryRetention is { Policy: { IsEnabled: false } }
@@ -6369,12 +6602,51 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         NotifyHistoryActionStateChanged();
     }
 
+    /// <summary>
+    /// Pushes the saved terminal profile to every open panel.
+    ///
+    /// A panel captured its render profile when it launched, so changing the
+    /// terminal font changed the stored definition and nothing visible: open
+    /// panels kept the size they started with until they were closed and
+    /// reopened. Typography is applied in place — restarting the session to change
+    /// a font would throw away the scrollback with it.
+    /// </summary>
+    private void RefreshOpenTerminalRenderProfiles()
+    {
+        if (ActiveTerminalProfile is not { } profile || RuntimeWorkspace is null)
+        {
+            return;
+        }
+
+        var snapshot = TerminalRenderProfileSnapshot.FromProfile(profile);
+        foreach (var panel in RuntimeWorkspace.Tabs
+                     .SelectMany(tab => tab.Panels)
+                     .OfType<TerminalRuntimePanelViewModel>())
+        {
+            panel.RenderProfile = snapshot;
+        }
+    }
+
     private RecentSessionHistoryItemViewModel ToRecentSessionItem(
         RecentSessionRecord record,
-        DateTimeOffset observedAt) => new(
-        record,
-        CanOpenDefinition(record.SourceDefinition),
-        observedAt);
+        DateTimeOffset observedAt)
+    {
+        // A row is read as "what would I reconnect to", so it carries the saved
+        // definition's transport and endpoint rather than only the session's own
+        // metadata. Resolving it here — instead of storing it in history — keeps
+        // the row truthful after the connection is edited, and leaves it null for
+        // a definition that no longer exists.
+        var connection = record.SourceDefinition.Kind == ConnectionProfile.Kind
+            ? Connections.FirstOrDefault(item => item.Id.Value == record.SourceDefinition.Value)
+            : null;
+
+        return new RecentSessionHistoryItemViewModel(
+            record,
+            CanOpenDefinition(record.SourceDefinition),
+            observedAt,
+            connection?.Kind,
+            connection?.Detail);
+    }
 
     private void ApplyStoredHistoryRetention(
         StoredRecentSessionRetentionPolicy stored,
@@ -6421,7 +6693,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         var selectedSessionId = preserveSelection ? SelectedHistorySession?.SessionId : null;
         var results = RecentSessionHistoryProjection.Search(HistorySearchQuery, HistorySessions);
-        Replace(FilteredHistorySessions, results);
+        ReplaceIfChanged(
+            FilteredHistorySessions,
+            results,
+            static (a, b) => a.PresentsSameAs(b));
         SelectedHistorySession = RecentSessionHistoryProjection.ResolveSelection(
             results,
             selectedSessionId);
@@ -6527,55 +6802,90 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    private void RefreshCatalog(DefinitionCatalogSnapshot snapshot)
+    /// <summary>
+    /// Rebuilds every launcher list from a catalog snapshot.
+    ///
+    /// Internal rather than private so a test can drive it directly: the catalog's
+    /// own notification hops through the dispatcher, and in a unit test the UI
+    /// thread is whichever thread happened to touch Avalonia first, so the hop may
+    /// never be pumped.
+    /// </summary>
+    internal void RefreshCatalog(DefinitionCatalogSnapshot snapshot)
     {
-        Replace(Workspaces, snapshot.Workspaces
-            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item => new LauncherWorkspaceViewModel(
-                item.Value.Id,
-                item.Revision,
-                item.Value.Name,
-                item.Value.Description ?? "No description",
-                item.Value.Accent ?? ThemePreference.BronzeFallback.ToString(),
-                Initials(item.Value.Name),
-                WorkspaceIconSymbol(item.Value.Icon),
-                item.Value.Entries.Count)));
-        Replace(Connections, snapshot.Connections
-            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item => ToConnectionItem(item.Value, item.Revision)));
+        ReplaceIfChanged(
+            Workspaces,
+            snapshot.Workspaces
+                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item => new LauncherWorkspaceViewModel(
+                    item.Value.Id,
+                    item.Revision,
+                    item.Value.Name,
+                    item.Value.Description ?? "No description",
+                    item.Value.Accent ?? ThemePreference.BronzeFallback.ToString(),
+                    Initials(item.Value.Name),
+                    WorkspaceIconSymbol(item.Value.Icon),
+                    item.Value.Entries.Count))
+                .ToArray(),
+            static (a, b) => a == b);
+        ReplaceIfChanged(
+            Connections,
+            snapshot.Connections
+                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item => ToConnectionItem(item.Value, item.Revision))
+                .ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
         RefreshFileProviderDefinitions(snapshot);
         RefreshAiProviderDefinitions(snapshot);
         RefreshMcpServerDefinitions(snapshot);
         var layoutsById = snapshot.Layouts.ToDictionary(item => item.Value.Id, item => item.Value);
-        Replace(Screens, snapshot.Screens
-            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item =>
-            {
-                layoutsById.TryGetValue(item.Value.LayoutId, out var layout);
-                return new LauncherScreenViewModel(
+        ReplaceIfChanged(
+            Screens,
+            snapshot.Screens
+                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item =>
+                {
+                    layoutsById.TryGetValue(item.Value.LayoutId, out var layout);
+                    return new LauncherScreenViewModel(
+                        item.Value.Id,
+                        item.Revision,
+                        item.Value.Name,
+                        item.Value.Description ?? "Reusable screen",
+                        layout?.Name ?? "Missing layout",
+                        item.Value.Panels.Count,
+                        CreateScreenPreview(item.Value, layout),
+                        ScreenSummary(item.Value, snapshot));
+                })
+                .ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
+        ReplaceIfChanged(
+            Layouts,
+            snapshot.Layouts
+                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item => new LayoutCardViewModel(
                     item.Value.Id,
                     item.Revision,
                     item.Value.Name,
-                    item.Value.Description ?? "Reusable screen",
-                    layout?.Name ?? "Missing layout",
-                    item.Value.Panels.Count,
-                    CreateScreenPreview(item.Value, layout));
-            }));
-        Replace(Layouts, snapshot.Layouts
-            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item => new LayoutCardViewModel(
-                item.Value.Id,
-                item.Revision,
-                item.Value.Name,
-                item.Value.Grid.Rows,
-                item.Value.Grid.Columns,
-                item.Value.Slots.Count)));
+                    item.Value.Grid.Rows,
+                    item.Value.Grid.Columns,
+                    item.Value.Slots.Count))
+                .ToArray(),
+            static (a, b) => a == b);
         OnPropertyChanged(nameof(HasWorkspaces));
         OnPropertyChanged(nameof(HasNoWorkspaces));
+        ReplaceIfChanged(
+            ConnectionsPreview,
+            Connections.Take(HomePreviewConnectionCount).ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
+        ReplaceIfChanged(
+            ScreensPreview,
+            Screens.Take(HomePreviewScreenCount).ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(HasNoConnections));
         OnPropertyChanged(nameof(HasScreens));
         OnPropertyChanged(nameof(HasNoScreens));
+        OnPropertyChanged(nameof(HasMoreConnectionsThanPreview));
+        OnPropertyChanged(nameof(HasMoreScreensThanPreview));
         var terminal = snapshot.TerminalProfiles
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
@@ -6613,12 +6923,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         RefreshKeybindings(snapshot);
+        RefreshOpenTerminalRenderProfiles();
         OnPropertyChanged(nameof(ActiveTheme));
         OnPropertyChanged(nameof(ActiveTerminalProfile));
         OnPropertyChanged(nameof(ThemeMode));
         OnPropertyChanged(nameof(ThemeProfile));
         OnPropertyChanged(nameof(ThemeTextScale));
         OnPropertyChanged(nameof(ThemeAccent));
+        OnPropertyChanged(nameof(ShowTabBar));
+        OnPropertyChanged(nameof(ShowWorkspacesPanel));
+        OnPropertyChanged(nameof(IsWorkspacePanelOnLeft));
+        OnPropertyChanged(nameof(IsWorkspacePanelOnRight));
+        OnPropertyChanged(nameof(WorkspacePanelDock));
+        OnPropertyChanged(nameof(IsTabStripVisibleOnTop));
+        OnPropertyChanged(nameof(IsTabStripVisibleOnBottom));
+        OnPropertyChanged(nameof(IsTabStripVisibleOnSide));
+        OnPropertyChanged(nameof(TabStripDock));
         OnPropertyChanged(nameof(KeybindingConflictCount));
         RefreshRecentSessionAvailability();
         RefreshLauncherSearchResults();
@@ -6636,7 +6956,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
         }
 
-        Replace(RecentSessions, HistorySessions.Take(8));
+        ReplaceIfChanged(
+            RecentSessions,
+            HistorySessions.Take(8).ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
         RefreshHistorySearchResults();
     }
 
@@ -6677,7 +7000,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             .Where(item => item.ProfileId is not null)
             .GroupBy(item => item.ProfileId!.Value)
             .ToDictionary(item => item.Key, item => item.ToArray());
-        Replace(FileProviderDefinitions, snapshot.FileProviderProfiles
+        ReplaceIfChanged(
+            FileProviderDefinitions,
+            [.. snapshot.FileProviderProfiles
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
             .Select(item =>
             {
@@ -6701,7 +7026,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                             : "Materializing the saved adapter…"),
                     error is not null,
                     warning is not null);
-            }));
+            })],
+            static (a, b) => a == b);
         OnPropertyChanged(nameof(FileProviderProfiles));
     }
 
@@ -6713,7 +7039,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             .Where(item => item.ProfileId is not null)
             .GroupBy(item => item.ProfileId!.Value)
             .ToDictionary(item => item.Key, item => item.ToArray());
-        Replace(AiProviderDefinitions, snapshot.AiProviderProfiles
+        ReplaceIfChanged(
+            AiProviderDefinitions,
+            [.. snapshot.AiProviderProfiles
             .OrderBy(item => item.Value.Order)
             .ThenBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
             .Select(item =>
@@ -6762,7 +7090,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     error is not null || needsCredential,
                     warning is not null,
                     needsCredential);
-            }));
+            })],
+            static (a, b) => a == b);
         OnPropertyChanged(nameof(AiProviderProfiles));
         OnPropertyChanged(nameof(HasAiProviders));
         OnPropertyChanged(nameof(HasNoAiProviders));
@@ -7115,16 +7444,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 rows.Add(new(
                     command?.Category ?? "Unknown",
                     command?.Title ?? binding.CommandId.Value,
-                    binding.Sequence.ToString(),
+                    KeySequenceDisplay.Format(binding.Sequence),
                     profile.Name,
                     hasConflict ? "Conflict" : "Active",
                     hasConflict));
             }
         }
 
-        Replace(Keybindings, rows
-            .OrderBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.Command, StringComparer.OrdinalIgnoreCase));
+        ReplaceIfChanged(
+            Keybindings,
+            [.. rows
+                .OrderBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.Command, StringComparer.OrdinalIgnoreCase)],
+            static (a, b) => a == b);
         OnPropertyChanged(nameof(KeybindingConflictCount));
         OnPropertyChanged(nameof(ActiveApplicationKeymap));
         OnPropertyChanged(nameof(ActiveApplicationKeymapRevision));
@@ -7362,10 +7694,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ])));
 
         var results = LauncherSearchProjection.Search(LauncherSearchQuery, candidates);
-        Replace(LauncherSearchResults, results);
-        SelectedLauncherSearchResult = LauncherSearchProjection.ResolveAvailableSelection(
-            results,
-            selectedTarget);
+
+        // Rebuilding the list tears down every row, which moves whatever the
+        // pointer is over while the pointer has not moved. Most refreshes are
+        // triggered by something unrelated to the palette and produce exactly the
+        // results already on screen, so those must touch nothing.
+        if (!PresentsSameResults(LauncherSearchResults, results))
+        {
+            Replace(LauncherSearchResults, results);
+            SelectedLauncherSearchResult = LauncherSearchProjection.ResolveAvailableSelection(
+                results,
+                selectedTarget);
+        }
+
         OnPropertyChanged(nameof(HasLauncherSearchResults));
         OnPropertyChanged(nameof(HasNoLauncherSearchResults));
         OnPropertyChanged(nameof(LauncherSearchEmptyState));
@@ -8156,6 +8497,55 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         .Select(item => item.Value)
         .SingleOrDefault(item => item.Id == id);
 
+    private const int DefaultSshPort = 22;
+
+    private const int ScreenSummaryConnectionLimit = 2;
+
+    /// <summary>
+    /// The saved-screen card reads "3 panels · prod-api, staging-web": the panel
+    /// count plus the distinct connections it opens, so the card says what the
+    /// screen touches without repeating the layout's internal name.
+    /// </summary>
+    private static string ScreenSummary(
+        ScreenDefinition screen,
+        DefinitionCatalogSnapshot snapshot)
+    {
+        var panels = $"{screen.Panels.Count} {(screen.Panels.Count == 1 ? "panel" : "panels")}";
+        var namesById = snapshot.Connections.ToDictionary(
+            item => item.Value.Id,
+            item => item.Value.Name);
+        var connections = screen.Panels
+            .Select(panel => panel.ConnectionId)
+            .OfType<ConnectionId>()
+            .Distinct()
+            .Select(id => namesById.TryGetValue(id, out var name) ? name : id.Value)
+            .ToArray();
+
+        if (connections.Length == 0)
+        {
+            return panels;
+        }
+
+        var shown = string.Join(", ", connections.Take(ScreenSummaryConnectionLimit));
+        var remaining = connections.Length - ScreenSummaryConnectionLimit;
+        return remaining > 0
+            ? $"{panels} · {shown} +{remaining}"
+            : $"{panels} · {shown}";
+    }
+
+    /// <summary>
+    /// The launcher badge keeps each transport's conventional casing—initialisms
+    /// stay uppercase and words stay title case—rather than shouting every kind.
+    /// </summary>
+    private static string ConnectionKindBadge(ConnectionKind kind) => kind switch
+    {
+        ConnectionKind.Ssh => "SSH",
+        ConnectionKind.Wsl => "WSL",
+        ConnectionKind.Local => "Local",
+        ConnectionKind.Docker => "Docker",
+        _ => kind.ToString(),
+    };
+
     private static LauncherConnectionViewModel ToConnectionItem(
         ConnectionProfile connection,
         long revision)
@@ -8164,7 +8554,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             ConnectionEndpoint.Local local =>
                 (local.ShellPath ?? "Default local shell", true),
-            ConnectionEndpoint.Ssh ssh => ($"{ssh.Username ?? "user"}@{ssh.Host}:{ssh.Port}", true),
+            ConnectionEndpoint.Ssh ssh => (
+                ssh.Port == DefaultSshPort
+                    ? $"{ssh.Username ?? "user"}@{ssh.Host}"
+                    : $"{ssh.Username ?? "user"}@{ssh.Host}:{ssh.Port}",
+                true),
             ConnectionEndpoint.Docker docker => ($"Container {docker.Container}", true),
             ConnectionEndpoint.Wsl wsl => ($"Distribution {wsl.Distribution}", OperatingSystem.IsWindows()),
             _ => ("Unsupported endpoint", false),
@@ -8173,10 +8567,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             connection.Id,
             revision,
             connection.Name,
-            connection.ConnectionKind.ToString().ToUpperInvariant(),
+            ConnectionKindBadge(connection.ConnectionKind),
             detail,
             canOpen ? "Validated on open" : "Unavailable on this platform",
-            canOpen);
+            canOpen,
+            connection.Tags);
     }
 
     private static string FileProviderEndpoint(FileProviderConfiguration configuration) =>
@@ -8334,18 +8729,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         return "Unknown platform";
     }
 
-    private static Symbol WorkspaceIconSymbol(string icon) => icon switch
-    {
-        "terminal" => Symbol.WindowConsole,
-        "server" => Symbol.Server,
-        "code" => Symbol.Code,
-        "cloud" => Symbol.Cloud,
-        "database" => Symbol.Database,
-        "folder" => Symbol.Folder,
-        "globe" => Symbol.Globe,
-        "star" => Symbol.Star,
-        _ => Symbol.Window,
-    };
+    private static Symbol WorkspaceIconSymbol(string icon) => WorkspaceIcons.SymbolFor(icon);
 
     private static string PanelTitle(ScreenPanelKind kind) => kind switch
     {
@@ -8404,6 +8788,60 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         return clientId;
+    }
+
+    private static bool PresentsSameResults(
+        IReadOnlyList<LauncherSearchResultViewModel> current,
+        IReadOnlyList<LauncherSearchResultViewModel> candidate)
+    {
+        if (current.Count != candidate.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < current.Count; index++)
+        {
+            if (!current[index].PresentsSameAs(candidate[index]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Replaces a collection only when the result would look different.
+    ///
+    /// <see cref="Replace"/> clears and refills, which destroys every realized row
+    /// and drops whatever the pointer was over. Most refreshes are provoked by
+    /// something unrelated and produce exactly the rows already on screen, so those
+    /// have to leave the collection alone.
+    /// </summary>
+    private static void ReplaceIfChanged<T>(
+        ObservableCollection<T> target,
+        IReadOnlyList<T> values,
+        Func<T, T, bool> presentsSame)
+    {
+        if (target.Count == values.Count)
+        {
+            var unchanged = true;
+            for (var index = 0; index < values.Count; index++)
+            {
+                if (!presentsSame(target[index], values[index]))
+                {
+                    unchanged = false;
+                    break;
+                }
+            }
+
+            if (unchanged)
+            {
+                return;
+            }
+        }
+
+        Replace(target, values);
     }
 
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> values)

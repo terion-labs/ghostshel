@@ -293,8 +293,13 @@ public sealed class LayoutDesignerViewModelTests
         Assert.Equal(DefinitionValidationCode.Required, lastRemoval.Issue?.Code);
     }
 
+    /// <summary>
+    /// Painting used to be gated behind a mode the user had to arm first, while
+    /// the canvas told them to drag across empty cells. Following the printed
+    /// instruction did nothing, so the grid read as broken.
+    /// </summary>
     [Fact]
-    public void Paint_mode_adds_an_arbitrary_rectangle_and_exits_after_success()
+    public void Painting_a_region_needs_no_mode_to_be_armed_first()
     {
         var definition = new LayoutDefinition(
             new LayoutId("paint"),
@@ -303,33 +308,29 @@ public sealed class LayoutDesignerViewModelTests
             new LayoutGrid(4, 3),
             [Slot("existing", 0, 0, 1, 1)]);
         var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1);
-        Assert.True(editor.TogglePaintMode().IsSuccess);
 
         var result = editor.AddSlot(new LayoutGridBounds(1, 1, 3, 2));
 
         Assert.True(result.IsSuccess);
-        Assert.False(editor.IsPaintMode);
         Assert.Equal(new LayoutGridBounds(1, 1, 3, 2), editor.SelectedSlot!.Bounds);
         Assert.Equal(2, editor.Slots.Count);
     }
 
     [Fact]
-    public void Paint_mode_rejects_overlap_without_mutation_and_stays_enabled()
+    public void Painting_over_an_existing_panel_is_rejected_without_mutation()
     {
         var editor = new LayoutDesignerViewModel(LayoutWithMoveSpace(), expectedRevision: 1);
         var original = editor.CreateSaveRequest().Definition.Slots;
-        Assert.True(editor.TogglePaintMode().IsSuccess);
 
         var result = editor.AddSlot(new LayoutGridBounds(0, 0, 2, 1));
 
         Assert.False(result.IsSuccess);
         Assert.Equal(DefinitionValidationCode.Overlap, result.Issue?.Code);
-        Assert.True(editor.IsPaintMode);
         Assert.Equal(original, editor.CreateSaveRequest().Definition.Slots);
     }
 
     [Fact]
-    public void Paint_mode_refuses_a_full_grid_without_dirtying_an_existing_layout()
+    public void A_full_grid_refuses_another_panel_without_dirtying_the_layout()
     {
         var definition = new LayoutDefinition(
             new LayoutId("full"),
@@ -339,11 +340,56 @@ public sealed class LayoutDesignerViewModelTests
             [Slot("only", 0, 0, 1, 1)]);
         var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1);
 
-        var result = editor.TogglePaintMode();
+        var result = editor.AddSlot();
 
         Assert.False(result.IsSuccess);
-        Assert.False(editor.IsPaintMode);
         Assert.False(editor.IsDirty);
+    }
+
+    /// <summary>
+    /// Grid coordinates say where a panel is anchored, not how big it will look.
+    /// The canvas shows the panel's share of the grid instead, which is the thing
+    /// being designed.
+    /// </summary>
+    [Theory]
+    [InlineData(6, 4, "½ × ½")]
+    [InlineData(12, 8, "1 × 1")]
+    [InlineData(3, 2, "¼ × ¼")]
+    [InlineData(4, 8, "⅓ × 1")]
+    public void A_panel_reports_its_share_of_the_grid(
+        int columnSpan,
+        int rowSpan,
+        string expected)
+    {
+        var definition = new LayoutDefinition(
+            new LayoutId("share"),
+            LayoutDefinition.CurrentSchemaVersion,
+            "Share",
+            new LayoutGrid(12, 8),
+            [Slot("only", 0, 0, columnSpan, rowSpan)]);
+
+        var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1);
+
+        Assert.Equal(expected, editor.Slots[0].SizeLabel);
+    }
+
+    /// <summary>
+    /// A ratio with no familiar glyph is shown as a plain ratio rather than
+    /// rounded to the nearest one, which would state a size the panel is not.
+    /// </summary>
+    [Fact]
+    public void An_unusual_share_is_stated_exactly_rather_than_approximated()
+    {
+        var definition = new LayoutDefinition(
+            new LayoutId("odd"),
+            LayoutDefinition.CurrentSchemaVersion,
+            "Odd",
+            new LayoutGrid(7, 8),
+            [Slot("only", 0, 0, 2, 8)]);
+
+        var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1);
+
+        Assert.Equal("2/7 × 1", editor.Slots[0].SizeLabel);
     }
 
     [Fact]

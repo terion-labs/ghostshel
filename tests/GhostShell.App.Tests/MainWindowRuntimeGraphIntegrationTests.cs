@@ -755,6 +755,47 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(0, VisibleOverlayCount(viewModel));
     }
 
+    /// <summary>
+    /// The panel chooser offers saved connections, not only blank adapters, so
+    /// choosing one has to open that connection rather than the default local
+    /// shell the terminal tile would have opened.
+    /// </summary>
+    [Fact]
+    public async Task A_saved_connection_opens_as_a_panel_titled_after_that_connection()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateTabAppendCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        viewModel.ShowOverlay(ShellOverlay.NewPanel);
+        var before = viewModel.RuntimeWorkspace!.ActiveTab!.Panels.Count;
+
+        Assert.True(await viewModel.AddConnectionPanelAsync(AppendedConnectionId));
+
+        var tab = viewModel.RuntimeWorkspace!.ActiveTab!;
+        Assert.Equal(before + 1, tab.Panels.Count);
+
+        var added = Assert.IsType<TerminalRuntimePanelViewModel>(tab.ActivePanel);
+        Assert.Equal(AppendedConnectionId, added.ConnectionId);
+
+        // Completing the choice closes the overlay it was made from.
+        Assert.Equal(ShellOverlay.None, viewModel.Overlay);
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
+    }
+
+    [Fact]
+    public async Task Opening_a_deleted_connection_as_a_panel_reports_it_and_adds_nothing()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var before = viewModel.RuntimeWorkspace!.ActiveTab!.Panels.Count;
+
+        Assert.False(await viewModel.AddConnectionPanelAsync(new ConnectionId("gone")));
+
+        Assert.Equal(before, viewModel.RuntimeWorkspace!.ActiveTab!.Panels.Count);
+        Assert.False(string.IsNullOrWhiteSpace(viewModel.OperationError));
+    }
+
     [Fact]
     public async Task New_panel_completion_closes_its_initiating_overlay_and_shows_workspace()
     {
@@ -2488,6 +2529,114 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     {
         var client = DispatchProxy.Create<ISessionHostClient, RecordingSessionClient>();
         return (client, (RecordingSessionClient)(object)client);
+    }
+
+    /// <summary>
+    /// Saved Connections and Screens are real destinations, not scroll positions
+    /// inside Home. The launcher page has to be exclusive, or the sidebar can
+    /// highlight two entries and two pages can render at once.
+    /// </summary>
+    [Theory]
+    [InlineData(LauncherPage.Overview)]
+    [InlineData(LauncherPage.Connections)]
+    [InlineData(LauncherPage.Screens)]
+    [InlineData(LauncherPage.History)]
+    public void Exactly_one_launcher_page_is_visible_at_a_time(LauncherPage page)
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateFixedCatalog(CreateCatalogSnapshot()));
+
+        switch (page)
+        {
+            case LauncherPage.Overview: viewModel.ShowLauncherOverview(); break;
+            case LauncherPage.Connections: viewModel.ShowLauncherConnections(); break;
+            case LauncherPage.Screens: viewModel.ShowLauncherScreens(); break;
+            default: viewModel.ShowLauncherHistory(); break;
+        }
+
+        Assert.Equal(ShellRoute.Launcher, viewModel.Route);
+        Assert.Equal(page, viewModel.LauncherPage);
+        Assert.Equal(1, VisibleLauncherPageCount(viewModel));
+    }
+
+    [Fact]
+    public void Navigating_to_a_launcher_page_leaves_the_other_shell_routes_hidden()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateFixedCatalog(CreateCatalogSnapshot()));
+        viewModel.ShowSettings(SettingsPage.Appearance);
+
+        viewModel.ShowLauncherConnections();
+
+        Assert.Equal(1, VisibleRouteCount(viewModel));
+        Assert.True(viewModel.IsLauncherConnectionsVisible);
+        Assert.False(viewModel.IsSettingsVisible);
+    }
+
+    /// <summary>
+    /// Home is a summary. Without a bound preview a profile with many saved
+    /// definitions would push every later section off the page, and the "View
+    /// all" link would have nothing left to reveal.
+    /// </summary>
+    [Fact]
+    public void Home_previews_are_bounded_while_the_dedicated_pages_show_everything()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateFixedCatalog(CreateManyConnectionsSnapshot(connectionCount: 12)));
+
+        Assert.Equal(12, viewModel.Connections.Count);
+        Assert.Equal(8, viewModel.ConnectionsPreview.Count);
+        Assert.True(viewModel.HasMoreConnectionsThanPreview);
+
+        // The preview is the head of the same list, not a differently ordered one.
+        Assert.Equal(
+            viewModel.Connections.Take(8).Select(item => item.Id),
+            viewModel.ConnectionsPreview.Select(item => item.Id));
+    }
+
+    [Fact]
+    public void A_short_connection_list_is_shown_whole_on_home()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateFixedCatalog(CreateManyConnectionsSnapshot(connectionCount: 3)));
+
+        Assert.Equal(3, viewModel.ConnectionsPreview.Count);
+        Assert.False(viewModel.HasMoreConnectionsThanPreview);
+    }
+
+    private static int VisibleLauncherPageCount(MainWindowViewModel viewModel) =>
+        new[]
+        {
+            viewModel.IsLauncherOverviewVisible,
+            viewModel.IsLauncherConnectionsVisible,
+            viewModel.IsLauncherScreensVisible,
+            viewModel.IsLauncherHistoryVisible,
+        }.Count(isVisible => isVisible);
+
+    private static DefinitionCatalogSnapshot CreateManyConnectionsSnapshot(int connectionCount)
+    {
+        var connections = Enumerable.Range(0, connectionCount)
+            .Select(index => new StoredDefinition<ConnectionProfile>(
+                new ConnectionProfile(
+                    new ConnectionId($"connection-{index:00}"),
+                    ConnectionProfile.CurrentSchemaVersion,
+                    $"connection-{index:00}",
+                    new ConnectionEndpoint.Local("/bin/sh"),
+                    new ConnectionAuthentication.None(),
+                    ConnectionStartup.Default,
+                    ConnectionKeepAlive.Disabled,
+                    SshHostKeyPolicy.NotApplicable,
+                    []),
+                1,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch))
+            .ToArray();
+
+        return CreateCatalogSnapshot() with { Connections = connections };
     }
 
     private static int VisibleRouteCount(MainWindowViewModel viewModel) =>

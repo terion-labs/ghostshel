@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Input;
 using Avalonia.Media;
 using GhostShell.Application;
@@ -23,6 +24,18 @@ public sealed class TerminalPresentationHost : ContentControl
     public static readonly StyledProperty<EnsureTerminalSessionRequest?> SessionRequestProperty =
         AvaloniaProperty.Register<TerminalPresentationHost, EnsureTerminalSessionRequest?>(
             nameof(SessionRequest));
+
+    /// <summary>
+    /// The live render profile. Separate from <see cref="SessionRequest"/> so a
+    /// typography change reaches an open panel without restarting its session.
+    /// </summary>
+    public static readonly StyledProperty<TerminalRenderProfileSnapshot?> RenderProfileProperty =
+        AvaloniaProperty.Register<TerminalPresentationHost, TerminalRenderProfileSnapshot?>(
+            nameof(RenderProfile));
+
+    /// <summary>The rounded radius of the panel card hosting this terminal.</summary>
+    public static readonly StyledProperty<CornerRadius> HostCornerRadiusProperty =
+        AvaloniaProperty.Register<TerminalPresentationHost, CornerRadius>(nameof(HostCornerRadius));
 
     public static readonly StyledProperty<ClientId?> ClientIdProperty =
         AvaloniaProperty.Register<TerminalPresentationHost, ClientId?>(nameof(ClientId));
@@ -98,6 +111,7 @@ public sealed class TerminalPresentationHost : ContentControl
         {
             _nativeHost = new TerminalSessionHost();
             _presentation = _nativeHost;
+            _nativeHost.NativeFocusGained += OnNativeFocusGained;
             _nativeHost.SessionSnapshotChanged += OnSessionSnapshotChanged;
             _nativeHost.SessionInitializationFailed += OnSessionInitializationFailed;
             _nativeHost.StartupCommandDispatchCompleted += OnStartupCommandDispatchCompleted;
@@ -137,6 +151,18 @@ public sealed class TerminalPresentationHost : ContentControl
     {
         get => GetValue(SessionRequestProperty);
         set => SetValue(SessionRequestProperty, value);
+    }
+
+    public TerminalRenderProfileSnapshot? RenderProfile
+    {
+        get => GetValue(RenderProfileProperty);
+        set => SetValue(RenderProfileProperty, value);
+    }
+
+    public CornerRadius HostCornerRadius
+    {
+        get => GetValue(HostCornerRadiusProperty);
+        set => SetValue(HostCornerRadiusProperty, value);
     }
 
     public ClientId? ClientId
@@ -271,6 +297,21 @@ public sealed class TerminalPresentationHost : ContentControl
     /// Avalonia can retain the wrapper in the focus scope while its renderer no longer
     /// receives keyboard events.
     /// </summary>
+    /// <summary>
+    /// Raised when focus moves into the terminal itself. The shell marks the
+    /// owning panel active from this: a click on a native view never reaches
+    /// Avalonia's focus system, so the panel could previously only be activated
+    /// from its title bar.
+    /// </summary>
+    public event EventHandler<RoutedEventArgs>? TerminalFocusGained;
+
+    private void OnNativeFocusGained(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        TerminalFocusGained?.Invoke(this, new RoutedEventArgs());
+    }
+
     internal bool RequestInputFocus() => _nativeHost is not null
         ? _nativeHost.RequestInputFocus()
         : _managedHost!.RequestInputFocus();
@@ -291,7 +332,9 @@ public sealed class TerminalPresentationHost : ContentControl
             || change.Property == SessionRequestProperty
             || change.Property == ClientIdProperty
             || change.Property == StartupCommandDispatcherProperty
-            || change.Property == StartupCommandDispatchStateProperty)
+            || change.Property == StartupCommandDispatchStateProperty
+            || change.Property == RenderProfileProperty
+            || change.Property == HostCornerRadiusProperty)
         {
             SynchronizeChildProperties();
         }
@@ -301,6 +344,11 @@ public sealed class TerminalPresentationHost : ContentControl
     {
         if (_nativeHost is not null)
         {
+            // Presentation before the session request. Setting the request starts
+            // the attach, which captures the corner radius as it stands — assigned
+            // afterwards it would always arrive one attach too late.
+            _nativeHost.HostCornerRadius = HostCornerRadius;
+            _nativeHost.RenderProfile = RenderProfile;
             _nativeHost.StartupCommandDispatchState = StartupCommandDispatchState;
             _nativeHost.SessionClient = SessionClient;
             _nativeHost.SessionRequest = SessionRequest;
@@ -312,6 +360,7 @@ public sealed class TerminalPresentationHost : ContentControl
             _managedHost!.StartupCommandDispatchState = StartupCommandDispatchState;
             _managedHost!.SessionClient = SessionClient;
             _managedHost.SessionRequest = SessionRequest;
+            _managedHost.RenderProfile = RenderProfile;
             _managedHost.ClientId = ClientId;
             _managedHost.StartupCommandDispatcher = StartupCommandDispatcher;
         }

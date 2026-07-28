@@ -3,16 +3,17 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:views="using:GhostShell.App.Views"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Grid RowDefinitions="44,34,*,26">
+  <Grid RowDefinitions="44,34,*,Auto,26">
     <Border
         Classes="TopChrome"
         PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding WindowTitleBarContentMargin}" ColumnSpacing="8">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Button
             x:Name="WorkspaceLauncherButton"
             Classes="IconButton"
@@ -22,99 +23,48 @@
             AutomationProperties.Name="Open launcher">
           <icons:SymbolIcon Symbol="Home" FontSize="15" />
         </Button>
-        <ScrollViewer
+        <components:RuntimeTabStripView
             x:Name="RuntimeTabStrip"
             Grid.Column="1"
-            HorizontalScrollBarVisibility="Auto"
-            VerticalScrollBarVisibility="Disabled"
+            Tabs="{Binding RuntimeWorkspace.Tabs}"
+            Orientation="Horizontal"
+            IsVisible="{Binding IsTabStripVisibleOnTop}"
             WindowDecorationProperties.ElementRole="User"
-            AutomationProperties.Name="Open runtime tabs">
-          <ItemsControl ItemsSource="{Binding RuntimeWorkspace.Tabs}">
-            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="5" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Grid
-                    Width="190"
-                    Height="32"
-                    Classes="RuntimeTabDropTarget"
-                    ColumnDefinitions="24,*,28"
-                    DragDrop.AllowDrop="True"
-                    DragDrop.DragEnter="OnRuntimeTabDragEnter"
-                    DragDrop.DragLeave="OnRuntimeTabDragLeave"
-                    DragDrop.DragOver="OnRuntimeTabDragOver"
-                    DragDrop.Drop="OnRuntimeTabDrop">
-                  <Button
-                      Grid.ColumnSpan="3"
-                      Padding="32,0,32,0"
-                      Background="{Binding TabBackground}"
-                      BorderThickness="0"
-                      Classes="RuntimeTabActivator"
-                      Click="OnActivateTabClick"
-                      HorizontalContentAlignment="Left"
-                      AutomationProperties.Name="{Binding Title, StringFormat={}Activate tab {0}}"
-                      AutomationProperties.HelpText="Use the reorder handle to drag this tab, or use Move tab left and Move tab right from the command palette.">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <icons:SymbolIcon Symbol="WindowConsole" FontSize="13" Foreground="{Binding TabForeground}" />
-                      <TextBlock Foreground="{Binding TabForeground}" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                  </Button>
-                  <Border
-                      Grid.ColumnSpan="3"
-                      Width="3"
-                      Margin="0,3"
-                      HorizontalAlignment="Left"
-                      Background="{DynamicResource ShellAccentBrush}"
-                      Classes="RuntimeTabDropIndicator Before"
-                      IsHitTestVisible="False"
-                      IsVisible="False" />
-                  <Border
-                      Grid.ColumnSpan="3"
-                      Width="3"
-                      Margin="0,3"
-                      HorizontalAlignment="Right"
-                      Background="{DynamicResource ShellAccentBrush}"
-                      Classes="RuntimeTabDropIndicator After"
-                      IsHitTestVisible="False"
-                      IsVisible="False" />
-                  <Border
-                      Grid.Column="0"
-                      Background="Transparent"
-                      PointerCaptureLost="OnRuntimeTabDragPointerCaptureLost"
-                      PointerMoved="OnRuntimeTabDragPointerMoved"
-                      PointerPressed="OnRuntimeTabDragPointerPressed"
-                      PointerReleased="OnRuntimeTabDragPointerReleased"
-                      ToolTip.Tip="Drag to reorder tab"
-                      AutomationProperties.Name="{Binding Title, StringFormat={}Reorder tab {0}}"
-                      AutomationProperties.HelpText="Drag left or right to change this tab's position without activating it.">
-                    <icons:SymbolIcon
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Symbol="ReOrderDotsVertical"
-                        FontSize="12"
-                        Foreground="{Binding TabForeground}" />
-                  </Border>
-                  <Button
-                      Grid.Column="2"
-                      Classes="IconButton"
-                      Click="OnCloseRuntimeTabClick"
-                      ToolTip.Tip="Close tab"
-                      AutomationProperties.Name="{Binding Title, StringFormat={}Close tab {0}}"
-                      AutomationProperties.HelpText="Close this runtime tab using the normal session close policy.">
-                    <icons:SymbolIcon Symbol="Dismiss" FontSize="11" />
-                  </Button>
-                </Grid>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
+            AutomationProperties.Name="Open runtime tabs"
+            AddTabRequested="OnShowNewItemClick"
+            ActivateRequested="OnActivateTabClick"
+            CloseRequested="OnCloseRuntimeTabClick"
+            TabDragEnter="OnRuntimeTabDragEnter"
+            TabDragLeave="OnRuntimeTabDragLeave"
+            TabDragOver="OnRuntimeTabDragOver"
+            TabDrop="OnRuntimeTabDrop"
+            ReorderPointerCaptureLost="OnRuntimeTabDragPointerCaptureLost"
+            ReorderPointerMoved="OnRuntimeTabDragPointerMoved"
+            ReorderPointerPressed="OnRuntimeTabDragPointerPressed"
+            ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
         <StackPanel
             x:Name="WorkspaceTitleBarActions"
             Grid.Column="2"
             Orientation="Horizontal"
             VerticalAlignment="Center"
-            Spacing="5"
+            Spacing="{DynamicResource ShellSpaceXs}"
             WindowDecorationProperties.ElementRole="User">
-          <Button Classes="IconButton" Click="OnShowNewPanelClick" ToolTip.Tip="Add panel" AutomationProperties.Name="Add panel"><icons:SymbolIcon Symbol="Add" FontSize="15" /></Button>
+          <!--
+            Where before what. The plus asks which edge the panel goes against, and
+            the panel itself then asks what to open — rather than a modal asking
+            what to open and the layout deciding where it lands.
+          -->
+          <Button Classes="IconButton" ToolTip.Tip="Add panel" AutomationProperties.Name="Add panel">
+            <icons:SymbolIcon Symbol="Add" FontSize="15" />
+            <Button.Flyout>
+              <MenuFlyout Placement="Bottom">
+                <MenuItem Click="OnAddPanelLeftClick" Header="Add to the left" />
+                <MenuItem Click="OnAddPanelRightClick" Header="Add to the right" />
+                <MenuItem Click="OnAddPanelTopClick" Header="Add above" />
+                <MenuItem Click="OnAddPanelBottomClick" Header="Add below" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
           <Button Classes="IconButton" Click="OnToggleAgentClick" ToolTip.Tip="Toggle agent panel" AutomationProperties.Name="Toggle AI agent panel"><icons:SymbolIcon Symbol="Bot" FontSize="15" /></Button>
           <Button Classes="IconButton" Click="OnShowSettingsClick" ToolTip.Tip="Settings" AutomationProperties.Name="Open settings"><icons:SymbolIcon Symbol="Settings" FontSize="15" /></Button>
         </StackPanel>
@@ -122,15 +72,18 @@
     </Border>
 
     <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="11,0" ColumnSpacing="10">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{controls:Inset Horizontal=Md}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <TextBlock VerticalAlignment="Center" Classes="Eyebrow Accent" Text="{Binding RuntimeWorkspace.Name}" />
-        <ItemsControl Grid.Column="1" ItemsSource="{Binding RuntimeWorkspace.Connections}">
-          <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="7" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <!-- Centred, not stretched: a pill left to fill the row's full height has
+             its rounded corners meet the row edges, which reads as corners cut
+             off rather than as a pill. -->
+        <ItemsControl Grid.Column="1" VerticalAlignment="Center" ItemsSource="{Binding RuntimeWorkspace.Connections}">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Padding="8,3" Background="{DynamicResource ShellSurfaceHoverBrush}" CornerRadius="6">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <Ellipse Width="6" Height="6" VerticalAlignment="Center" Fill="#57B879" />
+              <Border VerticalAlignment="Center" Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}" Background="{DynamicResource ShellSurfaceHoverBrush}" CornerRadius="{DynamicResource ShellControlCornerRadius}">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                  <Ellipse Width="6" Height="6" VerticalAlignment="Center" Fill="{DynamicResource ShellSuccessBrush}" />
                   <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Name}" />
                 </StackPanel>
               </Border>
@@ -141,27 +94,88 @@
       </Grid>
     </Border>
 
+    <Border
+        Grid.Row="3"
+        Height="40"
+        Background="{DynamicResource ShellSurfaceBrush}"
+        BorderBrush="{DynamicResource ShellBorderBrush}"
+        BorderThickness="0,1,0,0"
+        IsVisible="{Binding IsTabStripVisibleOnBottom}">
+      <components:RuntimeTabStripView
+          x:Name="RuntimeTabStripBottom"
+          Margin="{controls:Inset Horizontal=Md}"
+          Tabs="{Binding RuntimeWorkspace.Tabs}"
+          Orientation="Horizontal"
+          AutomationProperties.Name="Open runtime tabs"
+          AddTabRequested="OnShowNewItemClick"
+          ActivateRequested="OnActivateTabClick"
+            CloseRequested="OnCloseRuntimeTabClick"
+            TabDragEnter="OnRuntimeTabDragEnter"
+            TabDragLeave="OnRuntimeTabDragLeave"
+            TabDragOver="OnRuntimeTabDragOver"
+            TabDrop="OnRuntimeTabDrop"
+            ReorderPointerCaptureLost="OnRuntimeTabDragPointerCaptureLost"
+            ReorderPointerMoved="OnRuntimeTabDragPointerMoved"
+            ReorderPointerPressed="OnRuntimeTabDragPointerPressed"
+            ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
+    </Border>
+
     <DockPanel Grid.Row="2" LastChildFill="True">
-      <Border DockPanel.Dock="Left" Width="56" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
-        <Grid RowDefinitions="*,Auto" Margin="8,9">
+      <Border
+          Width="56"
+          Background="{DynamicResource ShellSurfaceBrush}"
+          BorderBrush="{DynamicResource ShellBorderBrush}"
+          BorderThickness="0,0,1,0"
+          DockPanel.Dock="{Binding WorkspacePanelDock}"
+          IsVisible="{Binding ShowWorkspacesPanel}">
+        <!-- The add button belongs under the last workspace, not pinned to the
+             far end of the rail: with two workspaces it was stranded most of a
+             screen below them, reading as an unrelated control. -->
+        <StackPanel Margin="{controls:Inset Sm}" Spacing="{DynamicResource ShellSpaceSm}">
           <ItemsControl ItemsSource="{Binding Workspaces}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Button Width="40" Height="40" Margin="0,0,0,7" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
+                <Button Width="40" Height="40" Margin="{controls:Inset Bottom=Sm}" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
                   <icons:SymbolIcon Symbol="{Binding IconSymbol}" FontSize="16" />
                 </Button>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <Button Grid.Row="1" Width="40" Height="40" Padding="0" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon Symbol="Add" FontSize="14" /></Button>
-        </Grid>
+          <Button Width="40" Height="40" Padding="0" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon Symbol="Add" FontSize="14" /></Button>
+        </StackPanel>
+      </Border>
+
+      <Border
+          Width="214"
+          Padding="{controls:Inset Horizontal=Xs, Vertical=Sm}"
+          Background="{DynamicResource ShellSurfaceBrush}"
+          BorderBrush="{DynamicResource ShellBorderBrush}"
+          BorderThickness="1,0,1,0"
+          DockPanel.Dock="{Binding TabStripDock}"
+          IsVisible="{Binding IsTabStripVisibleOnSide}">
+        <components:RuntimeTabStripView
+            x:Name="RuntimeTabStripSide"
+            Tabs="{Binding RuntimeWorkspace.Tabs}"
+            Orientation="Vertical"
+            AutomationProperties.Name="Open runtime tabs"
+            AddTabRequested="OnShowNewItemClick"
+            ActivateRequested="OnActivateTabClick"
+            CloseRequested="OnCloseRuntimeTabClick"
+            TabDragEnter="OnRuntimeTabDragEnter"
+            TabDragLeave="OnRuntimeTabDragLeave"
+            TabDragOver="OnRuntimeTabDragOver"
+            TabDrop="OnRuntimeTabDrop"
+            ReorderPointerCaptureLost="OnRuntimeTabDragPointerCaptureLost"
+            ReorderPointerMoved="OnRuntimeTabDragPointerMoved"
+            ReorderPointerPressed="OnRuntimeTabDragPointerPressed"
+            ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
       </Border>
 
       <views:AgentWorkspaceView
           x:Name="AgentWorkspaceSurface"
           DockPanel.Dock="Right"
           Width="352"
-          Margin="0,8,8,8"
+          Margin="{controls:Inset Right=Sm, Vertical=Sm}"
           AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
           ApproveAgentActionRequested="OnApproveAgentActionClick"
           CancelAgentActionRequested="OnCancelAgentActionClick"
@@ -180,7 +194,11 @@
           ShowAgentSettingsRequested="OnShowAgentSettingsClick"
           SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick" />
 
-      <Grid Margin="8" IsVisible="{Binding IsWorkspaceCanvasVisible}">
+      <!-- Half the gutter on the canvas and half on every panel, so the gap is
+           the same between two panels as it is between a panel and the edge. The
+           panels used to carry the whole gutter on their right and bottom only,
+           which made those two edges twice the others. -->
+      <Grid Margin="{controls:Inset Xs}" IsVisible="{Binding IsWorkspaceCanvasVisible}">
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
           <ItemsControl
               MinWidth="{Binding RuntimeWorkspace.ActiveTab.MinimumCanvasWidth}"
@@ -190,23 +208,23 @@
               ItemsSource="{Binding RuntimeWorkspace.ActiveTab.Panels}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
-                <controls:RuntimePanelLayoutPanel />
+                <controls:RuntimePanelLayoutPanel Tab="{Binding RuntimeWorkspace.ActiveTab}" />
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.Styles>
-              <Style Selector="ItemsControl > ContentPresenter"><Setter Property="Margin" Value="0,0,8,8" /></Style>
+              <Style Selector="ItemsControl > ContentPresenter"><Setter Property="Margin" Value="{DynamicResource ShellInsetXs}" /></Style>
             </ItemsControl.Styles>
           </ItemsControl>
         </ScrollViewer>
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" IsVisible="{Binding !HasRuntimeWorkspace}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding !HasRuntimeWorkspace}">
           <TextBlock Classes="Muted" Text="Open a workspace from the launcher." />
           <Button Classes="PrimaryButton" Click="OnShowLauncherClick" Content="Open launcher" />
         </StackPanel>
       </Grid>
     </DockPanel>
 
-    <Border Grid.Row="3" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="14" Margin="10,0">
+    <Border Grid.Row="4" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}" Margin="{controls:Inset Horizontal=Sm}">
         <TextBlock VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding RuntimeWorkspace.ActiveTab.Source}" />
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding WorkspaceStatus}" />
         <TextBlock

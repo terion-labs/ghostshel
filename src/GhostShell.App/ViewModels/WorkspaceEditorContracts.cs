@@ -1,3 +1,4 @@
+using FluentIcons.Common;
 using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
@@ -59,4 +60,19 @@ public sealed record WorkspaceLayoutSlotOption(
     public string DisplayName => IsAvailable ? Name : $"Missing · {Name}";
 }
 
-public sealed record WorkspaceIconOption(string Id, string Name);
+/// <summary>
+/// One choice in the workspace icon picker. <paramref name="Keywords"/> exists so
+/// the picker can be searched by purpose ("prod", "db") and not only by the
+/// icon's own name.
+/// </summary>
+public sealed record WorkspaceIconOption(
+    string Id,
+    string Name,
+    Symbol Symbol = Symbol.Window,
+    string Keywords = "")
+{
+    public bool Matches(string term) =>
+        Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+        || Id.Contains(term, StringComparison.OrdinalIgnoreCase)
+        || Keywords.Contains(term, StringComparison.OrdinalIgnoreCase);
+}

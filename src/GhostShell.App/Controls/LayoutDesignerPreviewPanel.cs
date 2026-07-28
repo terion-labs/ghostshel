@@ -14,10 +14,19 @@ namespace GhostShell.App.Controls;
 /// </summary>
 public sealed class LayoutDesignerPreviewPanel : Panel
 {
-    private const double EdgeHitZone = 9;
+    /// <summary>
+    /// How close to a panel's edge a press counts as grabbing that edge.
+    ///
+    /// A 9 px band was accurate but hard to hit, which reads as resizing simply
+    /// not working. It is capped at a third of the panel's shorter side so a
+    /// small panel keeps a middle to drag: without that cap a one-cell panel
+    /// would be edge all the way through and could never be moved.
+    /// </summary>
+    private const double EdgeHitZone = 14;
 
     private static readonly Cursor ArrowCursor = new(StandardCursorType.Arrow);
     private static readonly Cursor CrossCursor = new(StandardCursorType.Cross);
+    private static readonly Cursor MoveCursor = new(StandardCursorType.SizeAll);
     private static readonly Cursor HorizontalResizeCursor =
         new(StandardCursorType.SizeWestEast);
     private static readonly Cursor VerticalResizeCursor =
@@ -107,6 +116,32 @@ public sealed class LayoutDesignerPreviewPanel : Panel
             row,
             Math.Abs(currentColumn - anchorColumn) + 1,
             Math.Abs(currentRow - anchorRow) + 1);
+    }
+
+    /// <summary>
+    /// Translates a panel by the whole-cell distance the pointer has travelled,
+    /// clamped so it cannot leave the grid. Dragging a panel's middle used to do
+    /// nothing at all, leaving no way to move one with a pointer.
+    /// </summary>
+    internal static LayoutGridBounds SnapMoveBounds(
+        LayoutGridBounds original,
+        int anchorColumn,
+        int anchorRow,
+        int currentColumn,
+        int currentRow,
+        int columns,
+        int rows)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        var column = Math.Clamp(
+            original.Column + (currentColumn - anchorColumn),
+            0,
+            Math.Max(0, columns - original.ColumnSpan));
+        var row = Math.Clamp(
+            original.Row + (currentRow - anchorRow),
+            0,
+            Math.Max(0, rows - original.RowSpan));
+        return new LayoutGridBounds(column, row, original.ColumnSpan, original.RowSpan);
     }
 
     internal static LayoutGridBounds SnapResizeBounds(
@@ -205,6 +240,20 @@ public sealed class LayoutDesignerPreviewPanel : Panel
                 position);
             if (edge is null)
             {
+                var anchor = CellAt(position, Bounds.Size, editor.Columns, editor.Rows);
+                BeginGesture(
+                    e,
+                    new PointerGesture(
+                        e.Pointer,
+                        PointerGestureKind.Move,
+                        slot.Id,
+                        slot.Bounds,
+                        Edge: null,
+                        anchor.Column,
+                        anchor.Row,
+                        slot.Bounds,
+                        editor.Columns,
+                        editor.Rows));
                 return;
             }
 
@@ -224,11 +273,9 @@ public sealed class LayoutDesignerPreviewPanel : Panel
             return;
         }
 
-        if (!editor.IsPaintMode)
-        {
-            return;
-        }
-
+        // Dragging an empty cell paints. The canvas says so, and it used to be
+        // gated behind a mode the user had to arm first — so following the
+        // instruction printed under the grid did nothing at all.
         var cell = CellAt(position, Bounds.Size, editor.Columns, editor.Rows);
         var bounds = new LayoutGridBounds(cell.Column, cell.Row, 1, 1);
         BeginGesture(
@@ -263,23 +310,7 @@ public sealed class LayoutDesignerPreviewPanel : Panel
                 return;
             }
 
-            if (gesture.Kind == PointerGestureKind.Paint && !editor.IsPaintMode)
-            {
-                ClearGesture();
-                e.Pointer.Capture(null);
-                e.Handled = true;
-                return;
-            }
-
-            var preview = gesture.Kind == PointerGestureKind.Paint
-                ? PaintBounds(gesture, position)
-                : SnapResizeBounds(
-                    gesture.OriginalBounds,
-                    gesture.Edge!.Value,
-                    position,
-                    Bounds.Size,
-                    gesture.Columns,
-                    gesture.Rows);
+            var preview = GestureBounds(gesture, position);
             if (preview != gesture.PreviewBounds)
             {
                 _gesture = gesture with { PreviewBounds = preview };
@@ -314,15 +345,7 @@ public sealed class LayoutDesignerPreviewPanel : Panel
         }
 
         var editor = DataContext as LayoutDesignerViewModel;
-        var finalBounds = gesture.Kind == PointerGestureKind.Paint
-            ? PaintBounds(gesture, e.GetPosition(this))
-            : SnapResizeBounds(
-                gesture.OriginalBounds,
-                gesture.Edge!.Value,
-                e.GetPosition(this),
-                Bounds.Size,
-                gesture.Columns,
-                gesture.Rows);
+        var finalBounds = GestureBounds(gesture, e.GetPosition(this));
         _gesture = null;
         editor?.SetPaintPreviewBounds(null);
         InvalidateArrange();
@@ -336,16 +359,14 @@ public sealed class LayoutDesignerPreviewPanel : Panel
 
         if (gesture.Kind == PointerGestureKind.Paint)
         {
-            if (editor.IsPaintMode)
-            {
-                _ = editor.AddSlot(finalBounds);
-            }
-
+            _ = editor.AddSlot(finalBounds);
             return;
         }
 
-        if (gesture.SlotId is not { } slotId
-            || gesture.Edge is null)
+        // A move carries no edge, so the commit gate is the slot alone. Requiring
+        // an edge here would have let a move preview follow the pointer and then
+        // silently discard itself on release.
+        if (gesture.SlotId is not { } slotId)
         {
             return;
         }
@@ -402,7 +423,7 @@ public sealed class LayoutDesignerPreviewPanel : Panel
         var rows = Math.Max(1, editor?.Rows ?? 1);
         var bounds = _gesture is
         {
-            Kind: PointerGestureKind.Resize,
+            Kind: PointerGestureKind.Resize or PointerGestureKind.Move,
             SlotId: { } slotId,
         } gesture
             && slotId == slot.Id
@@ -435,9 +456,36 @@ public sealed class LayoutDesignerPreviewPanel : Panel
                 HorizontalResizeCursor,
             LayoutDesignerEdge.Top or LayoutDesignerEdge.Bottom =>
                 VerticalResizeCursor,
-            null when slot is null && editor.IsPaintMode => CrossCursor,
+            null when slot is null => CrossCursor,
+            null => MoveCursor,
             _ => ArrowCursor,
         };
+    }
+
+    private LayoutGridBounds GestureBounds(PointerGesture gesture, Point position)
+    {
+        if (gesture.Kind == PointerGestureKind.Paint)
+        {
+            return PaintBounds(gesture, position);
+        }
+
+        var cell = CellAt(position, Bounds.Size, gesture.Columns, gesture.Rows);
+        return gesture.Kind == PointerGestureKind.Move
+            ? SnapMoveBounds(
+                gesture.OriginalBounds,
+                gesture.AnchorColumn,
+                gesture.AnchorRow,
+                cell.Column,
+                cell.Row,
+                gesture.Columns,
+                gesture.Rows)
+            : SnapResizeBounds(
+                gesture.OriginalBounds,
+                gesture.Edge!.Value,
+                position,
+                Bounds.Size,
+                gesture.Columns,
+                gesture.Rows);
     }
 
     private LayoutGridBounds PaintBounds(
@@ -511,6 +559,7 @@ public sealed class LayoutDesignerPreviewPanel : Panel
     {
         Paint,
         Resize,
+        Move,
     }
 
     private sealed record PointerGesture(

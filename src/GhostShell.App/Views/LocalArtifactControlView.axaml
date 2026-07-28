@@ -2,11 +2,12 @@
     x:Class="GhostShell.App.Views.LocalArtifactControlView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia">
-  <Border Classes="SettingsCard">
-    <StackPanel Margin="16" Spacing="12">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-        <StackPanel Spacing="3">
+  <controls:SurfaceCard Padding="0">
+    <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock FontWeight="SemiBold" Text="App-managed cache &amp; logs" />
           <TextBlock
               Classes="Muted"
@@ -24,8 +25,8 @@
             AutomationProperties.Name="Refresh app-managed cache and log metadata" />
       </Grid>
 
-      <Border Classes="NoticeCard">
-        <Grid Margin="12" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+      <controls:SurfaceCard Tone="Notice" Padding="0">
+        <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <icons:SymbolIcon Symbol="Shield" FontSize="16" />
           <TextBlock
               Grid.Column="1"
@@ -33,7 +34,7 @@
               Text="Saved definitions, secrets, history, recovery snapshots, terminal content, OS caches, debug trace output, and any active log are outside this cleanup boundary."
               TextWrapping="Wrap" />
         </Grid>
-      </Border>
+      </controls:SurfaceCard>
 
       <TextBlock
           Classes="Muted Monospace"
@@ -43,26 +44,22 @@
           AutomationProperties.LiveSetting="Polite"
           AutomationProperties.Name="{Binding StatusAutomationName}" />
 
-      <Border Classes="NoticeCard" IsVisible="{Binding HasNoInventory}">
-        <StackPanel Margin="14" HorizontalAlignment="Center" Spacing="5">
-          <TextBlock FontWeight="SemiBold" Text="No storage metadata" />
-          <TextBlock
-              Classes="Muted"
-              Text="Use Refresh to inspect GhostSHELL’s app-managed locations."
-              TextAlignment="Center"
-              TextWrapping="Wrap" />
-        </StackPanel>
-      </Border>
+      <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoInventory}">
+        <controls:EmptyStatePanel Margin="{controls:Inset Md}"
+            ShowsGlyph="False"
+            Heading="No storage metadata"
+            Body="Use Refresh to inspect GhostSHELL’s app-managed locations." />
+      </controls:SurfaceCard>
 
-      <Border Classes="NoticeCard" IsVisible="{Binding HasError}">
-        <StackPanel Margin="14" Spacing="5">
+      <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasError}">
+        <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock FontWeight="SemiBold" Text="Storage metadata unavailable" />
           <TextBlock
               Classes="Muted"
               Text="The bounded inventory could not be completed. No additional files will be removed automatically; use Refresh to try again."
               TextWrapping="Wrap" />
         </StackPanel>
-      </Border>
+      </controls:SurfaceCard>
 
       <ItemsControl
           ItemsSource="{Binding Items}"
@@ -70,9 +67,9 @@
           IsVisible="{Binding HasInventory}">
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border Margin="0,0,0,8" Classes="NoticeCard">
-              <Grid Margin="12" ColumnDefinitions="*,Auto" ColumnSpacing="14">
-                <StackPanel Spacing="4">
+            <controls:SurfaceCard Tone="Notice" Padding="0" Margin="{controls:Inset Bottom=Sm}">
+              <Grid Margin="{controls:Inset Md}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
                   <TextBlock
                       Classes="Muted"
@@ -80,7 +77,7 @@
                       Text="{Binding Description}"
                       TextWrapping="Wrap" />
                   <WrapPanel Orientation="Horizontal">
-                    <TextBlock Margin="0,0,14,0" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding FileCountLabel}" />
+                    <TextBlock Margin="{controls:Inset Right=Md}" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding FileCountLabel}" />
                     <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SizeLabel}" />
                   </WrapPanel>
                 </StackPanel>
@@ -93,10 +90,9 @@
                     IsEnabled="{Binding HasFiles}"
                     AutomationProperties.Name="{Binding ClearAutomationName}" />
               </Grid>
-            </Border>
-          </DataTemplate>
+            </controls:SurfaceCard>          </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
     </StackPanel>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

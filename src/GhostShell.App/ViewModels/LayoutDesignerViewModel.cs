@@ -21,7 +21,6 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     private IReadOnlyList<DefinitionValidationIssue> _validationIssues = [];
     private DefinitionValidationIssue? _lastOperationIssue;
     private LayoutGridBounds? _paintPreviewBounds;
-    private bool _isPaintMode;
     private bool _isDirty;
 
     public LayoutDesignerViewModel(
@@ -101,6 +100,14 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     /// <summary>Slots are exposed in their keyboard and accessibility traversal order.</summary>
     public IReadOnlyList<LayoutDesignerSlotViewModel> Slots => _slotSnapshots;
 
+    /// <summary>
+    /// The panel count as its own property. Binding to <c>Slots.Count</c> would
+    /// silently render nothing: the snapshot is an array, whose only public
+    /// length member is <c>Length</c>, and the binding resolver reflects over the
+    /// runtime type rather than the declared interface.
+    /// </summary>
+    public int PanelCount => _slotSnapshots.Count;
+
     public LayoutSlotId? SelectedSlotId => _selectedSlotId;
 
     public LayoutDesignerSlotViewModel? SelectedSlot => _slotSnapshots
@@ -132,28 +139,27 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     /// <summary>
     /// Smallest uniform-grid canvas width that can satisfy every slot minimum.
     /// </summary>
-    public double MinimumCanvasWidth => _slots.Max(slot =>
-        slot.MinimumSize.Width * Columns / slot.Bounds.ColumnSpan);
+    public double MinimumCanvasWidth => _slots.Count == 0
+        ? 0
+        : _slots.Max(slot => slot.MinimumSize.Width * Columns / slot.Bounds.ColumnSpan);
 
     /// <summary>
     /// Smallest uniform-grid canvas height that can satisfy every slot minimum.
     /// </summary>
-    public double MinimumCanvasHeight => _slots.Max(slot =>
-        slot.MinimumSize.Height * Rows / slot.Bounds.RowSpan);
+    public double MinimumCanvasHeight => _slots.Count == 0
+        ? 0
+        : _slots.Max(slot => slot.MinimumSize.Height * Rows / slot.Bounds.RowSpan);
 
     public DefinitionValidationIssue? LastOperationIssue => _lastOperationIssue;
 
     public bool HasOperationError => LastOperationIssue is not null;
 
-    public bool IsPaintMode => _isPaintMode;
-
-    public string PaintModeLabel => IsPaintMode
-        ? "Cancel painting"
-        : "Paint new panel";
-
-    public string PaintModeStatus => IsPaintMode
-        ? "Painting enabled. Drag across empty grid cells to create one panel."
-        : "Painting off. Select a panel or drag one of its edges to resize.";
+    /// <summary>
+    /// What the grid does right now, stated where the user is looking. There is no
+    /// painting mode to describe: dragging an empty cell always paints.
+    /// </summary>
+    public string GridHint =>
+        "Drag empty cells to paint · drag a panel to move it · drag its edge to resize";
 
     public LayoutGridBounds? PaintPreviewBounds => _paintPreviewBounds;
 
@@ -179,6 +185,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     public LayoutDesignerOperationResult SelectNextSlot()
     {
         var currentIndex = SelectedIndex();
+        if (currentIndex < 0 || _slots.Count == 0)
+        {
+            return NoSelection();
+        }
+
         var nextIndex = (currentIndex + 1) % _slots.Count;
         return SelectSlot(_slots[nextIndex].Id);
     }
@@ -186,6 +197,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     public LayoutDesignerOperationResult SelectPreviousSlot()
     {
         var currentIndex = SelectedIndex();
+        if (currentIndex < 0 || _slots.Count == 0)
+        {
+            return NoSelection();
+        }
+
         var previousIndex = (currentIndex - 1 + _slots.Count) % _slots.Count;
         return SelectSlot(_slots[previousIndex].Id);
     }
@@ -193,6 +209,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     public LayoutDesignerOperationResult MoveSelected(LayoutDesignerDirection direction)
     {
         var selectedIndex = SelectedIndex();
+        if (selectedIndex < 0)
+        {
+            return NoSelection();
+        }
+
         var selected = _slots[selectedIndex];
         var bounds = selected.Bounds;
         var moved = direction switch
@@ -223,6 +244,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
         }
 
         var selectedIndex = SelectedIndex();
+        if (selectedIndex < 0)
+        {
+            return NoSelection();
+        }
+
         var selected = _slots[selectedIndex];
         var bounds = selected.Bounds;
         var resized = edge switch
@@ -315,6 +341,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(minimumSize);
         var selectedIndex = SelectedIndex();
+        if (selectedIndex < 0)
+        {
+            return NoSelection();
+        }
+
         var selected = _slots[selectedIndex];
         return ApplySlotChange(selectedIndex, selected with { MinimumSize = minimumSize });
     }
@@ -324,20 +355,67 @@ public sealed class LayoutDesignerViewModel : ObservableObject
 
     public LayoutDesignerOperationResult AddSlot()
     {
-        var emptyCell = FindFirstEmptyCell();
-        if (emptyCell is null)
+        if (FindFirstEmptyCell() is { } emptyCell)
+        {
+            return AddSlot(new LayoutGridBounds(emptyCell.Column, emptyCell.Row, 1, 1));
+        }
+
+        // A finished layout normally covers the grid, so refusing to add a panel
+        // whenever there is no gap made "add a panel" a dead end: the only way out
+        // was to shrink something by hand first, and there is nothing on screen
+        // that says so. Take half of the largest panel instead.
+        return SplitLargestSlot();
+    }
+
+    /// <summary>
+    /// Halves the largest panel and gives the freed half to a new one, splitting
+    /// along its longer axis so the result stays close to square. A grid of
+    /// single-cell panels has nothing left to divide, which is the one case that
+    /// still has to be refused.
+    /// </summary>
+    private LayoutDesignerOperationResult SplitLargestSlot()
+    {
+        var donor = _slots
+            .Where(slot => slot.Bounds.ColumnSpan > 1 || slot.Bounds.RowSpan > 1)
+            .MaxBy(slot => slot.Bounds.ColumnSpan * slot.Bounds.RowSpan);
+        if (donor is null)
         {
             return Reject(
                 DefinitionValidationCode.OutOfBounds,
-                "The grid has no empty cell. Expand the grid before adding another panel.",
+                "Every panel is already a single cell. Add rows or columns to fit another.",
                 Id.Value);
         }
 
-        return AddSlot(new LayoutGridBounds(
-            emptyCell.Value.Column,
-            emptyCell.Value.Row,
-            1,
-            1));
+        var bounds = donor.Bounds;
+        var splitAcrossColumns = bounds.ColumnSpan >= bounds.RowSpan;
+        var keptSpan = splitAcrossColumns
+            ? bounds.ColumnSpan / 2
+            : bounds.RowSpan / 2;
+
+        var keptBounds = splitAcrossColumns
+            ? new LayoutGridBounds(bounds.Column, bounds.Row, keptSpan, bounds.RowSpan)
+            : new LayoutGridBounds(bounds.Column, bounds.Row, bounds.ColumnSpan, keptSpan);
+        var addedBounds = splitAcrossColumns
+            ? new LayoutGridBounds(
+                bounds.Column + keptSpan,
+                bounds.Row,
+                bounds.ColumnSpan - keptSpan,
+                bounds.RowSpan)
+            : new LayoutGridBounds(
+                bounds.Column,
+                bounds.Row + keptSpan,
+                bounds.ColumnSpan,
+                bounds.RowSpan - keptSpan);
+
+        var id = NextSlotId();
+        var candidate = _slots
+            .Select(slot => slot.Id == donor.Id ? slot with { Bounds = keptBounds } : slot)
+            .Append(new LayoutSlotDefinition(
+                id,
+                addedBounds,
+                new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight)))
+            .ToArray();
+        return ApplyGeometry(candidate, _grid, id);
     }
 
     public LayoutDesignerOperationResult AddSlot(LayoutGridBounds bounds)
@@ -352,11 +430,6 @@ public sealed class LayoutDesignerViewModel : ObservableObject
                 DefaultPanelMinimumHeight));
         List<LayoutSlotDefinition> candidate = [.. _slots, slot];
         var result = ApplyGeometry(candidate, _grid, id);
-        if (result.IsSuccess)
-        {
-            SetPaintMode(false);
-        }
-
         return result;
     }
 
@@ -371,6 +444,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
         }
 
         var selectedIndex = SelectedIndex();
+        if (selectedIndex < 0)
+        {
+            return NoSelection();
+        }
+
         List<LayoutSlotDefinition> candidate = [.. _slots];
         candidate.RemoveAt(selectedIndex);
         var nextSelection = candidate[Math.Min(selectedIndex, candidate.Count - 1)].Id;
@@ -382,23 +460,6 @@ public sealed class LayoutDesignerViewModel : ObservableObject
 
     public LayoutDesignerOperationResult MoveSelectedLater() =>
         ReorderSelected(1);
-
-    public LayoutDesignerOperationResult TogglePaintMode()
-    {
-        if (!_isPaintMode && FindFirstEmptyCell() is null)
-        {
-            return Reject(
-                DefinitionValidationCode.OutOfBounds,
-                "The grid has no empty cell. Expand it before painting another panel.",
-                Id.Value);
-        }
-
-        SetPaintMode(!_isPaintMode);
-        ClearOperationIssue();
-        return LayoutDesignerOperationResult.Applied;
-    }
-
-    public void CancelPaintMode() => SetPaintMode(false);
 
     internal void SetPaintPreviewBounds(LayoutGridBounds? bounds)
     {
@@ -418,8 +479,7 @@ public sealed class LayoutDesignerViewModel : ObservableObject
         _grid = _original.Grid;
         _slots.Clear();
         _slots.AddRange(_original.Slots);
-        _selectedSlotId = _slots[0].Id;
-        SetPaintMode(false);
+        _selectedSlotId = _slots.Count > 0 ? _slots[0].Id : null;
         ClearOperationIssue();
         if (nameChanged)
         {
@@ -461,6 +521,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     private LayoutDesignerOperationResult ReorderSelected(int offset)
     {
         var selectedIndex = SelectedIndex();
+        if (selectedIndex < 0)
+        {
+            return NoSelection();
+        }
+
         var destination = selectedIndex + offset;
         if (destination < 0 || destination >= _slots.Count)
         {
@@ -537,16 +602,19 @@ public sealed class LayoutDesignerViewModel : ObservableObject
         return new($"slot-{suffix}");
     }
 
-    private int SelectedIndex()
-    {
-        var index = _slots.FindIndex(slot => slot.Id == _selectedSlotId);
-        if (index < 0)
-        {
-            throw new InvalidOperationException("A layout designer must always have a selected slot.");
-        }
+    /// <summary>
+    /// The selected panel's position, or -1 when there is none. This used to
+    /// throw, which turned a lost selection into a crash of the whole window
+    /// rather than an operation that declines to run.
+    /// </summary>
+    private int SelectedIndex() =>
+        _slots.FindIndex(slot => slot.Id == _selectedSlotId);
 
-        return index;
-    }
+    private LayoutDesignerOperationResult NoSelection() =>
+        Reject(
+            DefinitionValidationCode.UnknownSlot,
+            "Select a panel first.",
+            _selectedSlotId?.Value);
 
     private LayoutDefinition BuildDefinition() => BuildDefinition(_grid, _slots);
 
@@ -566,7 +634,9 @@ public sealed class LayoutDesignerViewModel : ObservableObject
             .Select((slot, index) => new LayoutDesignerSlotViewModel(
                 index + 1,
                 slot,
-                slot.Id == _selectedSlotId))
+                slot.Id == _selectedSlotId,
+                Columns,
+                Rows))
             .ToArray();
         _validationIssues = LayoutValidator.Validate(BuildDefinition()).Issues;
         _isDirty = IsNew || !MatchesOriginal();
@@ -596,7 +666,9 @@ public sealed class LayoutDesignerViewModel : ObservableObject
             .Select((slot, index) => new LayoutDesignerSlotViewModel(
                 index + 1,
                 slot,
-                slot.Id == _selectedSlotId))
+                slot.Id == _selectedSlotId,
+                Columns,
+                Rows))
             .ToArray();
         OnPropertyChanged(nameof(Slots));
         OnPropertyChanged(nameof(SelectedSlotId));
@@ -615,24 +687,6 @@ public sealed class LayoutDesignerViewModel : ObservableObject
         _lastOperationIssue = null;
         OnPropertyChanged(nameof(LastOperationIssue));
         OnPropertyChanged(nameof(HasOperationError));
-    }
-
-    private void SetPaintMode(bool value)
-    {
-        if (_isPaintMode == value)
-        {
-            return;
-        }
-
-        _isPaintMode = value;
-        if (!value)
-        {
-            SetPaintPreviewBounds(null);
-        }
-
-        OnPropertyChanged(nameof(IsPaintMode));
-        OnPropertyChanged(nameof(PaintModeLabel));
-        OnPropertyChanged(nameof(PaintModeStatus));
     }
 
     private LayoutDesignerOperationResult Reject(DefinitionValidationIssue issue)

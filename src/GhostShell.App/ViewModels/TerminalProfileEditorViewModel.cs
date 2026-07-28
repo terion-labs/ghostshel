@@ -1,3 +1,4 @@
+using Avalonia.Media;
 using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
@@ -5,6 +6,43 @@ namespace GhostShell.App.ViewModels;
 public sealed record TerminalProfileEditorSaveRequest(
     TerminalProfile Profile,
     long ExpectedRevision);
+
+/// <summary>
+/// A palette preset as the settings page shows it: the name, a few colours for
+/// the tile's preview, and the palette itself to apply on selection.
+/// </summary>
+public sealed class TerminalPaletteOption : ObservableObject
+{
+    private bool _isSelected;
+
+    public TerminalPaletteOption(TerminalPalette palette) =>
+        Palette = palette ?? throw new ArgumentNullException(nameof(palette));
+
+    public TerminalPalette Palette { get; }
+
+    public string Name => Palette.Name;
+
+    public string Background => Palette.Background.ToString();
+
+    public string Foreground => Palette.Foreground.ToString();
+
+    public string Green => Palette.AnsiColors[2].ToString();
+
+    public string Blue => Palette.AnsiColors[4].ToString();
+
+    /// <summary>
+    /// Owned by the option so each tile can bind its own checked state; the
+    /// editor sets it whenever the palette changes, including when the colour
+    /// fields are edited back onto or away from a preset.
+    /// </summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        internal set => SetProperty(ref _isSelected, value);
+    }
+
+    public override string ToString() => Name;
+}
 
 public sealed record TerminalKeymapOption(
     KeymapProfileId Id,
@@ -38,6 +76,8 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
     private TerminalBellMode _bellMode;
     private TerminalCompatibilityProfile _compatibility;
     private TerminalKeymapOption _selectedKeymap;
+    private string _paletteName;
+    private IReadOnlyList<RgbColor> _ansiColors;
 
     public TerminalProfileEditorViewModel(
         TerminalProfile profile,
@@ -66,9 +106,195 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
         _shellIntegration = profile.ShellIntegration;
         _bellMode = profile.BellMode;
         _compatibility = profile.Compatibility;
+        _paletteName = profile.Palette.Name;
+        _ansiColors = profile.Palette.AnsiColors;
+        FontFamilies = BuildFontFamilies(profile.FontFamily);
+        PalettePresets = TerminalPalette.Presets
+            .Select(preset => new TerminalPaletteOption(preset))
+            .ToArray();
+        RefreshPaletteSelection();
     }
 
-    public long ExpectedRevision { get; }
+    private const int NormalAnsiColorCount = 8;
+
+    private static readonly string[] AnsiNames =
+        ["Black", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "White"];
+
+    /// <summary>
+    /// Font families installed on this host, with the profile's own family kept
+    /// in the list even when it is not installed, so selecting nothing silently
+    /// is impossible and the stored value stays visible.
+    /// </summary>
+    public IReadOnlyList<string> FontFamilies { get; }
+
+    private static IReadOnlyList<string> BuildFontFamilies(string current)
+    {
+        var installed = InstalledFontFamilies();
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            installed.Add(current);
+        }
+
+        return installed
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// The editor is also constructed where no UI platform is running — tests and
+    /// tooling — and the font manager only exists once one is. Without a host to
+    /// ask, the stored family is the only one that can be offered.
+    /// </summary>
+    private static List<string> InstalledFontFamilies()
+    {
+        try
+        {
+            return FontManager.Current.SystemFonts
+                .Select(family => family.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+        }
+        catch (InvalidOperationException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Colour fields are stored as text, but a picker works in colours. These
+    /// wrap the same values so both editors stay in step.
+    /// </summary>
+    public Color ForegroundColor
+    {
+        get => ToColor(Foreground);
+        set => Foreground = ToHex(value);
+    }
+
+    public Color BackgroundColor
+    {
+        get => ToColor(Background);
+        set => Background = ToHex(value);
+    }
+
+    public Color CursorColor
+    {
+        get => ToColor(Cursor);
+        set => Cursor = ToHex(value);
+    }
+
+    public Color SelectionColor
+    {
+        get => ToColor(Selection);
+        set => Selection = ToHex(value);
+    }
+
+    private static Color ToColor(string value) =>
+        Color.TryParse(value, out var color) ? color : Colors.Transparent;
+
+    /// <summary>
+    /// The palette stores six-digit RGB, so the picker's alpha is dropped rather
+    /// than written into a field that cannot represent it.
+    /// </summary>
+    private static string ToHex(Color color) =>
+        $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    /// <summary>The palettes the settings page offers as one-click presets.</summary>
+    public IReadOnlyList<TerminalPaletteOption> PalettePresets { get; }
+
+    /// <summary>
+    /// The preset whose colours the editor currently holds, or <c>null</c> when
+    /// the colours have been edited away from every preset.
+    /// </summary>
+    public TerminalPaletteOption? SelectedPalettePreset =>
+        TryBuildCurrentPalette(out var current)
+            ? PalettePresets.FirstOrDefault(option => option.Palette.Matches(current))
+            : null;
+
+    public string PaletteName => SelectedPalettePreset?.Name ?? "Custom";
+
+    /// <summary>
+    /// Replaces every colour in the editor, including the sixteen ANSI entries,
+    /// so choosing a preset changes the whole palette rather than only the four
+    /// fields the page happens to show.
+    /// </summary>
+    public void ApplyPalettePreset(TerminalPalette preset)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+        _paletteName = preset.Name;
+        _ansiColors = preset.AnsiColors;
+        Foreground = preset.Foreground.ToString();
+        Background = preset.Background.ToString();
+        Cursor = preset.Cursor.ToString();
+        Selection = preset.SelectionBackground.ToString();
+        RaisePaletteChanged();
+    }
+
+    /// <summary>
+    /// Colour fields are edited as free text. While any of them is unparseable
+    /// the palette has no well-defined value, so no preset is reported as
+    /// selected rather than guessing at the last good one.
+    /// </summary>
+    private bool TryBuildCurrentPalette(out TerminalPalette palette)
+    {
+        palette = _original.Palette;
+        if (!RgbColor.TryParse(Foreground, out var foreground)
+            || !RgbColor.TryParse(Background, out var background)
+            || !RgbColor.TryParse(Cursor, out var cursor)
+            || !RgbColor.TryParse(Selection, out var selection))
+        {
+            return false;
+        }
+
+        palette = new TerminalPalette(
+            _paletteName,
+            foreground,
+            background,
+            cursor,
+            selection,
+            _ansiColors);
+        return true;
+    }
+
+    private void RaisePaletteChanged()
+    {
+        RefreshPaletteSelection();
+        OnPropertyChanged(nameof(ForegroundColor));
+        OnPropertyChanged(nameof(BackgroundColor));
+        OnPropertyChanged(nameof(CursorColor));
+        OnPropertyChanged(nameof(SelectionColor));
+        OnPropertyChanged(nameof(NormalAnsiColors));
+        OnPropertyChanged(nameof(SelectedPalettePreset));
+        OnPropertyChanged(nameof(PaletteName));
+    }
+
+    private void RefreshPaletteSelection()
+    {
+        var hasPalette = TryBuildCurrentPalette(out var current);
+        foreach (var option in PalettePresets)
+        {
+            option.IsSelected = hasPalette && option.Palette.Matches(current);
+        }
+    }
+
+    public IReadOnlyList<AnsiSwatchViewModel> NormalAnsiColors => _ansiColors
+        .Take(NormalAnsiColorCount)
+        .Select((color, index) => new AnsiSwatchViewModel(AnsiNames[index], color.ToString()))
+        .ToArray();
+
+    /// <summary>
+    /// The revision this editor was opened against, and the one it will save
+    /// with. It moves forward on a successful save so the catalog refresh that
+    /// follows recognises the editor as current.
+    ///
+    /// Leaving it stale made the refresh replace the editor after every save, and
+    /// a fresh editor re-raises its own binding changes — which is what the
+    /// appearance page's auto-commit reads as a new edit. The two of them ran a
+    /// commit loop at about eight writes a second.
+    /// </summary>
+    public long ExpectedRevision { get; private set; }
+
+    public void AcceptSavedRevision(long revision) => ExpectedRevision = revision;
 
     public TerminalProfileId ProfileId => _original.Id;
 
@@ -100,13 +326,53 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
 
     public bool CursorBlink { get => _cursorBlink; set => SetProperty(ref _cursorBlink, value); }
 
-    public string Foreground { get => _foreground; set => SetProperty(ref _foreground, value); }
+    public string Foreground
+    {
+        get => _foreground;
+        set
+        {
+            if (SetProperty(ref _foreground, value))
+            {
+                RaisePaletteChanged();
+            }
+        }
+    }
 
-    public string Background { get => _background; set => SetProperty(ref _background, value); }
+    public string Background
+    {
+        get => _background;
+        set
+        {
+            if (SetProperty(ref _background, value))
+            {
+                RaisePaletteChanged();
+            }
+        }
+    }
 
-    public string Cursor { get => _cursor; set => SetProperty(ref _cursor, value); }
+    public string Cursor
+    {
+        get => _cursor;
+        set
+        {
+            if (SetProperty(ref _cursor, value))
+            {
+                RaisePaletteChanged();
+            }
+        }
+    }
 
-    public string Selection { get => _selection; set => SetProperty(ref _selection, value); }
+    public string Selection
+    {
+        get => _selection;
+        set
+        {
+            if (SetProperty(ref _selection, value))
+            {
+                RaisePaletteChanged();
+            }
+        }
+    }
 
     public TerminalClipboardAccess ClipboardRead { get => _clipboardRead; set => SetProperty(ref _clipboardRead, value); }
 
@@ -141,12 +407,12 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
     public TerminalProfileEditorSaveRequest CreateSaveRequest()
     {
         var palette = new TerminalPalette(
-            _original.Palette.Name,
+            _paletteName,
             RgbColor.Parse(Foreground),
             RgbColor.Parse(Background),
             RgbColor.Parse(Cursor),
             RgbColor.Parse(Selection),
-            _original.Palette.AnsiColors);
+            _ansiColors);
         return new TerminalProfileEditorSaveRequest(
             new TerminalProfile(
                 _original.Id,

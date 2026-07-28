@@ -15,9 +15,7 @@ public sealed partial class NewItemLauncherView : UserControl
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;
 
-    public event EventHandler<RoutedEventArgs>? CreateScreenRequested;
 
-    public event EventHandler<RoutedEventArgs>? CreateWorkspaceRequested;
 
     public event EventHandler<RoutedEventArgs>? NewBrowserRequested;
 
@@ -42,29 +40,13 @@ public sealed partial class NewItemLauncherView : UserControl
     internal void FocusInitialAction() =>
         NewTerminalButton.Focus(NavigationMethod.Tab);
 
-    internal string WorkspaceName =>
-        NewWorkspaceName.Text ?? string.Empty;
-
-    internal void ClearWorkspaceName() =>
-        NewWorkspaceName.Text = string.Empty;
-
-    internal string ScreenName =>
-        NewScreenName.Text ?? string.Empty;
-
-    internal void ClearScreenName() =>
-        NewScreenName.Text = string.Empty;
-
     private void OnAddConnectionClick(object? sender, RoutedEventArgs e) =>
         AddConnectionRequested?.Invoke(sender, e);
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(sender, e);
 
-    private void OnCreateScreenClick(object? sender, RoutedEventArgs e) =>
-        CreateScreenRequested?.Invoke(sender, e);
 
-    private void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e) =>
-        CreateWorkspaceRequested?.Invoke(sender, e);
 
     private void OnNewBrowserClick(object? sender, RoutedEventArgs e) =>
         NewBrowserRequested?.Invoke(sender, e);

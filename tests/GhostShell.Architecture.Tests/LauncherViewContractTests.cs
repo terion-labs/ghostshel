@@ -248,25 +248,17 @@ public sealed class LauncherViewContractTests
             .Where(element => element.Name.LocalName == "CountPill")
             .ToArray();
 
-        Assert.Equal(3, countPills.Length);
-        Assert.Contains(
-            countPills,
-            element => string.Equals(
-                AttributeValue(element, "Value"),
-                "{Binding Connections.Count}",
-                StringComparison.Ordinal));
-        Assert.Contains(
-            countPills,
-            element => string.Equals(
-                AttributeValue(element, "Value"),
-                "{Binding Screens.Count}",
-                StringComparison.Ordinal));
-        Assert.Contains(
-            countPills,
-            element => string.Equals(
-                AttributeValue(element, "Value"),
-                "{Binding HistoryResultCount}",
-                StringComparison.Ordinal));
+        // The same count appears on Home and again on its dedicated page, so the
+        // assertion is on which counts exist rather than how many pills render
+        // them — a new page reusing a count is fine, a new kind of count is the
+        // thing worth catching.
+        Assert.Equal(
+            new[] { "{Binding Connections.Count}", "{Binding HistoryResultCount}", "{Binding Screens.Count}" },
+            countPills
+                .Select(element => AttributeValue(element, "Value") ?? string.Empty)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
 
         var countPill = XDocument.Load(Path.Combine(
             ApplicationViews.RepositoryRoot,

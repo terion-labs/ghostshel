@@ -44,8 +44,8 @@ public sealed class TransientOverlayViewContractTests
                 ["ShrinkRightRequested"] = "OnLayoutShrinkRightClick",
                 ["ShrinkTopRequested"] = "OnLayoutShrinkTopClick",
                 ["SlotSelectedRequested"] = "OnLayoutSlotClick",
-                ["TogglePaintModeRequested"] =
-                    "OnLayoutTogglePaintModeClick",
+                ["PaintPanelRequested"] =
+                    "OnLayoutPaintPanelClick",
             };
 
     private static readonly IReadOnlyDictionary<string, string>
@@ -68,8 +68,6 @@ public sealed class TransientOverlayViewContractTests
             {
                 ["AddConnectionRequested"] = "OnAddConnectionClick",
                 ["CloseRequested"] = "OnCloseOverlayClick",
-                ["CreateScreenRequested"] = "OnCreateScreenClick",
-                ["CreateWorkspaceRequested"] = "OnCreateWorkspaceClick",
                 ["NewBrowserRequested"] = "OnNewBrowserClick",
                 ["NewFileViewerRequested"] = "OnNewFileViewerClick",
                 ["NewLocalTerminalRequested"] = "OnNewLocalTerminalClick",
@@ -321,12 +319,15 @@ public sealed class TransientOverlayViewContractTests
         Assert.Equal("Stretch", AttributeValue(card, "HorizontalAlignment"));
         Assert.Equal("Stretch", AttributeValue(card, "VerticalAlignment"));
 
+        // The reference frame heads this overlay "Start something new" rather than
+        // naming the thing being created; Home's own button still says whether it
+        // opens a tab or a session.
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "TextBlock"
                 && string.Equals(
                     AttributeValue(element, "Text"),
-                    "{Binding NewItemLauncherTitle}",
+                    "Start something new",
                     StringComparison.Ordinal));
 
         var choices = root.Descendants()
@@ -369,21 +370,11 @@ public sealed class TransientOverlayViewContractTests
                         StringComparison.Ordinal));
         }
 
-        var workspaceName = FindNamedElement(root, "NewWorkspaceName");
-        Assert.Equal(
-            "Workspace name",
-            AttributeValue(workspaceName, "PlaceholderText"));
-        Assert.Equal(
-            "New workspace name",
-            AttributeValue(workspaceName, "AutomationProperties.Name"));
-
-        var screenName = FindNamedElement(root, "NewScreenName");
-        Assert.Equal(
-            "Saved screen name",
-            AttributeValue(screenName, "PlaceholderText"));
-        Assert.Equal(
-            "New saved screen name",
-            AttributeValue(screenName, "AutomationProperties.Name"));
+        // No inline create form: the overlay opens things, and creating a screen
+        // or workspace belongs to the page that owns that list.
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBox");
 
         var workspaceList = Assert.Single(
             root.Descendants(),
@@ -529,30 +520,6 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains(
             "NewTerminalButton.Focus(NavigationMethod.Tab);",
             newItemLauncherCode);
-        Assert.Contains(
-            "internal string WorkspaceName =>",
-            newItemLauncherCode);
-        Assert.Contains(
-            "NewWorkspaceName.Text ?? string.Empty;",
-            newItemLauncherCode);
-        Assert.Contains(
-            "internal void ClearWorkspaceName()",
-            newItemLauncherCode);
-        Assert.Contains(
-            "NewWorkspaceName.Text = string.Empty;",
-            newItemLauncherCode);
-        Assert.Contains(
-            "internal string ScreenName =>",
-            newItemLauncherCode);
-        Assert.Contains(
-            "NewScreenName.Text ?? string.Empty;",
-            newItemLauncherCode);
-        Assert.Contains(
-            "internal void ClearScreenName()",
-            newItemLauncherCode);
-        Assert.Contains(
-            "NewScreenName.Text = string.Empty;",
-            newItemLauncherCode);
 
         var newPanelChooserCode = ApplicationViews
             .FindUniqueCodeBehindSourceContaining(
@@ -599,25 +566,13 @@ public sealed class TransientOverlayViewContractTests
             "LayoutDesignerOverlay.FocusGrid();",
             mainWindowCode);
         Assert.Contains(
-            "LayoutDesignerOverlay.CancelPointerGesture();",
+            "LayoutDesignerOverlay.CancelPointerGesture()",
             mainWindowCode);
         Assert.Contains(
             "LayoutDesignerOverlay.FocusSlot(selected)",
             mainWindowCode);
         Assert.Contains(
             "NewItemLauncherOverlay.FocusInitialAction();",
-            mainWindowCode);
-        Assert.Contains(
-            "NewItemLauncherOverlay.WorkspaceName,",
-            mainWindowCode);
-        Assert.Contains(
-            "NewItemLauncherOverlay.ClearWorkspaceName();",
-            mainWindowCode);
-        Assert.Contains(
-            "NewItemLauncherOverlay.ScreenName);",
-            mainWindowCode);
-        Assert.Contains(
-            "NewItemLauncherOverlay.ClearScreenName();",
             mainWindowCode);
         Assert.Contains(
             "NewPanelChooserOverlay.FocusInitialAction();",
@@ -632,7 +587,6 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains("new DiscardChangesDialog()", mainWindowCode);
         Assert.Contains("ExecuteLauncherSearchTargetAsync(", mainWindowCode);
         Assert.Contains("ViewModel.AddLocalTerminalPanelAsync(", mainWindowCode);
-        Assert.Contains("ViewModel.CreateWorkspaceAsync(", mainWindowCode);
         Assert.Contains("new SavedScreenEditorDialog(", mainWindowCode);
         Assert.Contains(
             "ViewModel.LayoutDesignerEditor?.RequestCancel()",
@@ -641,34 +595,31 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains("ViewModel.DismissLayoutDesigner();", mainWindowCode);
         Assert.Contains("ViewModel.BeginEditLayout(layout.Id);", mainWindowCode);
         Assert.Contains("editor.ResizeGrid(", mainWindowCode);
-        Assert.Contains("editor!.CancelPaintMode();", mainWindowCode);
         Assert.Contains("FocusCurrentRoute();", mainWindowCode);
     }
 
+    /// <summary>
+    /// Creating a screen closes whatever opened the editor and hands focus back to
+    /// the route, rather than leaving the shell focused on a dismissed overlay.
+    /// </summary>
     [Fact]
     public void Main_window_restores_route_focus_after_successful_new_item_creation()
     {
-        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
-
-        var createWorkspace = ExtractMethod(
-            mainWindowCode,
-            "private async void OnCreateWorkspaceClick");
-        AssertOccursInOrder(
-            createWorkspace,
-            "NewItemLauncherOverlay.ClearWorkspaceName();",
-            "ViewModel.CloseOverlay();",
-            "FocusCurrentRoute();");
-
         var createScreen = ExtractMethod(
-            mainWindowCode,
+            ApplicationViews.FindPartialClassSources("MainWindow"),
             "private async void OnCreateScreenClick");
+
         AssertOccursInOrder(
             createScreen,
-            "NewItemLauncherOverlay.ClearScreenName();",
             "ViewModel.CloseOverlay();",
             "FocusCurrentRoute();");
     }
 
+    /// <summary>
+    /// Escape abandons a drag before it closes the overlay, or a mis-drag would
+    /// take the whole designer down with it. There is no painting mode left to
+    /// cancel between the two.
+    /// </summary>
     [Fact]
     public void Main_window_preserves_layout_designer_escape_ordering()
     {
@@ -678,21 +629,14 @@ public sealed class TransientOverlayViewContractTests
             "private async void OnWindowKeyDown");
 
         var gestureCancellation = keyDownCode.IndexOf(
-            "LayoutDesignerOverlay.CancelPointerGesture();",
-            StringComparison.Ordinal);
-        var paintModeCancellation = keyDownCode.IndexOf(
-            "editor!.CancelPaintMode();",
+            "LayoutDesignerOverlay.CancelPointerGesture()",
             StringComparison.Ordinal);
         var overlayClose = keyDownCode.IndexOf(
             "if (e.Key == Key.Escape && ViewModel.HasOverlay)",
             StringComparison.Ordinal);
 
         Assert.True(gestureCancellation >= 0);
-        Assert.True(paintModeCancellation > gestureCancellation);
-        Assert.True(overlayClose > paintModeCancellation);
-        Assert.Contains(
-            "if (cancelledGesture || cancelledPaintMode)",
-            keyDownCode);
+        Assert.True(overlayClose > gestureCancellation);
     }
 
     private static string ExtractMethod(string source, string signature)
@@ -785,10 +729,16 @@ public sealed class TransientOverlayViewContractTests
 
     private static XElement AssertOverlayCard(XElement root)
     {
+        // The overlay card is the shell's one card control, configured to float.
+        // It used to be a Border carrying an "OverlayCard" style class; the class
+        // is gone because what a card looks like is no longer decided per view.
         var card = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "Border"
-                && HasClasses(element, "OverlayCard"));
+            element => element.Name.LocalName == "SurfaceCard"
+                && string.Equals(
+                    AttributeValue(element, "Elevation"),
+                    "Overlay",
+                    StringComparison.Ordinal));
         Assert.Equal(
             "Cycle",
             AttributeValue(card, "KeyboardNavigation.TabNavigation"));

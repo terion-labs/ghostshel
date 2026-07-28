@@ -176,13 +176,24 @@ internal sealed record EffectiveAppearanceResources(
     double ControlMinHeight,
     CornerRadius ControlCornerRadius,
     Thickness ControlPadding,
+    Thickness ButtonPadding,
     CornerRadius CardCornerRadius,
+    CornerRadius PillCornerRadius,
+    CornerRadius InnerCornerRadius,
+    ShellSpacingScale Spacing,
     string AppearanceStatus,
     string AccentStatus,
     bool HighContrast,
     bool MotionEnabled,
     bool AdvancedMaterialsEnabled)
 {
+    /// <summary>
+    /// How much of the blurred backdrop the window is allowed to leave visible at
+    /// full blur strength. Blur is a backdrop effect: it is only ever visible
+    /// where the window does not paint over it, so the strength has to act on the
+    /// window's own fill. The floor keeps the interface legible instead of
+    /// letting text sit directly on the desktop.
+    /// </summary>
     internal double ScaleFontSize(double baseFontSize)
     {
         if (!double.IsFinite(baseFontSize) || baseFontSize <= 0)
@@ -228,12 +239,33 @@ internal static class EffectiveAppearanceResourceMapper
             background,
             theme.HighContrast ? 4.5 : 3.0,
             isLight ? Colors.Black : Colors.White);
-        var accentForeground = ContrastRatio(accent, Colors.Black)
+        // What sits on a filled accent control.
+        //
+        // Picking whichever of black and white has more contrast is the accessible
+        // answer and gives near-black on the bronze accent — which is what the
+        // reference frames draw. On a dark interface it reads as a warning label
+        // rather than as the primary action, so dark themes take white and light
+        // themes keep the measured choice.
+        //
+        // White on the default accent is about 2.5:1, below the 4.5:1 that normal
+        // text is meant to clear. High contrast is the one place that is not
+        // acceptable, so it keeps the measured choice whatever the theme.
+        var measuredAccentForeground = ContrastRatio(accent, Colors.Black)
             >= ContrastRatio(accent, Colors.White)
             ? Colors.Black
             : Colors.White;
+        var accentForeground = !isLight && !theme.HighContrast
+            ? Colors.White
+            : measuredAccentForeground;
         var accentSoft = Blend(accent, background, theme.HighContrast ? 0.24 : 0.18);
         var metrics = PlatformMetrics.For(theme.PlatformProfile);
+        var densityScale = DensityScale(theme.Density);
+        // A stored radius override replaces the profile radius for controls and
+        // keeps cards proportionally rounder, as the reference preview shows.
+        var controlRadius = theme.CornerRadiusOverride ?? metrics.ControlCornerRadius;
+        var cardRadius = theme.CornerRadiusOverride is { } requested
+            ? requested + 2
+            : metrics.CardCornerRadius;
         var source = theme.AccentSource switch
         {
             AccentSource.Custom => "custom accent",
@@ -272,15 +304,24 @@ internal static class EffectiveAppearanceResourceMapper
             Parse(isLight ? "#FFF0D6" : "#32241A"),
             Parse(isLight ? "#B46B20" : "#75502F"),
             Blend(accent, border, 0.55),
-            new FontFamily(metrics.FontFamily),
+            ResolveFontFamily(metrics),
             12 * theme.TextScale,
             theme.TextScale,
-            metrics.ControlMinHeight * theme.TextScale,
-            new CornerRadius(metrics.ControlCornerRadius),
+            metrics.ControlMinHeight * theme.TextScale * densityScale,
+            new CornerRadius(controlRadius),
             new Thickness(
-                metrics.HorizontalPadding * theme.TextScale,
-                metrics.VerticalPadding * theme.TextScale),
-            new CornerRadius(metrics.CardCornerRadius),
+                metrics.HorizontalPadding * theme.TextScale * densityScale,
+                metrics.VerticalPadding * theme.TextScale * densityScale),
+            new Thickness(
+                metrics.ButtonHorizontalPadding * theme.TextScale * densityScale,
+                metrics.ButtonVerticalPadding * theme.TextScale * densityScale),
+            new CornerRadius(cardRadius),
+            // A pill is fully round whatever the radius setting says; a shape
+            // nested inside a card is rounder than nothing and tighter than its
+            // parent, so it never reads as a second card.
+            new CornerRadius(999),
+            new CornerRadius(Math.Max(2, controlRadius - 2)),
+            ShellSpacingScale.From(metrics.SpaceUnit, theme.TextScale * densityScale),
             $"Effective: {theme.PlatformProfile} · {(isLight ? "Light" : "Dark")}" +
             (theme.HighContrast ? " · High contrast" : string.Empty),
             $"Accent: {source}" +
@@ -289,6 +330,18 @@ internal static class EffectiveAppearanceResourceMapper
             theme.MotionEnabled,
             theme.AdvancedMaterialsEnabled);
     }
+
+    /// <summary>
+    /// Density scales the padding and minimum height the platform profile asks
+    /// for, so a denser setting stays proportional to each host's own metrics
+    /// instead of replacing them with fixed numbers.
+    /// </summary>
+    private static double DensityScale(InterfaceDensity density) => density switch
+    {
+        InterfaceDensity.Compact => 0.78,
+        InterfaceDensity.Comfortable => 1.22,
+        _ => 1,
+    };
 
     internal static double ContrastRatio(Color first, Color second)
     {
@@ -360,58 +413,104 @@ internal static class EffectiveAppearanceResourceMapper
         color.Green,
         color.Blue);
 
+    /// <summary>
+    /// The interface typeface for a platform profile.
+    ///
+    /// A host-native profile takes the host's own UI font rather than naming one.
+    /// Naming it did not work: "SF Pro Text" is not a family macOS resolves by
+    /// name, so the stack fell through to the bundled Inter and the application
+    /// looked subtly foreign on every platform it claimed to match.
+    /// </summary>
+    private static FontFamily ResolveFontFamily(PlatformMetrics metrics) =>
+        metrics.UsesSystemFont
+            ? FontFamily.Default
+            : new FontFamily(metrics.FontFamily);
+
     private sealed record PlatformMetrics(
         string FontFamily,
+        bool UsesSystemFont,
         double ControlMinHeight,
         double ControlCornerRadius,
         double HorizontalPadding,
         double VerticalPadding,
-        double CardCornerRadius)
+        double CardCornerRadius,
+        double SpaceUnit,
+        double ButtonHorizontalPadding,
+        double ButtonVerticalPadding)
     {
         public static PlatformMetrics For(PlatformProfile profile) => profile switch
         {
+            // The trailing number on each profile is the desktop's own grid step,
+            // which the whole spacing scale is derived from: Aqua and Fluent lay
+            // out on 8, Adwaita and Breeze on 6.
             PlatformProfile.MacOsClassic => new(
                 "SF Pro Text, Inter, sans-serif",
+                UsesSystemFont: true,
                 28,
                 7,
                 10,
                 6,
+                10,
+                8,
+                16,
                 10),
             PlatformProfile.MacOsLiquidGlass => new(
                 "SF Pro Text, Inter, sans-serif",
+                UsesSystemFont: true,
                 30,
                 10,
                 11,
                 6,
-                13),
+                13,
+                8,
+                16,
+                10),
             PlatformProfile.Windows11 => new(
                 "Segoe UI Variable, Segoe UI, Inter, sans-serif",
+                UsesSystemFont: true,
                 32,
                 6,
                 11,
                 6,
-                8),
+                8,
+                8,
+                16,
+                9),
             PlatformProfile.Gnome => new(
                 "Cantarell, Inter, sans-serif",
+                UsesSystemFont: true,
                 34,
                 9,
                 12,
                 7,
-                12),
+                12,
+                6,
+                16,
+                10),
             PlatformProfile.Kde => new(
                 "Noto Sans, Inter, sans-serif",
+                UsesSystemFont: true,
                 30,
                 4,
                 10,
                 6,
-                6),
+                6,
+                6,
+                14,
+                8),
+            // GhostSHELL's own profile is deliberately not the host's: it ships a
+            // known typeface so the product looks the same everywhere.
             _ => new(
                 "Inter, Segoe UI, sans-serif",
+                UsesSystemFont: false,
                 30,
                 7,
                 10,
                 6,
-                9),
+                9,
+                8,
+                16,
+                10),
         };
     }
 }

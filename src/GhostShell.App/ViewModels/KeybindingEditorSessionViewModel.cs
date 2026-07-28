@@ -27,7 +27,13 @@ public sealed record KeybindingEditorRowItemViewModel(
 
     public string Category => Row.Category;
 
-    public string Shortcut => Row.Shortcut;
+    /// <summary>
+    /// The stored form shouts key names so strokes compare exactly; the table
+    /// shows the keyboard's own symbols and casing instead.
+    /// </summary>
+    public string Shortcut => Row.Sequence is null
+        ? Row.Shortcut
+        : KeySequenceDisplay.Format(Row.Sequence);
 
     public string Contexts => Row.Contexts.ToString();
 
@@ -128,7 +134,9 @@ public sealed class KeybindingEditorSessionViewModel : ObservableObject, IDispos
 
     public bool CanEditPrefix => !IsReadOnly && Layer == KeymapLayer.Application;
 
-    public string PrefixShortcut => _editor.Prefix?.Stroke.ToString() ?? "No prefix";
+    public string PrefixShortcut => _editor.Prefix is { } prefix
+        ? KeySequenceDisplay.Format(prefix.Stroke)
+        : "No prefix";
 
     public double PrefixTimeoutMilliseconds => _editor.Prefix?.Timeout.TotalMilliseconds ?? 750;
 

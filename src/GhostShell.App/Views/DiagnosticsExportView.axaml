@@ -2,23 +2,22 @@
     x:Class="GhostShell.App.Views.DiagnosticsExportView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     MinWidth="560">
-  <StackPanel Spacing="14">
-    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <StackPanel Spacing="3">
+  <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="Diagnostics bundle" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Create a bounded support archive after mandatory safety review." TextWrapping="Wrap" />
       </StackPanel>
-      <Border Grid.Column="1" VerticalAlignment="Center" Classes="StatusPill" Classes.Warning="{Binding IsWarning}" IsVisible="{Binding HasStatus}">
-        <TextBlock Text="{Binding StatusLabel}" />
-      </Border>
+      <controls:StatusChip Grid.Column="1" VerticalAlignment="Center" Classes.Warning="{Binding IsWarning}" IsVisible="{Binding HasStatus}" Content="{Binding StatusLabel}" />
     </Grid>
 
-    <Border Classes="SettingsCard">
-      <StackPanel Margin="16" Spacing="12">
+    <controls:SurfaceCard Padding="0">
+      <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
         <TextBlock Classes="SectionHeading" Text="CONTENT AND REDACTION" />
-        <StackPanel Spacing="4">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock FontWeight="SemiBold" Text="Diagnostic detail" />
           <ComboBox
               ItemsSource="{Binding RedactionOptions}"
@@ -32,18 +31,18 @@
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedRedactionDescription}" TextWrapping="Wrap" />
         </StackPanel>
 
-        <Border Classes="NoticeCard">
-          <Grid Margin="12" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+        <controls:SurfaceCard Tone="Notice" Padding="0">
+          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" />
-            <StackPanel Grid.Column="1" Spacing="3">
+            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Secret-safe by construction" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding RedactionAvailabilityMessage}" TextWrapping="Wrap" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Terminal contents, commands, credentials, environment values, and secret material are never eligible artifacts." TextWrapping="Wrap" />
             </StackPanel>
           </Grid>
-        </Border>
+        </controls:SurfaceCard>
 
-        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
+        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <Button
               MinWidth="138"
               Classes="PrimaryButton"
@@ -68,10 +67,10 @@
               AutomationProperties.Name="Diagnostics export progress" />
         </Grid>
       </StackPanel>
-    </Border>
+    </controls:SurfaceCard>
 
-    <Border Classes="NoticeCard" IsVisible="{Binding HasStatus}">
-      <Grid Margin="13" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+    <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasStatus}">
+      <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <icons:SymbolIcon Symbol="Info" FontSize="16" Foreground="{DynamicResource ShellAccentBrush}" />
         <TextBlock
             Grid.Column="1"
@@ -81,11 +80,11 @@
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="{Binding StatusAutomationName}" />
       </Grid>
-    </Border>
+    </controls:SurfaceCard>
 
-    <Border Classes="SettingsCard" IsVisible="{Binding HasArtifact}">
-      <Grid Margin="16" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-        <StackPanel Spacing="3">
+    <controls:SurfaceCard Padding="0" IsVisible="{Binding HasArtifact}">
+      <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="SectionHeading" Text="LAST EXPORTED BUNDLE" />
           <TextBlock FontWeight="SemiBold" Text="{Binding ArtifactDisplayName}" TextWrapping="Wrap" />
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ReceiptSummary}" />
@@ -110,6 +109,6 @@
             IsEnabled="{Binding CanRevealArtifact}"
             AutomationProperties.Name="Reveal last diagnostics bundle in file manager" />
       </Grid>
-    </Border>
+    </controls:SurfaceCard>
   </StackPanel>
 </UserControl>

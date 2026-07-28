@@ -2,21 +2,22 @@
     x:Class="GhostShell.App.Views.DiscardChangesDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     Title="Discard changes?"
     Width="470"
     SizeToContent="Height"
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid Margin="24" RowDefinitions="Auto,Auto" RowSpacing="18">
-    <StackPanel Spacing="6">
+  <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
       <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="{Binding Heading}" />
       <TextBlock
           Classes="Muted"
           Text="{Binding Detail}"
           TextWrapping="Wrap" />
     </StackPanel>
-    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <Button
           MinWidth="96"
           Click="OnKeepEditingClick"

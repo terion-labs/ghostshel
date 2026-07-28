@@ -21,9 +21,41 @@ public enum PlatformProfile
     Custom,
 }
 
+/// <summary>Interface density, which scales control padding and heights.</summary>
+public enum InterfaceDensity
+{
+    Compact,
+    Cozy,
+    Comfortable,
+}
+
+/// <summary>Which edge the tab strip sits on.</summary>
+public enum TabStripPlacement
+{
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+/// <summary>Which edge the workspaces rail docks to.</summary>
+public enum WorkspacePanelPlacement
+{
+    Left,
+    Right,
+}
+
 public sealed record ThemePreference : IDurableDefinition
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>
+    /// Version 2 adds the window-chrome settings. Every one of them is optional
+    /// with a defined default, so a stored version 1 document still deserializes.
+    /// </summary>
+    public const int CurrentSchemaVersion = 2;
+
+    public const double MinimumCornerRadius = 0;
+
+    public const double MaximumCornerRadius = 20;
 
     public static RgbColor BronzeFallback { get; } = RgbColor.Parse("#B8793A");
 
@@ -40,7 +72,13 @@ public sealed record ThemePreference : IDurableDefinition
         AppearanceMode appearance,
         PlatformProfile platformProfile,
         AccentPreference accent,
-        double? textScaleOverride = null)
+        double? textScaleOverride = null,
+        double? cornerRadiusOverride = null,
+        InterfaceDensity density = InterfaceDensity.Cozy,
+        bool showTabBar = true,
+        bool showWorkspacesPanel = true,
+        TabStripPlacement tabStripPlacement = TabStripPlacement.Top,
+        WorkspacePanelPlacement workspacePanelPlacement = WorkspacePanelPlacement.Left)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(accent);
@@ -53,12 +91,50 @@ public sealed record ThemePreference : IDurableDefinition
                 "Application text scale must be between 0.5 and 4.");
         }
 
+        if (cornerRadiusOverride is { } radius
+            && (!double.IsFinite(radius)
+                || radius < MinimumCornerRadius
+                || radius > MaximumCornerRadius))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(cornerRadiusOverride),
+                cornerRadiusOverride,
+                $"Corner radius must be between {MinimumCornerRadius} and {MaximumCornerRadius}.");
+        }
+
+        if (!Enum.IsDefined(density))
+        {
+            throw new ArgumentOutOfRangeException(nameof(density), density, "Unknown density.");
+        }
+
+        if (!Enum.IsDefined(tabStripPlacement))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(tabStripPlacement),
+                tabStripPlacement,
+                "Unknown tab placement.");
+        }
+
+        if (!Enum.IsDefined(workspacePanelPlacement))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(workspacePanelPlacement),
+                workspacePanelPlacement,
+                "Unknown workspace-panel placement.");
+        }
+
         Id = id;
         Name = name;
         Appearance = appearance;
         PlatformProfile = platformProfile;
         Accent = accent;
         TextScaleOverride = textScaleOverride;
+        CornerRadiusOverride = cornerRadiusOverride;
+        Density = density;
+        ShowTabBar = showTabBar;
+        ShowWorkspacesPanel = showWorkspacesPanel;
+        TabStripPlacement = tabStripPlacement;
+        WorkspacePanelPlacement = workspacePanelPlacement;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Theme;
@@ -76,6 +152,19 @@ public sealed record ThemePreference : IDurableDefinition
     public AccentPreference Accent { get; }
 
     public double? TextScaleOverride { get; }
+
+    /// <summary>Null follows the platform profile's own radius.</summary>
+    public double? CornerRadiusOverride { get; }
+
+    public InterfaceDensity Density { get; }
+
+    public bool ShowTabBar { get; }
+
+    public bool ShowWorkspacesPanel { get; }
+
+    public TabStripPlacement TabStripPlacement { get; }
+
+    public WorkspacePanelPlacement WorkspacePanelPlacement { get; }
 
     [JsonIgnore]
     public DefinitionKey Key => new(Kind, Id.Value);
@@ -98,6 +187,9 @@ public sealed record ThemePreference : IDurableDefinition
             && !host.HighContrast
             && !host.ReducedTransparency;
 
+        // Transparency effects follow the host's own reduced-transparency and
+        // high-contrast preferences, so an accessibility setting is never
+        // overridden by a stored profile.
         return new EffectiveTheme(
             appearance,
             platformProfile,
@@ -106,7 +198,13 @@ public sealed record ThemePreference : IDurableDefinition
             host.HighContrast,
             !host.ReducedMotion,
             materialsEnabled,
-            TextScaleOverride ?? host.TextScale);
+            TextScaleOverride ?? host.TextScale,
+            CornerRadiusOverride,
+            Density,
+            ShowTabBar,
+            ShowWorkspacesPanel,
+            TabStripPlacement,
+            WorkspacePanelPlacement);
     }
 
     private PlatformProfile ResolvePlatformProfile(HostAppearance host)

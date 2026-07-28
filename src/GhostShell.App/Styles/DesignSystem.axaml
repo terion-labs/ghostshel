@@ -1,0 +1,380 @@
+<Styles
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia">
+  <!--
+    The shell's design system: the components every view is built from, defined
+    once, in terms of the published tokens and nothing else.
+
+    Nothing in here may contain a literal colour, size, gap, or radius. Every value
+    comes from a Shell* resource, because those are what the appearance settings
+    and the platform profile actually move. A literal here is a setting that
+    silently stops working, and that is exactly how the interface drifted apart:
+    a hundred distinct margins and eight kinds of card, none of which the density
+    or corner-radius settings could reach.
+  -->
+
+  <Styles.Resources>
+    <ControlTheme x:Key="{x:Type controls:SurfaceCard}" TargetType="controls:SurfaceCard">
+      <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+      <Setter Property="Padding" Value="{DynamicResource ShellCardPadding}" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <!--
+            Two borders, because a border that clips itself eats its own outline.
+            Putting ClipToBounds on the element that draws the stroke clips the
+            stroke too, and at a rounded corner that removes its outer half — the
+            arc comes out as a dark diagonal notch between two straight edges.
+            The outer border draws; the inner one clips the content.
+          -->
+          <Border
+              Name="PART_Surface"
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              CornerRadius="{TemplateBinding CornerRadius}">
+            <Border
+                Name="PART_Clip"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                ClipToBounds="{TemplateBinding ClipToBounds}">
+              <ContentPresenter
+                  Name="PART_ContentPresenter"
+                  Margin="{TemplateBinding Padding}"
+                  Content="{TemplateBinding Content}"
+                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </Border>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+
+      <!--
+        One selector per tone. A view names what the card is; which fill and which
+        border that turns into is decided here, so a host profile can answer
+        differently without any view changing.
+      -->
+      <Style Selector="^:tone-raised">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+      </Style>
+      <Style Selector="^:tone-sunken">
+        <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+      </Style>
+      <Style Selector="^:tone-notice">
+        <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellNoticeBorderBrush}" />
+      </Style>
+      <Style Selector="^:tone-danger">
+        <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
+      </Style>
+      <Style Selector="^:tone-warning">
+        <Setter Property="Background" Value="{DynamicResource ShellWarningSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellWarningBorderBrush}" />
+      </Style>
+      <Style Selector="^:tone-success">
+        <Setter Property="Background" Value="{DynamicResource ShellSuccessSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellSuccessBorderBrush}" />
+      </Style>
+
+      <Style Selector="^:overlay">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+      </Style>
+      <!-- The shadow belongs to the shape, so it is set on the template's border. -->
+      <Style Selector="^:overlay /template/ Border#PART_Surface">
+        <Setter Property="BoxShadow" Value="{DynamicResource ShellOverlayShadow}" />
+      </Style>
+
+      <!--
+        A card that is the active one — the focused runtime panel, the selected
+        layout slot — outlines itself in the accent. Views state it by binding
+        Classes.active, which is why it is a class here rather than a property.
+      -->
+      <Style Selector="^.active">
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+      </Style>
+
+      <Style Selector="^:focus-visible">
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+        <Setter Property="BorderThickness" Value="2" />
+      </Style>
+
+      <Style Selector="^:interactive:pointerover /template/ Border#PART_Surface">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+      </Style>
+      <Style Selector="^:interactive:focus-within /template/ Border#PART_Surface">
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="{x:Type controls:StatusChip}" TargetType="controls:StatusChip">
+      <Setter Property="Padding" Value="{DynamicResource ShellPillPadding}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
+      <Setter Property="FontSize" Value="{DynamicResource ShellFontSize8}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Background" Value="{DynamicResource ShellSuccessSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ShellSuccessBorderBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ShellSuccessBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border
+              Name="PART_Surface"
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              CornerRadius="{TemplateBinding CornerRadius}">
+            <ContentPresenter
+                Margin="{TemplateBinding Padding}"
+                Content="{TemplateBinding Content}"
+                ContentTemplate="{TemplateBinding ContentTemplate}"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:outlined">
+        <Setter Property="BorderThickness" Value="1" />
+      </Style>
+      <!--
+        Tone as a class as well as a property, because several chips take their
+        state from a binding — Classes.Warning="{Binding IsWarning}" — and a
+        property cannot be switched on and off that way.
+      -->
+      <Style Selector="^.Warning">
+        <Setter Property="Background" Value="{DynamicResource ShellWarningSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellWarningBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellWarningBrush}" />
+      </Style>
+      <Style Selector="^.Danger">
+        <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
+      </Style>
+
+      <Style Selector="^:tone-default">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+      </Style>
+      <Style Selector="^:tone-raised, ^:tone-sunken">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+      </Style>
+      <Style Selector="^:tone-notice">
+        <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellNoticeBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+      </Style>
+      <Style Selector="^:tone-danger">
+        <Setter Property="Background" Value="{DynamicResource ShellDangerSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellDangerBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
+      </Style>
+      <Style Selector="^:tone-warning">
+        <Setter Property="Background" Value="{DynamicResource ShellWarningSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellWarningBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellWarningBrush}" />
+      </Style>
+
+      <!-- Shape is stated after tone, so a label's fill is not undone by it. -->
+      <Style Selector="^:rounded">
+        <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type controls:EmptyStatePanel}" TargetType="controls:EmptyStatePanel">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Padding" Value="{DynamicResource ShellInsetXl}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <!--
+            A Grid, not a StackPanel. A StackPanel gives its children the whole
+            cross axis and ignores a vertical centre, which is why every hand-built
+            empty state sat in the top third of the space it was given.
+          -->
+          <Grid Margin="{TemplateBinding Padding}">
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="{DynamicResource ShellSpaceMd}">
+              <Border
+                  Name="PART_GlyphTile"
+                  Width="54"
+                  Height="54"
+                  HorizontalAlignment="Center"
+                  Background="{DynamicResource ShellAccentSoftBrush}"
+                  CornerRadius="{DynamicResource ShellCardCornerRadius}"
+                  IsVisible="{TemplateBinding ShowsGlyph}">
+                <icons:SymbolIcon
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Symbol="{TemplateBinding Glyph}"
+                    FontSize="27"
+                    Foreground="{DynamicResource ShellAccentBrush}" />
+              </Border>
+              <TextBlock
+                  HorizontalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize15}"
+                  FontWeight="SemiBold"
+                  Text="{TemplateBinding Heading}"
+                  TextAlignment="Center"
+                  TextWrapping="Wrap" />
+              <TextBlock
+                  MaxWidth="280"
+                  HorizontalAlignment="Center"
+                  Foreground="{DynamicResource ShellMutedBrush}"
+                  FontSize="{DynamicResource ShellFontSize11}"
+                  Text="{TemplateBinding Body}"
+                  TextAlignment="Center"
+                  TextWrapping="Wrap"
+                  IsVisible="{TemplateBinding Body, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <ContentPresenter
+                  HorizontalAlignment="Center"
+                  Content="{TemplateBinding Content}"
+                  ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </StackPanel>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type controls:LabeledField}" TargetType="controls:LabeledField">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+            <TextBlock
+                FontSize="{DynamicResource ShellFontSize12}"
+                Foreground="{DynamicResource ShellMutedBrush}"
+                Text="{TemplateBinding Label}"
+                TextTrimming="CharacterEllipsis" />
+            <ContentPresenter
+                Content="{TemplateBinding Content}"
+                ContentTemplate="{TemplateBinding ContentTemplate}"
+                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+            <TextBlock
+                Foreground="{DynamicResource ShellMutedBrush}"
+                FontSize="{DynamicResource ShellFontSize10}"
+                Text="{TemplateBinding Hint}"
+                TextWrapping="Wrap"
+                IsVisible="{TemplateBinding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type controls:SettingRow}" TargetType="controls:SettingRow">
+      <Setter Property="Padding" Value="{DynamicResource ShellRowPadding}" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <StackPanel>
+            <Grid
+                Name="PART_Row"
+                Margin="{TemplateBinding Padding}"
+                ColumnSpacing="{DynamicResource ShellSpaceLg}">
+              <!--
+                The control column's width is set from code. A ColumnDefinition is
+                not a visual and so has no templated parent, which means a
+                TemplateBinding here silently resolves to nothing and both columns
+                fall back to an even split — the row still renders, just never at
+                the width the group asked for.
+              -->
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="{TemplateBinding Label}"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Foreground="{DynamicResource ShellMutedBrush}"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Text="{TemplateBinding Description}"
+                    TextWrapping="Wrap"
+                    IsVisible="{TemplateBinding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+              <ContentPresenter
+                  Grid.Column="1"
+                  Content="{TemplateBinding Content}"
+                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </Grid>
+            <!-- The group decides which row is last; the row only draws it. -->
+            <Border
+                Name="PART_Separator"
+                Height="1"
+                Background="{DynamicResource ShellBorderBrush}" />
+          </StackPanel>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:last /template/ Border#PART_Separator">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type controls:SettingsGroup}" TargetType="controls:SettingsGroup">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <StackPanel
+                Spacing="{DynamicResource ShellSpaceXs}"
+                IsVisible="{TemplateBinding Heading, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+              <TextBlock
+                  FontSize="{DynamicResource ShellFontSize14}"
+                  FontWeight="SemiBold"
+                  Text="{TemplateBinding Heading}" />
+              <TextBlock
+                  Foreground="{DynamicResource ShellMutedBrush}"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="{TemplateBinding Description}"
+                  TextWrapping="Wrap"
+                  IsVisible="{TemplateBinding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+            <controls:SurfaceCard Padding="0">
+              <StackPanel>
+                <ItemsPresenter Name="PART_Rows" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                <Border
+                    Name="PART_FooterSeparator"
+                    Height="1"
+                    Background="{DynamicResource ShellBorderBrush}"
+                    IsVisible="False" />
+                <ContentPresenter
+                    Name="PART_Footer"
+                    Margin="{DynamicResource ShellRowPadding}"
+                    Content="{TemplateBinding Footer}"
+                    IsVisible="False" />
+              </StackPanel>
+            </controls:SurfaceCard>
+          </StackPanel>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:footed /template/ Border#PART_FooterSeparator">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:footed /template/ ContentPresenter#PART_Footer">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+    </ControlTheme>
+
+  </Styles.Resources>
+</Styles>

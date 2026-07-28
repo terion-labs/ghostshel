@@ -13,11 +13,17 @@
       Classes.active="{Binding IsActive, ElementName=Root}"
       Click="OnClick"
       AutomationProperties.Name="{Binding AutomationName, ElementName=Root}">
-    <StackPanel Orientation="Horizontal" Spacing="10">
+    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <icons:SymbolIcon
+          x:Name="NavigationIcon"
+          VerticalAlignment="Center"
           Symbol="{Binding Icon, ElementName=Root}"
           FontSize="{Binding IconSize, ElementName=Root}" />
-      <TextBlock Text="{Binding Label, ElementName=Root}" />
+      <TextBlock
+          VerticalAlignment="Center"
+          FontSize="{DynamicResource ShellFontSize13}"
+          Text="{Binding Label, ElementName=Root}"
+          TextTrimming="CharacterEllipsis" />
     </StackPanel>
   </Button>
 </UserControl>

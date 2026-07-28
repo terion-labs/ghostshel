@@ -8,7 +8,13 @@ internal sealed record AppearanceSelection(
     AppearanceMode Appearance,
     PlatformProfile PlatformProfile,
     AccentPreference Accent,
-    double? TextScale);
+    double? TextScale,
+    double? CornerRadius,
+    InterfaceDensity Density,
+    bool ShowTabBar,
+    bool ShowWorkspacesPanel,
+    TabStripPlacement TabStripPlacement,
+    WorkspacePanelPlacement WorkspacePanelPlacement);
 
 internal sealed record AppearanceTextScaleOption(string DisplayName, double? Scale);
 
@@ -21,7 +27,19 @@ public sealed partial class AppearanceSettingsPageView : UserControl
         InitializeComponent();
     }
 
-    public event EventHandler<RoutedEventArgs>? SaveRequested;
+    /// <summary>
+    /// Raised whenever a control on the page changes. Appearance has no save
+    /// step: the shell persists and applies each change as it is made.
+    /// </summary>
+    public event EventHandler<RoutedEventArgs>? AppearanceChanged;
+
+    public event EventHandler<RoutedEventArgs>? SelectTerminalPaletteRequested;
+
+    /// <summary>
+    /// Raised with the palette field to fill. The shell owns sampling because it
+    /// owns the window the colour is read from.
+    /// </summary>
+    public event EventHandler<RoutedEventArgs>? PickColorRequested;
 
     internal void ConfigureAppearanceControls(
         IReadOnlyList<PlatformProfile> platformProfiles,
@@ -42,35 +60,60 @@ public sealed partial class AppearanceSettingsPageView : UserControl
         ArgumentNullException.ThrowIfNull(theme);
         ArgumentNullException.ThrowIfNull(selectedTextScale);
 
-        SelectComboBoxItem(
-            AppearanceModePicker,
-            nameof(AppearanceModePicker),
-            theme.Appearance.ToString());
-        PlatformProfilePicker.SelectedItem = theme.PlatformProfile;
-        SelectComboBoxItem(
-            AccentModePicker,
-            nameof(AccentModePicker),
-            theme.Accent.Kind switch
-            {
-                AccentPreferenceKind.Custom => "Custom",
-                AccentPreferenceKind.GhostShellBronze => "GhostSHELL bronze",
-                _ => "Follow host",
-            });
+        _isLoading = true;
+        try
+        {
+            AppearanceModeSystem.IsChecked = theme.Appearance == AppearanceMode.System;
+            AppearanceModeDark.IsChecked = theme.Appearance == AppearanceMode.Dark;
+            AppearanceModeLight.IsChecked = theme.Appearance == AppearanceMode.Light;
+            PlatformProfilePicker.SelectedItem = theme.PlatformProfile;
+            SelectComboBoxItem(
+                AccentModePicker,
+                nameof(AccentModePicker),
+                theme.Accent.Kind switch
+                {
+                    AccentPreferenceKind.Custom => "Custom",
+                    AccentPreferenceKind.GhostShellBronze => "GhostSHELL bronze",
+                    _ => "Follow host",
+                });
 
-        ApplicationTextScalePicker.ItemsSource =
-            _appearanceTextScaleOptions.Contains(selectedTextScale)
-                ? _appearanceTextScaleOptions
-                : [.. _appearanceTextScaleOptions, selectedTextScale];
-        ApplicationTextScalePicker.SelectedItem = selectedTextScale;
-        CustomAccentText.Text = theme.Accent.CustomColor?.ToString()
-            ?? ThemePreference.BronzeFallback.ToString();
-        UpdateCustomAccentAvailability();
+            ApplicationTextScalePicker.ItemsSource =
+                _appearanceTextScaleOptions.Contains(selectedTextScale)
+                    ? _appearanceTextScaleOptions
+                    : [.. _appearanceTextScaleOptions, selectedTextScale];
+            ApplicationTextScalePicker.SelectedItem = selectedTextScale;
+            CustomAccentText.Text = theme.Accent.CustomColor?.ToString()
+                ?? ThemePreference.BronzeFallback.ToString();
+            UpdateCustomAccentAvailability();
+
+            // A null override means "follow the platform profile"; the slider has no
+            // null, so it rests at the profile's own radius until the user moves it.
+            CornerRadiusSlider.Value = theme.CornerRadiusOverride ?? DefaultCornerRadius;
+            DensityCompact.IsChecked = theme.Density == InterfaceDensity.Compact;
+            DensityCozy.IsChecked = theme.Density == InterfaceDensity.Cozy;
+            DensityComfortable.IsChecked = theme.Density == InterfaceDensity.Comfortable;
+            ShowTabBarSwitch.IsChecked = theme.ShowTabBar;
+            ShowWorkspacesPanelSwitch.IsChecked = theme.ShowWorkspacesPanel;
+            TabPlacementTop.IsChecked = theme.TabStripPlacement == TabStripPlacement.Top;
+            TabPlacementBottom.IsChecked = theme.TabStripPlacement == TabStripPlacement.Bottom;
+            WorkspacePanelLeft.IsChecked =
+                theme.WorkspacePanelPlacement == WorkspacePanelPlacement.Left;
+            WorkspacePanelRight.IsChecked =
+                theme.WorkspacePanelPlacement == WorkspacePanelPlacement.Right;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     internal AppearanceSelection CaptureAppearance()
     {
-        var appearance = Enum.Parse<AppearanceMode>(
-            SelectedText(AppearanceModePicker, nameof(AppearanceModePicker)));
+        var appearance = AppearanceModeDark.IsChecked == true
+            ? AppearanceMode.Dark
+            : AppearanceModeLight.IsChecked == true
+                ? AppearanceMode.Light
+                : AppearanceMode.System;
         var profile = PlatformProfilePicker.SelectedItem is PlatformProfile selectedProfile
             ? selectedProfile
             : throw new InvalidOperationException(
@@ -88,22 +131,178 @@ public sealed partial class AppearanceSettingsPageView : UserControl
                 : throw new InvalidOperationException(
                     "The application text-scale selection is unavailable.");
 
-        return new(appearance, profile, accent, textScale);
+        return new(
+            appearance,
+            profile,
+            accent,
+            textScale,
+            CornerRadiusSlider.Value,
+            SelectedDensity(),
+            ShowTabBarSwitch.IsChecked == true,
+            ShowWorkspacesPanelSwitch.IsChecked == true,
+            SelectedTabStripPlacement(),
+            WorkspacePanelRight.IsChecked == true
+                ? WorkspacePanelPlacement.Right
+                : WorkspacePanelPlacement.Left);
     }
 
+    private const double DefaultCornerRadius = 8;
+
+    private TabStripPlacement SelectedTabStripPlacement() =>
+        TabPlacementBottom.IsChecked == true
+            ? TabStripPlacement.Bottom
+            : TabPlacementLeft.IsChecked == true
+                ? TabStripPlacement.Left
+                : TabPlacementRight.IsChecked == true
+                    ? TabStripPlacement.Right
+                    : TabStripPlacement.Top;
+
+    private InterfaceDensity SelectedDensity() =>
+        DensityCompact.IsChecked == true
+            ? InterfaceDensity.Compact
+            : DensityComfortable.IsChecked == true
+                ? InterfaceDensity.Comfortable
+                : InterfaceDensity.Cozy;
+
+    /// <summary>
+    /// The segmented control is a set of toggle buttons, so selecting one has to
+    /// clear the others; a checked button clicked again stays checked rather than
+    /// leaving the group with no answer.
+    /// </summary>
+    private void OnDensityClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        foreach (var option in new[] { DensityCompact, DensityCozy, DensityComfortable })
+        {
+            option.IsChecked = ReferenceEquals(option, sender);
+        }
+    }
+
+    /// <summary>
+    /// Loading stored values sets the same controls this page listens to, so the
+    /// reload is fenced; without it every save would echo back as a fresh change.
+    /// </summary>
+    private bool _isLoading;
+
+    private void OnAppearanceChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        AppearanceChanged?.Invoke(sender, e);
+    }
+
+    /// <summary>
+    /// Changing the accent source both re-enables the custom colour and is itself
+    /// a change to commit — switching from "Follow host" to the bronze accent has
+    /// to apply live like every other control on this page.
+    /// </summary>
     private void OnAccentModeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        UpdateCustomAccentAvailability();
+        OnAppearanceChanged(sender, e);
+    }
+
+    /// <summary>
+    /// The colour picker reports its own event type, so it needs a matching
+    /// signature to reach the same live-commit path as every other control.
+    /// </summary>
+    private void OnColorChanged(object? sender, ColorChangedEventArgs e)
+    {
+        _ = e;
+        OnAppearanceChanged(sender, new RoutedEventArgs());
+    }
+
+    /// <summary>Enter commits a typed value without waiting for focus to move.</summary>
+    private void OnCommitKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+    {
+        if (e.Key is Avalonia.Input.Key.Enter or Avalonia.Input.Key.Return)
+        {
+            e.Handled = true;
+            OnAppearanceChanged(sender, new RoutedEventArgs());
+        }
+    }
+
+    private void OnSelectTerminalPaletteClick(object? sender, RoutedEventArgs e) =>
+        SelectTerminalPaletteRequested?.Invoke(sender, e);
+
+    private void OnPickColorClick(object? sender, RoutedEventArgs e) =>
+        PickColorRequested?.Invoke(sender, e);
+
+    private void UpdateCustomAccentAvailability()
+    {
+        var isCustom = SelectedTextOrDefault(AccentModePicker) == "Custom";
+        CustomAccentText.IsEnabled = isCustom;
+        CustomAccentPicker.IsEnabled = isCustom;
+        CustomAccentEyedropper.IsEnabled = isCustom;
+    }
+
+    /// <summary>
+    /// Writes a colour into the accent field from outside, used by the screen
+    /// eyedropper. The picker and the hex box are kept in step.
+    /// </summary>
+    internal void SetCustomAccent(Avalonia.Media.Color color)
+    {
+        CustomAccentText.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        SyncCustomAccentPicker();
+        AppearanceChanged?.Invoke(this, new RoutedEventArgs());
+    }
+
+    /// <summary>
+    /// The hex box is the stored value; the picker mirrors it. Both edit the same
+    /// accent, so each has to follow the other without looping.
+    /// </summary>
+    private bool _syncingCustomAccent;
+
+    private void SyncCustomAccentPicker()
+    {
+        if (!Avalonia.Media.Color.TryParse(CustomAccentText.Text, out var color))
+        {
+            return;
+        }
+
+        _syncingCustomAccent = true;
+        try
+        {
+            CustomAccentPicker.Color = color;
+        }
+        finally
+        {
+            _syncingCustomAccent = false;
+        }
+    }
+
+    private void OnCustomAccentTextChanged(object? sender, TextChangedEventArgs e)
     {
         _ = sender;
         _ = e;
-        UpdateCustomAccentAvailability();
+        if (!_syncingCustomAccent)
+        {
+            SyncCustomAccentPicker();
+        }
     }
 
-    private void OnSaveAppearanceClick(object? sender, RoutedEventArgs e) =>
-        SaveRequested?.Invoke(sender, e);
+    private void OnCustomAccentPicked(object? sender, ColorChangedEventArgs e)
+    {
+        if (_syncingCustomAccent || _isLoading)
+        {
+            return;
+        }
 
-    private void UpdateCustomAccentAvailability() =>
-        CustomAccentText.IsEnabled =
-            SelectedTextOrDefault(AccentModePicker) == "Custom";
+        _syncingCustomAccent = true;
+        try
+        {
+            CustomAccentText.Text = $"#{e.NewColor.R:X2}{e.NewColor.G:X2}{e.NewColor.B:X2}";
+        }
+        finally
+        {
+            _syncingCustomAccent = false;
+        }
+
+        OnAppearanceChanged(sender, new RoutedEventArgs());
+    }
 
     private static string SelectedText(ComboBox comboBox, string controlName) =>
         (comboBox.SelectedItem as ComboBoxItem)?.Content?.ToString()

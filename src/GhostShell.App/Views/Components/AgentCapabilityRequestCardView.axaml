@@ -2,22 +2,22 @@
     x:Class="GhostShell.App.Views.Components.AgentCapabilityRequestCardView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Focusable="False"
     HorizontalContentAlignment="Stretch">
-  <Border
+  <controls:SurfaceCard Tone="Notice"
       x:Name="AgentPendingCapabilityRequest"
-      Padding="12,11"
-      Classes="NoticeCard"
+      Padding="{controls:Inset Md}"
       Focusable="True"
       KeyboardNavigation.IsTabStop="True"
       IsVisible="{Binding AgentChat.HasPendingCapabilityRequest}"
       AutomationProperties.LiveSetting="Assertive"
       AutomationProperties.Name="{Binding AgentChat.PendingCapabilityRequest.AccessibleName}"
       AutomationProperties.HelpText="{Binding AgentChat.PendingCapabilityRequest.GrantWarning}">
-    <StackPanel Spacing="8">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-        <StackPanel Spacing="2">
+    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="Eyebrow" Text="CAPABILITY REQUEST" />
           <TextBlock
               FontSize="{DynamicResource ShellFontSize13}"
@@ -25,16 +25,14 @@
               Text="{Binding AgentChat.PendingCapabilityRequest.DisplayTitle}"
               TextWrapping="Wrap" />
         </StackPanel>
-        <Border Grid.Column="1" VerticalAlignment="Top" Classes="StatusPill" Classes.Warning="True">
-          <TextBlock Text="OFF → ASK" />
-        </Border>
+        <controls:StatusChip Grid.Column="1" VerticalAlignment="Top" Classes.Warning="True" Content="OFF → ASK" />
       </Grid>
       <TextBlock
           Classes="Muted Monospace"
           FontSize="{DynamicResource ShellFontSize9}"
           Text="{Binding AgentChat.PendingCapabilityRequest.CapabilityToken, StringFormat={}Capability · {0}}"
           TextWrapping="Wrap" />
-      <StackPanel Spacing="2">
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock Classes="Eyebrow" Text="EXACT RUN TARGET" />
         <TextBlock
             Classes="Monospace"
@@ -47,12 +45,12 @@
             Text="{Binding AgentChat.PendingCapabilityRequest.TargetTitle}"
             TextWrapping="Wrap" />
       </StackPanel>
-      <StackPanel Spacing="3">
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock Classes="Eyebrow" Text="AFFECTED TOOLS" />
         <ItemsControl ItemsSource="{Binding AgentChat.PendingCapabilityRequest.AffectedToolTitles}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <TextBlock Margin="0,0,0,2" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding}" TextWrapping="Wrap" />
+              <TextBlock Margin="{controls:Inset Bottom=Xs}" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding}" TextWrapping="Wrap" />
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -63,12 +61,12 @@
           Text="{Binding AgentChat.PendingCapabilityRequest.ExpiresAt, StringFormat={}Expires · {0}}"
           TextWrapping="Wrap" />
       <Border
-          Padding="8"
+          Padding="{controls:Inset Sm}"
           Background="{DynamicResource ShellWarningSoftBrush}"
           BorderBrush="{DynamicResource ShellWarningBorderBrush}"
           BorderThickness="1"
-          CornerRadius="6">
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+          CornerRadius="{DynamicResource ShellControlCornerRadius}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <icons:SymbolIcon Symbol="Warning" FontSize="14" Foreground="{DynamicResource ShellWarningBrush}" />
           <TextBlock
               Grid.Column="1"
@@ -78,7 +76,7 @@
               TextWrapping="Wrap" />
         </Grid>
       </Border>
-      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Button
             Classes="SecondaryButton"
             Click="OnKeepAgentCapabilityOffClick"
@@ -98,5 +96,5 @@
             AutomationProperties.HelpText="Changes this one capability from Off to Ask for the current run; it approves no action" />
       </Grid>
     </StackPanel>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

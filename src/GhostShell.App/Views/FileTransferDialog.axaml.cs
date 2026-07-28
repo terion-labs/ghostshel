@@ -3,6 +3,8 @@ using Avalonia.Interactivity;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 
+using GhostShell.App.Controls;
+
 namespace GhostShell.App.Views;
 
 public sealed partial class FileTransferDialog : Window
@@ -39,7 +41,7 @@ public sealed partial class FileTransferDialog : Window
         catch (ArgumentException exception)
         {
             this.FindControl<TextBlock>("ValidationMessage")!.Text = exception.Message;
-            this.FindControl<Border>("ValidationCard")!.IsVisible = true;
+            this.FindControl<SurfaceCard>("ValidationCard")!.IsVisible = true;
         }
     }
 }

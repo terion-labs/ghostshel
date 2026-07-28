@@ -2,22 +2,24 @@
     x:Class="GhostShell.App.Views.Overlays.CommandPaletteView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Border
+  <controls:SurfaceCard Elevation="Overlay" Padding="0"
       Width="680"
       MaxHeight="700"
       HorizontalAlignment="Center"
       VerticalAlignment="Center"
-      Classes="OverlayCard"
       KeyboardNavigation.TabNavigation="Cycle">
     <Grid RowDefinitions="58,*,44">
-      <Grid Margin="16,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+      <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <icons:SymbolIcon VerticalAlignment="Center" Symbol="Search" FontSize="17" />
         <TextBox
             x:Name="CommandSearchBox"
             Grid.Column="1"
+            VerticalAlignment="Center"
+            VerticalContentAlignment="Center"
             BorderThickness="0"
             Background="Transparent"
             KeyDown="OnSearchKeyDown"
@@ -46,18 +48,19 @@
         <ListBox.ItemTemplate>
           <DataTemplate>
             <Button
-                Margin="4,0"
-                Padding="10,8"
+                Margin="{controls:Inset Horizontal=Xs}"
+                Padding="{controls:Inset Sm}"
                 Background="Transparent"
                 BorderThickness="0"
+                HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 Click="OnActivateSearchResultClick"
                 IsEnabled="{Binding IsAvailable}">
-              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
-                <Border Width="34" Height="34" Classes="IconTile">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                <Border Width="34" Height="34" VerticalAlignment="Center" Classes="IconTile">
                   <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="14" />
                 </Border>
-                <StackPanel Grid.Column="1" Spacing="2">
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock Classes="SectionHeading" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Group}" />
                   <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayDetail}" TextTrimming="CharacterEllipsis" />
@@ -72,10 +75,10 @@
       </ListBox>
       <StackPanel
           Grid.Row="1"
-          Margin="30"
+          Margin="{controls:Inset Xxl}"
           HorizontalAlignment="Center"
           VerticalAlignment="Center"
-          Spacing="7"
+          Spacing="{DynamicResource ShellSpaceSm}"
           IsVisible="{Binding HasNoLauncherSearchResults}"
           AutomationProperties.LiveSetting="Polite"
           AutomationProperties.Name="Launcher search has no results">
@@ -84,11 +87,11 @@
         <TextBlock MaxWidth="420" HorizontalAlignment="Center" Classes="Muted" TextAlignment="Center" Text="{Binding LauncherSearchEmptyState}" TextWrapping="Wrap" />
       </StackPanel>
       <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-        <Grid Margin="14,0" ColumnDefinitions="*,Auto">
+        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="*,Auto">
           <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Unavailable results stay visible but cannot be opened." />
           <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="↑↓ navigate  ↵ activate" />
         </Grid>
       </Border>
     </Grid>
-  </Border>
+  </controls:SurfaceCard>
 </UserControl>

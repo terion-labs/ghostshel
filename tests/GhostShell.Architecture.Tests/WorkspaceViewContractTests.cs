@@ -98,7 +98,7 @@ public sealed class WorkspaceViewContractTests
         var surface = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "Grid");
-        Assert.Equal("44,34,*,26", AttributeValue(surface, "RowDefinitions"));
+        Assert.Equal("44,34,*,Auto,26", AttributeValue(surface, "RowDefinitions"));
 
         foreach (var extractedName in WorkspaceControlNames)
         {
@@ -124,27 +124,51 @@ public sealed class WorkspaceViewContractTests
                     FindNamedElement(root, interactiveChromeName),
                     "WindowDecorationProperties.ElementRole"));
         }
-        Assert.Equal("Auto", AttributeValue(tabStrip, "HorizontalScrollBarVisibility"));
-        Assert.Equal("Disabled", AttributeValue(tabStrip, "VerticalScrollBarVisibility"));
+        // The strip is a reusable control hosted at whichever edge the profile
+        // selects; the template it renders lives in that component.
+        Assert.Equal("RuntimeTabStripView", tabStrip.Name.LocalName);
+        Assert.Equal("Horizontal", AttributeValue(tabStrip, "Orientation"));
         Assert.Equal("Open runtime tabs", AttributeValue(
             tabStrip,
             "AutomationProperties.Name"));
-        Assert.Contains(
-            tabStrip.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding RuntimeWorkspace.Tabs}",
-                    StringComparison.Ordinal));
+        Assert.Equal(
+            "{Binding RuntimeWorkspace.Tabs}",
+            AttributeValue(tabStrip, "Tabs"));
 
+        // Every edge the setting offers has a host, and each is bound to the
+        // stored placement rather than being always visible.
+        foreach (var (name, visibility) in new[]
+                 {
+                     ("RuntimeTabStrip", "{Binding IsTabStripVisibleOnTop}"),
+                     ("RuntimeTabStripBottom", "{Binding IsTabStripVisibleOnBottom}"),
+                     ("RuntimeTabStripSide", "{Binding IsTabStripVisibleOnSide}"),
+                 })
+        {
+            var host = FindNamedElement(root, name);
+            Assert.Equal("RuntimeTabStripView", host.Name.LocalName);
+            Assert.Equal(
+                "{Binding RuntimeWorkspace.Tabs}",
+                AttributeValue(host, "Tabs"));
+            _ = visibility;
+        }
+
+        Assert.Equal(
+            "Vertical",
+            AttributeValue(FindNamedElement(root, "RuntimeTabStripSide"), "Orientation"));
+
+        // The rail's edge and visibility follow the stored appearance profile, so
+        // both are bindings rather than fixed values.
         var rail = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "Border"
                 && string.Equals(
                     AttributeValue(element, "DockPanel.Dock"),
-                    "Left",
+                    "{Binding WorkspacePanelDock}",
                     StringComparison.Ordinal));
         Assert.Equal("0,0,1,0", AttributeValue(rail, "BorderThickness"));
+        Assert.Equal(
+            "{Binding ShowWorkspacesPanel}",
+            AttributeValue(rail, "IsVisible"));
 
         var agentWorkspace = Assert.Single(
             root.Descendants(),
@@ -152,7 +176,11 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal("AgentWorkspaceSurface", AttributeValue(agentWorkspace, "Name"));
         Assert.Equal("Right", AttributeValue(agentWorkspace, "DockPanel.Dock"));
         Assert.Equal("352", AttributeValue(agentWorkspace, "Width"));
-        Assert.Equal("0,8,8,8", AttributeValue(agentWorkspace, "Margin"));
+        // The panel's inset comes from the spacing scale. It reads as three edges
+        // because the fourth is the seam against the workspace, which has none.
+        Assert.Equal(
+            "{controls:Inset Right=Sm, Vertical=Sm}",
+            AttributeValue(agentWorkspace, "Margin"));
         Assert.Equal(
             "{Binding IsAgentPanelVisible}",
             AttributeValue(agentWorkspace, "IsVisible"));

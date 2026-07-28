@@ -29,6 +29,13 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         AvaloniaProperty.Register<ManagedTerminalSessionHost, ISessionHostClient?>(
             nameof(SessionClient));
 
+    /// <summary>
+    /// The live render profile, applied without restarting the session.
+    /// </summary>
+    public static readonly StyledProperty<TerminalRenderProfileSnapshot?> RenderProfileProperty =
+        AvaloniaProperty.Register<ManagedTerminalSessionHost, TerminalRenderProfileSnapshot?>(
+            nameof(RenderProfile));
+
     public static readonly StyledProperty<EnsureTerminalSessionRequest?> SessionRequestProperty =
         AvaloniaProperty.Register<ManagedTerminalSessionHost, EnsureTerminalSessionRequest?>(
             nameof(SessionRequest));
@@ -144,6 +151,12 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
     {
         get => GetValue(SessionClientProperty);
         set => SetValue(SessionClientProperty, value);
+    }
+
+    public TerminalRenderProfileSnapshot? RenderProfile
+    {
+        get => GetValue(RenderProfileProperty);
+        set => SetValue(RenderProfileProperty, value);
     }
 
     public EnsureTerminalSessionRequest? SessionRequest
@@ -303,11 +316,17 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == SessionClientProperty
+        if (change.Property == RenderProfileProperty)
+        {
+            // Typography only. Restarting the session would throw away scrollback
+            // for a font change.
+            _surface.Profile = RenderProfile ?? SessionRequest?.Launch.RenderProfile;
+        }
+        else if (change.Property == SessionClientProperty
             || change.Property == SessionRequestProperty
             || change.Property == ClientIdProperty)
         {
-            _surface.Profile = SessionRequest?.Launch.RenderProfile;
+            _surface.Profile = RenderProfile ?? SessionRequest?.Launch.RenderProfile;
             _surface.Keymap = SessionRequest?.Launch.Keymap;
             if (_isAttachedToVisualTree)
             {

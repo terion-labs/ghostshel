@@ -132,13 +132,17 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ReviewOnboardingRequested;
 
-    public event EventHandler<RoutedEventArgs>? SaveAppearanceRequested;
+    public event EventHandler<RoutedEventArgs>? AppearanceChangedRequested;
+
+    public event EventHandler<RoutedEventArgs>? PickColorRequested;
 
     public event EventHandler<RoutedEventArgs>? SaveKeybindingsRequested;
 
     public event EventHandler<RoutedEventArgs>? SaveQuickTerminalSettingsRequested;
 
     public event EventHandler<RoutedEventArgs>? SaveTerminalProfileRequested;
+
+    public event EventHandler<RoutedEventArgs>? SelectTerminalPaletteRequested;
 
     public event EventHandler<RoutedEventArgs>? SecretsSettingsRequested;
 
@@ -176,6 +180,9 @@ public sealed partial class SettingsView : UserControl
 
     internal AppearanceSelection CaptureAppearance() =>
         AppearanceSettingsPage.CaptureAppearance();
+
+    internal void SetCustomAccent(Avalonia.Media.Color color) =>
+        AppearanceSettingsPage.SetCustomAccent(color);
 
     internal KeybindingPrefixOptionsSelection? CaptureKeybindingPrefixOptions()
     {
@@ -263,8 +270,11 @@ public sealed partial class SettingsView : UserControl
     private void OnAboutSettingsClick(object? sender, RoutedEventArgs e) =>
         AboutSettingsRequested?.Invoke(sender, e);
 
-    private void OnAppearanceSaveRequested(object? sender, RoutedEventArgs e) =>
-        SaveAppearanceRequested?.Invoke(sender, e);
+    private void OnAppearanceChangedRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceChangedRequested?.Invoke(sender, e);
+
+    private void OnPickColorRequested(object? sender, RoutedEventArgs e) =>
+        PickColorRequested?.Invoke(sender, e);
 
     private void OnAddAiProviderClick(object? sender, RoutedEventArgs e) =>
         AddAiProviderRequested?.Invoke(sender, e);
@@ -405,6 +415,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnSaveTerminalProfileClick(object? sender, RoutedEventArgs e) =>
         SaveTerminalProfileRequested?.Invoke(sender, e);
+
+    private void OnSelectTerminalPaletteClick(object? sender, RoutedEventArgs e) =>
+        SelectTerminalPaletteRequested?.Invoke(sender, e);
 
     private void OnSecretsSettingsClick(object? sender, RoutedEventArgs e) =>
         SecretsSettingsRequested?.Invoke(sender, e);

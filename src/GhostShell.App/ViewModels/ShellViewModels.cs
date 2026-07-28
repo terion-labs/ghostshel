@@ -17,6 +17,8 @@ public enum ShellRoute
 public enum LauncherPage
 {
     Overview,
+    Connections,
+    Screens,
     History,
 }
 
@@ -152,7 +154,28 @@ public sealed record LauncherConnectionViewModel(
     string Kind,
     string Detail,
     string Status,
-    bool CanOpen);
+    bool CanOpen,
+    IReadOnlyList<string> Tags)
+{
+    public bool HasTags => Tags.Count > 0;
+
+    /// <summary>
+    /// Whether the card would look identical. Record equality cannot say: the
+    /// tags are a list, which records compare by reference, so two cards built
+    /// from the same connection are never equal and the launcher rebuilds every
+    /// card on every catalog refresh.
+    /// </summary>
+    public bool PresentsSameAs(LauncherConnectionViewModel other) =>
+        other is not null
+        && Id == other.Id
+        && Revision == other.Revision
+        && CanOpen == other.CanOpen
+        && string.Equals(Name, other.Name, StringComparison.Ordinal)
+        && string.Equals(Kind, other.Kind, StringComparison.Ordinal)
+        && string.Equals(Detail, other.Detail, StringComparison.Ordinal)
+        && string.Equals(Status, other.Status, StringComparison.Ordinal)
+        && Tags.SequenceEqual(other.Tags, StringComparer.Ordinal);
+}
 
 public sealed record LauncherScreenViewModel(
     ScreenId Id,
@@ -161,7 +184,23 @@ public sealed record LauncherScreenViewModel(
     string Description,
     string Layout,
     int PanelCount,
-    IReadOnlyList<LauncherScreenPanelPreviewViewModel> PreviewPanels);
+    IReadOnlyList<LauncherScreenPanelPreviewViewModel> PreviewPanels,
+    string Summary)
+{
+    /// <summary>
+    /// Whether the card would look identical; the preview panels are a list, so
+    /// record equality would report every rebuild as a change.
+    /// </summary>
+    public bool PresentsSameAs(LauncherScreenViewModel other) =>
+        other is not null
+        && Id == other.Id
+        && Revision == other.Revision
+        && PanelCount == other.PanelCount
+        && string.Equals(Name, other.Name, StringComparison.Ordinal)
+        && string.Equals(Summary, other.Summary, StringComparison.Ordinal)
+        && string.Equals(Layout, other.Layout, StringComparison.Ordinal)
+        && PreviewPanels.SequenceEqual(other.PreviewPanels);
+}
 
 public sealed record LauncherScreenPanelPreviewViewModel(
     int Columns,
@@ -172,13 +211,20 @@ public sealed record LauncherScreenPanelPreviewViewModel(
     int RowSpan,
     bool IsPrimary);
 
+/// <summary>One normal ANSI colour, shown as a swatch with its stored value.</summary>
+public sealed record AnsiSwatchViewModel(string Name, string Hex);
+
 public sealed record LayoutCardViewModel(
     LayoutId Id,
     long Revision,
     string Name,
     int Rows,
     int Columns,
-    int SlotCount);
+    int SlotCount)
+{
+    /// <summary>Grid extent as columns × rows; rows alone do not identify a grid.</summary>
+    public string GridSummary => $"{Columns} × {Rows}";
+}
 
 public sealed record ProductComponentViewModel(
     string Name,
@@ -234,6 +280,23 @@ public abstract record LauncherSearchTarget
         public string InvocationKey { get; }
     }
 
+    /// <summary>
+    /// Whether two targets name the same thing.
+    ///
+    /// Record equality cannot answer it for a command: the arguments live in a
+    /// dictionary, which records compare by reference, so two commands built from
+    /// the same source are never equal. <see cref="Command.InvocationKey"/> exists
+    /// precisely to identify one, and this is where it earns its keep — without it
+    /// the command palette treated every refresh as a fresh set of results and
+    /// rebuilt every row.
+    /// </summary>
+    public bool IdentifiesSameAs(LauncherSearchTarget? other) => (this, other) switch
+    {
+        (Command first, Command second) => first.Id == second.Id
+            && string.Equals(first.InvocationKey, second.InvocationKey, StringComparison.Ordinal),
+        _ => Equals(this, other),
+    };
+
     public sealed record CreatePanel(PanelKind Kind) : LauncherSearchTarget;
 
     public sealed record Connection(ConnectionId Id) : LauncherSearchTarget;
@@ -256,6 +319,26 @@ public sealed record LauncherSearchResultViewModel(
     string? UnavailableReason,
     IReadOnlyList<string> SearchTerms)
 {
+    /// <summary>
+    /// Whether two results would present identically.
+    ///
+    /// Record equality cannot answer this: the search terms are an array, so two
+    /// results built from the same source are never equal. Without it, every
+    /// refresh looks like a fresh set of results and the palette rebuilds every
+    /// row — which moves what the pointer is hovering while the pointer has not
+    /// moved at all.
+    /// </summary>
+    public bool PresentsSameAs(LauncherSearchResultViewModel other) =>
+        other is not null
+        && Target.IdentifiesSameAs(other.Target)
+        && IconSymbol == other.IconSymbol
+        && string.Equals(Group, other.Group, StringComparison.Ordinal)
+        && string.Equals(Title, other.Title, StringComparison.Ordinal)
+        && string.Equals(Detail, other.Detail, StringComparison.Ordinal)
+        && string.Equals(TrailingText, other.TrailingText, StringComparison.Ordinal)
+        && IsAvailable == other.IsAvailable
+        && string.Equals(UnavailableReason, other.UnavailableReason, StringComparison.Ordinal);
+
     public LauncherSearchResultKind Kind => Target switch
     {
         LauncherSearchTarget.CreatePanel => LauncherSearchResultKind.CreatePanel,
@@ -621,6 +704,26 @@ public enum PanelSplitOrientation
     TopBottom,
 }
 
+/// <summary>Which edge of the canvas a new panel is added against.</summary>
+public enum PanelSide
+{
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+/// <summary>
+/// A panel that has been placed but not yet told what to be.
+///
+/// Adding a panel used to be a modal over the whole window that asked what to open
+/// and then put it wherever the layout appended things. Placing first and choosing
+/// second means the choice is made where the panel will actually live, and the
+/// same gesture works from the canvas edge or from a split.
+/// </summary>
+public sealed class PanelPlaceholderViewModel(PanelInstanceId id)
+    : RuntimePanelViewModel(id, PanelKind.Placeholder, "New panel", "CHOOSE");
+
 public enum PanelFocusDirection
 {
     Left,
@@ -793,6 +896,73 @@ public sealed class RuntimeTabViewModel : ObservableObject
 
     public int Rows => _rows;
 
+    /// <summary>
+    /// How the width is divided between the layout's columns, as fractions that
+    /// sum to one, and the same for rows.
+    ///
+    /// The canvas used to divide itself evenly and had no way to say otherwise, so
+    /// panels could not be resized at all — the split was decided when the layout
+    /// was and never again. The weights start equal, which is the old behaviour,
+    /// and reset whenever the track count changes because a weight for a column
+    /// that no longer exists means nothing.
+    /// </summary>
+    public IReadOnlyList<double> ColumnWeights => Weights(ref _columnWeights, Columns);
+
+    public IReadOnlyList<double> RowWeights => Weights(ref _rowWeights, Rows);
+
+    private double[] _columnWeights = [];
+    private double[] _rowWeights = [];
+
+    private static double[] Weights(ref double[] current, int count)
+    {
+        count = Math.Max(1, count);
+        if (current.Length != count)
+        {
+            current = new double[count];
+            Array.Fill(current, 1d / count);
+        }
+
+        return current;
+    }
+
+    /// <summary>
+    /// Moves the boundary between two adjacent tracks, taking from one and giving
+    /// to the other so the total stays whole.
+    /// </summary>
+    /// <param name="boundary">The gap after this track index.</param>
+    /// <param name="delta">How far to move it, as a fraction of the whole.</param>
+    /// <param name="minimum">
+    /// The smallest fraction either neighbour may be reduced to. Passed in because
+    /// only the view knows how many pixels the canvas has, and a minimum in pixels
+    /// is the only kind a user recognises.
+    /// </param>
+    public bool MoveColumnSplit(int boundary, double delta, double minimum) =>
+        MoveSplit(Weights(ref _columnWeights, Columns), boundary, delta, minimum);
+
+    public bool MoveRowSplit(int boundary, double delta, double minimum) =>
+        MoveSplit(Weights(ref _rowWeights, Rows), boundary, delta, minimum);
+
+    private bool MoveSplit(double[] weights, int boundary, double delta, double minimum)
+    {
+        if (boundary < 0 || boundary + 1 >= weights.Length || !double.IsFinite(delta))
+        {
+            return false;
+        }
+
+        // Clamp against both neighbours before moving anything, so a drag that
+        // would collapse a panel stops at the limit instead of being refused.
+        var room = Math.Clamp(delta, minimum - weights[boundary], weights[boundary + 1] - minimum);
+        if (Math.Abs(room) < 0.0001)
+        {
+            return false;
+        }
+
+        weights[boundary] += room;
+        weights[boundary + 1] -= room;
+        NotifyPanelLayoutChanged();
+        return true;
+    }
+
     public bool UsesAutomaticLayout => _usesAutomaticLayout;
 
     public double MinimumCanvasWidth => Panels.Count == 0
@@ -816,6 +986,35 @@ public sealed class RuntimeTabViewModel : ObservableObject
                 ActivatePanel(panel.Id);
             }
 
+            NotifyPanelLayoutChanged();
+            return;
+        }
+
+        // A panel created from a placeholder takes the placeholder's cell, so it
+        // lands where the user put it rather than wherever the layout appends.
+        if (ReplaceTarget is { } targetId
+            && Panels.SingleOrDefault(item => item.Id == targetId) is PanelPlaceholderViewModel target)
+        {
+            ReplaceTarget = null;
+            panel.AssignLayout(
+                _columns,
+                _rows,
+                new LayoutGridBounds(
+                    target.LayoutColumn,
+                    target.LayoutRow,
+                    Math.Max(1, target.LayoutColumnSpan),
+                    Math.Max(1, target.LayoutRowSpan)),
+                new LayoutMinimumSize(target.LayoutMinimumWidth, target.LayoutMinimumHeight));
+            // Appended, not inserted where the placeholder sat. Where the panel is
+            // drawn comes from the layout assigned above, not from its position in
+            // this list — and that position is compared index by index against the
+            // session host's own order, which appends. Slotting it into the
+            // placeholder's index put the two lists out of step and every later
+            // receipt was rejected as a mismatched graph.
+            target.Dispose();
+            Panels.Remove(target);
+            Panels.Add(panel);
+            ActivatePanel(panel.Id);
             NotifyPanelLayoutChanged();
             return;
         }
@@ -936,6 +1135,17 @@ public sealed class RuntimeTabViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>
+    /// The panel the session host has as active.
+    ///
+    /// Selecting a placeholder is a local move — the host has never heard of one —
+    /// so it must not change this. Reporting a placeholder's selection to the host
+    /// as though it were a real panel made a no-op activation of the panel the host
+    /// already held be compared against the wrong id and rejected as an invalid
+    /// receipt.
+    /// </summary>
+    public PanelInstanceId? HostActivePanelId { get; private set; }
+
     public bool ActivatePanel(PanelInstanceId panelId)
     {
         if (Panels.All(panel => panel.Id != panelId))
@@ -944,6 +1154,11 @@ public sealed class RuntimeTabViewModel : ObservableObject
         }
 
         ActivePanelId = panelId;
+        if (Panels.SingleOrDefault(panel => panel.Id == panelId) is not PanelPlaceholderViewModel)
+        {
+            HostActivePanelId = panelId;
+        }
+
         if (ZoomedPanelId is not null)
         {
             ZoomedPanelId = panelId;
@@ -953,9 +1168,29 @@ public sealed class RuntimeTabViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>
+    /// The panels the session host knows about. An unfilled placeholder is a cell
+    /// the user has placed but not yet answered: it has no session behind it and the
+    /// host has never been told it exists, so it must be left out of every
+    /// comparison against a host projection. Counting it made the client's graph
+    /// look one panel wider than the host's and every activation came back reading
+    /// as an invalid receipt.
+    /// </summary>
+    private IEnumerable<RuntimePanelViewModel> HostBackedPanels =>
+        Panels.Where(panel => panel is not PanelPlaceholderViewModel);
+
     internal void ApplyHostProjection(TabInstance projection)
     {
         ValidateHostProjection(projection);
+
+        // The user is answering a placeholder, so the host's idea of the active
+        // panel is behind theirs. Leaving the selection where they put it keeps the
+        // cell they are filling from jumping away under them.
+        if (ActivePanel is PanelPlaceholderViewModel)
+        {
+            return;
+        }
+
         if (!ActivatePanel(projection.ActivePanelId))
         {
             throw new InvalidOperationException(
@@ -966,11 +1201,12 @@ public sealed class RuntimeTabViewModel : ObservableObject
     internal void ValidateHostProjection(TabInstance projection)
     {
         ArgumentNullException.ThrowIfNull(projection);
+        var hostBacked = HostBackedPanels.ToArray();
         if (projection.Id != Id
             || !string.Equals(projection.Title, Title, StringComparison.Ordinal)
-            || projection.Panels.Count != Panels.Count
+            || projection.Panels.Count != hostBacked.Length
             || projection.Panels.Any(projectedPanel =>
-                Panels.All(panel =>
+                hostBacked.All(panel =>
                     panel.Id != projectedPanel.Id
                     || panel.Kind != projectedPanel.Kind
                     || !string.Equals(
@@ -982,7 +1218,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
                 "The session host returned a different runtime tab graph.");
         }
 
-        if (Panels.All(panel => panel.Id != projection.ActivePanelId))
+        if (hostBacked.All(panel => panel.Id != projection.ActivePanelId))
         {
             throw new InvalidOperationException(
                 "The session host returned an unknown active runtime panel.");
@@ -1071,6 +1307,10 @@ public sealed class RuntimeTabViewModel : ObservableObject
             ZoomedPanelId = null;
         }
 
+        var vacatedLeft = panel.LayoutColumn;
+        var vacatedTop = panel.LayoutRow;
+        var vacatedRight = vacatedLeft + Math.Max(1, panel.LayoutColumnSpan);
+        var vacatedBottom = vacatedTop + Math.Max(1, panel.LayoutRowSpan);
         CollapseRuntimeSplit(panel);
         panel.Dispose();
         Panels.RemoveAt(removedIndex);
@@ -1080,9 +1320,334 @@ public sealed class RuntimeTabViewModel : ObservableObject
             ActivePanelId = nextIndex >= 0 ? Panels[nextIndex].Id : null;
         }
 
+        FillVacatedCell(vacatedLeft, vacatedTop, vacatedRight, vacatedBottom);
+        CompactLayout();
         ApplyZoomState();
         NotifyPanelLayoutChanged();
         return true;
+    }
+
+    /// <summary>
+    /// Gives a closed panel's cell to a neighbour.
+    ///
+    /// Dropping empty tracks is not enough on its own: a cell freed in the middle of
+    /// the grid sits in rows and columns other panels still occupy, so no track is
+    /// empty and the hole simply stays. The old collapse only handled panels it had
+    /// recorded a split for, and the place-then-choose flow records none, so closing
+    /// one of those left a gap the layout never reclaimed.
+    ///
+    /// Only a neighbour sharing the whole edge can take the cell, because it can
+    /// grow into it without disturbing anything else. When none does, the cell is
+    /// left to <see cref="CompactLayout"/>, which is right when the panel occupied
+    /// tracks of its own.
+    /// </summary>
+    private void FillVacatedCell(int left, int top, int right, int bottom)
+    {
+        if (Panels.Any(panel => Covers(panel, left, top)))
+        {
+            return;
+        }
+
+        foreach (var panel in Panels)
+        {
+            var panelLeft = panel.LayoutColumn;
+            var panelTop = panel.LayoutRow;
+            var panelRight = panelLeft + Math.Max(1, panel.LayoutColumnSpan);
+            var panelBottom = panelTop + Math.Max(1, panel.LayoutRowSpan);
+            if (panelLeft == left && panelRight == right)
+            {
+                if (panelBottom == top)
+                {
+                    AssignTrackSpan(panel, false, panelTop, bottom - panelTop);
+                    return;
+                }
+
+                if (panelTop == bottom)
+                {
+                    AssignTrackSpan(panel, false, top, panelBottom - top);
+                    return;
+                }
+            }
+
+            if (panelTop == top && panelBottom == bottom)
+            {
+                if (panelRight == left)
+                {
+                    AssignTrackSpan(panel, true, panelLeft, right - panelLeft);
+                    return;
+                }
+
+                if (panelLeft == right)
+                {
+                    AssignTrackSpan(panel, true, left, panelRight - left);
+                    return;
+                }
+            }
+        }
+    }
+
+    private static bool Covers(RuntimePanelViewModel panel, int column, int row) =>
+        panel.LayoutColumn <= column
+        && column < panel.LayoutColumn + Math.Max(1, panel.LayoutColumnSpan)
+        && panel.LayoutRow <= row
+        && row < panel.LayoutRow + Math.Max(1, panel.LayoutRowSpan);
+
+    /// <summary>
+    /// Removes tracks that no longer hold a panel and renumbers what is left.
+    ///
+    /// Closing a panel used to leave its row behind: the survivor kept the cell it
+    /// had, so half the canvas stayed empty, and the next panel was appended past
+    /// the hole — which is why adding one after closing one divided the canvas
+    /// into three and left a gap. Spans are preserved by counting how many of the
+    /// tracks a panel covered are still occupied.
+    /// </summary>
+    private void CompactLayout()
+    {
+        if (Panels.Count == 0)
+        {
+            _columns = 1;
+            _rows = 1;
+            return;
+        }
+
+        var usedColumns = new SortedSet<int>();
+        var usedRows = new SortedSet<int>();
+        foreach (var panel in Panels)
+        {
+            for (var column = 0; column < Math.Max(1, panel.LayoutColumnSpan); column++)
+            {
+                usedColumns.Add(panel.LayoutColumn + column);
+            }
+
+            for (var row = 0; row < Math.Max(1, panel.LayoutRowSpan); row++)
+            {
+                usedRows.Add(panel.LayoutRow + row);
+            }
+        }
+
+        var columnIndex = usedColumns.Select((track, index) => (track, index))
+            .ToDictionary(pair => pair.track, pair => pair.index);
+        var rowIndex = usedRows.Select((track, index) => (track, index))
+            .ToDictionary(pair => pair.track, pair => pair.index);
+        if (columnIndex.Count == _columns && rowIndex.Count == _rows)
+        {
+            return;
+        }
+
+        _columns = Math.Max(1, columnIndex.Count);
+        _rows = Math.Max(1, rowIndex.Count);
+        foreach (var panel in Panels)
+        {
+            var columnSpan = Enumerable
+                .Range(panel.LayoutColumn, Math.Max(1, panel.LayoutColumnSpan))
+                .Count(usedColumns.Contains);
+            var rowSpan = Enumerable
+                .Range(panel.LayoutRow, Math.Max(1, panel.LayoutRowSpan))
+                .Count(usedRows.Contains);
+            panel.AssignLayout(
+                _columns,
+                _rows,
+                new LayoutGridBounds(
+                    columnIndex[panel.LayoutColumn],
+                    rowIndex[panel.LayoutRow],
+                    Math.Max(1, columnSpan),
+                    Math.Max(1, rowSpan)),
+                new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight));
+        }
+
+        OnPropertyChanged(nameof(Columns));
+        OnPropertyChanged(nameof(Rows));
+        OnPropertyChanged(nameof(MinimumCanvasWidth));
+        OnPropertyChanged(nameof(MinimumCanvasHeight));
+    }
+
+    /// <summary>
+    /// Where the next created panel goes: the placeholder it replaces. Set when a
+    /// placeholder is told what to be, so the panel lands in the cell the user
+    /// chose rather than wherever the layout would have appended it.
+    /// </summary>
+    public PanelInstanceId? ReplaceTarget { get; set; }
+
+    /// <summary>Places an empty panel against one edge of the canvas.</summary>
+    public PanelPlaceholderViewModel AddPlaceholder(PanelSide side)
+    {
+        ClearZoom();
+        var placeholder = new PanelPlaceholderViewModel(
+            new PanelInstanceId($"placeholder-{Guid.NewGuid():n}"));
+
+        var column = side is PanelSide.Left or PanelSide.Right;
+        var at = side switch
+        {
+            PanelSide.Left or PanelSide.Top => 0,
+            PanelSide.Right => _columns,
+            _ => _rows,
+        };
+        InsertTrack(column, at);
+
+        placeholder.AssignLayout(
+            _columns,
+            _rows,
+            column
+                ? new LayoutGridBounds(at, 0, 1, _rows)
+                : new LayoutGridBounds(0, at, _columns, 1),
+            new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
+        Panels.Add(placeholder);
+        _usesAutomaticLayout = false;
+        ActivatePanel(placeholder.Id);
+        NotifyPanelLayoutChanged();
+        return placeholder;
+    }
+
+    /// <summary>Places an empty panel beside an existing one.</summary>
+    public PanelPlaceholderViewModel? SplitWithPlaceholder(
+        PanelInstanceId panelId,
+        PanelSplitOrientation orientation)
+    {
+        var target = Panels.SingleOrDefault(panel => panel.Id == panelId);
+        if (target is null)
+        {
+            return null;
+        }
+
+        ClearZoom();
+        var column = orientation == PanelSplitOrientation.LeftRight;
+        var start = column ? target.LayoutColumn : target.LayoutRow;
+        var span = Math.Max(1, column ? target.LayoutColumnSpan : target.LayoutRowSpan);
+
+        int placeholderStart;
+        int placeholderSpan;
+        if (span > 1)
+        {
+            // The panel already covers more than one track, so the boundary this
+            // split needs is already there — dividing its span is the whole job.
+            // Opening another track instead appended one at the end of the grid and
+            // left the panel covering the larger share of it, which is how splitting
+            // twice produced a half and two quarters rather than three thirds, and
+            // how panels in other columns were pushed into overlapping each other.
+            var kept = (span + 1) / 2;
+            placeholderStart = start + kept;
+            placeholderSpan = span - kept;
+            AssignTrackSpan(target, column, start, kept);
+        }
+        else
+        {
+            placeholderStart = start + 1;
+            placeholderSpan = 1;
+            InsertTrack(column, placeholderStart, target);
+        }
+
+        var placeholder = new PanelPlaceholderViewModel(
+            new PanelInstanceId($"placeholder-{Guid.NewGuid():n}"));
+        placeholder.AssignLayout(
+            _columns,
+            _rows,
+            column
+                ? new LayoutGridBounds(
+                    placeholderStart,
+                    target.LayoutRow,
+                    placeholderSpan,
+                    Math.Max(1, target.LayoutRowSpan))
+                : new LayoutGridBounds(
+                    target.LayoutColumn,
+                    placeholderStart,
+                    Math.Max(1, target.LayoutColumnSpan),
+                    placeholderSpan),
+            new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
+        Panels.Add(placeholder);
+        _usesAutomaticLayout = false;
+        ActivatePanel(placeholder.Id);
+        NotifyPanelLayoutChanged();
+        return placeholder;
+    }
+
+    /// <summary>Re-states one axis of a panel's cell, leaving the other alone.</summary>
+    private void AssignTrackSpan(
+        RuntimePanelViewModel panel,
+        bool column,
+        int start,
+        int span) =>
+        panel.AssignLayout(
+            _columns,
+            _rows,
+            column
+                ? new LayoutGridBounds(
+                    start,
+                    panel.LayoutRow,
+                    span,
+                    Math.Max(1, panel.LayoutRowSpan))
+                : new LayoutGridBounds(
+                    panel.LayoutColumn,
+                    start,
+                    Math.Max(1, panel.LayoutColumnSpan),
+                    span),
+            new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight));
+
+    /// <summary>
+    /// Opens a track at an index, moving everything at or after it along. A panel
+    /// that straddles the insertion point grows rather than being torn in two.
+    ///
+    /// <paramref name="splitTarget"/> distinguishes the two reasons to open a track.
+    /// Adding a panel against an edge of the canvas creates genuinely new space, and
+    /// the panels already there keep the cells they had. Splitting one divides that
+    /// panel's own cell, so the new track comes out of its area — and every other
+    /// panel covering that area has to stretch across the new track instead of
+    /// staying where it was. Without this, splitting a panel in a stacked layout
+    /// pushed a full-height column through the whole grid and left a hole beside the
+    /// panels that had shared its columns.
+    /// </summary>
+    private void InsertTrack(bool column, int at, RuntimePanelViewModel? splitTarget = null)
+    {
+        foreach (var panel in Panels)
+        {
+            var start = column ? panel.LayoutColumn : panel.LayoutRow;
+            var span = Math.Max(1, column ? panel.LayoutColumnSpan : panel.LayoutRowSpan);
+            int shifted;
+            int grown;
+            if (splitTarget is not null && ReferenceEquals(panel, splitTarget))
+            {
+                // The panel being split keeps its single track; the new one beside it
+                // is the half it gave up.
+                shifted = start;
+                grown = span;
+            }
+            else if (splitTarget is not null)
+            {
+                // A panel reaching the new track's position covered that ground
+                // before and has to go on covering it. One that stops short of it is
+                // untouched, and one starting at or past it moves along — growing
+                // every panel merely overlapping the split panel's rows made stacked
+                // neighbours expand into each other.
+                shifted = start >= at ? start + 1 : start;
+                grown = start < at && start + span >= at ? span + 1 : span;
+            }
+            else
+            {
+                shifted = start >= at ? start + 1 : start;
+                grown = start < at && at < start + span ? span + 1 : span;
+            }
+
+            panel.AssignLayout(
+                column ? _columns + 1 : _columns,
+                column ? _rows : _rows + 1,
+                column
+                    ? new LayoutGridBounds(shifted, panel.LayoutRow, grown, Math.Max(1, panel.LayoutRowSpan))
+                    : new LayoutGridBounds(panel.LayoutColumn, shifted, Math.Max(1, panel.LayoutColumnSpan), grown),
+                new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight));
+        }
+
+        if (column)
+        {
+            _columns++;
+        }
+        else
+        {
+            _rows++;
+        }
+
+        OnPropertyChanged(nameof(Columns));
+        OnPropertyChanged(nameof(Rows));
+        OnPropertyChanged(nameof(MinimumCanvasWidth));
+        OnPropertyChanged(nameof(MinimumCanvasHeight));
     }
 
     public void NotifyPanelLayoutChanged()
@@ -1417,7 +1982,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
     private readonly ConnectionProfile _connection;
     private readonly SessionOwner _owner;
-    private readonly TerminalRenderProfileSnapshot? _renderProfile;
+    private TerminalRenderProfileSnapshot? _renderProfile;
     private readonly TerminalKeymapSnapshot? _keymap;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ConnectionReconnectPolicy _reconnectPolicy;
@@ -1492,6 +2057,29 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel
         StartupCommandDispatchState.DispatchCompleted +=
             OnStartupCommandDispatchCompleted;
         Initialization = RetryAsync();
+    }
+
+    /// <summary>
+    /// The typeface, size, and palette this panel renders with.
+    ///
+    /// A panel used to keep the snapshot it was launched with, so saving a new
+    /// terminal size changed the stored profile and nothing on screen: every open
+    /// panel kept rendering at the size it started at until it was closed and
+    /// reopened.
+    /// </summary>
+    public TerminalRenderProfileSnapshot? RenderProfile
+    {
+        get => _renderProfile;
+        internal set
+        {
+            if (value is null || value.RendersSameAs(_renderProfile))
+            {
+                return;
+            }
+
+            _renderProfile = value;
+            OnPropertyChanged();
+        }
     }
 
     public EnsureTerminalSessionRequest? SessionRequest
@@ -2305,4 +2893,29 @@ public sealed class UnavailableRuntimePanelViewModel(
     : RuntimePanelViewModel(id, kind, title, kindLabel)
 {
     public string CapabilityMessage { get; } = capabilityMessage;
+}
+
+/// <summary>
+/// The window-chrome half of a theme, passed separately so a caller that does
+/// not present these settings can leave the stored values untouched.
+/// </summary>
+public sealed record ThemeChromePreference(
+    double? CornerRadiusOverride,
+    InterfaceDensity Density,
+    bool ShowTabBar,
+    bool ShowWorkspacesPanel,
+    TabStripPlacement TabStripPlacement,
+    WorkspacePanelPlacement WorkspacePanelPlacement)
+{
+    public static ThemeChromePreference From(ThemePreference theme)
+    {
+        ArgumentNullException.ThrowIfNull(theme);
+        return new(
+            theme.CornerRadiusOverride,
+            theme.Density,
+            theme.ShowTabBar,
+            theme.ShowWorkspacesPanel,
+            theme.TabStripPlacement,
+            theme.WorkspacePanelPlacement);
+    }
 }

@@ -21,6 +21,12 @@ public sealed partial class NewPanelChooserView : UserControl
 
     public event EventHandler<RoutedEventArgs>? AddTerminalPanelRequested;
 
+    /// <summary>Raised with the chosen connection row as the sender.</summary>
+    public event EventHandler<RoutedEventArgs>? AddConnectionPanelRequested;
+
+    /// <summary>Raised with the chosen saved-screen row as the sender.</summary>
+    public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
+
     public event EventHandler<RoutedEventArgs>? CloseRequested;
 
     public event EventHandler<RoutedEventArgs>? ShowLayoutDesignerRequested;
@@ -42,6 +48,12 @@ public sealed partial class NewPanelChooserView : UserControl
 
     private void OnAddTerminalPanelClick(object? sender, RoutedEventArgs e) =>
         AddTerminalPanelRequested?.Invoke(sender, e);
+
+    private void OnAddConnectionPanelClick(object? sender, RoutedEventArgs e) =>
+        AddConnectionPanelRequested?.Invoke(sender, e);
+
+    private void OnOpenScreenClick(object? sender, RoutedEventArgs e) =>
+        OpenScreenRequested?.Invoke(sender, e);
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(sender, e);

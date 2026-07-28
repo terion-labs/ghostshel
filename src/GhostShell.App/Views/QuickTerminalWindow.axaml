@@ -31,19 +31,19 @@
             SessionRequest="{Binding TerminalRequest}" />
 
         <Border
-            Padding="32"
+            Padding="{controls:Inset Xxl}"
             Background="{DynamicResource ShellBackgroundBrush}"
             IsVisible="{Binding ShowTerminalPlaceholder}">
           <StackPanel
               MaxWidth="520"
               HorizontalAlignment="Center"
               VerticalAlignment="Center"
-              Spacing="10">
+              Spacing="{DynamicResource ShellSpaceSm}">
             <icons:SymbolIcon
                 HorizontalAlignment="Center"
                 Symbol="Warning"
                 FontSize="28"
-                Foreground="#D79B57" />
+                Foreground="{DynamicResource ShellWarningBrush}" />
             <TextBlock
                 HorizontalAlignment="Center"
                 FontSize="{DynamicResource ShellFontSize15}"
@@ -63,8 +63,8 @@
           Background="{DynamicResource ShellSurfaceBrush}"
           BorderBrush="{DynamicResource ShellBorderBrush}"
           BorderThickness="0,1,0,0">
-        <Grid Margin="12,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
             <icons:SymbolIcon
                 Symbol="WindowConsole"
                 FontSize="14"
@@ -85,7 +85,7 @@
               FontSize="{DynamicResource ShellFontSize9}"
               Text="{Binding ProfileName, StringFormat={}PROFILE · {0}}" />
 
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
             <Ellipse Width="7" Height="7" Fill="{Binding ShortcutStatusBrush}" />
             <TextBlock
                 Classes="Monospace Muted"

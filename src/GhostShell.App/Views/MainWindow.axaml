@@ -2,6 +2,7 @@
     x:Class="GhostShell.App.Views.MainWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:overlays="using:GhostShell.App.Views.Overlays"
     xmlns:panelViews="using:GhostShell.App.Views.RuntimePanels"
@@ -24,7 +25,9 @@
           CloseRequested="OnCloseRuntimePanelClick"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed"
+          SplitRequested="OnSplitRuntimePanelRequested"
           RetryConnectionRequested="OnRetryConnectionPanelClick"
+          TerminalFocusGained="OnRuntimePanelTerminalFocused"
           SessionInitializationFailed="OnTerminalSessionInitializationFailed"
           SessionSnapshotChanged="OnTerminalSessionSnapshotChanged"
           TrustHostKeyRequested="OnTrustConnectionHostKeyClick" />
@@ -39,6 +42,7 @@
           ForwardRequested="OnBrowserForwardClick"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed"
+          SplitRequested="OnSplitRuntimePanelRequested"
           ReloadRequested="OnBrowserReloadClick"
           StopRequested="OnBrowserStopClick" />
     </DataTemplate>
@@ -46,6 +50,7 @@
     <DataTemplate DataType="vm:FileRuntimePanelViewModel">
       <panelViews:FileRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          SplitRequested="OnSplitRuntimePanelRequested"
           CreateFolderRequested="OnFileCreateFolderClick"
           DeleteRequested="OnFileDeleteClick"
           DismissOperationIssueRequested="OnDismissFileOperationIssueClick"
@@ -68,6 +73,7 @@
     <DataTemplate DataType="vm:StatisticsRuntimePanelViewModel">
       <panelViews:StatisticsRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
@@ -75,6 +81,7 @@
     <DataTemplate DataType="vm:ProcessMonitorRuntimePanelViewModel">
       <panelViews:ProcessMonitorRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
@@ -82,8 +89,20 @@
     <DataTemplate DataType="vm:UnavailableRuntimePanelViewModel">
       <panelViews:UnavailableRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />
+    </DataTemplate>
+    <DataTemplate DataType="vm:PanelPlaceholderViewModel">
+      <panelViews:PanelPlaceholderView
+          BrowserRequested="OnPlaceholderBrowserClick"
+          CloseRequested="OnCloseRuntimePanelClick"
+          FileViewerRequested="OnPlaceholderFileViewerClick"
+          GotFocus="OnRuntimePanelGotFocus"
+          PointerPressed="OnRuntimePanelPointerPressed"
+          ProcessMonitorRequested="OnPlaceholderProcessMonitorClick"
+          StatisticsRequested="OnPlaceholderStatisticsClick"
+          TerminalRequested="OnPlaceholderTerminalClick" />
     </DataTemplate>
   </Window.DataTemplates>
 
@@ -103,6 +122,7 @@
         HistorySearchKeyDownRequested="OnHistorySearchKeyDown"
         ImportDefinitionsRequested="OnImportDefinitionsClick"
         IsVisible="{Binding IsLauncherVisible}"
+        CreateScreenRequested="OnCreateScreenClick"
         LauncherConnectionsRequested="OnLauncherConnectionsClick"
         LauncherHistoryRequested="OnLauncherHistoryClick"
         LauncherHomeRequested="OnLauncherHomeClick"
@@ -154,6 +174,7 @@
         ShowCommandPaletteRequested="OnShowCommandPaletteClick"
         ShowLauncherRequested="OnShowLauncherClick"
         ShowNewItemRequested="OnShowNewItemClick"
+        AddPanelToSideRequested="OnAddPanelToSideRequested"
         ShowNewPanelRequested="OnShowNewPanelClick"
         ShowSettingsRequested="OnShowSettingsClick"
         SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick"
@@ -208,10 +229,12 @@
         RetryFileTransferRequested="OnRetryFileTransferClick"
         ReviewHistoryPrivacyRequested="OnReviewHistoryPrivacyClick"
         ReviewOnboardingRequested="OnReviewOnboardingClick"
-        SaveAppearanceRequested="OnSaveAppearanceClick"
+        AppearanceChangedRequested="OnAppearanceChanged"
+        PickColorRequested="OnPickColorRequested"
         SaveKeybindingsRequested="OnSaveKeybindingsClick"
         SaveQuickTerminalSettingsRequested="OnSaveQuickTerminalSettingsClick"
         SaveTerminalProfileRequested="OnSaveTerminalProfileClick"
+        SelectTerminalPaletteRequested="OnSelectTerminalPaletteClick"
         SecretsSettingsRequested="OnSecretsSettingsClick"
         SettingsBackRequested="OnSettingsBackClick"
         ShowCommandPaletteRequested="OnShowCommandPaletteClick"
@@ -237,8 +260,6 @@
           x:Name="NewItemLauncherOverlayView"
           AddConnectionRequested="OnAddConnectionClick"
           CloseRequested="OnCloseOverlayClick"
-          CreateScreenRequested="OnCreateScreenClick"
-          CreateWorkspaceRequested="OnCreateWorkspaceClick"
           IsVisible="{Binding IsNewItemVisible}"
           NewBrowserRequested="OnNewBrowserClick"
           NewFileViewerRequested="OnNewFileViewerClick"
@@ -254,11 +275,13 @@
       <overlays:NewPanelChooserView
           x:Name="NewPanelChooserOverlayView"
           AddBrowserPanelRequested="OnAddBrowserPanelClick"
+          AddConnectionPanelRequested="OnAddConnectionPanelClick"
           AddFilePanelRequested="OnAddFilePanelClick"
           AddProcessMonitorPanelRequested="OnAddProcessMonitorPanelClick"
           AddStatisticsPanelRequested="OnAddStatisticsPanelClick"
           AddTerminalPanelRequested="OnAddTerminalPanelClick"
           CloseRequested="OnCloseOverlayClick"
+          OpenScreenRequested="OnOpenScreenClick"
           IsVisible="{Binding IsNewPanelVisible}"
           ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />
 
@@ -288,23 +311,23 @@
           ShrinkRightRequested="OnLayoutShrinkRightClick"
           ShrinkTopRequested="OnLayoutShrinkTopClick"
           SlotSelectedRequested="OnLayoutSlotClick"
-          TogglePaintModeRequested="OnLayoutTogglePaintModeClick" />
+          PaintPanelRequested="OnLayoutPaintPanelClick" />
 
-      <Border
+      <controls:SurfaceCard Elevation="Overlay" Padding="0"
           Margin="42,58,42,34"
           MaxWidth="1280"
           HorizontalAlignment="Center"
           VerticalAlignment="Stretch"
-          Classes="OverlayCard"
           ClipToBounds="True"
           KeyboardNavigation.TabNavigation="Cycle"
           IsVisible="{Binding IsDefinitionEditorVisible}">
         <views:WorkspaceEditorView
             x:Name="WorkspaceDefinitionEditor"
             DataContext="{Binding WorkspaceEditor}"
+            PickAccentRequested="OnWorkspaceAccentPickRequested"
             SaveRequested="OnWorkspaceEditorSaveRequested"
             CancelRequested="OnWorkspaceEditorCancelRequested" />
-      </Border>
+      </controls:SurfaceCard>
 
       <Border
           x:Name="OverlayTitleBarDragRegion"
@@ -316,33 +339,32 @@
           WindowDecorationProperties.ElementRole="TitleBar" />
     </Grid>
 
-    <Border
+    <controls:SurfaceCard Tone="Notice"
         Margin="0,0,0,62"
-        Padding="12,8"
+        Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
         HorizontalAlignment="Center"
         VerticalAlignment="Bottom"
         MaxWidth="620"
-        Classes="NoticeCard"
         IsVisible="{Binding HasApplicationKeySequenceHint}"
         AutomationProperties.LiveSetting="Polite"
         AutomationProperties.Name="Application key sequence status">
       <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ApplicationKeySequenceHint}" TextWrapping="Wrap" />
-    </Border>
+    </controls:SurfaceCard>
 
     <Border
-        Margin="0,0,18,18"
-        Padding="13,10"
+        Margin="{controls:Inset Right=Lg, Bottom=Lg}"
+        Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
         HorizontalAlignment="Right"
         VerticalAlignment="Bottom"
         MaxWidth="520"
         Background="{DynamicResource ShellDangerSoftBrush}"
         BorderBrush="{DynamicResource ShellDangerBorderBrush}"
         BorderThickness="1"
-        CornerRadius="9"
+        CornerRadius="{DynamicResource ShellCardCornerRadius}"
         IsVisible="{Binding HasOperationError}"
         AutomationProperties.LiveSetting="Assertive"
         AutomationProperties.Name="Operation error">
-      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <icons:SymbolIcon Symbol="ErrorCircle" FontSize="15" Foreground="{DynamicResource ShellDangerBrush}" />
         <TextBlock Grid.Column="1" Foreground="{DynamicResource ShellTextBrush}" Text="{Binding OperationError}" TextWrapping="Wrap" />
         <Button Grid.Column="2" Classes="IconButton" Click="OnClearErrorClick" AutomationProperties.Name="Dismiss error"><icons:SymbolIcon Symbol="Dismiss" FontSize="12" /></Button>

@@ -146,6 +146,8 @@ public static class DesktopComposition
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IGlobalHotkeyService>(_ =>
             GlobalHotkeyServiceSelector.CreateForCurrentPlatform());
+        services.AddSingleton<IScreenColorSampler>(_ =>
+            ScreenColorSamplerSelector.Create());
         services.AddSingleton(provider => new OnboardingViewModel(
             provider.GetRequiredService<IOnboardingProgressStore>(),
             provider.GetRequiredService<IDefinitionCatalog>(),

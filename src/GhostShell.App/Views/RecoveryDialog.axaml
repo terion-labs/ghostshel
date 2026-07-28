@@ -2,14 +2,15 @@
     x:Class="GhostShell.App.Views.RecoveryDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     Title="Recover GhostSHELL"
     Width="560"
     SizeToContent="Height"
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="Auto,Auto,Auto" Margin="24" RowSpacing="16">
-    <StackPanel Spacing="6">
+  <Grid RowDefinitions="Auto,Auto,Auto" Margin="{controls:Inset Xl}" RowSpacing="{DynamicResource ShellSpaceLg}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
       <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="GhostSHELL did not close cleanly" />
       <TextBlock
           Classes="Muted"
@@ -17,8 +18,8 @@
           TextWrapping="Wrap" />
     </StackPanel>
 
-    <Border Grid.Row="1" Padding="14" Background="#111112" BorderBrush="#303034" BorderThickness="1" CornerRadius="8">
-      <StackPanel Spacing="8">
+    <Border Grid.Row="1" Padding="{controls:Inset Md}" Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellControlCornerRadius}">
+      <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
         <TextBlock FontWeight="SemiBold" Text="Recovery choices" />
         <TextBlock Classes="Muted" Text="Restore reopens the saved runtime snapshot." TextWrapping="Wrap" />
         <TextBlock Classes="Muted" Text="Safe mode starts without reopening it and does not delete the stored snapshot." TextWrapping="Wrap" />
@@ -26,7 +27,7 @@
       </StackPanel>
     </Border>
 
-    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <Button
           MinWidth="104"
           Click="OnDiscardClick"

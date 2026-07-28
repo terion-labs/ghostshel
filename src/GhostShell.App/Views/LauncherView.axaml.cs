@@ -4,11 +4,17 @@ using Avalonia.Interactivity;
 
 namespace GhostShell.App.Views;
 
+/// <summary>
+/// Home is a single scrolling summary, so its sections are focus targets rather
+/// than routes. Saved Connections and Screens are their own pages and are
+/// reached through the launcher route instead.
+/// </summary>
 internal enum LauncherOverviewSection
 {
     Home,
     Connections,
     Screens,
+    RecentSessions,
 }
 
 public sealed partial class LauncherView : UserControl
@@ -86,6 +92,18 @@ public sealed partial class LauncherView : UserControl
     internal void FocusOnboardingFinish() =>
         OnboardingFinishButton.Focus(NavigationMethod.Tab);
 
+    internal void FocusConnectionsPage()
+    {
+        LauncherConnectionsScrollViewer.Offset = default;
+        LauncherAllConnectionsList.Focus(NavigationMethod.Tab);
+    }
+
+    internal void FocusScreensPage()
+    {
+        LauncherScreensScrollViewer.Offset = default;
+        LauncherAllScreensList.Focus(NavigationMethod.Tab);
+    }
+
     internal void FocusOverviewSection(
         LauncherOverviewSection section,
         bool resetScroll = false)
@@ -100,11 +118,18 @@ public sealed partial class LauncherView : UserControl
             LauncherOverviewSection.Home => LauncherHomeSection,
             LauncherOverviewSection.Connections => LauncherConnectionsSection,
             LauncherOverviewSection.Screens => LauncherScreensSection,
+            LauncherOverviewSection.RecentSessions => LauncherHistorySection,
             _ => throw new ArgumentOutOfRangeException(nameof(section)),
         };
         target.BringIntoView();
         target.Focus();
     }
+
+    /// <summary>Raised to create a saved screen from scratch.</summary>
+    public event EventHandler<RoutedEventArgs>? CreateScreenRequested;
+
+    private void OnCreateScreenClick(object? sender, RoutedEventArgs e) =>
+        CreateScreenRequested?.Invoke(sender, e);
 
     private void OnAddConnectionClick(object? sender, RoutedEventArgs e) =>
         AddConnectionRequested?.Invoke(sender, e);

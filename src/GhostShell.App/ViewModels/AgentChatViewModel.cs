@@ -553,7 +553,12 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool HasCapabilityNotice => CapabilityNotice.Length > 0;
+    /// <summary>
+    /// The capability card describes what a run would be allowed to do. With no
+    /// provider configured there is no run to describe, and the card only competed
+    /// with the empty state that explains how to get one.
+    /// </summary>
+    public bool HasCapabilityNotice => HasProvider && CapabilityNotice.Length > 0;
 
     public bool TerminalMutationAvailable
     {
@@ -2019,6 +2024,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanStartConversation));
         OnPropertyChanged(nameof(ConnectionStatus));
         OnPropertyChanged(nameof(NeedsProviderAttention));
+        OnPropertyChanged(nameof(HasCapabilityNotice));
         NotifyPolicyAvailabilityChanged();
         NotifyQuestionAvailabilityChanged();
         NotifyCapabilityRequestAvailabilityChanged();

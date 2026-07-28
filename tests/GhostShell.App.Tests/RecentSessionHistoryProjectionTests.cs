@@ -99,6 +99,43 @@ public sealed class RecentSessionHistoryProjectionTests
         Assert.Equal("Terminal · Closed", item.Detail);
     }
 
+    /// <summary>
+    /// Record equality cannot answer this: every refresh stamps a new
+    /// <c>ObservedAt</c>, so two projections of the same session are never equal
+    /// and the recent-sessions list rebuilt every row on every refresh — dropping
+    /// whatever the pointer was hovering.
+    /// </summary>
+    [Fact]
+    public void Two_projections_of_the_same_session_present_the_same()
+    {
+        var first = Item("session", "Prod web");
+        var second = Item("session", "Prod web") with { ObservedAt = Now.AddSeconds(3) };
+
+        Assert.NotEqual(first, second);
+        Assert.True(first.PresentsSameAs(second));
+    }
+
+    [Fact]
+    public void A_row_that_can_no_longer_be_reopened_presents_differently()
+    {
+        Assert.False(
+            Item("session", "Prod web")
+                .PresentsSameAs(Item("session", "Prod web", canOpen: false)));
+    }
+
+    /// <summary>
+    /// The relative timestamp is on the row, so a projection observed far enough
+    /// later reads differently and has to count as a change.
+    /// </summary>
+    [Fact]
+    public void A_row_whose_relative_timestamp_moved_on_presents_differently()
+    {
+        var first = Item("session", "Prod web");
+        var later = Item("session", "Prod web") with { ObservedAt = Now.AddHours(4) };
+
+        Assert.False(first.PresentsSameAs(later));
+    }
+
     private static RecentSessionHistoryItemViewModel Item(
         string id,
         string title,

@@ -53,8 +53,7 @@ public sealed class RuntimePanelViewContractTests
             AttributeValue(component, "CloseRequested"));
         Assert.DoesNotContain(
             template.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "PanelCard"));
+            element => element.Name.LocalName == "SurfaceCard");
     }
 
     [Theory]
@@ -102,10 +101,15 @@ public sealed class RuntimePanelViewContractTests
             accessibleName,
             AttributeValue(root, "AutomationProperties.Name"));
 
+        // A panel's chrome is the shell's card control, sunk into the page and
+        // clipping what it holds, rather than a Border wearing a "PanelCard" class.
         var card = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "PanelCard"));
+            element => element.Name.LocalName == "SurfaceCard"
+                && string.Equals(
+                    AttributeValue(element, "Tone"),
+                    "Sunken",
+                    StringComparison.Ordinal));
         Assert.Equal(
             "{Binding IsActive}",
             AttributeValue(card, "Classes.active"));
@@ -300,8 +304,11 @@ public sealed class RuntimePanelViewContractTests
 
         var address = FindUniqueAccessibleElement(root, "Browser address");
         Assert.Equal("OnAddressKeyDown", AttributeValue(address, "KeyDown"));
+        // Bound by element name, not by data context. The row's data context is the
+        // panel, because the shell resolves which panel to act on from the sender's
+        // context — re-pointing the row at the browser host broke Close silently.
         Assert.Equal(
-            "{Binding AddressText, Mode=TwoWay}",
+            "{Binding AddressText, ElementName=RuntimeBrowser, Mode=TwoWay}",
             AttributeValue(address, "Text"));
 
         var status = FindUniqueAccessibleElement(root, "Browser session status");
@@ -311,8 +318,11 @@ public sealed class RuntimePanelViewContractTests
 
         var codeBehind = File.ReadAllText(
             RuntimePanelPath("BrowserRuntimePanelView", ".axaml.cs"));
+        // Raised with the presentation host, not the sender. The shell resolves
+        // browser actions from it, and resolves Close from the panel's data
+        // context — one context cannot answer both, so the view names the host.
         Assert.Contains(
-            "AddressKeyDown?.Invoke(sender, e);",
+            "AddressKeyDown?.Invoke(RuntimeBrowser, e);",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(

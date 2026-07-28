@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using GhostShell.App.ViewModels;
 
+using GhostShell.App.Controls;
+
 namespace GhostShell.App.Views;
 
 public sealed partial class SecretEditorDialog : Window
@@ -59,7 +61,7 @@ public sealed partial class SecretEditorDialog : Window
         }
         catch (ArgumentException exception)
         {
-            if (this.FindControl<Border>("ValidationCard") is { } card
+            if (this.FindControl<SurfaceCard>("ValidationCard") is { } card
                 && this.FindControl<TextBlock>("ValidationMessage") is { } message)
             {
                 message.Text = exception.Message;

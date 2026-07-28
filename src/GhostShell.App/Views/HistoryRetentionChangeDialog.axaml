@@ -2,25 +2,26 @@
     x:Class="GhostShell.App.Views.HistoryRetentionChangeDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
     Title="Change session-history retention"
     Width="480"
     SizeToContent="Height"
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid Margin="24" RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
-    <StackPanel Spacing="6">
+  <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
       <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="Apply stricter history retention?" />
       <TextBlock x:Name="RetentionSummary" Classes="Muted" TextWrapping="Wrap" />
     </StackPanel>
-    <Border Grid.Row="1" Classes="NoticeCard">
+    <controls:SurfaceCard Tone="Notice" Padding="0" Grid.Row="1">
       <TextBlock
-          Margin="12"
+          Margin="{controls:Inset Md}"
           Classes="Muted"
           Text="Records outside the new limit are removed immediately and cannot be restored. Active sessions stay open, and saved connections, screens, and workspaces are not changed."
           TextWrapping="Wrap" />
-    </Border>
-    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+    </controls:SurfaceCard>
+    <StackPanel Grid.Row="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
       <Button MinWidth="88" Click="OnCancelClick" Content="Cancel" IsCancel="True" AutomationProperties.Name="Cancel history retention change" />
       <Button MinWidth="116" Classes="DestructiveButton" Click="OnConfirmClick" Content="Apply and prune" AutomationProperties.Name="Confirm history retention change" />
     </StackPanel>
