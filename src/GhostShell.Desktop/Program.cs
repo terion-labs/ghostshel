@@ -138,7 +138,8 @@ internal static class Program
         string operation,
         ApplicationRunError error)
     {
-        Console.Error.WriteLine($"GhostSHELL could not {operation} ({error.Code}).");
+        Console.Error.WriteLine(
+            $"GhostSHELL could not {operation} ({error.Code}): {error.Message}");
         Environment.ExitCode = 1;
     }
 

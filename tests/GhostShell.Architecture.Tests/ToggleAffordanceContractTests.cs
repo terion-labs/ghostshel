@@ -24,6 +24,8 @@ public sealed class ToggleAffordanceContractTests
         "AgentYoloConfirmationDialog.axaml",
         // A mutually exclusive authentication mode, not an on/off setting.
         "AiProviderProfileEditorDialog.axaml",
+        // A one-off persistence choice made while connecting, not a stored setting.
+        "ConnectionEditorDialog.axaml",
     ];
 
     /// <summary>

@@ -136,7 +136,9 @@ public sealed class TransientOverlayViewContractTests
                 AttributeValue(element, "Name"),
                 "OverlayTitleBarDragRegion",
                 StringComparison.Ordinal));
-        Assert.Equal("44", AttributeValue(titleBar, "Height"));
+        Assert.Equal(
+            "{Binding $parent[Window].TitleBarChromeHeight}",
+            AttributeValue(titleBar, "Height"));
         Assert.Equal("Top", AttributeValue(titleBar, "VerticalAlignment"));
         Assert.Equal(
             "TitleBar",
@@ -319,18 +321,27 @@ public sealed class TransientOverlayViewContractTests
         Assert.Equal("Stretch", AttributeValue(card, "HorizontalAlignment"));
         Assert.Equal("Stretch", AttributeValue(card, "VerticalAlignment"));
 
+        var hostedChooser = Assert.Single(
+            card.Elements(),
+            element => element.Name.LocalName == "NewItemChooserView");
+        Assert.Equal("True", AttributeValue(hostedChooser, "ShowWorkspaces"));
+        Assert.Equal("True", AttributeValue(hostedChooser, "ShowCloseAction"));
+
+        var catalog = LoadComponent("NewItemChooserView");
+        var catalogRoot = Assert.IsType<XElement>(catalog.Root);
+
         // The reference frame heads this overlay "Start something new" rather than
         // naming the thing being created; Home's own button still says whether it
         // opens a tab or a session.
         Assert.Contains(
-            root.Descendants(),
+            catalogRoot.Descendants(),
             element => element.Name.LocalName == "TextBlock"
                 && string.Equals(
                     AttributeValue(element, "Text"),
                     "Start something new",
                     StringComparison.Ordinal));
 
-        var choices = root.Descendants()
+        var choices = catalogRoot.Descendants()
             .Where(element => element.Name.LocalName == "Button")
             .Where(element => HasClasses(
                 element,
@@ -339,7 +350,7 @@ public sealed class TransientOverlayViewContractTests
             .ToArray();
         Assert.Equal(5, choices.Length);
 
-        var initialAction = FindNamedElement(root, "NewTerminalButton");
+        var initialAction = FindNamedElement(catalogRoot, "NewTerminalButton");
         Assert.Equal(
             "OnNewLocalTerminalClick",
             AttributeValue(initialAction, "Click"));
@@ -351,10 +362,11 @@ public sealed class TransientOverlayViewContractTests
                 StringComparison.Ordinal)
                 && string.Equals(
                     AttributeValue(element, "IsEnabled"),
-                    "{Binding CanCreateBrowserPanel}",
+                    "{Binding CanStartBrowserSession}",
                     StringComparison.Ordinal));
 
-        foreach (var catalog in new[]
+        // The reusable catalog, not the overlay wrapper, owns all collections.
+        foreach (var catalogBinding in new[]
                  {
                      "{Binding Workspaces}",
                      "{Binding Connections}",
@@ -362,22 +374,32 @@ public sealed class TransientOverlayViewContractTests
                  })
         {
             Assert.Contains(
-                root.Descendants(),
+                catalogRoot.Descendants(),
                 element => element.Name.LocalName == "ItemsControl"
                     && string.Equals(
                         AttributeValue(element, "ItemsSource"),
-                        catalog,
+                        catalogBinding,
                         StringComparison.Ordinal));
         }
+
+        Assert.Equal(
+            3,
+            catalogRoot.Descendants()
+                .Count(element => element.Name.LocalName == "CountPill"));
+        Assert.Equal(
+            2,
+            catalogRoot.Descendants()
+                .Count(element => element.Name.LocalName == "Button"
+                    && HasClasses(element, "ListRow", "ChooserListRow")));
 
         // No inline create form: the overlay opens things, and creating a screen
         // or workspace belongs to the page that owns that list.
         Assert.DoesNotContain(
-            root.Descendants(),
+            catalogRoot.Descendants(),
             element => element.Name.LocalName == "TextBox");
 
         var workspaceList = Assert.Single(
-            root.Descendants(),
+            catalogRoot.Descendants(),
             element => element.Name.LocalName == "ScrollViewer"
                 && element.Descendants().Any(item =>
                     item.Name.LocalName == "ItemsControl"
@@ -392,13 +414,25 @@ public sealed class TransientOverlayViewContractTests
             "{Binding HasWorkspaces}",
             AttributeValue(workspaceList, "IsVisible"));
         Assert.Contains(
-            root.Descendants(),
+            catalogRoot.Descendants(),
             element => element.Name.LocalName == "Button"
                 && HasClasses(element, "SearchButton")
                 && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "Search commands, connections, screens, workspaces, and session history",
                     StringComparison.Ordinal));
+        var searchButton = Assert.Single(
+            catalogRoot.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && HasClasses(element, "SearchButton"));
+        var searchRow = Assert.IsType<XElement>(searchButton.Parent);
+        Assert.Null(AttributeValue(searchRow, "ColumnSpacing"));
+        var closeButton = Assert.Single(
+            searchRow.Elements(),
+            element => HasClasses(element, "IconButton", "Large"));
+        Assert.Equal(
+            "{controls:Inset Left=Md}",
+            AttributeValue(closeButton, "Margin"));
     }
 
     [Fact]
@@ -518,8 +552,15 @@ public sealed class TransientOverlayViewContractTests
             "internal void FocusInitialAction()",
             newItemLauncherCode);
         Assert.Contains(
-            "NewTerminalButton.Focus(NavigationMethod.Tab);",
+            "Chooser.FocusInitialAction();",
             newItemLauncherCode);
+
+        var newItemChooserCode = ApplicationViews
+            .FindUniqueCodeBehindSourceContaining(
+                "public sealed partial class NewItemChooserView");
+        Assert.Contains(
+            "NewTerminalButton.Focus(NavigationMethod.Tab);",
+            newItemChooserCode);
 
         var newPanelChooserCode = ApplicationViews
             .FindUniqueCodeBehindSourceContaining(
@@ -587,6 +628,21 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains("new DiscardChangesDialog()", mainWindowCode);
         Assert.Contains("ExecuteLauncherSearchTargetAsync(", mainWindowCode);
         Assert.Contains("ViewModel.AddLocalTerminalPanelAsync(", mainWindowCode);
+        foreach (var adapter in new[]
+                 {
+                     "Browser",
+                     "FileViewer",
+                     "Statistics",
+                     "ProcessMonitor",
+                 })
+        {
+            Assert.Contains(
+                $"RequestNewAdapterTabAsync(PanelKind.{adapter})",
+                mainWindowCode);
+            Assert.Contains(
+                $"ViewModel.Add{adapter}TabAsync(",
+                mainWindowCode);
+        }
         Assert.Contains("new SavedScreenEditorDialog(", mainWindowCode);
         Assert.Contains(
             "ViewModel.LayoutDesignerEditor?.RequestCancel()",
@@ -810,6 +866,15 @@ public sealed class TransientOverlayViewContractTests
             "GhostShell.App",
             "Views",
             "Overlays",
+            $"{view}.axaml"));
+
+    private static XDocument LoadComponent(string view) =>
+        XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "Components",
             $"{view}.axaml"));
 
     private static string? AttributeValue(XElement element, string name) =>

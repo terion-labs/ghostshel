@@ -211,16 +211,21 @@ public sealed record FileOperationIssue(
                 "Permission denied",
                 error,
                 "Check this account's permissions or choose another location."),
-            FilePanelErrorCode.AuthenticationRequired
-                or FilePanelErrorCode.CertificateRejected
+            FilePanelErrorCode.AuthenticationRequired => Create(
+                    FileOperationIssueKind.AuthenticationRequired,
+                    "Authentication failed",
+                    error,
+                    "Check this connection's authentication settings, then retry.",
+                    canRetry: true),
+            FilePanelErrorCode.CertificateRejected
                 or FilePanelErrorCode.HostKeyRejected
                 or FilePanelErrorCode.HostKeyUnknown
                 or FilePanelErrorCode.HostKeyChanged
                 or FilePanelErrorCode.HostKeyStoreInvalid => Create(
                     FileOperationIssueKind.AuthenticationRequired,
-                    "Sign-in or trust required",
+                    "Trust required",
                     error,
-                    "Reconnect the provider and verify its credentials or trust settings.",
+                    "Review this connection's certificate or host-key trust, then retry.",
                     canRetry: true),
             FilePanelErrorCode.Offline => Create(
                 FileOperationIssueKind.Offline,

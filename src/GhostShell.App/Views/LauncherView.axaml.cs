@@ -26,9 +26,13 @@ public sealed partial class LauncherView : UserControl
 
     public event EventHandler<RoutedEventArgs>? AddConnectionRequested;
 
+    public event EventHandler<RoutedEventArgs>? ActivateTabRequested;
+
     public event EventHandler<RoutedEventArgs>? CancelHistoryExportRequested;
 
     public event EventHandler<RoutedEventArgs>? ClearRecentSessionsRequested;
+
+    public event EventHandler<RoutedEventArgs>? CloseRuntimeTabRequested;
 
     public event EventHandler<RoutedEventArgs>? DeleteConnectionRequested;
 
@@ -134,11 +138,17 @@ public sealed partial class LauncherView : UserControl
     private void OnAddConnectionClick(object? sender, RoutedEventArgs e) =>
         AddConnectionRequested?.Invoke(sender, e);
 
+    private void OnActivateTabClick(object? sender, RoutedEventArgs e) =>
+        ActivateTabRequested?.Invoke(sender, e);
+
     private void OnCancelHistoryExportClick(object? sender, RoutedEventArgs e) =>
         CancelHistoryExportRequested?.Invoke(sender, e);
 
     private void OnClearRecentSessionsClick(object? sender, RoutedEventArgs e) =>
         ClearRecentSessionsRequested?.Invoke(sender, e);
+
+    private void OnCloseRuntimeTabClick(object? sender, RoutedEventArgs e) =>
+        CloseRuntimeTabRequested?.Invoke(sender, e);
 
     private void OnDeleteConnectionClick(object? sender, RoutedEventArgs e) =>
         DeleteConnectionRequested?.Invoke(sender, e);

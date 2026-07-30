@@ -897,6 +897,32 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     [Fact]
+    public async Task ShutdownDoesNotRefreshHistoryAfterPersistingSessionCompletions()
+    {
+        var connection = LocalConnection("shutdown-no-refresh", "Shutdown no refresh");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)], [], [], [], [], [], [], [], []);
+        var store = new MemoryRecentSessionStore();
+        using var viewModel = CreateViewModel(
+            snapshot,
+            new EmptyFileClients(),
+            recentSessionHistory: new RecentSessionHistory(store));
+
+        Assert.True(await viewModel.OpenConnectionAsync(connection.Id));
+        Assert.True(
+            (await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None)).IsSuccess);
+        store.FailReadsUntilCleared = true;
+
+        await viewModel.QuiesceForShutdownAsync(CancellationToken.None);
+        var drain = await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
+
+        Assert.True(drain.IsSuccess, drain.Error?.Message);
+        Assert.Equal(
+            RecentSessionOutcome.GracefullyClosed,
+            Assert.Single(store.Snapshot).Outcome);
+    }
+
+    [Fact]
     public async Task ShutdownHistoryDrainReportsACompletionWriteFailure()
     {
         var connection = LocalConnection("shutdown-history-failure", "Shutdown history failure");
@@ -918,6 +944,10 @@ public sealed class SavedScreenRuntimeIdentityTests
 
         Assert.False(drain.IsSuccess);
         Assert.Equal(ApplicationRunErrorCode.StorageFailure, drain.Error!.Code);
+        Assert.Contains(
+            "Completion persistence failed",
+            drain.Error.Message,
+            StringComparison.Ordinal);
         Assert.Equal(RecentSessionOutcome.Active, Assert.Single(store.Snapshot).Outcome);
     }
 

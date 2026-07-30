@@ -108,9 +108,10 @@ public sealed class AvaloniaHostAppearanceAdapterTests
         Assert.Equal("profile-windows11", resources.ProfileClass);
         Assert.Equal("appearance-light", resources.AppearanceClass);
         Assert.Equal(40, resources.ControlMinHeight);
-        Assert.Equal(15, resources.BaseFontSize);
+        Assert.Equal(17.5, resources.BaseFontSize);
         Assert.Equal(1.25, resources.TextScale);
         Assert.Equal(31.25, resources.ScaleFontSize(25));
+        Assert.Equal(17.5, resources.ScaleFontSize(10));
         Assert.Equal(FontFamily.Default, resources.FontFamily);
         Assert.True(resources.AdvancedMaterialsEnabled);
         Assert.Contains("Windows11", resources.AppearanceStatus, StringComparison.Ordinal);
@@ -181,7 +182,7 @@ public sealed class AvaloniaHostAppearanceAdapterTests
         var resources = EffectiveAppearanceResourceMapper.Map(preference.Resolve(host));
 
         Assert.Equal(2, resources.TextScale);
-        Assert.Equal(24, resources.BaseFontSize);
+        Assert.Equal(26, resources.BaseFontSize);
         Assert.Equal(50, resources.ScaleFontSize(25));
     }
 

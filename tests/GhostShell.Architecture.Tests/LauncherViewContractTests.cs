@@ -12,8 +12,10 @@ public sealed class LauncherViewContractTests
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["AddConnectionRequested"] = "OnAddConnectionClick",
+            ["ActivateTabRequested"] = "OnActivateTabClick",
             ["CancelHistoryExportRequested"] = "OnCancelHistoryExportClick",
             ["ClearRecentSessionsRequested"] = "OnClearRecentSessionsClick",
+            ["CloseRuntimeTabRequested"] = "OnCloseRuntimeTabClick",
             ["DeleteConnectionRequested"] = "OnDeleteConnectionClick",
             ["EditConnectionRequested"] = "OnEditConnectionClick",
             ["EditScreenRequested"] = "OnEditScreenClick",
@@ -80,6 +82,24 @@ public sealed class LauncherViewContractTests
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
         AssertTitleBarDragRegion(root);
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "Classes"),
+                    "FloatingSidebar",
+                    StringComparison.Ordinal));
+
+        var tabs = FindNamedElement(root, "LauncherTabStrip");
+        Assert.Equal("RuntimeTabStripView", tabs.Name.LocalName);
+        Assert.Equal(
+            "{Binding RuntimeWorkspace.Tabs}",
+            AttributeValue(tabs, "Tabs"));
+        Assert.Equal("True", AttributeValue(tabs, "ShowHomeTab"));
+        Assert.Equal("True", AttributeValue(tabs, "IsHomeActive"));
+        Assert.Equal("OnLauncherHomeClick", AttributeValue(tabs, "HomeRequested"));
+        Assert.Equal("OnActivateTabClick", AttributeValue(tabs, "ActivateRequested"));
+        Assert.Equal("OnCloseRuntimeTabClick", AttributeValue(tabs, "CloseRequested"));
 
         foreach (var extractedName in ExtractedControlNames)
         {
@@ -161,6 +181,134 @@ public sealed class LauncherViewContractTests
                     StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Home_runtime_tab_is_the_icon_only_predefined_tab()
+    {
+        var tabStrip = LoadComponent("RuntimeTabStripView");
+        var root = Assert.IsType<XElement>(tabStrip.Root);
+        Assert.Equal(
+            "{DynamicResource ShellTabStripTopClearance}",
+            AttributeValue(root, "Margin"));
+        var home = FindNamedElement(root, "HomeTabButton");
+
+        Assert.Equal("32", AttributeValue(home, "Width"));
+        Assert.Equal("32", AttributeValue(home, "Height"));
+        Assert.Equal("0", AttributeValue(home, "Padding"));
+        Assert.Equal(
+            "Open Home tab",
+            AttributeValue(home, "AutomationProperties.Name"));
+        Assert.Single(
+            home.Elements(),
+            element => element.Name.LocalName == "SymbolIcon"
+                && string.Equals(
+                    AttributeValue(element, "Symbol"),
+                    "Home",
+                    StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            home.Descendants(),
+            element => element.Name.LocalName == "TextBlock");
+    }
+
+    [Fact]
+    public void Saved_connection_shortcuts_use_one_rounded_menu_surface()
+    {
+        var shortcut = LoadComponent("SavedConnectionShortcutView");
+        var root = Assert.IsType<XElement>(shortcut.Root);
+        Assert.Equal("False", AttributeValue(root, "ClipToBounds"));
+        Assert.Equal(
+            "False",
+            AttributeValue(Assert.Single(root.Elements()), "ClipToBounds"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "SplitButton");
+        Assert.Equal(
+            2,
+            root.Descendants().Count(element =>
+                element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "Classes"),
+                    "SavedConnectionShortcutSurface",
+                    StringComparison.Ordinal)));
+
+        var flyout = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Flyout");
+        Assert.Equal(
+            "SavedConnectionMenu",
+            AttributeValue(flyout, "FlyoutPresenterClasses"));
+        Assert.DoesNotContain(
+            flyout.Elements(),
+            element => element.Name.LocalName == "Border");
+        Assert.All(
+            flyout.Descendants().Where(element => element.Name.LocalName == "Button"),
+            element => Assert.Equal(
+                "FlyoutMenuItem",
+                AttributeValue(element, "Classes")));
+
+        var workspace = LoadView("WorkspaceView");
+        var viewport = FindNamedElement(
+            Assert.IsType<XElement>(workspace.Root),
+            "SavedConnectionStripViewport");
+        Assert.Equal("False", AttributeValue(viewport, "ClipToBounds"));
+        Assert.Equal(
+            "{DynamicResource ShellSavedConnectionStripPadding}",
+            AttributeValue(viewport, "Padding"));
+        Assert.Equal(
+            "False",
+            AttributeValue(Assert.Single(
+                viewport.Elements(),
+                element => element.Name.LocalName == "ItemsControl"),
+                "ClipToBounds"));
+    }
+
+    [Fact]
+    public void Dropdown_surfaces_share_the_saved_connection_menu_treatment()
+    {
+        var theme = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "GhostShellTheme.axaml"));
+
+        var shortcutStyle = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Border.SavedConnectionShortcutSurface",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            shortcutStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && string.Equals(
+                    AttributeValue(element, "Property"),
+                    "ClipToBounds",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Value"),
+                    "True",
+                    StringComparison.Ordinal));
+
+        foreach (var selector in new[]
+                 {
+                     "FlyoutPresenter",
+                     "MenuFlyoutPresenter",
+                     "ComboBox:dropdownopen /template/ Border#PopupBorder",
+                     "MenuItem",
+                     "ComboBoxItem",
+                 })
+        {
+            Assert.Single(
+                theme.Descendants(),
+                element => element.Name.LocalName == "Style"
+                    && string.Equals(
+                        AttributeValue(element, "Selector"),
+                        selector,
+                        StringComparison.Ordinal));
+        }
+    }
+
     private static void AssertTitleBarDragRegion(XElement root)
     {
         var titleBar = Assert.Single(
@@ -175,6 +323,9 @@ public sealed class LauncherViewContractTests
         Assert.Equal(
             "OnTitleBarPointerPressed",
             AttributeValue(titleBar, "PointerPressed"));
+        Assert.Equal(
+            "{Binding $parent[Window].TitleBarChromeHeight}",
+            AttributeValue(titleBar, "MinHeight"));
     }
 
     [Fact]
@@ -207,9 +358,24 @@ public sealed class LauncherViewContractTests
     [Fact]
     public void Main_window_owns_the_titlebar_move_fallback()
     {
+        var mainWindow = Assert.IsType<XElement>(LoadView("MainWindow").Root);
+        Assert.Equal("Full", AttributeValue(mainWindow, "WindowDecorations"));
+        Assert.Equal(
+            "True",
+            AttributeValue(mainWindow, "ExtendClientAreaToDecorationsHint"));
+        Assert.Equal(
+            "-1",
+            AttributeValue(mainWindow, "ExtendClientAreaTitleBarHeightHint"));
+
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
             "public sealed partial class MainWindow : Window");
 
+        Assert.Contains("TitleBarChromeHeightProperty", codeBehind, StringComparison.Ordinal);
+        Assert.Contains(
+            "WindowTitleBarContentMarginProperty",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains("RefreshWindowChromeMetrics();", codeBehind, StringComparison.Ordinal);
         Assert.Contains(
             "private void OnTitleBarPointerPressed(",
             codeBehind,
@@ -373,6 +539,15 @@ public sealed class LauncherViewContractTests
             "src",
             "GhostShell.App",
             "Views",
+            $"{view}.axaml"));
+
+    private static XDocument LoadComponent(string view) =>
+        XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "Components",
             $"{view}.axaml"));
 
     private static string? AttributeValue(XElement element, string name) =>

@@ -3,26 +3,31 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     Classes="RuntimePanelFocusTarget"
     Focusable="True"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
-    AutomationProperties.Name="Local host statistics panel">
+    AutomationProperties.Name="Statistics panel">
   <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="36,*,25">
       <Border Classes="PanelHeader">
-        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{Binding StatusColor}" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-            <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-            <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
-            <TextBlock Classes="Eyebrow Accent" Text="LOCAL HOST" />
+          <components:PanelConnectionSelectorView
+              Grid.Column="1"
+              Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+              SelectedLabel="{Binding ConnectionDisplayName}"
+              ConnectionSelected="OnConnectionSelected"
+              NewConnectionRequested="OnNewConnectionRequested" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
+            <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
             <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
           </StackPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
             <TextBlock
                 VerticalAlignment="Center"
                 Classes="Muted Monospace"
@@ -34,7 +39,7 @@
                 Classes="IconButton"
                 Command="{Binding RefreshCommand}"
                 ToolTip.Tip="Refresh statistics"
-                AutomationProperties.Name="Refresh local host statistics">
+                AutomationProperties.Name="Refresh statistics">
               <icons:SymbolIcon Symbol="ArrowClockwise" FontSize="12" />
             </Button>
             <StackPanel
@@ -72,50 +77,62 @@
           <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
             <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <controls:SurfaceCard Padding="0">
-                <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Eyebrow" Text="OBSERVED CPU" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding CpuText}" />
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Across readable processes · normalized by logical CPUs" TextWrapping="Wrap" />
-                </StackPanel>
+                <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" RowDefinitions="Auto,Auto,Auto,108,Auto">
+                  <TextBlock Classes="Eyebrow" Text="CPU USAGE" />
+                  <TextBlock Grid.Row="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding CpuText}" />
+                  <TextBlock Grid.Row="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Normalized across logical processors" TextWrapping="Wrap" />
+                  <controls:TimeSeriesChart
+                      Grid.Row="3"
+                      Margin="{controls:Inset Top=Md}"
+                      Values="{Binding CpuHistory}"
+                      Maximum="100"
+                      LineBrush="{DynamicResource ShellAccentBrush}"
+                      AreaBrush="{DynamicResource ShellAccentSoftBrush}"
+                      GridBrush="{DynamicResource ShellBorderBrush}"
+                      AutomationProperties.Name="CPU usage history over the last two minutes" />
+                  <Grid Grid.Row="4" Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="LAST 2 MIN" />
+                    <TextBlock Grid.Column="1" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="NOW · 100% MAX" />
+                  </Grid>
+                </Grid>
               </controls:SurfaceCard>
               <controls:SurfaceCard Padding="0" Grid.Column="1">
-                <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Eyebrow" Text="OBSERVED MEMORY" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding MemoryText}" />
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Working set across readable processes" TextWrapping="Wrap" />
-                </StackPanel>
+                <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" RowDefinitions="Auto,Auto,Auto,108,Auto">
+                  <TextBlock Classes="Eyebrow" Text="PROCESS MEMORY" />
+                  <TextBlock Grid.Row="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding MemoryText}" />
+                  <TextBlock Grid.Row="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Combined RSS from accessible processes" TextWrapping="Wrap" />
+                  <controls:TimeSeriesChart
+                      Grid.Row="3"
+                      Margin="{controls:Inset Top=Md}"
+                      Values="{Binding MemoryHistory}"
+                      LineBrush="{DynamicResource ShellSuccessBrush}"
+                      AreaBrush="{DynamicResource ShellSuccessSoftBrush}"
+                      GridBrush="{DynamicResource ShellBorderBrush}"
+                      AutomationProperties.Name="Process memory history over the last two minutes" />
+                  <Grid Grid.Row="4" Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="LAST 2 MIN" />
+                    <TextBlock Grid.Column="1" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="NOW · AUTO SCALE" />
+                  </Grid>
+                </Grid>
               </controls:SurfaceCard>
             </Grid>
 
             <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Eyebrow" Text="PROCESSES" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding ProcessCountText}" TextWrapping="Wrap" />
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Protected process details remain excluded" TextWrapping="Wrap" />
+                  <TextBlock Classes="Eyebrow" Text="RUNNING PROCESSES" />
+                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="{Binding ProcessCountText}" TextWrapping="Wrap" />
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessDetailText}" TextWrapping="Wrap" />
                 </StackPanel>
               </controls:SurfaceCard>
               <controls:SurfaceCard Padding="0" Grid.Column="1">
                 <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock Classes="Eyebrow" Text="HOST UPTIME" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding UptimeText}" />
+                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="{Binding UptimeText}" />
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessorCountText, StringFormat={}{0} logical processors}" TextWrapping="Wrap" />
                 </StackPanel>
               </controls:SurfaceCard>
             </Grid>
-
-            <controls:SurfaceCard Padding="0">
-              <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceLg}">
-                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Eyebrow" Text="GHOSTSHELL CPU" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding GhostShellCpuText}" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Eyebrow" Text="GHOSTSHELL MEMORY" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding GhostShellMemoryText}" />
-                </StackPanel>
-              </Grid>
-            </controls:SurfaceCard>
 
             <controls:SurfaceCard Tone="Notice" Padding="{controls:Inset Md}" IsVisible="{Binding HasIssue}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Statistics refresh status">
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -132,8 +149,8 @@
 
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowLoading}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Statistics loading">
           <ProgressBar Width="180" IsIndeterminate="True" />
-          <TextBlock FontWeight="SemiBold" Text="Waiting for first local-host sample…" />
-          <TextBlock MaxWidth="420" Classes="Muted" TextAlignment="Center" Text="Only bounded resource counters are collected; commands and terminal content are excluded." TextWrapping="Wrap" />
+          <TextBlock FontWeight="SemiBold" Text="Waiting for first sample…" />
+          <TextBlock MaxWidth="420" Classes="Muted" TextAlignment="Center" Text="The session host is collecting a bounded POSIX process snapshot; commands and terminal content remain excluded." TextWrapping="Wrap" />
         </StackPanel>
 
         <controls:SurfaceCard Tone="Notice" Margin="{controls:Inset Lg}" Padding="{controls:Inset Lg}" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowTerminalError}" AutomationProperties.LiveSetting="Assertive" AutomationProperties.Name="Statistics unavailable">
@@ -148,7 +165,7 @@
 
       <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
-          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Local counters only · no commands, environment, or terminal content" />
+          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="POSIX process counters · no environment or terminal content" />
           <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
         </Grid>
       </Border>

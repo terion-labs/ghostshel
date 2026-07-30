@@ -230,6 +230,7 @@
                   HorizontalAlignment="Center"
                   FontSize="{DynamicResource ShellFontSize15}"
                   FontWeight="SemiBold"
+                  LineHeight="{DynamicResource ShellLineHeight15}"
                   Text="{TemplateBinding Heading}"
                   TextAlignment="Center"
                   TextWrapping="Wrap" />
@@ -238,6 +239,7 @@
                   HorizontalAlignment="Center"
                   Foreground="{DynamicResource ShellMutedBrush}"
                   FontSize="{DynamicResource ShellFontSize11}"
+                  LineHeight="{DynamicResource ShellLineHeight11}"
                   Text="{TemplateBinding Body}"
                   TextAlignment="Center"
                   TextWrapping="Wrap"
@@ -256,10 +258,12 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="Template">
         <ControlTemplate>
-          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <TextBlock
+                Margin="{controls:Inset Horizontal=Xs}"
                 FontSize="{DynamicResource ShellFontSize12}"
                 Foreground="{DynamicResource ShellMutedBrush}"
+                LineHeight="{DynamicResource ShellLineHeight12}"
                 Text="{TemplateBinding Label}"
                 TextTrimming="CharacterEllipsis" />
             <ContentPresenter
@@ -267,8 +271,10 @@
                 ContentTemplate="{TemplateBinding ContentTemplate}"
                 HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
             <TextBlock
+                Margin="{controls:Inset Horizontal=Xs}"
                 Foreground="{DynamicResource ShellMutedBrush}"
                 FontSize="{DynamicResource ShellFontSize10}"
+                LineHeight="{DynamicResource ShellLineHeight10}"
                 Text="{TemplateBinding Hint}"
                 TextWrapping="Wrap"
                 IsVisible="{TemplateBinding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -299,14 +305,19 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+              <StackPanel
+                  Margin="{controls:Inset Horizontal=Xs}"
+                  VerticalAlignment="Center"
+                  Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock
                     FontWeight="SemiBold"
+                    LineHeight="{DynamicResource ShellLineHeight12}"
                     Text="{TemplateBinding Label}"
                     TextWrapping="Wrap" />
                 <TextBlock
                     Foreground="{DynamicResource ShellMutedBrush}"
                     FontSize="{DynamicResource ShellFontSize10}"
+                    LineHeight="{DynamicResource ShellLineHeight10}"
                     Text="{TemplateBinding Description}"
                     TextWrapping="Wrap"
                     IsVisible="{TemplateBinding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -335,17 +346,19 @@
     <ControlTheme x:Key="{x:Type controls:SettingsGroup}" TargetType="controls:SettingsGroup">
       <Setter Property="Template">
         <ControlTemplate>
-          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
             <StackPanel
                 Spacing="{DynamicResource ShellSpaceXs}"
                 IsVisible="{TemplateBinding Heading, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
               <TextBlock
                   FontSize="{DynamicResource ShellFontSize14}"
                   FontWeight="SemiBold"
+                  LineHeight="{DynamicResource ShellLineHeight14}"
                   Text="{TemplateBinding Heading}" />
               <TextBlock
                   Foreground="{DynamicResource ShellMutedBrush}"
                   FontSize="{DynamicResource ShellFontSize10}"
+                  LineHeight="{DynamicResource ShellLineHeight10}"
                   Text="{TemplateBinding Description}"
                   TextWrapping="Wrap"
                   IsVisible="{TemplateBinding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

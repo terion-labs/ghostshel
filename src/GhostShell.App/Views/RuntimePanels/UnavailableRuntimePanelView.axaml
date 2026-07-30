@@ -15,8 +15,7 @@
       <Border Classes="PanelHeader">
         <Grid ColumnDefinitions="*,Auto" Margin="{controls:Inset Horizontal=Md}">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-            <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-            <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
+            <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
             <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
           </StackPanel>
           <StackPanel

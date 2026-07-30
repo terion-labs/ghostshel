@@ -91,6 +91,133 @@
     <Setter Property="Height" Value="34" />
   </Style>
 
+  <!-- File actions live inside one macOS-style toolbar capsule. Their disabled
+       state must remain quiet; the Fluent template otherwise paints a separate
+       rounded lozenge behind every unavailable action. -->
+  <Style Selector="Border.FileToolbarGroup">
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <Style Selector="Button.IconButton.FileToolbarAction">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+
+  <Style Selector="Button.IconButton.FileToolbarAction /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+
+  <Style Selector="Button.IconButton.FileToolbarAction:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button.IconButton.FileToolbarAction:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.IconButton.FileToolbarAction.active /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <!-- Title-bar navigation keeps keyboard focus visible without drawing a heavy
+       control ring beside the native traffic lights. -->
+  <Style Selector="Button.IconButton.ChromeNavigation:focus-visible">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.IconButton.ChromeNavigation:focus-visible /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Border.SavedConnectionShortcutSurface">
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <Style Selector="Button.SavedConnectionShortcutPrimary">
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+
+  <Style Selector="Button.SavedConnectionShortcutMenu">
+    <Setter Property="Width" Value="31" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+
+  <Style Selector="Button.SavedConnectionShortcutPrimary:pointerover /template/ ContentPresenter, Button.SavedConnectionShortcutMenu:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+
+  <!-- Flyouts, menu flyouts, and ComboBox popups are the same transient surface.
+       Keeping that surface here prevents each selector from inventing its own
+       background, radius, and item density. -->
+  <Style Selector="FlyoutPresenter">
+    <Setter Property="Padding" Value="{DynamicResource ShellInsetXs}" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  </Style>
+
+  <Style Selector="FlyoutPresenter.SavedConnectionMenu">
+    <Setter Property="MinWidth" Value="190" />
+  </Style>
+
+  <Style Selector="MenuFlyoutPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  </Style>
+
+  <Style Selector="MenuItem">
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Md, Vertical=Sm}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <Style Selector="MenuItem:selected /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button.FlyoutMenuItem">
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Padding" Value="{DynamicResource ShellInsetSm}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <Style Selector="Button.FlyoutMenuItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
   <Style Selector="Button.PrimaryButton">
     <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
@@ -339,6 +466,12 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
 
+  <Style Selector="NumericUpDown">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
   <Style Selector="TextBox:focus, ComboBox:focus, NumericUpDown:focus">
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
@@ -365,12 +498,55 @@
     </Setter>
   </Style>
 
+  <Style Selector="ComboBox:dropdownopen /template/ Border#PopupBorder">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="{DynamicResource ShellInsetXs}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+  </Style>
+
+  <Style Selector="ComboBox:dropdownopen /template/ ItemsPresenter#PART_ItemsPresenter">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+
+  <Style Selector="ComboBoxItem">
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Md, Vertical=Sm}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+  </Style>
+
   <Style Selector="TextBlock.Muted">
     <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
   </Style>
 
+  <!-- Application text follows the platform UI face. The terminal renderer owns
+       terminal typography; a presentation class must not leak that typeface into
+       panel titles, settings, badges, or other application chrome. -->
   <Style Selector="TextBlock.Monospace">
-    <Setter Property="FontFamily" Value="JetBrains Mono, Menlo, Consolas, monospace" />
+    <Setter Property="FontFamily" Value="{DynamicResource ShellUiFontFamily}" />
+  </Style>
+
+  <!-- Text beside an inner control needs a small optical inset: a control's
+       stroke carries more visual weight than a bare glyph at the same x origin. -->
+  <Style Selector="StackPanel.CardText">
+    <Setter Property="Margin" Value="{controls:Inset Horizontal=Xs}" />
+  </Style>
+
+  <Style Selector="StackPanel.CardText TextBlock">
+    <Setter Property="LineHeight" Value="{DynamicResource ShellLineHeight12}" />
   </Style>
 
   <Style Selector="TextBlock.SectionHeading">
@@ -392,9 +568,48 @@
   </Style>
 
   <Style Selector="Border.TopChrome">
+    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <!--
+    Route navigation is a contained surface, not a dividing wall. Keeping the
+    geometry here makes Workspace, Home, Settings, and side-docked tabs read as
+    one shell even though their contents differ.
+  -->
+  <Style Selector="Border.FloatingSidebar">
+    <Setter Property="Margin" Value="{DynamicResource ShellInsetSm}" />
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
+  <!-- Native title bars already leave space below their centred controls. -->
+  <Style Selector="Border.FloatingSidebar.routeSidebar">
+    <Setter Property="Margin" Value="{controls:Inset Horizontal=Sm, Bottom=Sm}" />
+  </Style>
+
+  <!-- The workspace canvas already contributes the gutter on the facing edge. -->
+  <Style Selector="Border.FloatingSidebar.workspaceLeft">
+    <Setter Property="Margin" Value="{controls:Inset Left=Sm, Top=Xs, Bottom=Sm}" />
+  </Style>
+
+  <Style Selector="Border.FloatingSidebar.workspaceRight">
+    <Setter Property="Margin" Value="{controls:Inset Right=Sm, Top=Xs, Bottom=Sm}" />
+  </Style>
+
+  <Style Selector="Button.RuntimeHomeTab">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+  </Style>
+
+  <Style Selector="Button.RuntimeHomeTab.active">
+    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
   </Style>
 
   <!--
@@ -751,9 +966,8 @@
   <!-- Square, because the card clips it. A literal radius here also disagreed
        with the card's own once the corner-radius setting could change it. -->
   <Style Selector="Border.PanelHeader">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="0" />
   </Style>
 

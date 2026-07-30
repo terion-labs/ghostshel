@@ -117,7 +117,7 @@ public sealed class SettingsViewContractTests
             root.Elements(),
             element => element.Name.LocalName == "Grid");
 
-        Assert.Equal("44,*", AttributeValue(surface, "RowDefinitions"));
+        Assert.Equal("Auto,*", AttributeValue(surface, "RowDefinitions"));
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
         var titleBar = Assert.Single(
@@ -133,16 +133,31 @@ public sealed class SettingsViewContractTests
             "OnTitleBarPointerPressed",
             AttributeValue(titleBar, "PointerPressed"));
         Assert.Equal(
+            "{Binding $parent[Window].TitleBarChromeHeight}",
+            AttributeValue(titleBar, "MinHeight"));
+        Assert.Equal(
             "User",
             AttributeValue(
                 FindNamedElement(root, "SettingsBackButton"),
                 "WindowDecorationProperties.ElementRole"));
+        Assert.Contains(
+            "ChromeNavigation",
+            AttributeValue(FindNamedElement(root, "SettingsBackButton"), "Classes")
+                ?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                ?? []);
 
         var body = Assert.Single(
             surface.Elements(),
             element => element.Name.LocalName == "Grid"
                 && string.Equals(AttributeValue(element, "Grid.Row"), "1", StringComparison.Ordinal));
         Assert.Equal("244,*", AttributeValue(body, "ColumnDefinitions"));
+        Assert.Contains(
+            body.Elements(),
+            element => element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "Classes"),
+                    "FloatingSidebar",
+                    StringComparison.Ordinal));
 
         var appearancePage = Assert.Single(
             root.Descendants(),
@@ -475,6 +490,12 @@ public sealed class SettingsViewContractTests
             element => string.Equals(
                 AttributeValue(element, "Text"),
                 "{Binding Description, ElementName=Root}",
+                StringComparison.Ordinal));
+        Assert.All(
+            textBlocks,
+            element => Assert.StartsWith(
+                "{DynamicResource ShellLineHeight",
+                AttributeValue(element, "LineHeight"),
                 StringComparison.Ordinal));
     }
 

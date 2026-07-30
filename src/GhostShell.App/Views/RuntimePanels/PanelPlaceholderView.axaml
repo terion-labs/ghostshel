@@ -2,6 +2,7 @@
     x:Class="GhostShell.App.Views.RuntimePanels.PanelPlaceholderView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     AutomationProperties.Name="New panel"
@@ -10,20 +11,11 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}">
-  <!--
-    A panel that has been placed but not yet told what to be. The choice happens
-    here, in the space the panel will occupy, rather than in a modal over the whole
-    window that then appends the result wherever the layout felt like.
-  -->
-  <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
-      Classes.active="{Binding IsActive}">
+  <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0" Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="40,*">
       <Border Grid.Row="0" Classes="PanelHeader">
         <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="Auto,*,Auto">
-          <TextBlock
-              VerticalAlignment="Center"
-              Classes="Eyebrow"
-              Text="{Binding KindLabel}" />
+          <TextBlock VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding KindLabel}" />
           <Button
               Grid.Column="2"
               AutomationProperties.Name="Close new panel"
@@ -35,68 +27,26 @@
         </Grid>
       </Border>
 
-      <Grid Grid.Row="1">
-        <StackPanel
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="{DynamicResource ShellSpaceMd}">
-          <TextBlock
-              HorizontalAlignment="Center"
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize11}"
-              Text="What should open here?" />
-          <WrapPanel
-              HorizontalAlignment="Center"
-              ItemSpacing="{DynamicResource ShellSpaceSm}"
-              LineSpacing="{DynamicResource ShellSpaceSm}">
-            <Button
-                AutomationProperties.Name="Open a terminal here"
-                Classes="ChooserButton PanelChooser"
-                Click="OnChooseTerminalClick">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <icons:SymbolIcon HorizontalAlignment="Center" FontSize="17" Symbol="WindowConsole" />
-                <TextBlock HorizontalAlignment="Center" Text="Terminal" />
-              </StackPanel>
-            </Button>
-            <Button
-                AutomationProperties.Name="Open a browser here"
-                Classes="ChooserButton PanelChooser"
-                Click="OnChooseBrowserClick">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <icons:SymbolIcon HorizontalAlignment="Center" FontSize="17" Symbol="Globe" />
-                <TextBlock HorizontalAlignment="Center" Text="Browser" />
-              </StackPanel>
-            </Button>
-            <Button
-                AutomationProperties.Name="Open statistics here"
-                Classes="ChooserButton PanelChooser"
-                Click="OnChooseStatisticsClick">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <icons:SymbolIcon HorizontalAlignment="Center" FontSize="17" Symbol="PulseSquare" />
-                <TextBlock HorizontalAlignment="Center" Text="Statistics" />
-              </StackPanel>
-            </Button>
-            <Button
-                AutomationProperties.Name="Open a File Viewer here"
-                Classes="ChooserButton PanelChooser"
-                Click="OnChooseFileViewerClick">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <icons:SymbolIcon HorizontalAlignment="Center" FontSize="17" Symbol="Folder" />
-                <TextBlock HorizontalAlignment="Center" Text="Files" />
-              </StackPanel>
-            </Button>
-            <Button
-                AutomationProperties.Name="Open the process monitor here"
-                Classes="ChooserButton PanelChooser"
-                Click="OnChooseProcessMonitorClick">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <icons:SymbolIcon HorizontalAlignment="Center" FontSize="17" Symbol="Gauge" />
-                <TextBlock HorizontalAlignment="Center" Text="Processes" />
-              </StackPanel>
-            </Button>
-          </WrapPanel>
-        </StackPanel>
-      </Grid>
+      <ScrollViewer
+          Grid.Row="1"
+          HorizontalScrollBarVisibility="Disabled"
+          VerticalScrollBarVisibility="Auto">
+        <components:NewItemChooserView
+            Margin="{controls:Inset Xl}"
+            DataContext="{Binding $parent[Window].DataContext}"
+            ShowCloseAction="False"
+            ShowWorkspaces="False"
+            AddConnectionRequested="OnAddConnectionClick"
+            NewBrowserRequested="OnChooseBrowserClick"
+            NewFileViewerRequested="OnChooseFileViewerClick"
+            NewLocalTerminalRequested="OnChooseTerminalClick"
+            NewProcessMonitorRequested="OnChooseProcessMonitorClick"
+            NewStatisticsRequested="OnChooseStatisticsClick"
+            OpenConnectionRequested="OnOpenConnectionClick"
+            OpenScreenRequested="OnOpenScreenClick"
+            ShowCommandPaletteRequested="OnShowCommandPaletteClick"
+            ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />
+      </ScrollViewer>
     </Grid>
   </controls:SurfaceCard>
 </UserControl>

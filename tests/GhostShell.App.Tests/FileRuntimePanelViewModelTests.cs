@@ -1,4 +1,5 @@
 using System.Text;
+using Avalonia.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -7,6 +8,46 @@ namespace GhostShell.App.Tests;
 
 public sealed class FileRuntimePanelViewModelTests
 {
+    [Fact]
+    public void DetailsColumnsExposeAdjustableSharedWidths()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        Assert.True(panel.FileNameColumnWidth.IsStar);
+        Assert.Equal(90, panel.FileSizeColumnWidth.Value);
+        Assert.Equal(140, panel.FileModifiedColumnWidth.Value);
+
+        panel.FileNameColumnWidth = new GridLength(320);
+        panel.FileSizeColumnWidth = new GridLength(110);
+        panel.FileModifiedColumnWidth = new GridLength(180);
+
+        Assert.Equal(320, panel.FileNameColumnWidth.Value);
+        Assert.Equal(110, panel.FileSizeColumnWidth.Value);
+        Assert.Equal(180, panel.FileModifiedColumnWidth.Value);
+    }
+
+    [Fact]
+    public void PreviewPaneCanBeHiddenWithoutDiscardingItsViewState()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        Assert.True(panel.IsPreviewVisible);
+        Assert.Equal("Preview visible", panel.PreviewVisibilityStatus);
+
+        panel.IsPreviewVisible = false;
+
+        Assert.False(panel.IsPreviewVisible);
+        Assert.Equal("Preview hidden", panel.PreviewVisibilityStatus);
+    }
+
     [Fact]
     public async Task DeferredInitializationDoesNotListUntilExplicitlyStarted()
     {
@@ -103,6 +144,41 @@ public sealed class FileRuntimePanelViewModelTests
             "Create a folder",
             panel.ContentPresentation.SuggestedAction,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NavigationKeepsCurrentListingBehindInteractionBlockingProgress()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "before.txt", FilePanelEntryKind.File, 5));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client);
+        await panel.Initialization;
+
+        var listing = new TaskCompletionSource<FilePanelResult<FilePanelPage>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ListCompletion = listing;
+        var refresh = panel.RefreshAsync();
+
+        Assert.True(panel.IsLoading);
+        Assert.True(panel.ShowNavigationProgress);
+        Assert.False(panel.ShowLoadingState);
+        Assert.Equal("before.txt", Assert.Single(panel.Entries).Name);
+        Assert.False(panel.CanEditLocation);
+        Assert.False(panel.CanSelectProfile);
+
+        var replacement = Entry(client.Root, "after.txt", FilePanelEntryKind.File, 6);
+        listing.SetResult(FilePanelResult<FilePanelPage>.Success(
+            new FilePanelPage([replacement], null)));
+        await refresh;
+
+        Assert.False(panel.IsLoading);
+        Assert.False(panel.ShowNavigationProgress);
+        Assert.Equal("after.txt", Assert.Single(panel.Entries).Name);
+        Assert.True(panel.CanEditLocation);
+        Assert.True(panel.CanSelectProfile);
     }
 
     [Fact]
@@ -462,6 +538,23 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal("Provider detail.", panel.ErrorMessage);
         Assert.False(string.IsNullOrWhiteSpace(panel.ErrorTitle));
         Assert.False(string.IsNullOrWhiteSpace(panel.ErrorSuggestedAction));
+    }
+
+    [Fact]
+    public void AuthenticationFailureHasAuthenticationSpecificPresentation()
+    {
+        var issue = FileOperationIssue.FromProvider(new FilePanelError(
+            FilePanelErrorCode.AuthenticationRequired,
+            "file_authentication_required",
+            "SFTP authentication failed.",
+            Retryable: false));
+
+        Assert.Equal(FileOperationIssueKind.AuthenticationRequired, issue.Kind);
+        Assert.Equal("Authentication failed", issue.Title);
+        Assert.DoesNotContain(
+            "permissions",
+            issue.SuggestedAction,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

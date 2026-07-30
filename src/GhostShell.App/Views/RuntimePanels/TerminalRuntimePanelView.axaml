@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:components="using:GhostShell.App.Views.Components"
     Classes="RuntimePanelFocusTarget"
     Focusable="True"
     HorizontalContentAlignment="Stretch"
@@ -13,24 +14,26 @@
       Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="36,*">
       <Border Grid.Row="0" Classes="PanelHeader">
-        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" Margin="{controls:Inset Horizontal=Md}">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" Margin="{controls:Inset Horizontal=Md}">
           <Ellipse
               Width="7"
               Height="7"
               VerticalAlignment="Center"
               Fill="{Binding StatusBrush, ElementName=RuntimeTerminal}" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-            <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-            <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
-            <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
-            <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsCopyMode}" Text="COPY MODE" />
-            <TextBlock
-                Classes="Eyebrow Accent"
-                IsVisible="{Binding HasWarning}"
-                Text="WARNING"
-                ToolTip.Tip="{Binding WarningMessage}" />
-          </StackPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
+          <components:PanelConnectionSelectorView
+              Grid.Column="1"
+              VerticalAlignment="Center"
+              Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+              SelectedLabel="{Binding ConnectionDisplayName}"
+              ConnectionSelected="OnConnectionSelected"
+              NewConnectionRequested="OnNewConnectionRequested" />
+          <TextBlock
+              Grid.Column="2"
+              VerticalAlignment="Center"
+              FontSize="{DynamicResource ShellFontSize11}"
+              FontWeight="SemiBold"
+              Text="Terminal" />
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
             <TextBlock
                 VerticalAlignment="Center"
                 Classes="Monospace Muted"

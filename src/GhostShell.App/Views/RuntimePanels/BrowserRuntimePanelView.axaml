@@ -28,7 +28,7 @@
         -->
         <Grid
             Margin="{controls:Inset Horizontal=Sm}"
-            ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto"
+            ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto"
             ColumnSpacing="{DynamicResource ShellSpaceXs}">
           <Ellipse
               Width="7"
@@ -38,18 +38,12 @@
           <TextBlock
               Grid.Column="1"
               VerticalAlignment="Center"
-              Classes="Monospace"
               FontSize="{DynamicResource ShellFontSize11}"
               FontWeight="SemiBold"
               Text="{Binding Title}"
               TextTrimming="CharacterEllipsis" />
-          <TextBlock
-              Grid.Column="2"
-              VerticalAlignment="Center"
-              Classes="Eyebrow"
-              Text="{Binding KindLabel}" />
           <Button
-              Grid.Column="3"
+              Grid.Column="2"
               AutomationProperties.Name="Go back"
               Classes="IconButton"
               Click="OnBackClick"
@@ -58,7 +52,7 @@
             <icons:SymbolIcon FontSize="13" Symbol="ArrowLeft" />
           </Button>
           <Button
-              Grid.Column="4"
+              Grid.Column="3"
               AutomationProperties.Name="Go forward"
               Classes="IconButton"
               Click="OnForwardClick"
@@ -67,16 +61,20 @@
             <icons:SymbolIcon FontSize="13" Symbol="ArrowRight" />
           </Button>
           <TextBox
-              Grid.Column="5"
+              x:Name="AddressBox"
+              Grid.Column="4"
               VerticalAlignment="Center"
               AutomationProperties.Name="Browser address"
               Classes="Monospace"
               FontSize="{DynamicResource ShellFontSize10}"
+              GotFocus="OnAddressGotFocus"
               IsEnabled="{Binding IsLive, ElementName=RuntimeBrowser}"
               KeyDown="OnAddressKeyDown"
+              LostFocus="OnAddressLostFocus"
+              PlaceholderText="about:blank"
               Text="{Binding AddressText, ElementName=RuntimeBrowser, Mode=TwoWay}" />
           <Button
-              Grid.Column="6"
+              Grid.Column="5"
               AutomationProperties.Name="Reload page"
               Classes="IconButton"
               Click="OnReloadClick"
@@ -95,7 +93,7 @@
             <icons:SymbolIcon FontSize="13" Symbol="Dismiss" />
           </Button>
           <TextBlock
-              Grid.Column="7"
+              Grid.Column="6"
               VerticalAlignment="Center"
               AutomationProperties.LiveSetting="Polite"
               AutomationProperties.Name="Browser session status"
@@ -118,7 +116,7 @@
             <icons:SymbolIcon FontSize="12" Symbol="SplitVertical" />
           </Button>
           <Button
-              Grid.Column="8"
+              Grid.Column="7"
               AutomationProperties.Name="Close browser panel"
               Classes="IconButton"
               Click="OnCloseClick"

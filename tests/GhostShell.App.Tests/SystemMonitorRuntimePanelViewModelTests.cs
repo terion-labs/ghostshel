@@ -8,6 +8,34 @@ namespace GhostShell.App.Tests;
 
 public sealed class SystemMonitorRuntimePanelViewModelTests
 {
+    [Theory]
+    [InlineData(0, 2)]
+    [InlineData(1, 4)]
+    [InlineData(2, 8)]
+    [InlineData(3, 16)]
+    [InlineData(4, 30)]
+    [InlineData(12, 30)]
+    public void RemotePollingBacksOffAfterRepeatedCaptureFailures(
+        int consecutiveFailures,
+        int expectedSeconds)
+    {
+        Assert.Equal(
+            TimeSpan.FromSeconds(expectedSeconds),
+            SystemMonitorPolling.Delay(
+                ConnectionKind.Ssh,
+                consecutiveFailures));
+    }
+
+    [Fact]
+    public void LocalPollingKeepsTheNormalCadenceAfterCaptureFailures()
+    {
+        Assert.Equal(
+            TimeSpan.FromSeconds(2),
+            SystemMonitorPolling.Delay(
+                ConnectionKind.Local,
+                consecutiveFailures: 12));
+    }
+
     [Fact]
     public async Task PanelsRemainDataFreeAndDoNotContactTheHostBeforeStart()
     {
@@ -54,11 +82,67 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
         Assert.Equal(SystemMonitorPanelState.Live, panel.State);
         Assert.Equal("37.5%", panel.CpuText);
         Assert.Equal("2.0 KiB", panel.MemoryText);
-        Assert.Equal("7 observed / 9 total", panel.ProcessCountText);
-        Assert.Equal("1.3%", panel.GhostShellCpuText);
-        Assert.Equal("512 B", panel.GhostShellMemoryText);
+        Assert.Equal("9", panel.ProcessCountText);
+        Assert.Equal("Resource details available for 7 of 9", panel.ProcessDetailText);
         Assert.Equal("1d 2h 3m", panel.UptimeText);
         Assert.Equal("8", panel.ProcessorCountText);
+        Assert.Equal([37.5], panel.CpuHistory);
+        Assert.Equal([2_048], panel.MemoryHistory);
+    }
+
+    [Fact]
+    public async Task MonitorSessionsCarryTheSelectedConnectionSnapshot()
+    {
+        var (client, host) = CreateHost();
+        host.StatisticsResults.Enqueue(StatisticsSuccess(StatisticsSample()));
+        host.ProcessResults.Enqueue(ProcessSuccess(ProcessSample()));
+        var connection = new ConnectionProfile(
+            new ConnectionId("remote-monitor"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Remote monitor",
+            new ConnectionEndpoint.Ssh("host.example", username: "operator"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        using var statistics = CreateStatisticsPanel(client, connection);
+        using var processes = CreateProcessPanel(client, connection);
+
+        await statistics.Start();
+        await processes.Start();
+
+        Assert.Equal(connection, Assert.Single(host.StatisticsRequests).Connection);
+        Assert.Equal(connection, Assert.Single(host.ProcessEnsureRequests).Connection);
+        Assert.Equal("Remote monitor", statistics.ConnectionDisplayName);
+        Assert.Equal("Remote monitor", processes.ConnectionDisplayName);
+    }
+
+    [Fact]
+    public async Task StatisticsHistoryKeepsOnlyTheLatestTwoMinuteWindow()
+    {
+        var (client, host) = CreateHost();
+        var sampleCount = StatisticsRuntimePanelViewModel.HistoryCapacity + 3;
+        for (var index = 0; index < sampleCount; index++)
+        {
+            host.StatisticsResults.Enqueue(StatisticsSuccess(
+                StatisticsSample(
+                    cpu: index,
+                    memory: index * 1_024,
+                    capturedAt: DateTimeOffset.UnixEpoch.AddSeconds(index * 2))));
+        }
+
+        using var panel = CreateStatisticsPanel(client);
+        await panel.Start();
+        for (var index = 1; index < sampleCount; index++)
+        {
+            await panel.RefreshAsync();
+        }
+
+        Assert.Equal(StatisticsRuntimePanelViewModel.HistoryCapacity, panel.CpuHistory.Count);
+        Assert.Equal(3d, panel.CpuHistory[0]);
+        Assert.Equal(sampleCount - 1d, panel.CpuHistory[^1]);
+        Assert.Equal(3d * 1_024, panel.MemoryHistory[0]);
+        Assert.Equal((sampleCount - 1d) * 1_024, panel.MemoryHistory[^1]);
     }
 
     [Fact]
@@ -251,7 +335,7 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
         Assert.Equal(minimumWidth, recovered.MinimumWidth);
         Assert.Equal(minimumHeight, recovered.MinimumHeight);
         Assert.Null(recovered.KindLabel);
-        Assert.Null(recovered.ConnectionId);
+        Assert.Equal("builtin.local", recovered.ConnectionId);
         Assert.Null(recovered.StartupLocation);
         Assert.Null(recovered.FileProviderProfileId);
         Assert.Null(recovered.FileLocation);
@@ -260,7 +344,8 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
     }
 
     private static StatisticsRuntimePanelViewModel CreateStatisticsPanel(
-        ISessionHostClient sessionClient)
+        ISessionHostClient sessionClient,
+        ConnectionProfile? connection = null)
     {
         var id = new PanelInstanceId($"statistics-{Guid.NewGuid():N}");
         return new StatisticsRuntimePanelViewModel(
@@ -269,12 +354,14 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
             sessionClient,
             new ClientId("monitor-client"),
             Owner(id),
+            connection ?? BuiltInConnections.Local,
             ImmediateUiThreadDispatcher.Instance,
             WaitForCancellation);
     }
 
     private static ProcessMonitorRuntimePanelViewModel CreateProcessPanel(
-        ISessionHostClient sessionClient)
+        ISessionHostClient sessionClient,
+        ConnectionProfile? connection = null)
     {
         var id = new PanelInstanceId($"processes-{Guid.NewGuid():N}");
         return new ProcessMonitorRuntimePanelViewModel(
@@ -283,6 +370,7 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
             sessionClient,
             new ClientId("monitor-client"),
             Owner(id),
+            connection ?? BuiltInConnections.Local,
             ImmediateUiThreadDispatcher.Instance,
             WaitForCancellation);
     }
@@ -303,17 +391,18 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
         return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
     }
 
-    private static SystemStatisticsSnapshot StatisticsSample() =>
+    private static SystemStatisticsSnapshot StatisticsSample(
+        double? cpu = 37.5,
+        long memory = 2_048,
+        DateTimeOffset? capturedAt = null) =>
         new(
-            new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero),
+            capturedAt ?? new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero),
             new TimeSpan(1, 2, 3, 4),
             8,
             9,
             7,
-            37.5,
-            2_048,
-            1.25,
-            512);
+            cpu,
+            memory);
 
     private static ProcessMonitorSnapshot ProcessSample() =>
         new(

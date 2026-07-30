@@ -6,6 +6,7 @@
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Focusable="False"
+    Margin="{DynamicResource ShellTabStripTopClearance}"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <ScrollViewer
@@ -14,6 +15,21 @@
       VerticalScrollBarVisibility="{Binding VerticalScrollBars, ElementName=Root}"
       AutomationProperties.Name="Open runtime tabs">
     <StackPanel Orientation="{Binding Orientation, ElementName=Root}" Spacing="{DynamicResource ShellSpaceXs}">
+      <Button
+          x:Name="HomeTabButton"
+          Width="32"
+          Height="32"
+          Padding="0"
+          Classes="RuntimeHomeTab"
+          Classes.active="{Binding IsHomeActive, ElementName=Root}"
+          Click="OnHome"
+          HorizontalContentAlignment="Center"
+          IsVisible="{Binding ShowHomeTab, ElementName=Root}"
+          ToolTip.Tip="Home"
+          AutomationProperties.Name="Open Home tab"
+          AutomationProperties.ItemStatus="{Binding HomeItemStatus, ElementName=Root}">
+        <icons:SymbolIcon VerticalAlignment="Center" Symbol="Home" FontSize="13" />
+      </Button>
       <ItemsControl ItemsSource="{Binding Tabs, ElementName=Root}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>

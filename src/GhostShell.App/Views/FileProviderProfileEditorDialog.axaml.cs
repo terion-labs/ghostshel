@@ -15,10 +15,22 @@ public sealed partial class FileProviderProfileEditorDialog : Window
     }
 
     public FileProviderProfileEditorDialog(FileProviderProfileEditorViewModel viewModel)
+        : this(viewModel, FileProviderProfileEditorDialogPurpose.Save)
+    {
+    }
+
+    public FileProviderProfileEditorDialog(
+        FileProviderProfileEditorViewModel viewModel,
+        FileProviderProfileEditorDialogPurpose purpose)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         InitializeComponent();
         DataContext = viewModel;
+        if (purpose == FileProviderProfileEditorDialogPurpose.Connect
+            && this.FindControl<Button>("SubmitButton") is { } submit)
+        {
+            submit.Content = "Save and connect";
+        }
     }
 
     private FileProviderProfileEditorViewModel ViewModel =>
@@ -94,4 +106,10 @@ public sealed partial class FileProviderProfileEditorDialog : Window
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+}
+
+public enum FileProviderProfileEditorDialogPurpose
+{
+    Save,
+    Connect,
 }

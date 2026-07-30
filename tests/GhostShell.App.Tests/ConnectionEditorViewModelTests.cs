@@ -7,6 +7,27 @@ namespace GhostShell.App.Tests;
 public sealed class ConnectionEditorViewModelTests
 {
     [Fact]
+    public void SystemConfigurationIsTheExplicitUnmanagedSshAuthenticationChoice()
+    {
+        var editor = new ConnectionEditorViewModel(new StubConnectionRuntime())
+        {
+            Name = "Configured SSH",
+            Kind = ConnectionKind.Ssh,
+            Host = "host.example",
+            Username = "deploy",
+            Authentication = ConnectionAuthenticationChoice.SystemConfiguration,
+            HostKeyPolicy = SshHostKeyPolicy.Strict,
+        };
+
+        var request = editor.CreateSaveRequest();
+
+        Assert.IsType<ConnectionAuthentication.None>(request.Profile.Authentication);
+        Assert.Contains(
+            ConnectionAuthenticationChoice.SystemConfiguration,
+            editor.AuthenticationChoices);
+    }
+
+    [Fact]
     public void SaveRequestBuildsStructuredSshProfile()
     {
         var editor = new ConnectionEditorViewModel(new StubConnectionRuntime())
@@ -110,6 +131,25 @@ public sealed class ConnectionEditorViewModelTests
         Assert.False(editor.CanTrustHostKey);
     }
 
+    [Fact]
+    public async Task Trusted_host_key_with_rejected_credentials_reports_authentication_failure()
+    {
+        var security = new StubConnectionSecurityRuntime
+        {
+            FailureCode = ConnectionRuntimeErrorCode.AuthenticationFailed,
+        };
+        var editor = SshEditor(security);
+
+        await editor.TestAsync(CancellationToken.None);
+
+        Assert.Equal("Authentication failed", editor.TestStatus);
+        Assert.Equal(SshHostKeyDisposition.Trusted, editor.HostKeyReview!.Disposition);
+        Assert.Contains(editor.Diagnostics, item =>
+            item.Stage == "HostKey" && item.Status == "Passed");
+        Assert.Contains(editor.Diagnostics, item =>
+            item.Stage == "Authentication" && item.Status == "Failed");
+    }
+
     private static ConnectionEditorViewModel SshEditor(IConnectionSecurityRuntime security) => new(
         new StubConnectionRuntime(),
         securityRuntime: security)
@@ -149,6 +189,8 @@ public sealed class ConnectionEditorViewModelTests
     {
         public bool Changed { get; init; }
 
+        public ConnectionRuntimeErrorCode? FailureCode { get; init; }
+
         public SshHostKeyTrustRequest? LastTrustRequest { get; private set; }
 
         public ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> InspectSshHostKeyAsync(
@@ -180,6 +222,40 @@ public sealed class ConnectionEditorViewModelTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (FailureCode is { } failureCode)
+            {
+                var trusted = Identity('A');
+                var trustedReview = new SshHostKeyReview(
+                    SshHostKeyReviewId.New(),
+                    profile.Id,
+                    "host.example:22",
+                    SshHostKeyDisposition.Trusted,
+                    trusted,
+                    trusted,
+                    DateTimeOffset.UtcNow.AddMinutes(5));
+                var authenticationError = ConnectionRuntimeError.Create(failureCode);
+                var authenticationReport = new ConnectionDiagnosticsReport(
+                    profile.Id,
+                    profile.ConnectionKind,
+                    DateTimeOffset.UtcNow,
+                    [
+                        new ConnectionDiagnosticItem(
+                            ConnectionDiagnosticStage.HostKey,
+                            ConnectionDiagnosticStatus.Passed,
+                            "connection_host_key_trusted",
+                            "The presented SSH host key matches the trusted identity."),
+                        new ConnectionDiagnosticItem(
+                            ConnectionDiagnosticStage.Authentication,
+                            ConnectionDiagnosticStatus.Failed,
+                            authenticationError.StableCode,
+                            authenticationError.Message),
+                    ],
+                    failure: authenticationError,
+                    hostKeyReview: trustedReview);
+                return ValueTask.FromResult(
+                    ConnectionRuntimeResult<ConnectionDiagnosticsReport>.Succeed(authenticationReport));
+            }
+
             var disposition = Changed
                 ? SshHostKeyDisposition.Changed
                 : SshHostKeyDisposition.Unknown;

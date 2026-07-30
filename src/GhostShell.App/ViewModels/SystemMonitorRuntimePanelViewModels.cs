@@ -15,10 +15,31 @@ public enum SystemMonitorPanelState
     Disposed,
 }
 
+internal static class SystemMonitorPolling
+{
+    private static readonly TimeSpan NormalInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaximumRemoteBackoff = TimeSpan.FromSeconds(30);
+
+    public static TimeSpan Delay(
+        ConnectionKind connectionKind,
+        int consecutiveFailures)
+    {
+        if (connectionKind == ConnectionKind.Local || consecutiveFailures <= 0)
+        {
+            return NormalInterval;
+        }
+
+        var exponent = Math.Min(consecutiveFailures, 4);
+        var delay = TimeSpan.FromTicks(NormalInterval.Ticks * (1L << exponent));
+        return delay <= MaximumRemoteBackoff ? delay : MaximumRemoteBackoff;
+    }
+}
+
 public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+    internal const int HistoryCapacity = 60;
     private readonly ISessionHostClient _sessionClient;
+    private readonly ConnectionProfile _connection;
     private readonly ClientId _clientId;
     private readonly SessionOwner _owner;
     private readonly IUiThreadDispatcher _dispatcher;
@@ -26,9 +47,13 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly AsyncActionCommand _refreshCommand;
+    private readonly List<double?> _cpuSamples = [];
+    private readonly List<double?> _memorySamples = [];
+    private IReadOnlyList<double?> _cpuHistory = [];
+    private IReadOnlyList<double?> _memoryHistory = [];
     private SystemStatisticsSnapshot? _snapshot;
     private SystemMonitorPanelState _state = SystemMonitorPanelState.Waiting;
-    private string _statusText = "Waiting for first local-host sample…";
+    private string _statusText = "Waiting for first sample…";
     private string? _issueTitle;
     private string? _issueMessage;
     private bool _isRefreshing;
@@ -46,9 +71,31 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         SessionOwner owner,
         IUiThreadDispatcher dispatcher,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
+        : this(
+            id,
+            title,
+            sessionClient,
+            clientId,
+            owner,
+            BuiltInConnections.Local,
+            dispatcher,
+            delay)
+    {
+    }
+
+    public StatisticsRuntimePanelViewModel(
+        PanelInstanceId id,
+        string title,
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner,
+        ConnectionProfile connection,
+        IUiThreadDispatcher dispatcher,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
         : base(id, PanelKind.Statistics, title, "STATISTICS")
     {
         _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _clientId = clientId;
         _owner = owner;
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -63,6 +110,11 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
 
     public SessionId SessionId { get; }
 
+    public ConnectionId ConnectionId => _connection.Id;
+
+    public string ConnectionDisplayName =>
+        _connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name;
+
     public Task Initialization { get; private set; } = Task.CompletedTask;
 
     public ICommand RefreshCommand => _refreshCommand;
@@ -74,6 +126,11 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (SetProperty(ref _snapshot, value))
             {
+                if (value is not null)
+                {
+                    AppendHistory(value);
+                }
+
                 OnPropertyChanged(nameof(HasSnapshot));
                 OnPropertyChanged(nameof(ShowLoading));
                 OnPropertyChanged(nameof(ShowContent));
@@ -82,8 +139,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(CpuText));
                 OnPropertyChanged(nameof(MemoryText));
                 OnPropertyChanged(nameof(ProcessCountText));
-                OnPropertyChanged(nameof(GhostShellCpuText));
-                OnPropertyChanged(nameof(GhostShellMemoryText));
+                OnPropertyChanged(nameof(ProcessDetailText));
                 OnPropertyChanged(nameof(UptimeText));
                 OnPropertyChanged(nameof(ProcessorCountText));
                 OnPropertyChanged(nameof(CapturedAtText));
@@ -182,15 +238,14 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         Snapshot?.ObservedWorkingSetBytes);
 
     public string ProcessCountText => Snapshot is { } snapshot
-        ? $"{snapshot.ObservedProcessCount:N0} observed / {snapshot.EnumeratedProcessCount:N0} total"
+        ? snapshot.EnumeratedProcessCount.ToString("N0", CultureInfo.CurrentCulture)
         : "Unavailable";
 
-    public string GhostShellCpuText => Snapshot?.GhostShellCpuPercent is { } value
-        ? $"{value.ToString("0.0", CultureInfo.InvariantCulture)}%"
-        : "Unavailable";
-
-    public string GhostShellMemoryText => MonitorPanelPresentation.FormatBytes(
-        Snapshot?.GhostShellWorkingSetBytes);
+    public string ProcessDetailText => Snapshot is { } snapshot
+        ? snapshot.ObservedProcessCount == snapshot.EnumeratedProcessCount
+            ? "Resource details available for all processes"
+            : $"Resource details available for {snapshot.ObservedProcessCount:N0} of {snapshot.EnumeratedProcessCount:N0}"
+        : "Process details unavailable";
 
     public string UptimeText => Snapshot is { } snapshot
         ? MonitorPanelPresentation.FormatDuration(snapshot.HostUptime)
@@ -203,6 +258,10 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     public string CapturedAtText => Snapshot is { } snapshot
         ? $"Captured {snapshot.CapturedAtUtc.ToLocalTime():T}"
         : "No sample captured";
+
+    public IReadOnlyList<double?> CpuHistory => _cpuHistory;
+
+    public IReadOnlyList<double?> MemoryHistory => _memoryHistory;
 
     public Task Start()
     {
@@ -240,7 +299,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         try
         {
             result = await _sessionClient.EnsureStatisticsSessionAsync(
-                new EnsureStatisticsSessionRequest(SessionId, _owner, Title),
+                new EnsureStatisticsSessionRequest(SessionId, _owner, Title, _connection),
                 OperationContext.ForHuman(
                     _clientId,
                     idempotencyKey: IdempotencyKey.New()),
@@ -254,7 +313,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         {
             await ApplyHostFailureAsync(
                 "Statistics unavailable",
-                "The local statistics session could not be started.");
+                $"The statistics session for {ConnectionDisplayName} could not be started.");
             return;
         }
 
@@ -292,7 +351,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
                 IssueTitle = null;
                 IssueMessage = null;
                 State = SystemMonitorPanelState.Waiting;
-                StatusText = "Starting local statistics…";
+                StatusText = $"Starting statistics · {ConnectionDisplayName}…";
             },
             CancellationToken.None);
         Initialization = InitializeAsync();
@@ -301,12 +360,20 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
 
     private async Task PollAsync(CancellationToken cancellationToken)
     {
+        var consecutiveFailures = State == SystemMonitorPanelState.Live ? 0 : 1;
         try
         {
             while (true)
             {
-                await _delay(PollInterval, cancellationToken);
+                await _delay(
+                    SystemMonitorPolling.Delay(
+                        _connection.ConnectionKind,
+                        consecutiveFailures),
+                    cancellationToken);
                 await RefreshCoreAsync(cancellationToken);
+                consecutiveFailures = State == SystemMonitorPanelState.Live
+                    ? 0
+                    : Math.Min(consecutiveFailures + 1, 5);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -352,7 +419,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
             {
                 await ApplyCaptureFailureAsync(
                     "Statistics refresh failed",
-                    "The local statistics snapshot could not be captured.",
+                    $"The statistics snapshot for {ConnectionDisplayName} could not be captured.",
                     linked.Token);
                 return;
             }
@@ -388,7 +455,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
                     IssueTitle = null;
                     IssueMessage = null;
                     State = SystemMonitorPanelState.Live;
-                    StatusText = "Live · local host";
+                    StatusText = $"Live · {ConnectionDisplayName}";
                 },
                 linked.Token);
         }
@@ -439,6 +506,26 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
                 StatusText = HasSnapshot ? "Stale · retry available" : "Unavailable";
             },
             cancellationToken);
+
+    private void AppendHistory(SystemStatisticsSnapshot snapshot)
+    {
+        AppendBounded(_cpuSamples, snapshot.ObservedCpuPercent);
+        AppendBounded(_memorySamples, snapshot.ObservedWorkingSetBytes);
+        _cpuHistory = _cpuSamples.ToArray();
+        _memoryHistory = _memorySamples.ToArray();
+        OnPropertyChanged(nameof(CpuHistory));
+        OnPropertyChanged(nameof(MemoryHistory));
+    }
+
+    private static void AppendBounded(List<double?> samples, double? value)
+    {
+        if (samples.Count == HistoryCapacity)
+        {
+            samples.RemoveAt(0);
+        }
+
+        samples.Add(value);
+    }
 }
 
 public sealed class ProcessMonitorEntryViewModel
@@ -471,8 +558,8 @@ public sealed class ProcessMonitorEntryViewModel
 
 public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private readonly ISessionHostClient _sessionClient;
+    private readonly ConnectionProfile _connection;
     private readonly ClientId _clientId;
     private readonly SessionOwner _owner;
     private readonly IUiThreadDispatcher _dispatcher;
@@ -486,7 +573,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
     private ProcessMonitorSort _sort = ProcessMonitorSort.CpuDescending;
     private SystemMonitorPanelState _state = SystemMonitorPanelState.Waiting;
     private string _filter = string.Empty;
-    private string _statusText = "Waiting for first local-host sample…";
+    private string _statusText = "Waiting for first sample…";
     private string? _issueTitle;
     private string? _issueMessage;
     private bool _isRefreshing;
@@ -504,9 +591,31 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         SessionOwner owner,
         IUiThreadDispatcher dispatcher,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
+        : this(
+            id,
+            title,
+            sessionClient,
+            clientId,
+            owner,
+            BuiltInConnections.Local,
+            dispatcher,
+            delay)
+    {
+    }
+
+    public ProcessMonitorRuntimePanelViewModel(
+        PanelInstanceId id,
+        string title,
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner,
+        ConnectionProfile connection,
+        IUiThreadDispatcher dispatcher,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
         : base(id, PanelKind.ProcessMonitor, title, "PROCESS MONITOR")
     {
         _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _clientId = clientId;
         _owner = owner;
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -525,6 +634,11 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         Enum.GetValues<ProcessMonitorSort>();
 
     public SessionId SessionId { get; }
+
+    public ConnectionId ConnectionId => _connection.Id;
+
+    public string ConnectionDisplayName =>
+        _connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name;
 
     public Task Initialization { get; private set; } = Task.CompletedTask;
 
@@ -727,7 +841,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         try
         {
             result = await _sessionClient.EnsureProcessMonitorSessionAsync(
-                new EnsureProcessMonitorSessionRequest(SessionId, _owner, Title),
+                new EnsureProcessMonitorSessionRequest(SessionId, _owner, Title, _connection),
                 OperationContext.ForHuman(
                     _clientId,
                     idempotencyKey: IdempotencyKey.New()),
@@ -741,7 +855,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         {
             await ApplyFailureAsync(
                 "Process monitor unavailable",
-                "The local process-monitor session could not be started.",
+                $"The process-monitor session for {ConnectionDisplayName} could not be started.",
                 CancellationToken.None);
             return;
         }
@@ -781,7 +895,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
                 IssueTitle = null;
                 IssueMessage = null;
                 State = SystemMonitorPanelState.Waiting;
-                StatusText = "Starting local process monitor…";
+                StatusText = $"Starting process monitor · {ConnectionDisplayName}…";
             },
             CancellationToken.None);
         Initialization = InitializeAsync();
@@ -790,12 +904,20 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
 
     private async Task PollAsync(CancellationToken cancellationToken)
     {
+        var consecutiveFailures = State == SystemMonitorPanelState.Live ? 0 : 1;
         try
         {
             while (true)
             {
-                await _delay(PollInterval, cancellationToken);
+                await _delay(
+                    SystemMonitorPolling.Delay(
+                        _connection.ConnectionKind,
+                        consecutiveFailures),
+                    cancellationToken);
                 await RefreshCoreAsync(cancellationToken);
+                consecutiveFailures = State == SystemMonitorPanelState.Live
+                    ? 0
+                    : Math.Min(consecutiveFailures + 1, 5);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -845,7 +967,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
             {
                 await ApplyFailureAsync(
                     "Process refresh failed",
-                    "The bounded local process list could not be captured.",
+                    $"The bounded process list for {ConnectionDisplayName} could not be captured.",
                     linked.Token);
                 return;
             }
@@ -883,7 +1005,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
                     IssueTitle = null;
                     IssueMessage = null;
                     State = SystemMonitorPanelState.Live;
-                    StatusText = "Live · local host";
+                    StatusText = $"Live · {ConnectionDisplayName}";
                 },
                 linked.Token);
         }

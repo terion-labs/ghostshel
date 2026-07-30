@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using GhostShell.App.Controls;
 
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.Components;
 
 namespace GhostShell.App.Views.RuntimePanels;
 
@@ -18,6 +19,10 @@ public sealed partial class TerminalRuntimePanelView : UserControl
     public event EventHandler<RoutedEventArgs>? CancelReconnectRequested;
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;
+
+    public event EventHandler<PanelConnectionSelectedEventArgs>? ConnectionSelected;
+
+    public event EventHandler<RoutedEventArgs>? NewConnectionRequested;
 
     /// <summary>
     /// Splitting places an empty panel beside this one; what it becomes is chosen
@@ -60,6 +65,20 @@ public sealed partial class TerminalRuntimePanelView : UserControl
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(sender, e);
+
+    private void OnConnectionSelected(
+        object? sender,
+        PanelConnectionSelectedEventArgs e)
+    {
+        _ = sender;
+        ConnectionSelected?.Invoke(this, e);
+    }
+
+    private void OnNewConnectionRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        NewConnectionRequested?.Invoke(this, e);
+    }
 
     private void OnSplitLeftRightClick(object? sender, RoutedEventArgs e)
     {

@@ -31,14 +31,6 @@ public sealed class RuntimePanelLayoutPanel : Panel
     /// <summary>How close the pointer must be to a boundary to grab it.</summary>
     private const double GrabTolerance = 5;
 
-    /// <summary>
-    /// The floor a track may be dragged to when no panel asks for more. Panels
-    /// state their own minimum, and the one that needs the most wins — a constant
-    /// let a track shrink under the content it holds, and the panel then drew
-    /// outside the space it had been given.
-    /// </summary>
-    private const double MinimumTrack = 120;
-
     private Boundary? _hover;
     private Boundary? _drag;
     private Point _dragOrigin;
@@ -58,13 +50,13 @@ public sealed class RuntimePanelLayoutPanel : Panel
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var required = RequiredSize();
+        var unconstrainedFallback = RequiredSize();
         var width = double.IsFinite(availableSize.Width)
-            ? Math.Max(availableSize.Width, required.Width)
-            : required.Width;
+            ? Math.Max(0, availableSize.Width)
+            : unconstrainedFallback.Width;
         var height = double.IsFinite(availableSize.Height)
-            ? Math.Max(availableSize.Height, required.Height)
-            : required.Height;
+            ? Math.Max(0, availableSize.Height)
+            : unconstrainedFallback.Height;
         var layoutSize = new Size(width, height);
         foreach (var child in Children)
         {
@@ -76,16 +68,12 @@ public sealed class RuntimePanelLayoutPanel : Panel
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var required = RequiredSize();
-        var layoutSize = new Size(
-            Math.Max(finalSize.Width, required.Width),
-            Math.Max(finalSize.Height, required.Height));
         foreach (var child in Children)
         {
-            child.Arrange(LayoutBounds(child, layoutSize));
+            child.Arrange(LayoutBounds(child, finalSize));
         }
 
-        return layoutSize;
+        return finalSize;
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -100,14 +88,18 @@ public sealed class RuntimePanelLayoutPanel : Panel
                 return;
             }
 
-            var moved = (drag.IsColumn ? point.X - _dragOrigin.X : point.Y - _dragOrigin.Y) / total;
-            var minimum = Math.Min(0.45, MinimumPixels(drag) / total);
+            var moved = drag.IsColumn
+                ? point.X - _dragOrigin.X
+                : point.Y - _dragOrigin.Y;
             var applied = drag.IsColumn
-                ? Tab?.MoveColumnSplit(drag.Index, moved, minimum)
-                : Tab?.MoveRowSplit(drag.Index, moved, minimum);
+                ? Tab?.MoveColumnSplit(drag.Index, moved, total)
+                : Tab?.MoveRowSplit(drag.Index, moved, total);
+            // Consume every pointer delta, including overshoot at a constraint.
+            // Otherwise the user has to drag back through the whole overshoot
+            // before the divider starts moving in the opposite direction.
+            _dragOrigin = point;
             if (applied == true)
             {
-                _dragOrigin = point;
                 InvalidateArrange();
             }
 
@@ -133,6 +125,14 @@ public sealed class RuntimePanelLayoutPanel : Panel
         _dragOrigin = e.GetPosition(this);
         e.Pointer.Capture(this);
         e.Handled = true;
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        _drag = null;
+        _hover = null;
+        Cursor = Cursor.Default;
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -188,35 +188,6 @@ public sealed class RuntimePanelLayoutPanel : Panel
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// How few pixels either track beside this boundary may be reduced to: the
-    /// largest minimum among the panels that occupy them, spread over the tracks
-    /// each one spans.
-    /// </summary>
-    private double MinimumPixels(Boundary boundary)
-    {
-        var needed = MinimumTrack;
-        foreach (var child in Children)
-        {
-            if (child.DataContext is not RuntimePanelViewModel panel)
-            {
-                continue;
-            }
-
-            var start = boundary.IsColumn ? panel.LayoutColumn : panel.LayoutRow;
-            var span = Math.Max(1, boundary.IsColumn ? panel.LayoutColumnSpan : panel.LayoutRowSpan);
-            if (boundary.Index + 1 < start || boundary.Index >= start + span)
-            {
-                continue;
-            }
-
-            var minimum = boundary.IsColumn ? panel.LayoutMinimumWidth : panel.LayoutMinimumHeight;
-            needed = Math.Max(needed, minimum / span);
-        }
-
-        return needed;
     }
 
     private static double Offset(IReadOnlyList<double> weights, int track)

@@ -7,7 +7,7 @@ namespace GhostShell.Core;
 [JsonDerivedType(typeof(ConnectionEndpoint.Ssh), "ssh")]
 [JsonDerivedType(typeof(ConnectionEndpoint.Docker), "docker")]
 [JsonDerivedType(typeof(ConnectionEndpoint.Wsl), "wsl")]
-public abstract record ConnectionEndpoint
+public abstract record ConnectionEndpoint : IPanelLaunchCapabilitySource
 {
     private ConnectionEndpoint()
     {
@@ -15,6 +15,9 @@ public abstract record ConnectionEndpoint
 
     [JsonIgnore]
     public abstract ConnectionKind Kind { get; }
+
+    [JsonIgnore]
+    public abstract PanelLaunchCapabilities PanelLaunchCapabilities { get; }
 
     public sealed record Local : ConnectionEndpoint
     {
@@ -27,6 +30,9 @@ public abstract record ConnectionEndpoint
         public string? ShellPath { get; }
 
         public override ConnectionKind Kind => ConnectionKind.Local;
+
+        public override PanelLaunchCapabilities PanelLaunchCapabilities =>
+            BuiltInPanelLaunchCapabilities.ShellAndFiles;
     }
 
     public sealed record Ssh : ConnectionEndpoint
@@ -51,6 +57,9 @@ public abstract record ConnectionEndpoint
         public string? Username { get; }
 
         public override ConnectionKind Kind => ConnectionKind.Ssh;
+
+        public override PanelLaunchCapabilities PanelLaunchCapabilities =>
+            BuiltInPanelLaunchCapabilities.ShellAndFiles;
     }
 
     public sealed record Docker : ConnectionEndpoint
@@ -67,6 +76,9 @@ public abstract record ConnectionEndpoint
         public string? Context { get; }
 
         public override ConnectionKind Kind => ConnectionKind.Docker;
+
+        public override PanelLaunchCapabilities PanelLaunchCapabilities =>
+            BuiltInPanelLaunchCapabilities.ShellAndMonitoring;
     }
 
     public sealed record Wsl : ConnectionEndpoint
@@ -83,6 +95,9 @@ public abstract record ConnectionEndpoint
         public string? Username { get; }
 
         public override ConnectionKind Kind => ConnectionKind.Wsl;
+
+        public override PanelLaunchCapabilities PanelLaunchCapabilities =>
+            BuiltInPanelLaunchCapabilities.ShellAndMonitoring;
     }
 
     private static string? NormalizeOptional(string? value) =>

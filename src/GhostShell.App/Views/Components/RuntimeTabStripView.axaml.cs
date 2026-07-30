@@ -24,6 +24,12 @@ public sealed partial class RuntimeTabStripView : UserControl
             nameof(Orientation),
             Orientation.Horizontal);
 
+    public static readonly StyledProperty<bool> ShowHomeTabProperty =
+        AvaloniaProperty.Register<RuntimeTabStripView, bool>(nameof(ShowHomeTab));
+
+    public static readonly StyledProperty<bool> IsHomeActiveProperty =
+        AvaloniaProperty.Register<RuntimeTabStripView, bool>(nameof(IsHomeActive));
+
     public RuntimeTabStripView()
     {
         InitializeComponent();
@@ -46,6 +52,20 @@ public sealed partial class RuntimeTabStripView : UserControl
         set => SetValue(OrientationProperty, value);
     }
 
+    public bool ShowHomeTab
+    {
+        get => GetValue(ShowHomeTabProperty);
+        set => SetValue(ShowHomeTabProperty, value);
+    }
+
+    public bool IsHomeActive
+    {
+        get => GetValue(IsHomeActiveProperty);
+        set => SetValue(IsHomeActiveProperty, value);
+    }
+
+    public string HomeItemStatus => IsHomeActive ? "Current tab" : string.Empty;
+
     public ScrollBarVisibility HorizontalScrollBars => Orientation == Orientation.Horizontal
         ? ScrollBarVisibility.Auto
         : ScrollBarVisibility.Disabled;
@@ -56,6 +76,8 @@ public sealed partial class RuntimeTabStripView : UserControl
 
     /// <summary>Raised when the strip's own add-a-tab control is pressed.</summary>
     public event EventHandler<RoutedEventArgs>? AddTabRequested;
+
+    public event EventHandler<RoutedEventArgs>? HomeRequested;
 
     public event EventHandler<RoutedEventArgs>? ActivateRequested;
 
@@ -86,6 +108,10 @@ public sealed partial class RuntimeTabStripView : UserControl
                 nameof(HorizontalScrollBars),
                 nameof(VerticalScrollBars));
         }
+        else if (change.Property == IsHomeActiveProperty)
+        {
+            RaisePropertyChanged(nameof(HomeItemStatus));
+        }
     }
 
     private void RaisePropertyChanged(params string[] names)
@@ -100,6 +126,9 @@ public sealed partial class RuntimeTabStripView : UserControl
 
     private void OnAddTab(object? sender, RoutedEventArgs e) =>
         AddTabRequested?.Invoke(sender, e);
+
+    private void OnHome(object? sender, RoutedEventArgs e) =>
+        HomeRequested?.Invoke(sender, e);
 
     private void OnActivate(object? sender, RoutedEventArgs e) =>
         ActivateRequested?.Invoke(sender, e);
