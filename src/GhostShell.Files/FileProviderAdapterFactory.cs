@@ -17,7 +17,8 @@ namespace GhostShell.Files;
 /// </summary>
 internal sealed class FileProviderAdapterFactory(
     ISecretVault secretVault,
-    ISshHostKeyTrustStore knownHosts)
+    ISshHostKeyTrustStore knownHosts,
+    IConnectionRuntime? connectionRuntime = null)
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
@@ -176,13 +177,18 @@ internal sealed class FileProviderAdapterFactory(
             providerId,
             connection,
             configuration.RemoteRoot);
-        var provider = new SftpFileProvider(secretVault, knownHosts, options);
+        var provider = new SftpFileProvider(
+            secretVault,
+            knownHosts,
+            options,
+            connectionRuntime);
         return Owned(
             profile,
             provider,
             HierarchicalRoot(provider),
             FileProviderFamily.Sftp,
-            FilePanelCapability.None);
+            FilePanelCapability.None,
+            provider);
     }
 
     private OwnedFileProviderRegistration CreateFtp(

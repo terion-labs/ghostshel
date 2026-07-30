@@ -237,12 +237,15 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
         var code = exception.Code switch
         {
             RemoteFileSessionErrorCode.InvalidConfiguration => FileProviderErrorCode.InvalidLocation,
-            RemoteFileSessionErrorCode.AuthenticationFailed => FileProviderErrorCode.AccessDenied,
+            RemoteFileSessionErrorCode.AuthenticationFailed =>
+                FileProviderErrorCode.AuthenticationRequired,
             RemoteFileSessionErrorCode.HostKeyUnknown => FileProviderErrorCode.HostKeyUnknown,
             RemoteFileSessionErrorCode.HostKeyChanged => FileProviderErrorCode.HostKeyChanged,
             RemoteFileSessionErrorCode.HostKeyStoreInvalid => FileProviderErrorCode.HostKeyStoreInvalid,
-            RemoteFileSessionErrorCode.CertificateRejected => FileProviderErrorCode.AccessDenied,
-            RemoteFileSessionErrorCode.SecureTransportUnavailable => FileProviderErrorCode.AccessDenied,
+            RemoteFileSessionErrorCode.CertificateRejected =>
+                FileProviderErrorCode.AuthenticationRequired,
+            RemoteFileSessionErrorCode.SecureTransportUnavailable =>
+                FileProviderErrorCode.AuthenticationRequired,
             RemoteFileSessionErrorCode.NotFound => FileProviderErrorCode.NotFound,
             RemoteFileSessionErrorCode.AlreadyExists
                 when mutationPrecondition is FileMutationPrecondition.MustNotExist =>

@@ -13,11 +13,31 @@ ADR 0008 requires real SFTP and FTP adapters behind the bounded `IFileProvider` 
 
 The production SFTP transport uses `SSH.NET` pinned to `2025.1.0`, commit `6390ede`, under the MIT license. The package targets .NET 8 and .NET 9; the .NET 10 application consumes its .NET 9 asset. It provides cancellation-aware SFTP listing, metadata, stream open, directory, rename, and delete APIs, including asynchronous upload/download improvements in the 2025.1 release.
 
-An `SftpFileProviderOptions` references the existing durable SSH `ConnectionProfile`. The file-provider authority is the connection ID, and the adapter consumes the same endpoint, authentication references, keepalive setting, and `SshHostKeyPolicy`. Password, private-key, and passphrase bytes resolve from `ISecretVault` with connection scope only inside the SSH.NET factory; profile, diagnostic, exception, and result types contain no secret value. SSH.NET does not provide GhostSHELL's system-agent integration seam, so `ConnectionAuthentication.SshAgent` currently returns `UnsupportedCapability` rather than pretending to use the agent.
+An `SftpFileProviderOptions` references the existing durable SSH
+`ConnectionProfile`. The file-provider authority is the connection ID, and the
+adapter consumes the same endpoint, authentication references, keepalive
+setting, and `SshHostKeyPolicy`. Password, private-key, and passphrase bytes
+resolve from `ISecretVault` with connection scope only inside the SSH.NET
+factory; profile, diagnostic, exception, and result types contain no secret
+value.
+
+System-agent and system-configuration profiles use the maintained
+`SshNet.Agent` extension, which obtains compatible public identities from the
+platform OpenSSH agent and delegates signing without exporting private-key
+material. A raw agent socket does not apply OpenSSH identity-file configuration
+or platform credential-store behavior by itself. When the agent is empty, the
+adapter therefore asks the shared `IConnectionRuntime` transport to run its
+bounded typed diagnostic. Both native authentication modes request
+`AddKeysToAgent=yes`, so successful native OpenSSH authentication exposes the
+configured signing identity through the agent; SFTP then re-reads the agent and
+opens its SSH.NET channel. This preparation reuses Terminal's executable,
+host-key binding, endpoint, and authentication policy while retaining typed
+offline, timeout, authentication, and trust failures. It neither shells out
+for file operations nor copies private-key material into the file subsystem.
 
 Host verification is mandatory unless the durable profile explicitly says `InsecureIgnore`. SFTP passes SSH.NET's raw public-key bytes through the shared Application `ISshHostKeyTrustStore` boundary as a validated `SshHostKeyCandidate`; its SHA-256 display fingerprint is derived from those bytes and cannot be supplied independently. Infrastructure's durable `SshKnownHostStore` implements that boundary for both terminal SSH and SFTP, so a connection ID has one exact algorithm/public-key trust identity and one owner-only, per-connection OpenSSH-compatible file. `Strict` accepts only the exact persisted candidate. `AcceptNew` uses an atomic no-overwrite create, including between separate store instances, and refuses a concurrent or later different key. A changed key can be replaced only through the existing opaque, expiring connection-security review and compare-and-swap action. A malformed or inaccessible trust file fails closed and is never repaired by `AcceptNew`. `InsecureIgnore` is preserved exactly and produces the visible `sftp_host_key_verification_disabled` diagnostic. Host-key bytes and fingerprints are public identity metadata, not credentials.
 
-Unknown and changed host keys remain distinct `FileProviderErrorCode.HostKeyUnknown` and `HostKeyChanged` results through the File Panel boundary. The SFTP provider editor reacts only to those typed results, scans the referenced SSH connection through `IConnectionSecurityRuntime`, and shows the presented and previously trusted fingerprints. Its inline action opens the common modal SSH review; only an explicit **Trust host key** or **Replace trusted key** confirmation for that exact five-minute review can invoke the compare-and-swap and retry the bounded provider test. File Viewer retains the actionable classified message directing the user to that provider review. A malformed trust store remains the separate `HostKeyStoreInvalid` result rather than being presented as an ordinary permission failure.
+Unknown and changed host keys remain distinct `FileProviderErrorCode.HostKeyUnknown` and `HostKeyChanged` results through the File Panel boundary. The SFTP provider editor reacts only to those typed results, scans the referenced SSH connection through `IConnectionSecurityRuntime`, and shows the presented and previously trusted fingerprints. Its inline action opens the common modal SSH review; only an explicit **Trust host key** or **Replace trusted key** confirmation for that exact five-minute review can invoke the compare-and-swap and retry the bounded provider test. File Viewer retains the actionable classified message directing the user to that provider review. A malformed trust store remains the separate `HostKeyStoreInvalid` result rather than being presented as an ordinary permission failure. Credential and agent failures remain `AuthenticationRequired`; only a successful authentication followed by a denied filesystem operation becomes `AccessDenied`.
 
 SFTP maps regular-file, directory, link, and POSIX special-file types separately, and retains size, UTC modification time, user ID, group ID, and POSIX mode in an internal metadata snapshot. The common entry exposes type, size, and time; the full snapshot contributes to its opaque conflict token. SSH.NET canonicalizes most path APIs with `REALPATH`, so metadata is resolved from an exact parent listing and the provider walks every configured-root and requested-path component. Links and special files remain visible to list/stat but cannot be read, written, renamed, transferred, or deleted through this adapter.
 
@@ -45,11 +65,14 @@ SFTP and FTP advertise `List`, `Stat`, `RangedRead`, `StreamingWrite`, `CreateDi
 
 Vendor SDK types are confined to `SshNetSftpSessionFactory` and `FluentFtpSessionFactory`. Deterministic fake sessions exercise both providers through the shared conformance suite without a network, credentials, or live server. Adapter-specific tests cover reconnect bounds, capability honesty, connection identity, restart-persistent and concurrent accept-new trust, explicit changed-key replacement, malformed-store fail-closed behavior, typed host-key UI mapping, plaintext warnings, exact FTPS/data modes, FEAT snapshots, and unsafe FTP name rejection.
 
+An SFTP provider generation retains one authenticated SSH.NET session and serializes its operations. This avoids reconnecting and re-running SSH-agent authentication for every list, stat, preview, and mutation. Retryable transport failures mark the session unhealthy; the existing bounded metadata retry then opens one fresh session. Disposing or replacing the provider generation closes the retained client and releases its authentication material. FTP remains operation-scoped until its adapter has an equivalent explicit health contract.
+
 ## Primary sources
 
 - SSH.NET package `2025.1.0`, framework compatibility, repository revision, and MIT license: <https://www.nuget.org/packages/SSH.NET/2025.1.0>
 - SSH.NET 2025.1.0 release and async SFTP changes: <https://github.com/sshnet/SSH.NET/releases/tag/2025.1.0>
 - SSH.NET SFTP client API: <https://sshnet.github.io/SSH.NET/api/Renci.SshNet.SftpClient.html>
+- SshNet.Agent package and OpenSSH-agent integration: <https://www.nuget.org/packages/SshNet.Agent>
 - SSH.NET host-key verification example and SHA-256 fingerprint behavior: <https://sshnet.github.io/SSH.NET/examples.html>
 - FluentFTP package `54.2.0`, framework compatibility, repository revision, and MIT license: <https://www.nuget.org/packages/FluentFTP/54.2.0>
 - FluentFTP source repository and documentation: <https://github.com/robinrodricks/FluentFTP>
@@ -62,11 +85,14 @@ Vendor SDK types are confined to `SshNetSftpSessionFactory` and `FluentFtpSessio
 - FTPS cannot silently downgrade; plaintext FTP remains possible only as an explicit, visibly unsafe profile choice.
 - Metadata retry improves recovery without replaying caller-visible bytes or mutations.
 - Remote preconditions are useful conflict detection but remain weaker than local atomic replacement or S3 conditional writes.
-- Persisted resumable transfer, SSH-agent authentication, FTP checksum verification, POSIX permission editing, and directory transfer remain explicit future work.
+- Persisted resumable transfer, FTP checksum verification, POSIX permission editing, and directory transfer remain explicit future work.
 
 ## Alternatives rejected
 
-- Calling OpenSSH or a system FTP executable would make structured streaming, cancellation, error classification, and cross-platform packaging less reliable.
+- Calling OpenSSH or a system FTP executable for file operations would make
+  structured streaming, cancellation, error classification, and cross-platform
+  packaging less reliable. The bounded OpenSSH authentication preparation
+  described above is deliberately not a file-operation transport.
 - Using FluentFTP automatic encryption detection could silently turn a requested secure connection into plaintext.
 - Retrying every failed operation could duplicate output or repeat a remotely committed mutation.
 - Advertising resume from SFTP seek or FTP REST alone would omit checkpoint persistence, version validation, and safe commit semantics.

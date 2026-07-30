@@ -4,7 +4,7 @@ using GhostShell.Core;
 namespace GhostShell.Files;
 
 /// <summary>SFTP provider using SSH.NET behind a vendor-free filesystem seam.</summary>
-public sealed class SftpFileProvider : RemoteHierarchicalFileProvider
+public sealed class SftpFileProvider : RemoteHierarchicalFileProvider, IDisposable
 {
     private static readonly FileProviderLimits ProviderLimits = new(
         maximumListPageSize: 1_000,
@@ -17,14 +17,28 @@ public sealed class SftpFileProvider : RemoteHierarchicalFileProvider
         ISecretVault secretVault,
         ISshHostKeyTrustStore knownHosts,
         SftpFileProviderOptions options)
+        : this(secretVault, knownHosts, options, connectionRuntime: null)
+    {
+    }
+
+    internal SftpFileProvider(
+        ISecretVault secretVault,
+        ISshHostKeyTrustStore knownHosts,
+        SftpFileProviderOptions options,
+        IConnectionRuntime? connectionRuntime)
         : this(
-            new SshNetSftpSessionFactory(
-                secretVault ?? throw new ArgumentNullException(nameof(secretVault)),
-                knownHosts ?? throw new ArgumentNullException(nameof(knownHosts)),
-                options ?? throw new ArgumentNullException(nameof(options))),
+            new RetainedRemoteFileSessionFactory(
+                new SshNetSftpSessionFactory(
+                    secretVault ?? throw new ArgumentNullException(nameof(secretVault)),
+                    knownHosts ?? throw new ArgumentNullException(nameof(knownHosts)),
+                    options ?? throw new ArgumentNullException(nameof(options)),
+                    connectionRuntime)),
             options)
     {
     }
+
+    private readonly IDisposable? _sessionOwner;
+    private bool _disposed;
 
     internal SftpFileProvider(
         IRemoteHierarchicalFileSessionFactory sessions,
@@ -40,6 +54,7 @@ public sealed class SftpFileProvider : RemoteHierarchicalFileProvider
             options.ReconnectPolicy,
             ProviderLimits)
     {
+        _sessionOwner = sessions as IDisposable;
         Connection = options.Connection;
         Diagnostics = options.Connection.HostKeyPolicy == SshHostKeyPolicy.InsecureIgnore
             ? [new SftpProviderDiagnostic(
@@ -51,4 +66,15 @@ public sealed class SftpFileProvider : RemoteHierarchicalFileProvider
     public ConnectionProfile Connection { get; }
 
     public IReadOnlyList<SftpProviderDiagnostic> Diagnostics { get; }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _sessionOwner?.Dispose();
+    }
 }

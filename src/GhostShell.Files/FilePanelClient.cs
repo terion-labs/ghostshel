@@ -489,6 +489,8 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             FileProviderErrorCode.PreconditionFailed => FilePanelErrorCode.PreconditionFailed,
             FileProviderErrorCode.RangeNotSatisfiable => FilePanelErrorCode.RangeNotSatisfiable,
             FileProviderErrorCode.LimitExceeded => FilePanelErrorCode.LimitExceeded,
+            FileProviderErrorCode.AuthenticationRequired =>
+                FilePanelErrorCode.AuthenticationRequired,
             FileProviderErrorCode.AccessDenied => FilePanelErrorCode.AccessDenied,
             FileProviderErrorCode.HostKeyUnknown => FilePanelErrorCode.HostKeyUnknown,
             FileProviderErrorCode.HostKeyChanged => FilePanelErrorCode.HostKeyChanged,

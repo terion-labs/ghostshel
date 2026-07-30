@@ -29,12 +29,14 @@ public sealed class CatalogFileProviderRuntime :
         IDefinitionCatalog catalog,
         ISecretVault secretVault,
         ISshHostKeyTrustStore knownHosts,
-        IConnectionSecurityRuntime? connectionSecurityRuntime = null)
+        IConnectionSecurityRuntime? connectionSecurityRuntime = null,
+        IConnectionRuntime? connectionRuntime = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _factory = new FileProviderAdapterFactory(
             secretVault ?? throw new ArgumentNullException(nameof(secretVault)),
-            knownHosts ?? throw new ArgumentNullException(nameof(knownHosts)));
+            knownHosts ?? throw new ArgumentNullException(nameof(knownHosts)),
+            connectionRuntime);
         _connectionSecurityRuntime = connectionSecurityRuntime;
         _active = CreateBuiltInGeneration();
         Attach(_active);
@@ -567,9 +569,37 @@ public sealed class CatalogFileProviderRuntime :
         };
         var diagnostics = new List<FileProviderRuntimeDiagnostic>();
         var connections = ConnectionsById(snapshot);
+        foreach (var connection in connections.Values.Where(
+                     item => item.Endpoint is ConnectionEndpoint.Ssh))
+        {
+            try
+            {
+                registrations.Add(await _factory.CreateAsync(
+                    ConnectionFileProviderProfiles.Create(connection),
+                    connections,
+                    cancellationToken).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                DisposeAll(registrations);
+                throw;
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add(new FileProviderRuntimeDiagnostic(
+                    ConnectionFileProviderProfiles.Id(connection.Id),
+                    FileProviderRuntimeDiagnosticSeverity.Error,
+                    "connection_file_provider_materialization_failed",
+                    SafeConfigurationMessage(exception)));
+            }
+        }
+
         foreach (var stored in snapshot.FileProviderProfiles)
         {
-            if (stored.Value.Id.Value == "builtin.files.home")
+            if (stored.Value.Id.Value == "builtin.files.home"
+                || stored.Value.Id.Value.StartsWith(
+                    "builtin.files.connection.",
+                    StringComparison.Ordinal))
             {
                 diagnostics.Add(new FileProviderRuntimeDiagnostic(
                     stored.Value.Id,

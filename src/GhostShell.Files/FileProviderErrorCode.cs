@@ -27,4 +27,5 @@ public enum FileProviderErrorCode
     PartialTransfer,
     Cancelled,
     IoFailure,
+    AuthenticationRequired,
 }

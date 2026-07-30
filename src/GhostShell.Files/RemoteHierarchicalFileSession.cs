@@ -6,6 +6,12 @@ namespace GhostShell.Files;
 /// </summary>
 internal interface IRemoteHierarchicalFileSession : IAsyncDisposable
 {
+    /// <summary>
+    /// True when <see cref="StatAsync"/> classifies the result as a link if any component in the
+    /// requested path resolves through a symbolic link.
+    /// </summary>
+    bool StatDetectsAnyLinkInPath => false;
+
     ValueTask<IReadOnlyList<RemoteFileEntry>> ListAsync(
         string path,
         CancellationToken cancellationToken);
@@ -35,6 +41,54 @@ internal interface IRemoteHierarchicalFileSession : IAsyncDisposable
 internal interface IRemoteHierarchicalFileSessionFactory
 {
     ValueTask<IRemoteHierarchicalFileSession> OpenAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Lets a transport use one protocol session for a provider-local copy while other transports
+/// retain the default two-session behavior.
+/// </summary>
+internal interface IRemoteFileTransferSessionFactory
+{
+    ValueTask<RemoteFileTransferSessions> OpenTransferSessionsAsync(
+        CancellationToken cancellationToken);
+}
+
+internal sealed class RemoteFileTransferSessions(
+    IRemoteHierarchicalFileSession source,
+    IRemoteHierarchicalFileSession destination) : IAsyncDisposable
+{
+    public IRemoteHierarchicalFileSession Source { get; } = source;
+
+    public IRemoteHierarchicalFileSession Destination { get; } = destination;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (ReferenceEquals(Source, Destination))
+        {
+            await Source.DisposeAsync().ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            await Destination.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await Source.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+}
+
+/// <summary>
+/// A transport session that can survive multiple serialized provider operations.
+/// Retryable protocol failures must make <see cref="CanReuse"/> false before they escape.
+/// </summary>
+internal interface IRetainableRemoteFileSession :
+    IRemoteHierarchicalFileSession,
+    IDisposable
+{
+    bool CanReuse { get; }
 }
 
 internal sealed record RemoteFileEntry(

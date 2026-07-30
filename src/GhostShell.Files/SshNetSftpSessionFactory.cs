@@ -12,8 +12,16 @@ namespace GhostShell.Files;
 internal sealed class SshNetSftpSessionFactory(
     ISecretVault secretVault,
     ISshHostKeyTrustStore knownHosts,
-    SftpFileProviderOptions options) : IRemoteHierarchicalFileSessionFactory
+    SftpFileProviderOptions options,
+    IConnectionRuntime? connectionRuntime = null,
+    ISshAgentIdentitySource? agentIdentitySource = null)
+    : IRemoteHierarchicalFileSessionFactory
 {
+    private readonly SystemSshAuthenticationBridge _systemAuthentication = new(
+        options.Connection,
+        connectionRuntime,
+        agentIdentitySource ?? new SystemSshAgentIdentitySource());
+
     public async ValueTask<IRemoteHierarchicalFileSession> OpenAsync(
         CancellationToken cancellationToken)
     {
@@ -117,11 +125,20 @@ internal sealed class SshNetSftpSessionFactory(
         switch (options.Connection.Authentication)
         {
             case ConnectionAuthentication.None:
-                return new NoneAuthenticationMethod(username);
             case ConnectionAuthentication.SshAgent:
-                throw new RemoteFileSessionException(
-                    RemoteFileSessionErrorCode.Unsupported,
-                    "SSH-agent authentication is not supported by the SFTP adapter.");
+                {
+                    var identities = await _systemAuthentication
+                        .GetIdentitiesAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    if (identities.Length == 0)
+                    {
+                        throw new RemoteFileSessionException(
+                            RemoteFileSessionErrorCode.AuthenticationFailed,
+                            "No SSH identity is available to the shared connection transport.");
+                    }
+
+                    return new PrivateKeyAuthenticationMethod(username, identities);
+                }
             case ConnectionAuthentication.Password password:
                 {
                     var bytes = await ResolveSecretAsync(
@@ -230,8 +247,9 @@ internal sealed class SshNetSftpSessionFactory(
     internal static FileEntryKind ClassifyEntryKind(
         bool isSymbolicLink,
         bool isDirectory,
-        bool isRegularFile) =>
-        isSymbolicLink
+        bool isRegularFile,
+        bool canonicalPathChanged = false) =>
+        isSymbolicLink || canonicalPathChanged
             ? FileEntryKind.Link
             : isDirectory
                 ? FileEntryKind.Directory
@@ -239,12 +257,31 @@ internal sealed class SshNetSftpSessionFactory(
                     ? FileEntryKind.File
                     : FileEntryKind.Other;
 
+    internal static bool CanonicalPathChanged(string requestedPath, string canonicalPath) =>
+        !string.Equals(
+            NormalizeRemotePath(requestedPath),
+            NormalizeRemotePath(canonicalPath),
+            StringComparison.Ordinal);
+
+    private static string NormalizeRemotePath(string path) =>
+        path.Length > 1 ? path.TrimEnd('/') : path;
+
     private sealed class SshNetSftpSession(
         SftpClient client,
         IReadOnlyList<byte[]> ownedBuffers,
-        IReadOnlyList<IDisposable> ownedDisposables) : IRemoteHierarchicalFileSession
+        IReadOnlyList<IDisposable> ownedDisposables) : IRetainableRemoteFileSession
     {
         private const int MaximumMetadataScanEntries = 100_000;
+        private readonly SftpMetadataCache _metadata = new(
+            TimeProvider.System,
+            TimeSpan.FromSeconds(10),
+            maximumEntries: 4_096);
+        private bool _healthy = true;
+        private bool _disposed;
+
+        public bool CanReuse => !_disposed && _healthy && client.IsConnected;
+
+        public bool StatDetectsAnyLinkInPath => true;
 
         public async ValueTask<IReadOnlyList<RemoteFileEntry>> ListAsync(
             string path,
@@ -262,11 +299,13 @@ internal sealed class SshNetSftpSessionFactory(
                         cancellationToken);
                 }
 
-                return snapshot.Complete(cancellationToken);
+                var entries = snapshot.Complete(cancellationToken);
+                _metadata.StoreDirectory(path, entries);
+                return entries;
             }
             catch (Exception exception) when (ShouldMap(exception))
             {
-                throw MapException(exception);
+                throw MapSessionException(exception);
             }
         }
 
@@ -276,14 +315,26 @@ internal sealed class SshNetSftpSessionFactory(
         {
             try
             {
-                var entry = await FindExactEntryAsync(path, cancellationToken).ConfigureAwait(false);
-                return entry is null
-                    ? null
-                    : ToRemoteEntry(entry.Name, entry.Attributes);
+                if (_metadata.TryGet(path, out var cached))
+                {
+                    return cached;
+                }
+
+                var entry = await client.GetAsync(path, cancellationToken).ConfigureAwait(false);
+                var result = ToRemoteEntry(
+                    RemoteName(path),
+                    entry.Attributes,
+                    CanonicalPathChanged(path, entry.FullName));
+                _metadata.Store(path, result);
+                return result;
+            }
+            catch (SftpPathNotFoundException)
+            {
+                return null;
             }
             catch (Exception exception) when (ShouldMap(exception))
             {
-                throw MapException(exception);
+                throw MapSessionException(exception);
             }
         }
 
@@ -298,11 +349,11 @@ internal sealed class SshNetSftpSessionFactory(
                     .OpenAsync(path, FileMode.Open, FileAccess.Read, cancellationToken)
                     .ConfigureAwait(false);
                 stream.Position = offset;
-                return new ExceptionMappingStream(stream, MapException);
+                return new ExceptionMappingStream(stream, MapSessionException);
             }
             catch (Exception exception) when (ShouldMap(exception))
             {
-                throw MapException(exception);
+                throw MapSessionException(exception);
             }
         }
 
@@ -312,25 +363,40 @@ internal sealed class SshNetSftpSessionFactory(
         {
             try
             {
+                _metadata.Clear();
                 var stream = await client
                     .OpenAsync(path, FileMode.CreateNew, FileAccess.Write, cancellationToken)
                     .ConfigureAwait(false);
-                return new ExceptionMappingStream(stream, MapException);
+                return new ExceptionMappingStream(stream, MapSessionException);
             }
             catch (Exception exception) when (ShouldMap(exception))
             {
-                throw MapException(exception);
+                throw MapSessionException(exception);
             }
         }
 
-        public ValueTask CreateDirectoryAsync(string path, CancellationToken cancellationToken) =>
-            ExecuteAsync(() => client.CreateDirectoryAsync(path, cancellationToken));
+        public async ValueTask CreateDirectoryAsync(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            await ExecuteAsync(() => client.CreateDirectoryAsync(path, cancellationToken))
+                .ConfigureAwait(false);
+            _metadata.Clear();
+        }
 
-        public ValueTask RenameAsync(
+        public async ValueTask RenameAsync(
             string sourcePath,
             string destinationPath,
-            CancellationToken cancellationToken) =>
-            ExecuteAsync(() => client.RenameFileAsync(sourcePath, destinationPath, cancellationToken));
+            CancellationToken cancellationToken)
+        {
+            await ExecuteAsync(
+                    () => client.RenameFileAsync(
+                        sourcePath,
+                        destinationPath,
+                        cancellationToken))
+                .ConfigureAwait(false);
+            _metadata.Clear();
+        }
 
         public async ValueTask DeleteFileAsync(
             string path,
@@ -354,10 +420,11 @@ internal sealed class SshNetSftpSessionFactory(
                 }
 
                 await entry.DeleteAsync(cancellationToken).ConfigureAwait(false);
+                _metadata.Clear();
             }
             catch (Exception exception) when (ShouldMap(exception))
             {
-                throw MapException(exception);
+                throw MapSessionException(exception);
             }
         }
 
@@ -383,29 +450,53 @@ internal sealed class SshNetSftpSessionFactory(
                 }
 
                 await entry.DeleteAsync(cancellationToken).ConfigureAwait(false);
+                _metadata.Clear();
             }
             catch (Exception exception) when (ShouldMap(exception))
             {
-                throw MapException(exception);
+                throw MapSessionException(exception);
             }
         }
 
-        public ValueTask DisposeAsync()
+        public void Dispose()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _metadata.Clear();
             try
             {
                 client.Dispose();
             }
-            catch (Exception exception) when (ShouldMap(exception))
+            catch (Exception)
             {
-                throw MapException(exception);
+                _healthy = false;
             }
             finally
             {
                 DisposeAuthentication(ownedBuffers, ownedDisposables);
             }
+        }
 
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
             return ValueTask.CompletedTask;
+        }
+
+        private RemoteFileSessionException MapSessionException(Exception exception)
+        {
+            var mapped = MapException(exception);
+            if (mapped.Retryable)
+            {
+                _healthy = false;
+                _metadata.Clear();
+            }
+
+            return mapped;
         }
 
         internal static RemoteFileSessionException MapException(Exception exception) => exception switch
@@ -424,12 +515,14 @@ internal sealed class SshNetSftpSessionFactory(
 
         private static RemoteFileEntry ToRemoteEntry(
             string name,
-            Renci.SshNet.Sftp.SftpFileAttributes attributes)
+            Renci.SshNet.Sftp.SftpFileAttributes attributes,
+            bool canonicalPathChanged = false)
         {
             var kind = ClassifyEntryKind(
                 attributes.IsSymbolicLink,
                 attributes.IsDirectory,
-                attributes.IsRegularFile);
+                attributes.IsRegularFile,
+                canonicalPathChanged);
             var mode = PosixMode(attributes);
             var revision = FormattableString.Invariant(
                 $"sftp:{(int)kind}:{attributes.Size}:{attributes.LastWriteTimeUtc.Ticks}:{attributes.UserId}:{attributes.GroupId}:{mode}");
@@ -440,6 +533,18 @@ internal sealed class SshNetSftpSessionFactory(
                 new DateTimeOffset(attributes.LastWriteTimeUtc, TimeSpan.Zero),
                 revision,
                 new RemotePosixMetadata(attributes.UserId, attributes.GroupId, mode));
+        }
+
+        private static string RemoteName(string path)
+        {
+            var normalized = NormalizeRemotePath(path);
+            if (normalized == "/")
+            {
+                return "/";
+            }
+
+            var separator = normalized.LastIndexOf('/');
+            return separator < 0 ? normalized : normalized[(separator + 1)..];
         }
 
         private async ValueTask<Renci.SshNet.Sftp.ISftpFile?> FindExactEntryAsync(
@@ -490,7 +595,7 @@ internal sealed class SshNetSftpSessionFactory(
             return mode;
         }
 
-        private static async ValueTask ExecuteAsync(Func<Task> operation)
+        private async ValueTask ExecuteAsync(Func<Task> operation)
         {
             try
             {
@@ -498,7 +603,7 @@ internal sealed class SshNetSftpSessionFactory(
             }
             catch (Exception exception) when (ShouldMap(exception))
             {
-                throw MapException(exception);
+                throw MapSessionException(exception);
             }
         }
 

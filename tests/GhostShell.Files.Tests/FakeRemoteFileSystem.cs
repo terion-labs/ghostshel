@@ -10,6 +10,10 @@ internal sealed class FakeRemoteSessionFactory : IRemoteHierarchicalFileSessionF
 
     public bool ReportUnknownFileSizes { get; set; }
 
+    public bool StatDetectsAnyLinkInPath { get; set; }
+
+    public List<string> StatPaths { get; } = [];
+
     public Func<CancellationToken, IReadOnlyList<RemoteFileEntry>>? ListingOverride { get; set; }
 
     public RemoteFileSessionErrorCode? OpenError { get; set; }
@@ -29,6 +33,9 @@ internal sealed class FakeRemoteSessionFactory : IRemoteHierarchicalFileSessionF
     }
 
     public void SeedLink(string path) => _fileSystem.AddLink(path);
+
+    public void SeedDirectory(string path) =>
+        _fileSystem.CreateDirectory(path, CancellationToken.None);
 
     public ValueTask<IRemoteHierarchicalFileSession> OpenAsync(CancellationToken cancellationToken)
     {
@@ -58,16 +65,22 @@ internal sealed class FakeRemoteSessionFactory : IRemoteHierarchicalFileSessionF
             new FakeRemoteSession(
                 _fileSystem,
                 () => ReportUnknownFileSizes,
-                token => ListingOverride?.Invoke(token)));
+                token => ListingOverride?.Invoke(token),
+                () => StatDetectsAnyLinkInPath,
+                path => StatPaths.Add(path)));
     }
 }
 
 internal sealed class FakeRemoteSession(
     FakeRemoteFileSystem fileSystem,
     Func<bool> reportUnknownFileSizes,
-    Func<CancellationToken, IReadOnlyList<RemoteFileEntry>?> listingOverride) :
+    Func<CancellationToken, IReadOnlyList<RemoteFileEntry>?> listingOverride,
+    Func<bool> statDetectsAnyLinkInPath,
+    Action<string> recordStat) :
     IRemoteHierarchicalFileSession
 {
+    public bool StatDetectsAnyLinkInPath => statDetectsAnyLinkInPath();
+
     public ValueTask<IReadOnlyList<RemoteFileEntry>> ListAsync(
         string path,
         CancellationToken cancellationToken)
@@ -88,6 +101,7 @@ internal sealed class FakeRemoteSession(
         string path,
         CancellationToken cancellationToken)
     {
+        recordStat(path);
         var entry = fileSystem.Stat(path, cancellationToken);
         return ValueTask.FromResult(
             reportUnknownFileSizes() && entry is not null
