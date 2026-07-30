@@ -98,7 +98,7 @@ public sealed class WorkspaceViewContractTests
         var surface = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "Grid");
-        Assert.Equal("44,34,*,Auto,26", AttributeValue(surface, "RowDefinitions"));
+        Assert.Equal("Auto,34,*,Auto,26", AttributeValue(surface, "RowDefinitions"));
 
         foreach (var extractedName in WorkspaceControlNames)
         {
@@ -113,7 +113,6 @@ public sealed class WorkspaceViewContractTests
         var tabStrip = FindNamedElement(root, "RuntimeTabStrip");
         foreach (var interactiveChromeName in new[]
                  {
-                     "WorkspaceLauncherButton",
                      "RuntimeTabStrip",
                      "WorkspaceTitleBarActions",
                  })
@@ -134,6 +133,9 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(
             "{Binding RuntimeWorkspace.Tabs}",
             AttributeValue(tabStrip, "Tabs"));
+        Assert.Equal("True", AttributeValue(tabStrip, "ShowHomeTab"));
+        Assert.Equal("False", AttributeValue(tabStrip, "IsHomeActive"));
+        Assert.Equal("OnShowLauncherClick", AttributeValue(tabStrip, "HomeRequested"));
 
         // Every edge the setting offers has a host, and each is bound to the
         // stored placement rather than being always visible.
@@ -165,7 +167,7 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "DockPanel.Dock"),
                     "{Binding WorkspacePanelDock}",
                     StringComparison.Ordinal));
-        Assert.Equal("0,0,1,0", AttributeValue(rail, "BorderThickness"));
+        Assert.True(HasClass(rail, "FloatingSidebar"));
         Assert.Equal(
             "{Binding ShowWorkspacesPanel}",
             AttributeValue(rail, "IsVisible"));
@@ -176,10 +178,11 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal("AgentWorkspaceSurface", AttributeValue(agentWorkspace, "Name"));
         Assert.Equal("Right", AttributeValue(agentWorkspace, "DockPanel.Dock"));
         Assert.Equal("352", AttributeValue(agentWorkspace, "Width"));
-        // The panel's inset comes from the spacing scale. It reads as three edges
-        // because the fourth is the seam against the workspace, which has none.
+        // The shortcut row already contributes half the top gutter below its
+        // centred controls, so the agent supplies the other half rather than
+        // visually doubling only that edge.
         Assert.Equal(
-            "{controls:Inset Right=Sm, Vertical=Sm}",
+            "{controls:Inset Right=Sm, Top=Xs, Bottom=Sm}",
             AttributeValue(agentWorkspace, "Margin"));
         Assert.Equal(
             "{Binding IsAgentPanelVisible}",
@@ -211,12 +214,11 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "ItemsSource"),
                     "{Binding RuntimeWorkspace.ActiveTab.Panels}",
                     StringComparison.Ordinal));
-        Assert.Equal(
-            "{Binding RuntimeWorkspace.ActiveTab.MinimumCanvasWidth}",
-            AttributeValue(panelItems, "MinWidth"));
-        Assert.Equal(
-            "{Binding RuntimeWorkspace.ActiveTab.MinimumCanvasHeight}",
-            AttributeValue(panelItems, "MinHeight"));
+        Assert.Null(AttributeValue(panelItems, "MinWidth"));
+        Assert.Null(AttributeValue(panelItems, "MinHeight"));
+        Assert.NotEqual(
+            "ScrollViewer",
+            panelItems.Parent?.Name.LocalName);
         Assert.Contains(
             panelItems.Descendants(),
             element => element.Name.LocalName == "RuntimePanelLayoutPanel");
@@ -252,6 +254,9 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(
             "OnTitleBarPointerPressed",
             AttributeValue(titleBar, "PointerPressed"));
+        Assert.Equal(
+            "{Binding $parent[Window].TitleBarChromeHeight}",
+            AttributeValue(titleBar, "MinHeight"));
     }
 
     [Fact]
@@ -306,6 +311,10 @@ public sealed class WorkspaceViewContractTests
         var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
+            mainWindowCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DataFormat.CreateStringApplicationFormat(",
             mainWindowCode,
             StringComparison.Ordinal);
         Assert.Contains("ViewModel.MoveTabAsync(", mainWindowCode, StringComparison.Ordinal);

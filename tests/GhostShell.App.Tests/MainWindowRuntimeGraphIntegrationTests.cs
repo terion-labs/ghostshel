@@ -52,6 +52,166 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Switching_terminal_connection_preserves_panel_identity_and_layout()
+    {
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateTabAppendCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        var original = Assert.IsType<TerminalRuntimePanelViewModel>(
+            Assert.Single(
+                tab.Panels,
+                panel => panel.Kind == PanelKind.Terminal));
+        await original.Initialization;
+        var layout = (
+            original.LayoutColumn,
+            original.LayoutRow,
+            original.LayoutColumnSpan,
+            original.LayoutRowSpan,
+            original.LayoutMinimumWidth,
+            original.LayoutMinimumHeight);
+
+        Assert.True(viewModel.ReplaceTerminalConnection(
+            original,
+            AppendedConnectionId));
+
+        var replacement = Assert.IsType<TerminalRuntimePanelViewModel>(
+            Assert.Single(
+                tab.Panels,
+                panel => panel.Kind == PanelKind.Terminal));
+        await replacement.Initialization;
+        Assert.NotSame(original, replacement);
+        Assert.Equal(original.Id, replacement.Id);
+        Assert.Equal(original.Title, replacement.Title);
+        Assert.Equal(AppendedConnectionId, replacement.ConnectionId);
+        Assert.Equal("Local", replacement.ConnectionDisplayName);
+        Assert.Equal(
+            layout,
+            (
+                replacement.LayoutColumn,
+                replacement.LayoutRow,
+                replacement.LayoutColumnSpan,
+                replacement.LayoutRowSpan,
+                replacement.LayoutMinimumWidth,
+                replacement.LayoutMinimumHeight));
+        Assert.Null(original.SessionRequest);
+        Assert.Same(replacement, tab.ActivePanel);
+        Assert.Contains(
+            runtime.Connections,
+            connection => connection.Id == AppendedConnectionId);
+
+        // A close notification can replace or retire the original view-model before
+        // the selector continuation runs. The stable panel ID must still identify the
+        // live layout slot instead of leaving the just-closed panel behind.
+        Assert.True(viewModel.ReplaceTerminalConnection(
+            original,
+            original.ConnectionId));
+        var switchedAgain = Assert.IsType<TerminalRuntimePanelViewModel>(
+            Assert.Single(
+                tab.Panels,
+                panel => panel.Kind == PanelKind.Terminal));
+        await switchedAgain.Initialization;
+        Assert.Equal(original.Id, switchedAgain.Id);
+        Assert.Equal(original.Title, switchedAgain.Title);
+        Assert.Equal(original.ConnectionId, switchedAgain.ConnectionId);
+        Assert.Single(recorder.Registrations);
+    }
+
+    [Fact]
+    public void File_connection_options_unify_live_and_unavailable_provider_targets()
+    {
+        var ftpId = new FileProviderProfileId("files.ftp.production");
+        var unavailableId = new FileProviderProfileId("files.webdav.unavailable");
+        var ftp = new FileProviderProfile(
+            ftpId,
+            FileProviderProfile.CurrentSchemaVersion,
+            "Production FTP",
+            new FileProviderConfiguration.Ftp(
+                "files.example.test",
+                21,
+                null,
+                null,
+                FtpSecurityMode.ExplicitTls,
+                FtpConnectionMode.AutoPassive));
+        var unavailable = new FileProviderProfile(
+            unavailableId,
+            FileProviderProfile.CurrentSchemaVersion,
+            "Unavailable WebDAV",
+            new FileProviderConfiguration.WebDav(
+                new Uri("https://dav.example.test/"),
+                null,
+                null,
+                false));
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            FileProviderProfiles = [Store(ftp), Store(unavailable)],
+        };
+        var transientSftpId = new FileProviderProfileId(
+            "builtin.files.connection.runtime-graph-ssh");
+        var files = new EmptyFileClients(
+            [
+                FileProfile(
+                    BuiltInFileProviders.HomeId,
+                    "Local",
+                    FileProviderFamily.Posix,
+                    "local"),
+                FileProfile(
+                    ftpId,
+                    ftp.Name,
+                    FileProviderFamily.Ftp,
+                    "files.example.test"),
+                FileProfile(
+                    transientSftpId,
+                    "Production SSH",
+                    FileProviderFamily.Sftp,
+                    "ssh.example.test"),
+            ]);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            filePanelClient: files,
+            fileTransferQueueClient: files);
+
+        var options = viewModel.FileConnectionOptions;
+
+        Assert.Collection(
+            options,
+            option =>
+            {
+                Assert.Equal("Local", option.Name);
+                Assert.Equal("LOCAL", option.Kind);
+                Assert.True(option.CanOpen);
+            },
+            option =>
+            {
+                Assert.Equal("Production FTP", option.Name);
+                Assert.Equal("FTP/FTPS", option.Kind);
+                Assert.True(option.CanOpen);
+            },
+            option =>
+            {
+                Assert.Equal("Production SSH", option.Name);
+                Assert.Equal("SFTP", option.Kind);
+                Assert.True(option.CanOpen);
+            },
+            option =>
+            {
+                Assert.Equal("Unavailable WebDAV", option.Name);
+                Assert.Equal("WEBDAV", option.Kind);
+                Assert.False(option.CanOpen);
+            });
+        Assert.All(
+            options,
+            option => Assert.IsType<PanelConnectionOptionViewModel.Target.FileProvider>(
+                option.Selection));
+    }
+
+    [Fact]
     public async Task Active_command_context_matches_only_the_active_panel_kind()
     {
         var (client, _) = CreateSessionClient();
@@ -133,6 +293,80 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             Assert.Single(
                 activeTab.Panels,
                 panel => panel.Id == activeTab.ActivePanelId).Kind);
+    }
+
+    [Theory]
+    [InlineData(PanelKind.Browser)]
+    [InlineData(PanelKind.FileViewer)]
+    [InlineData(PanelKind.Statistics)]
+    [InlineData(PanelKind.ProcessMonitor)]
+    public async Task New_tab_adapter_choices_append_single_panel_tabs(
+        PanelKind kind)
+    {
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            browserRendererFactory: browserFactory);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var originalTab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        var originalPanelIds = originalTab.Panels.Select(panel => panel.Id).ToArray();
+        var initialTabCount = runtime.Tabs.Count;
+
+        var created = kind switch
+        {
+            PanelKind.Browser => await viewModel.AddBrowserTabAsync(),
+            PanelKind.FileViewer => await viewModel.AddFileViewerTabAsync(),
+            PanelKind.Statistics => await viewModel.AddStatisticsTabAsync(),
+            PanelKind.ProcessMonitor => await viewModel.AddProcessMonitorTabAsync(),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+
+        Assert.True(created);
+        Assert.Equal(initialTabCount + 1, runtime.Tabs.Count);
+        Assert.Equal(originalPanelIds, originalTab.Panels.Select(panel => panel.Id));
+        var addedTab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        Assert.NotSame(originalTab, addedTab);
+        Assert.Equal(kind, Assert.Single(addedTab.Panels).Kind);
+        Assert.Equal(
+            addedTab.Id,
+            Assert.IsType<WorkspaceGraphSnapshot>(
+                recorder.CurrentWorkspace).Workspace.ActiveTabId);
+    }
+
+    [Fact]
+    public async Task Browser_session_can_create_its_first_workspace_and_tab()
+    {
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            browserRendererFactory: browserFactory);
+
+        Assert.True(viewModel.CanStartBrowserSession);
+        Assert.False(viewModel.CanCreateBrowserPanel);
+
+        Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        var browser = Assert.IsType<BrowserRuntimePanelViewModel>(tab.ActivePanel);
+        Assert.Equal(BrowserAddress.Blank, browser.CurrentAddress);
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
+        Assert.True(viewModel.CanCreateBrowserPanel);
+        Assert.Equal(1, browserFactory.CreateCount);
+
+        var graph = Assert.IsType<WorkspaceGraphSnapshot>(
+            recorder.CurrentWorkspace).Workspace;
+        Assert.Equal(runtime.Id, graph.Id);
+        Assert.Equal(tab.Id, graph.ActiveTabId);
+        Assert.Equal(PanelKind.Browser, Assert.Single(graph.Tabs[0].Panels).Kind);
     }
 
     [Fact]
@@ -1187,6 +1421,144 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     pair.Second.Panels.Select(panel => panel.Id));
                 Assert.Equal(pair.First.ActivePanelId, pair.Second.ActivePanelId);
             });
+    }
+
+    [Fact]
+    public void Saved_connection_shortcuts_are_projected_from_target_capabilities()
+    {
+        var sshId = new ConnectionId("connections.production-ssh");
+        var s3Id = new FileProviderProfileId("files.production-s3");
+        var ssh = new ConnectionProfile(
+            sshId,
+            ConnectionProfile.CurrentSchemaVersion,
+            "Production SSH",
+            new ConnectionEndpoint.Ssh("ssh.example.test", username: "deploy"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        var s3 = new FileProviderProfile(
+            s3Id,
+            FileProviderProfile.CurrentSchemaVersion,
+            "Production objects",
+            new FileProviderConfiguration.S3("production-objects"));
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            Connections = CreateCatalogSnapshot().Connections.Append(Store(ssh)).ToArray(),
+            FileProviderProfiles = [Store(s3)],
+        };
+        var files = new EmptyFileClients(
+        [
+            FileProfile(
+                s3Id,
+                s3.Name,
+                FileProviderFamily.S3,
+                "production-objects"),
+        ]);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            filePanelClient: files,
+            fileTransferQueueClient: files);
+
+        var sshShortcut = Assert.Single(
+            viewModel.SavedConnectionShortcuts,
+            shortcut => shortcut.Target
+                is PanelConnectionOptionViewModel.Target.Connection target
+                && target.Id == sshId);
+        Assert.Equal(PanelKind.Terminal, sshShortcut.DefaultLaunch.Panel);
+        Assert.Equal(
+            [PanelKind.FileViewer, PanelKind.Statistics, PanelKind.ProcessMonitor],
+            sshShortcut.AlternativeLaunches.Select(launch => launch.Panel));
+        Assert.True(sshShortcut.HasAlternatives);
+
+        var s3Shortcut = Assert.Single(
+            viewModel.SavedConnectionShortcuts,
+            shortcut => shortcut.Target
+                is PanelConnectionOptionViewModel.Target.FileProvider target
+                && target.Id == s3Id);
+        Assert.Equal(PanelKind.FileViewer, s3Shortcut.DefaultLaunch.Panel);
+        Assert.Empty(s3Shortcut.AlternativeLaunches);
+        Assert.True(s3Shortcut.IsSingleAction);
+        Assert.True(s3Shortcut.CanOpen);
+    }
+
+    [Fact]
+    public async Task Saved_connection_file_action_appends_a_bound_file_viewer_tab()
+    {
+        var files = new EmptyFileClients(
+        [
+            FileProfile(
+                BuiltInFileProviders.HomeId,
+                "Local",
+                FileProviderFamily.Posix,
+                "local"),
+        ]);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            filePanelClient: files,
+            fileTransferQueueClient: files);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var connection = Assert.Single(viewModel.SavedConnectionShortcuts);
+        var launch = Assert.Single(
+            connection.AlternativeLaunches,
+            candidate => candidate.Panel == PanelKind.FileViewer);
+
+        Assert.True(await viewModel.AddSavedConnectionTabAsync(launch));
+
+        Assert.Equal(4, workspace.Tabs.Count);
+        var panel = Assert.IsType<FileRuntimePanelViewModel>(
+            workspace.ActiveTab!.ActivePanel);
+        Assert.Equal(PanelKind.FileViewer, panel.Kind);
+        Assert.Equal(connection.Name, panel.ConnectionDisplayName);
+    }
+
+    [Fact]
+    public async Task File_only_shortcut_opens_its_saved_provider_in_a_new_tab()
+    {
+        var s3Id = new FileProviderProfileId("files.production-s3");
+        var s3 = new FileProviderProfile(
+            s3Id,
+            FileProviderProfile.CurrentSchemaVersion,
+            "Production objects",
+            new FileProviderConfiguration.S3("production-objects"));
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            FileProviderProfiles = [Store(s3)],
+        };
+        var files = new EmptyFileClients(
+        [
+            FileProfile(
+                s3Id,
+                s3.Name,
+                FileProviderFamily.S3,
+                "production-objects"),
+        ]);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            filePanelClient: files,
+            fileTransferQueueClient: files);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var shortcut = Assert.Single(
+            viewModel.SavedConnectionShortcuts,
+            candidate => candidate.Target
+                is PanelConnectionOptionViewModel.Target.FileProvider target
+                && target.Id == s3Id);
+
+        Assert.True(await viewModel.AddSavedConnectionTabAsync(
+            shortcut.DefaultLaunch));
+
+        var panel = Assert.IsType<FileRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        Assert.True(panel.UsesProfile(s3Id));
+        Assert.Equal("Production objects", viewModel.RuntimeWorkspace.ActiveTab.Title);
     }
 
     [Fact]
@@ -3230,6 +3602,26 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         where T : IDurableDefinition =>
         new(definition, revision, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
 
+    private static FileProviderProfileDescriptor FileProfile(
+        FileProviderProfileId id,
+        string name,
+        FileProviderFamily family,
+        string authority)
+    {
+        var root = new FilePanelLocation(
+            id.Value,
+            authority,
+            new FilePanelAddress.Hierarchical(FilePanelPath.Root));
+        return new FileProviderProfileDescriptor(
+            id.Value,
+            name,
+            family,
+            root,
+            FilePanelCapability.List,
+            500,
+            1024 * 1024);
+    }
+
     private sealed class RecordingBrowserRendererViewFactory :
         IBrowserRendererViewFactory
     {
@@ -4292,6 +4684,11 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
     private sealed class EmptyFileClients : IFilePanelClient, IFileTransferQueueClient
     {
+        public EmptyFileClients(IReadOnlyList<FileProviderProfileDescriptor> profiles)
+        {
+            Profiles = profiles;
+        }
+
         public EmptyFileClients(bool exposeLocalProfile = false)
         {
             if (!exposeLocalProfile)

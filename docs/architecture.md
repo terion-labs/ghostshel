@@ -193,6 +193,24 @@ Do not expose Avalonia types, libghostty structs, webview objects, or provider S
 
 ## 5. Session host and panels
 
+Statistics and Process Monitor sessions MUST collect POSIX targets through a
+bounded structured-command transport rather than desktop process APIs. The
+local adapter executes fixed `ps` probes without a shell; SSH, Docker, and WSL
+adapters execute the same probes on their connection target. Parsing, sampling,
+and panel presentation stay transport-independent. Browser is deliberately not
+connection-switchable. The Terminal, Statistics, Process Monitor, and File
+Viewer headers use the same connection selector and preserve the selected
+connection through runtime recovery. Chart history is bounded presentation
+state, is never persisted, and is not part of recovery.
+
+`IConnectionRuntime` and `IConnectionCommandExecutor` form the reusable
+connection-transport boundary. Terminal consumes prepared interactive launch
+plans; Statistics and Process Monitor consume bounded command execution; file
+providers may consume the same transport to prepare shared authentication and
+trust before layering a protocol SDK such as SFTP. Panel modules MUST NOT
+rebuild SSH, Docker, or WSL process arguments, resolve transport credentials,
+or maintain a second host-trust decision.
+
 The session host is the product's runtime center. It owns processes, connections, browser contexts, agent runs, scrollback metadata, recovery snapshots, and attachment leases.
 
 Each panel service implements a common lifecycle shape rather than one oversized universal interface:
@@ -297,6 +315,23 @@ Connection support is a transport boundary, not a collection of special terminal
 
 Opening a connection produces a typed result and progress events. Authentication, unknown host key, changed host key, missing runtime, permission denied, timeout, offline, and reconnecting are first-class states. Startup commands run only after the terminal is ready and are audited separately from connection establishment.
 
+Transport capabilities remain separate application ports rather than one
+oversized session interface. The current concrete capabilities are interactive
+terminal launch, connection diagnostics, and bounded structured-command
+execution. A module-specific protocol adapter may reuse those capabilities but
+keeps its wire protocol and vendor types private. Adding a transport extends
+the per-kind Infrastructure adapters once; panels do not branch on transport
+kind.
+
+Saved targets also expose `IPanelLaunchCapabilitySource`. Its typed
+`PanelLaunchCapabilities` declares the default panel and every panel the target
+can open; connection endpoints and file-provider configurations implement the
+same contract. Launcher and workspace shortcut UI projects from this contract
+instead of branching on SSH, S3, Docker, or another concrete transport.
+Availability remains a runtime concern, so a target can retain its declared
+capabilities while its current shortcut is disabled by platform or adapter
+health.
+
 Each terminal startup definition carries a closed delivery-failure policy.
 `RetryWhileLive` is the backward-compatible default and retains one batch
 context and idempotency key across the capped 1, 2, then 5 second retry
@@ -343,6 +378,15 @@ The panel supports provider/profile selection, breadcrumb and editable location,
 Large reads and transfers stream with progress and backpressure. Overwrite conflicts show source/destination metadata and offer skip, replace, keep both, or apply-to-all where semantically valid. Interrupted transfers expose retry/resume only when the provider guarantees a safe continuation. Destructive operations distinguish reversible trash/versioning from permanent deletion.
 
 Provider authentication uses OS-vault `SecretRef` values. Certificate, host-key, credential, permission, offline, quota, throttling, stale-version/ETag, name collision, unsupported operation, and partial-transfer failures are first-class states.
+
+The File Viewer connection selector lists every materialized file target in one
+place: Local and custom filesystem roots, saved SSH connections projected as
+transient SFTP profiles, and durable SFTP, FTP/FTPS, SMB, WebDAV, and S3
+profiles. The SSH projections reuse the connection's endpoint, username,
+authentication, host-key policy, and startup directory without becoming
+separately durable definitions. The panel has no second provider picker; target
+selection always replaces the hosted File Viewer session while preserving its
+panel identity and layout.
 
 Opening a saved screen never substitutes a different File Viewer provider or
 falls back to its root. If the exact saved profile is not materialized yet, the

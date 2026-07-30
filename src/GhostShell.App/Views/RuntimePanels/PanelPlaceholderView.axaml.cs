@@ -25,6 +25,16 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ProcessMonitorRequested;
 
+    public event EventHandler<RoutedEventArgs>? AddConnectionRequested;
+
+    public event EventHandler<RoutedEventArgs>? OpenConnectionRequested;
+
+    public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
+
+    public event EventHandler<RoutedEventArgs>? ShowCommandPaletteRequested;
+
+    public event EventHandler<RoutedEventArgs>? ShowLayoutDesignerRequested;
+
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
@@ -44,4 +54,19 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     private void OnChooseProcessMonitorClick(object? sender, RoutedEventArgs e) =>
         ProcessMonitorRequested?.Invoke(sender, e);
+
+    private void OnAddConnectionClick(object? sender, RoutedEventArgs e) =>
+        AddConnectionRequested?.Invoke(sender, e);
+
+    private void OnOpenConnectionClick(object? sender, RoutedEventArgs e) =>
+        OpenConnectionRequested?.Invoke(sender, e);
+
+    private void OnOpenScreenClick(object? sender, RoutedEventArgs e) =>
+        OpenScreenRequested?.Invoke(sender, e);
+
+    private void OnShowCommandPaletteClick(object? sender, RoutedEventArgs e) =>
+        ShowCommandPaletteRequested?.Invoke(sender, e);
+
+    private void OnShowLayoutDesignerClick(object? sender, RoutedEventArgs e) =>
+        ShowLayoutDesignerRequested?.Invoke(sender, e);
 }

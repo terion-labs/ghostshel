@@ -3,26 +3,31 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     Classes="RuntimePanelFocusTarget"
     Focusable="True"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
-    AutomationProperties.Name="Local process monitor panel">
+    AutomationProperties.Name="Process monitor panel">
   <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="36,46,28,*,25">
       <Border Classes="PanelHeader">
-        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{Binding StatusColor}" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-            <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-            <TextBlock Classes="Eyebrow" Text="{Binding KindLabel}" />
-            <TextBlock Classes="Eyebrow Accent" Text="LOCAL HOST" />
+          <components:PanelConnectionSelectorView
+              Grid.Column="1"
+              Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+              SelectedLabel="{Binding ConnectionDisplayName}"
+              ConnectionSelected="OnConnectionSelected"
+              NewConnectionRequested="OnNewConnectionRequested" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
+            <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
             <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
           </StackPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
             <TextBlock
                 VerticalAlignment="Center"
                 Classes="Muted Monospace"
@@ -34,7 +39,7 @@
                 Classes="IconButton"
                 Command="{Binding RefreshCommand}"
                 ToolTip.Tip="Refresh processes"
-                AutomationProperties.Name="Refresh local processes">
+                AutomationProperties.Name="Refresh processes">
               <icons:SymbolIcon Symbol="ArrowClockwise" FontSize="12" />
             </Button>
             <StackPanel
@@ -69,9 +74,9 @@
 
       <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
         <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,190,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <TextBox Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter local processes" />
+          <TextBox Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter processes" />
           <ComboBox Grid.Column="1" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding Sort}" AutomationProperties.Name="Process sort order" />
-          <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Refresh" AutomationProperties.Name="Refresh local process list" />
+          <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Refresh" AutomationProperties.Name="Refresh process list" />
         </Grid>
       </Border>
 
@@ -91,7 +96,7 @@
             ItemsSource="{Binding Processes}"
             SelectedItem="{Binding SelectedProcess}"
             IsVisible="{Binding ShowContent}"
-            AutomationProperties.Name="Bounded local process list">
+            AutomationProperties.Name="Bounded process list">
           <ListBox.ItemTemplate>
             <DataTemplate>
               <Grid
@@ -115,7 +120,7 @@
 
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowLoading}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Process monitor loading">
           <ProgressBar Width="180" IsIndeterminate="True" />
-          <TextBlock FontWeight="SemiBold" Text="Waiting for first local-host sample…" />
+          <TextBlock FontWeight="SemiBold" Text="Waiting for first sample…" />
           <TextBlock MaxWidth="430" Classes="Muted" TextAlignment="Center" Text="Process names and resource counters are bounded. Command lines, users, environments, and open files are excluded." TextWrapping="Wrap" />
         </StackPanel>
 
@@ -135,7 +140,7 @@
               <TextBlock FontWeight="SemiBold" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding IssueTitle}" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding IssueMessage}" TextWrapping="Wrap" />
             </StackPanel>
-            <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry local process list" />
+            <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry process list" />
           </Grid>
         </controls:SurfaceCard>
       </Grid>

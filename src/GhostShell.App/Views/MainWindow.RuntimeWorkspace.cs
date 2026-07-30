@@ -7,6 +7,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.Components;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -18,6 +19,9 @@ public sealed partial class MainWindow
     private static readonly DataFormat<RuntimeTabDragPayload> RuntimeTabDragFormat =
         DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>(
             "app.ghostshell.runtime-tab");
+    private static readonly DataFormat<string> RuntimeTabDragNativeMarkerFormat =
+        DataFormat.CreateStringApplicationFormat(
+            "ghostshell.runtime-tab-drag");
 
     private RuntimeTabDragCandidate? _runtimeTabDragCandidate;
     private Grid? _runtimeTabDropTarget;
@@ -47,6 +51,23 @@ public sealed partial class MainWindow
         }
 
         await OpenDefaultLocalTerminalAsync();
+    }
+
+    private async void OnSavedConnectionLaunchRequested(
+        object? sender,
+        SavedConnectionLaunchViewModel launch)
+    {
+        _ = sender;
+        try
+        {
+            if (await ViewModel.AddSavedConnectionTabAsync(launch, _lifetime.Token))
+            {
+                FocusActivePanel();
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
     }
 
     public async Task RequestNewFileViewerAsync()
@@ -91,18 +112,12 @@ public sealed partial class MainWindow
 
         if (!ViewModel.HasRuntimeWorkspace)
         {
-            if (ViewModel.Workspaces.FirstOrDefault() is { } workspace)
-            {
-                await ReplaceRuntimeWorkspaceAsync(token =>
-                    ViewModel.OpenWorkspaceAsync(workspace.Id, token));
-            }
-            else if (ViewModel.Connections.FirstOrDefault(item => item.CanOpen) is { } connection)
-            {
-                await ReplaceRuntimeWorkspaceAsync(token =>
-                    ViewModel.OpenConnectionAsync(connection.Id, token));
-            }
+            await ReplaceRuntimeWorkspaceAsync(
+                ViewModel.OpenLocalBrowserWorkspaceAsync);
+            return;
         }
 
+        ViewModel.ShowWorkspace();
         if (ViewModel.RuntimeWorkspace?.ActiveTab is null)
         {
             ViewModel.SetError("Open a workspace or connection before adding a browser.");
@@ -120,6 +135,58 @@ public sealed partial class MainWindow
 
     public Task RequestNewProcessMonitorAsync() =>
         RequestNewMonitorAsync(PanelKind.ProcessMonitor);
+
+    private async Task RequestNewAdapterTabAsync(PanelKind kind)
+    {
+        if (kind is not (PanelKind.Browser
+            or PanelKind.FileViewer
+            or PanelKind.Statistics
+            or PanelKind.ProcessMonitor))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+        }
+
+        // With no runtime workspace, the existing session-start paths create the
+        // first workspace and tab. Once a tab exists, the New Tab host must append
+        // another tab; only a placed placeholder may add to the active tab.
+        if (!ViewModel.HasRuntimeWorkspace)
+        {
+            await RequestNewAdapterSessionAsync(kind);
+            return;
+        }
+
+        if (ViewModel.HasOverlay && !await TryCloseOverlayAsync())
+        {
+            return;
+        }
+
+        ViewModel.ShowWorkspace();
+        var added = kind switch
+        {
+            PanelKind.Browser =>
+                await ViewModel.AddBrowserTabAsync(_lifetime.Token),
+            PanelKind.FileViewer =>
+                await ViewModel.AddFileViewerTabAsync(_lifetime.Token),
+            PanelKind.Statistics =>
+                await ViewModel.AddStatisticsTabAsync(_lifetime.Token),
+            PanelKind.ProcessMonitor =>
+                await ViewModel.AddProcessMonitorTabAsync(_lifetime.Token),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+        if (added)
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private Task RequestNewAdapterSessionAsync(PanelKind kind) => kind switch
+    {
+        PanelKind.Browser => RequestNewBrowserAsync(),
+        PanelKind.FileViewer => RequestNewFileViewerAsync(),
+        PanelKind.Statistics => RequestNewStatisticsAsync(),
+        PanelKind.ProcessMonitor => RequestNewProcessMonitorAsync(),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
 
     private async Task RequestNewMonitorAsync(PanelKind kind)
     {
@@ -240,6 +307,12 @@ public sealed partial class MainWindow
         {
             try
             {
+                ViewModel.ShowWorkspace();
+                if (!ViewModel.IsWorkspaceVisible)
+                {
+                    return;
+                }
+
                 if (await ViewModel.ActivateTabAsync(tab.Id, _lifetime.Token))
                 {
                     FocusActivePanel();
@@ -315,10 +388,15 @@ public sealed partial class MainWindow
         _runtimeTabDragCandidate = null;
         _runtimeTabDragInProgress = true;
         e.Handled = true;
+        // An in-process format is intentionally absent from the native
+        // pasteboard. AppKit rejects a dragging session when Avalonia supplies
+        // its drag image but no serializable item, so the same logical item also
+        // carries a non-sensitive application marker.
+        var dragItem = new DataTransferItem();
+        dragItem.Set(RuntimeTabDragFormat, candidate.Payload);
+        dragItem.Set(RuntimeTabDragNativeMarkerFormat, "runtime-tab");
         var transfer = new DataTransfer();
-        transfer.Add(DataTransferItem.Create(
-            RuntimeTabDragFormat,
-            candidate.Payload));
+        transfer.Add(dragItem);
         try
         {
             _ = await DragDrop.DoDragDropAsync(
@@ -615,8 +693,17 @@ public sealed partial class MainWindow
     /// </summary>
     private async Task ChoosePlaceholderAsync(object? sender, Func<Task<bool>> create)
     {
-        if (sender is not Control { DataContext: PanelPlaceholderViewModel placeholder }
+        if (sender is not Control source
             || ViewModel.RuntimeWorkspace?.ActiveTab is not { } tab)
+        {
+            return;
+        }
+
+        var placeholder =
+            source.DataContext as PanelPlaceholderViewModel
+            ?? source.FindAncestorOfType<RuntimePanels.PanelPlaceholderView>()?.DataContext
+                as PanelPlaceholderViewModel;
+        if (placeholder is null)
         {
             return;
         }
@@ -672,6 +759,19 @@ public sealed partial class MainWindow
             () => ViewModel.AddProcessMonitorPanelAsync(_lifetime.Token));
     }
 
+    private async void OnPlaceholderConnectionClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control { DataContext: LauncherConnectionViewModel connection })
+        {
+            return;
+        }
+
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddConnectionPanelAsync(connection.Id, _lifetime.Token));
+    }
+
     private async void OnCloseRuntimePanelClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
@@ -688,6 +788,237 @@ public sealed partial class MainWindow
             }
         }
     }
+
+    private async void OnTerminalConnectionSelected(
+        object? sender,
+        PanelConnectionSelectedEventArgs e)
+    {
+        if (e.Selection is not PanelConnectionOptionViewModel.Target.Connection target)
+        {
+            return;
+        }
+
+        if (sender is not Control
+            {
+                DataContext: TerminalRuntimePanelViewModel panel,
+            }
+            || panel.ConnectionId == target.Id)
+        {
+            return;
+        }
+
+        await SwitchTerminalConnectionAsync(
+            panel,
+            () => ViewModel.ReplaceTerminalConnection(panel, target.Id));
+    }
+
+    private async void OnTerminalNewConnectionRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control
+            {
+                DataContext: TerminalRuntimePanelViewModel panel,
+            })
+        {
+            return;
+        }
+
+        try
+        {
+            var editor = ViewModel.CreateConnectionEditor();
+            var request = await new ConnectionEditorDialog(
+                    editor,
+                    ConnectionEditorDialogPurpose.Connect)
+                .ShowDialog<ConnectionEditorConnectRequest?>(this);
+            if (request is null)
+            {
+                return;
+            }
+
+            if (request.SaveConnection)
+            {
+                var saved = await ViewModel.SaveConnectionAsync(
+                    new ConnectionEditorSaveRequest(request.Profile, null),
+                    _lifetime.Token);
+                if (!saved.IsSuccess)
+                {
+                    return;
+                }
+            }
+
+            await SwitchTerminalConnectionAsync(
+                panel,
+                () => ViewModel.ReplaceTerminalConnection(panel, request.Profile));
+        }
+        catch (InvalidOperationException exception)
+        {
+            ViewModel.SetError(exception.Message);
+        }
+    }
+
+    private async Task SwitchTerminalConnectionAsync(
+        TerminalRuntimePanelViewModel panel,
+        Func<bool> replace)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        ArgumentNullException.ThrowIfNull(replace);
+        if (!await CloseRuntimePanelAsync(panel))
+        {
+            return;
+        }
+
+        if (replace())
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private async void OnPanelConnectionSelected(
+        object? sender,
+        PanelConnectionSelectedEventArgs e)
+    {
+        if (sender is not Control { DataContext: RuntimePanelViewModel panel }
+            || IsCurrentConnection(panel, e.Selection))
+        {
+            return;
+        }
+
+        if (panel is FileRuntimePanelViewModel files
+            && e.Selection is PanelConnectionOptionViewModel.Target.FileProvider fileTarget)
+        {
+            await SwitchRuntimePanelConnectionAsync(
+                panel,
+                () => ViewModel.ReplaceFilePanelProfile(files, fileTarget.Id));
+            return;
+        }
+
+        if (e.Selection is PanelConnectionOptionViewModel.Target.Connection connectionTarget)
+        {
+            await SwitchRuntimePanelConnectionAsync(
+                panel,
+                () => ViewModel.ReplacePanelConnection(panel, connectionTarget.Id));
+        }
+    }
+
+    private async void OnPanelNewConnectionRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control { DataContext: RuntimePanelViewModel panel })
+        {
+            return;
+        }
+
+        if (panel is FileRuntimePanelViewModel files)
+        {
+            await CreateAndSwitchFileConnectionAsync(files);
+            return;
+        }
+
+        try
+        {
+            var editor = ViewModel.CreateConnectionEditor();
+            var request = await new ConnectionEditorDialog(
+                    editor,
+                    ConnectionEditorDialogPurpose.Connect)
+                .ShowDialog<ConnectionEditorConnectRequest?>(this);
+            if (request is null)
+            {
+                return;
+            }
+
+            if (request.SaveConnection)
+            {
+                var saved = await ViewModel.SaveConnectionAsync(
+                    new ConnectionEditorSaveRequest(request.Profile, null),
+                    _lifetime.Token);
+                if (!saved.IsSuccess)
+                {
+                    return;
+                }
+            }
+
+            await SwitchRuntimePanelConnectionAsync(
+                panel,
+                () => ViewModel.ReplacePanelConnection(panel, request.Profile));
+        }
+        catch (InvalidOperationException exception)
+        {
+            ViewModel.SetError(exception.Message);
+        }
+    }
+
+    private async Task CreateAndSwitchFileConnectionAsync(
+        FileRuntimePanelViewModel panel)
+    {
+        try
+        {
+            await ViewModel.RefreshSecretsAsync(_lifetime.Token);
+            var editor = ViewModel.CreateFileProviderEditor();
+            var request = await new FileProviderProfileEditorDialog(
+                    editor,
+                    FileProviderProfileEditorDialogPurpose.Connect)
+                .ShowDialog<FileProviderProfileSaveRequest?>(this);
+            if (request is null)
+            {
+                return;
+            }
+
+            var saved = await ViewModel.SaveFileProviderProfileAsync(
+                request,
+                _lifetime.Token);
+            if (!saved.IsSuccess || saved.Value is null)
+            {
+                return;
+            }
+
+            await SwitchRuntimePanelConnectionAsync(
+                panel,
+                () => ViewModel.ReplaceFilePanelProfile(
+                    panel,
+                    saved.Value.Value.Id));
+        }
+        catch (InvalidOperationException exception)
+        {
+            ViewModel.SetError(exception.Message);
+        }
+    }
+
+    private async Task SwitchRuntimePanelConnectionAsync(
+        RuntimePanelViewModel panel,
+        Func<bool> replace)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        ArgumentNullException.ThrowIfNull(replace);
+        if (!await CloseRuntimePanelAsync(panel))
+        {
+            return;
+        }
+
+        if (replace())
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private static bool IsCurrentConnection(
+        RuntimePanelViewModel panel,
+        PanelConnectionOptionViewModel.Target selection) =>
+        (panel, selection) switch
+        {
+            (
+                FileRuntimePanelViewModel files,
+                PanelConnectionOptionViewModel.Target.FileProvider target) =>
+                files.UsesProfile(target.Id),
+            (
+                StatisticsRuntimePanelViewModel statistics,
+                PanelConnectionOptionViewModel.Target.Connection target) =>
+                statistics.ConnectionId == target.Id,
+            (
+                ProcessMonitorRuntimePanelViewModel processes,
+                PanelConnectionOptionViewModel.Target.Connection target) =>
+                processes.ConnectionId == target.Id,
+            _ => false,
+        };
 
     private async void OnRetryConnectionPanelClick(object? sender, RoutedEventArgs e)
     {
@@ -821,20 +1152,6 @@ public sealed partial class MainWindow
         catch (InvalidOperationException exception)
         {
             ViewModel.SetError(exception.Message);
-        }
-    }
-
-    private async void OnFileProfileSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        _ = e;
-        if (sender is ComboBox
-            {
-                DataContext: FileRuntimePanelViewModel panel,
-                SelectedItem: FileProviderProfileDescriptor profile,
-            }
-            && panel.SelectedProfile?.Id != profile.Id)
-        {
-            await panel.SelectProfileAsync(profile, _lifetime.Token);
         }
     }
 

@@ -3,7 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    Title="File provider"
+    Title="File connection"
     Width="820"
     Height="780"
     MinWidth="700"
@@ -15,7 +15,7 @@
     <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto">
       <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
-        <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
+        <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Connection: {0}}" />
       </StackPanel>
       <Button Grid.Column="1" Classes="IconButton" Click="OnCancelClick" Content="×" IsCancel="True" />
     </Grid>
@@ -25,7 +25,7 @@
         <controls:SurfaceCard Padding="0">
           <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Name" /><TextBox Text="{Binding Name}" /></StackPanel>
-            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Provider kind" /><ComboBox ItemsSource="{Binding ProviderKinds}" SelectedItem="{Binding Kind}" /></StackPanel>
+            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Protocol" /><ComboBox ItemsSource="{Binding ProviderKinds}" SelectedItem="{Binding Kind}" /></StackPanel>
           </Grid>
         </controls:SurfaceCard>
 
@@ -127,7 +127,7 @@
         <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Tests perform one bounded root listing." />
         <Button Grid.Column="1" MinWidth="100" Classes="SecondaryButton" Click="OnTestClick" Content="Test" />
         <Button Grid.Column="2" MinWidth="92" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
-        <Button Grid.Column="3" MinWidth="120" Classes="PrimaryButton" Click="OnSaveClick" Content="Save provider" IsDefault="True" />
+        <Button x:Name="SubmitButton" Grid.Column="3" MinWidth="120" Classes="PrimaryButton" Click="OnSaveClick" Content="Save connection" IsDefault="True" />
       </Grid>
     </Border>
   </Grid>

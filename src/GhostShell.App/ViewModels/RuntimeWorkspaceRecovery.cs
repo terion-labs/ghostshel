@@ -154,12 +154,17 @@ internal static class RuntimeWorkspaceRecoveryCodec
         var terminal = panel as TerminalRuntimePanelViewModel;
         var browser = panel as BrowserRuntimePanelViewModel;
         var file = panel as FileRuntimePanelViewModel;
+        var statistics = panel as StatisticsRuntimePanelViewModel;
+        var processes = panel as ProcessMonitorRuntimePanelViewModel;
         return new RuntimePanelRecoveryPayload(
             panel.Id.Value,
             kind,
             panel.Title,
             kind == RuntimePanelRecoveryKind.Unavailable ? panel.KindLabel : null,
-            terminal?.ConnectionId.Value,
+            terminal?.ConnectionId.Value
+                ?? file?.ConnectionId.Value
+                ?? statistics?.ConnectionId.Value
+                ?? processes?.ConnectionId.Value,
             terminal?.RecoveryStartupLocation ?? browser?.CurrentAddress.ToString(),
             file?.SelectedProfile?.Id ?? file?.CurrentLocation?.ProviderProfileId,
             file?.CurrentLocation is { } location
@@ -341,7 +346,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && panel.FileLocation is null,
             RuntimePanelRecoveryKind.FileViewer =>
                 IsOptionalIdentifier(panel.FileProviderProfileId)
-                && panel.ConnectionId is null
+                && IsOptionalIdentifier(panel.ConnectionId)
                 && (panel.FileLocation is null
                     || panel.FileLocation.TryValidate(panel.FileProviderProfileId, out _))
                 && IsOptionalText(panel.Filter, 1_024),
@@ -359,7 +364,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && panel.FileLocation is null,
             RuntimePanelRecoveryKind.Statistics or RuntimePanelRecoveryKind.ProcessMonitor =>
                 panel.KindLabel is null
-                && panel.ConnectionId is null
+                && IsOptionalIdentifier(panel.ConnectionId)
                 && panel.StartupLocation is null
                 && panel.FileProviderProfileId is null
                 && panel.FileLocation is null

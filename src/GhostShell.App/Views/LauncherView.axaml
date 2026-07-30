@@ -112,30 +112,34 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <Grid RowDefinitions="44,*">
+  <Grid RowDefinitions="Auto,*">
     <Border
         Classes="TopChrome"
+        MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
         PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="52,*,52">
-        <TextBlock
-            Grid.Column="1"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Classes="Muted"
-            FontSize="{DynamicResource ShellFontSize10}"
-            FontWeight="SemiBold"
-            Text="GhostSHELL" />
+      <Grid Margin="{Binding $parent[Window].WindowTitleBarContentMargin}">
+        <components:RuntimeTabStripView
+            x:Name="LauncherTabStrip"
+            Tabs="{Binding RuntimeWorkspace.Tabs}"
+            Orientation="Horizontal"
+            ShowHomeTab="True"
+            IsHomeActive="True"
+            WindowDecorationProperties.ElementRole="User"
+            AutomationProperties.Name="Open shell tabs"
+            AddTabRequested="OnShowNewItemClick"
+            HomeRequested="OnLauncherHomeClick"
+            ActivateRequested="OnActivateTabClick"
+            CloseRequested="OnCloseRuntimeTabClick" />
       </Grid>
     </Border>
   
     <Grid Grid.Row="1" ColumnDefinitions="244,*">
       <Border
-          Background="{DynamicResource ShellSurfaceBrush}"
-          BorderBrush="{DynamicResource ShellBorderBrush}"
-          BorderThickness="0,0,1,0">
+          Classes="FloatingSidebar"
+          Classes.routeSidebar="True">
         <Grid RowDefinitions="Auto,*">
-          <StackPanel Margin="{controls:Inset Horizontal=Md, Vertical=Lg}" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel Margin="{controls:Inset Md}" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="28" Height="28" Background="{DynamicResource ShellAccentBrush}" CornerRadius="{DynamicResource ShellControlCornerRadius}">
               <icons:SymbolIcon
                   HorizontalAlignment="Center"
@@ -150,7 +154,7 @@
             </StackPanel>
           </StackPanel>
   
-          <StackPanel Grid.Row="1" Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" Spacing="{DynamicResource ShellSpaceXs}">
+          <StackPanel Grid.Row="1" Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
             <components:ShellNavigationItem
                 x:Name="LauncherHomeButton"
                 AutomationName="Launcher home"

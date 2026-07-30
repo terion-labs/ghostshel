@@ -8,30 +8,24 @@
     xmlns:views="using:GhostShell.App.Views"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Grid RowDefinitions="44,34,*,Auto,26">
+  <Grid RowDefinitions="Auto,34,*,Auto,26">
     <Border
         Classes="TopChrome"
+        MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
         PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <Button
-            x:Name="WorkspaceLauncherButton"
-            Classes="IconButton"
-            Click="OnShowLauncherClick"
-            ToolTip.Tip="Launcher"
-            WindowDecorationProperties.ElementRole="User"
-            AutomationProperties.Name="Open launcher">
-          <icons:SymbolIcon Symbol="Home" FontSize="15" />
-        </Button>
+      <Grid ColumnDefinitions="*,Auto" Margin="{Binding $parent[Window].WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <components:RuntimeTabStripView
             x:Name="RuntimeTabStrip"
-            Grid.Column="1"
             Tabs="{Binding RuntimeWorkspace.Tabs}"
             Orientation="Horizontal"
+            ShowHomeTab="True"
+            IsHomeActive="False"
             IsVisible="{Binding IsTabStripVisibleOnTop}"
             WindowDecorationProperties.ElementRole="User"
             AutomationProperties.Name="Open runtime tabs"
             AddTabRequested="OnShowNewItemClick"
+            HomeRequested="OnShowLauncherClick"
             ActivateRequested="OnActivateTabClick"
             CloseRequested="OnCloseRuntimeTabClick"
             TabDragEnter="OnRuntimeTabDragEnter"
@@ -44,7 +38,7 @@
             ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
         <StackPanel
             x:Name="WorkspaceTitleBarActions"
-            Grid.Column="2"
+            Grid.Column="1"
             Orientation="Horizontal"
             VerticalAlignment="Center"
             Spacing="{DynamicResource ShellSpaceXs}"
@@ -71,26 +65,34 @@
       </Grid>
     </Border>
 
-    <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{controls:Inset Horizontal=Md}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <TextBlock VerticalAlignment="Center" Classes="Eyebrow Accent" Text="{Binding RuntimeWorkspace.Name}" />
+    <Border Grid.Row="1" Background="{DynamicResource ShellBackgroundBrush}">
+      <Grid ColumnDefinitions="*,Auto" Margin="{controls:Inset Horizontal=Sm}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <!-- Centred, not stretched: a pill left to fill the row's full height has
              its rounded corners meet the row edges, which reads as corners cut
              off rather than as a pill. -->
-        <ItemsControl Grid.Column="1" VerticalAlignment="Center" ItemsSource="{Binding RuntimeWorkspace.Connections}">
-          <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Border VerticalAlignment="Center" Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}" Background="{DynamicResource ShellSurfaceHoverBrush}" CornerRadius="{DynamicResource ShellControlCornerRadius}">
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-                  <Ellipse Width="6" Height="6" VerticalAlignment="Center" Fill="{DynamicResource ShellSuccessBrush}" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Name}" />
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <Button Grid.Column="2" Classes="TextButton" Click="OnShowCommandPaletteClick" Content="{Binding CommandPaletteAction}" />
+        <ScrollViewer
+            ClipToBounds="False"
+            VerticalAlignment="Center"
+            HorizontalScrollBarVisibility="Auto"
+            VerticalScrollBarVisibility="Disabled">
+          <!-- The scroll viewport clips antialiased strokes even when the child
+               opts out of clipping. Keep the pills inside the viewport with real
+               internal clearance instead of trying to move each pill afterward. -->
+          <Border
+              x:Name="SavedConnectionStripViewport"
+              ClipToBounds="False"
+              Padding="{DynamicResource ShellSavedConnectionStripPadding}">
+            <ItemsControl ClipToBounds="False" ItemsSource="{Binding SavedConnectionShortcuts}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <components:SavedConnectionShortcutView LaunchRequested="OnSavedConnectionLaunchRequested" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </ScrollViewer>
+        <Button Grid.Column="1" Classes="TextButton" Click="OnShowCommandPaletteClick" Content="{Binding CommandPaletteAction}" />
       </Grid>
     </Border>
 
@@ -123,9 +125,9 @@
     <DockPanel Grid.Row="2" LastChildFill="True">
       <Border
           Width="56"
-          Background="{DynamicResource ShellSurfaceBrush}"
-          BorderBrush="{DynamicResource ShellBorderBrush}"
-          BorderThickness="0,0,1,0"
+          Classes="FloatingSidebar"
+          Classes.workspaceLeft="{Binding IsWorkspacePanelOnLeft}"
+          Classes.workspaceRight="{Binding IsWorkspacePanelOnRight}"
           DockPanel.Dock="{Binding WorkspacePanelDock}"
           IsVisible="{Binding ShowWorkspacesPanel}">
         <!-- The add button belongs under the last workspace, not pinned to the
@@ -147,10 +149,8 @@
 
       <Border
           Width="214"
+          Classes="FloatingSidebar"
           Padding="{controls:Inset Horizontal=Xs, Vertical=Sm}"
-          Background="{DynamicResource ShellSurfaceBrush}"
-          BorderBrush="{DynamicResource ShellBorderBrush}"
-          BorderThickness="1,0,1,0"
           DockPanel.Dock="{Binding TabStripDock}"
           IsVisible="{Binding IsTabStripVisibleOnSide}">
         <components:RuntimeTabStripView
@@ -175,7 +175,7 @@
           x:Name="AgentWorkspaceSurface"
           DockPanel.Dock="Right"
           Width="352"
-          Margin="{controls:Inset Right=Sm, Vertical=Sm}"
+          Margin="{controls:Inset Right=Sm, Top=Xs, Bottom=Sm}"
           AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
           ApproveAgentActionRequested="OnApproveAgentActionClick"
           CancelAgentActionRequested="OnCancelAgentActionClick"
@@ -194,28 +194,25 @@
           ShowAgentSettingsRequested="OnShowAgentSettingsClick"
           SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick" />
 
-      <!-- Half the gutter on the canvas and half on every panel, so the gap is
-           the same between two panels as it is between a panel and the edge. The
-           panels used to carry the whole gutter on their right and bottom only,
-           which made those two edges twice the others. -->
-      <Grid Margin="{controls:Inset Xs}" IsVisible="{Binding IsWorkspaceCanvasVisible}">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-          <ItemsControl
-              MinWidth="{Binding RuntimeWorkspace.ActiveTab.MinimumCanvasWidth}"
-              MinHeight="{Binding RuntimeWorkspace.ActiveTab.MinimumCanvasHeight}"
-              HorizontalAlignment="Stretch"
-              VerticalAlignment="Stretch"
-              ItemsSource="{Binding RuntimeWorkspace.ActiveTab.Panels}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <controls:RuntimePanelLayoutPanel Tab="{Binding RuntimeWorkspace.ActiveTab}" />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.Styles>
-              <Style Selector="ItemsControl > ContentPresenter"><Setter Property="Margin" Value="{DynamicResource ShellInsetXs}" /></Style>
-            </ItemsControl.Styles>
-          </ItemsControl>
-        </ScrollViewer>
+      <!-- Half the gutter stays on the canvas and half on every panel. The top
+           row already contributes its half below the centred shortcut controls,
+           so repeating it here would make only the vertical gap oversized. -->
+      <Grid
+          Margin="{controls:Inset Left=Xs, Right=Xs, Bottom=Xs}"
+          IsVisible="{Binding IsWorkspaceCanvasVisible}">
+        <ItemsControl
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            ItemsSource="{Binding RuntimeWorkspace.ActiveTab.Panels}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <controls:RuntimePanelLayoutPanel Tab="{Binding RuntimeWorkspace.ActiveTab}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.Styles>
+            <Style Selector="ItemsControl > ContentPresenter"><Setter Property="Margin" Value="{DynamicResource ShellInsetXs}" /></Style>
+          </ItemsControl.Styles>
+        </ItemsControl>
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding !HasRuntimeWorkspace}">
           <TextBlock Classes="Muted" Text="Open a workspace from the launcher." />
           <Button Classes="PrimaryButton" Click="OnShowLauncherClick" Content="Open launcher" />

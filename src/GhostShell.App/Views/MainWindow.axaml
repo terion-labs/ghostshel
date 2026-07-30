@@ -13,8 +13,9 @@
     Height="900"
     MinWidth="1080"
     MinHeight="680"
+    WindowDecorations="Full"
     ExtendClientAreaToDecorationsHint="True"
-    ExtendClientAreaTitleBarHeightHint="44"
+    ExtendClientAreaTitleBarHeightHint="-1"
     WindowStartupLocation="CenterScreen">
 
   <Window.DataTemplates>
@@ -23,7 +24,9 @@
           ApplicationKeyPressed="OnTerminalApplicationKeyPressed"
           CancelReconnectRequested="OnCancelConnectionReconnectClick"
           CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnTerminalConnectionSelected"
           GotFocus="OnRuntimePanelGotFocus"
+          NewConnectionRequested="OnTerminalNewConnectionRequested"
           PointerPressed="OnRuntimePanelPointerPressed"
           SplitRequested="OnSplitRuntimePanelRequested"
           RetryConnectionRequested="OnRetryConnectionPanelClick"
@@ -50,6 +53,8 @@
     <DataTemplate DataType="vm:FileRuntimePanelViewModel">
       <panelViews:FileRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
           CreateFolderRequested="OnFileCreateFolderClick"
           DeleteRequested="OnFileDeleteClick"
@@ -63,7 +68,6 @@
           NavigateUpRequested="OnFileNavigateUpClick"
           OpenExternallyRequested="OnFileOpenExternallyClick"
           PointerPressed="OnRuntimePanelPointerPressed"
-          ProfileSelectionChanged="OnFileProfileSelectionChanged"
           RefreshRequested="OnFileRefreshClick"
           RenameRequested="OnFileRenameClick"
           TransferRequested="OnFileTransferClick"
@@ -73,6 +77,8 @@
     <DataTemplate DataType="vm:StatisticsRuntimePanelViewModel">
       <panelViews:StatisticsRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />
@@ -81,6 +87,8 @@
     <DataTemplate DataType="vm:ProcessMonitorRuntimePanelViewModel">
       <panelViews:ProcessMonitorRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />
@@ -95,12 +103,17 @@
     </DataTemplate>
     <DataTemplate DataType="vm:PanelPlaceholderViewModel">
       <panelViews:PanelPlaceholderView
+          AddConnectionRequested="OnAddConnectionClick"
           BrowserRequested="OnPlaceholderBrowserClick"
           CloseRequested="OnCloseRuntimePanelClick"
           FileViewerRequested="OnPlaceholderFileViewerClick"
           GotFocus="OnRuntimePanelGotFocus"
+          OpenConnectionRequested="OnPlaceholderConnectionClick"
+          OpenScreenRequested="OnOpenScreenClick"
           PointerPressed="OnRuntimePanelPointerPressed"
           ProcessMonitorRequested="OnPlaceholderProcessMonitorClick"
+          ShowCommandPaletteRequested="OnShowCommandPaletteClick"
+          ShowLayoutDesignerRequested="OnShowLayoutDesignerClick"
           StatisticsRequested="OnPlaceholderStatisticsClick"
           TerminalRequested="OnPlaceholderTerminalClick" />
     </DataTemplate>
@@ -110,9 +123,11 @@
     <!-- Launcher -->
     <views:LauncherView
         x:Name="LauncherRouteView"
+        ActivateTabRequested="OnActivateTabClick"
         AddConnectionRequested="OnAddConnectionClick"
         CancelHistoryExportRequested="OnCancelHistoryExportClick"
         ClearRecentSessionsRequested="OnClearRecentSessionsClick"
+        CloseRuntimeTabRequested="OnCloseRuntimeTabClick"
         DeleteConnectionRequested="OnDeleteConnectionClick"
         EditConnectionRequested="OnEditConnectionClick"
         EditScreenRequested="OnEditScreenClick"
@@ -161,6 +176,7 @@
         LoadOlderAgentAuditRequested="OnLoadOlderAgentAuditClick"
         OpenWorkspaceRequested="OnOpenWorkspaceClick"
         RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
+        SavedConnectionLaunchRequested="OnSavedConnectionLaunchRequested"
         RuntimeTabDragEnterRequested="OnRuntimeTabDragEnter"
         RuntimeTabDragLeaveRequested="OnRuntimeTabDragLeave"
         RuntimeTabDragOverRequested="OnRuntimeTabDragOver"
@@ -331,7 +347,7 @@
 
       <Border
           x:Name="OverlayTitleBarDragRegion"
-          Height="44"
+          Height="{Binding $parent[Window].TitleBarChromeHeight}"
           HorizontalAlignment="Stretch"
           VerticalAlignment="Top"
           Background="Transparent"

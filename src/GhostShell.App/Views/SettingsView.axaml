@@ -9,18 +9,19 @@
     xmlns:views="using:GhostShell.App.Views"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <Grid RowDefinitions="44,*">
+  <Grid RowDefinitions="Auto,*">
       <Border
           Classes="TopChrome"
+          MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
           PointerPressed="OnTitleBarPointerPressed"
           WindowDecorationProperties.ElementRole="TitleBar">
         <Grid>
           <Button
               x:Name="SettingsBackButton"
-              Margin="{Binding WindowTitleBarContentMargin}"
+              Margin="{Binding $parent[Window].WindowTitleBarContentMargin}"
               HorizontalAlignment="Left"
               VerticalAlignment="Center"
-              Classes="IconButton"
+              Classes="IconButton ChromeNavigation"
               Click="OnSettingsBackClick"
               ToolTip.Tip="Back"
               WindowDecorationProperties.ElementRole="User"
@@ -38,10 +39,10 @@
         </Grid>
       </Border>
       <Grid Grid.Row="1" ColumnDefinitions="244,*">
-        <Border Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
+        <Border Classes="FloatingSidebar" Classes.routeSidebar="True">
           <Grid RowDefinitions="Auto,*">
             <Button
-                Margin="{controls:Inset Horizontal=Md, Top=Lg, Bottom=Sm}"
+                Margin="{controls:Inset Md}"
                 HorizontalAlignment="Stretch"
                 Classes="SearchButton"
                 Click="OnShowCommandPaletteClick"
@@ -133,7 +134,7 @@
         </Border>
 
         <ScrollViewer Grid.Column="1">
-          <Grid Margin="40,20,40,48">
+          <Grid Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}">
             <settingsPages:AppearanceSettingsPageView
                 x:Name="AppearanceSettingsPage"
                 IsVisible="{Binding IsAppearanceSettingsVisible}"
@@ -234,23 +235,30 @@
                 <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ActiveApplicationKeymapName, StringFormat={}ACTIVE APPLICATION PROFILE · {0}}" />
               </StackPanel>
 
-              <Grid ColumnDefinitions="280,Auto,*,240" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                <ComboBox
-                    ItemsSource="{Binding KeybindingProfiles}"
-                    SelectedItem="{Binding SelectedKeybindingProfile, Mode=OneWay}"
-                    SelectionChanged="OnKeybindingProfileSelectionChanged"
-                    AutomationProperties.Name="Keybinding profile">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate>
-                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="1" Classes="Eyebrow" Text="{Binding LayerLabel}" />
-                      </Grid>
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-                <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCloneKeybindingPresetClick" Content="Clone preset" IsEnabled="{Binding CanCloneSelectedKeybindingProfile}" />
-                <TextBox Grid.Column="3" Text="{Binding KeybindingEditorSession.Query}" PlaceholderText="Search commands or shortcuts" AutomationProperties.Name="Search keybindings" />
+              <Grid ColumnDefinitions="*,320" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                  <ComboBox
+                      Width="320"
+                      ItemsSource="{Binding KeybindingProfiles}"
+                      SelectedItem="{Binding SelectedKeybindingProfile, Mode=OneWay}"
+                      SelectionChanged="OnKeybindingProfileSelectionChanged"
+                      AutomationProperties.Name="Keybinding profile">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Grid.Column="1" Classes="Eyebrow" Text="{Binding LayerLabel}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Classes="SecondaryButton" Click="OnCloneKeybindingPresetClick" Content="Clone preset" IsEnabled="{Binding CanCloneSelectedKeybindingProfile}" />
+                </StackPanel>
+                <TextBox
+                    Grid.Column="1"
+                    Text="{Binding KeybindingEditorSession.Query}"
+                    PlaceholderText="Search commands or shortcuts"
+                    AutomationProperties.Name="Search keybindings" />
               </Grid>
 
               <controls:SurfaceCard Padding="0">
@@ -268,22 +276,63 @@
               </controls:SurfaceCard>
 
               <controls:SurfaceCard Padding="0" IsVisible="{Binding KeybindingEditorSession.IsApplicationLayer}">
-                <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,170,150,210,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                  <StackPanel>
-                    <TextBlock FontWeight="SemiBold" Text="Application prefix" />
-                    <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding KeybindingEditorSession.PrefixShortcut}" />
-                  </StackPanel>
-                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                    <TextBlock Classes="Eyebrow" Text="TIMEOUT (MS)" />
-                    <NumericUpDown x:Name="KeybindingPrefixTimeout" Minimum="50" Maximum="10000" Increment="50" Value="{Binding KeybindingEditorSession.PrefixTimeoutMilliseconds}" IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}" ValueChanged="OnKeybindingPrefixOptionsChanged" />
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}">
-                    <TextBlock VerticalAlignment="Center" Text="Repeatable" />
-                    <ToggleSwitch x:Name="KeybindingPrefixRepeatable" IsChecked="{Binding KeybindingEditorSession.PrefixRepeatable}" IsCheckedChanged="OnKeybindingPrefixOptionsChanged" AutomationProperties.Name="Repeatable prefix" />
-                  </StackPanel>
-                  <ComboBox x:Name="KeybindingPrefixFailure" Grid.Column="3" ItemsSource="{Binding KeybindingEditorSession.FailedSequenceBehaviors}" SelectedItem="{Binding KeybindingEditorSession.PrefixFailedBehavior}" SelectionChanged="OnKeybindingPrefixOptionsChanged" IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}" />
-                  <Button Grid.Column="4" Classes="SecondaryButton" Click="OnRecordKeybindingPrefixClick" Content="Record prefix" IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}" />
-                  <Button Grid.Column="5" Classes="TextButton" Click="OnClearKeybindingPrefixClick" Content="Clear" IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}" />
+                <Grid
+                    Margin="{controls:Inset Lg}"
+                    RowDefinitions="Auto,Auto"
+                    RowSpacing="{DynamicResource ShellSpaceMd}">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                    <StackPanel Classes="CardText" Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontWeight="SemiBold" Text="Application prefix" />
+                      <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding KeybindingEditorSession.PrefixShortcut}" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="{DynamicResource ShellSpaceSm}"
+                        IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}">
+                      <TextBlock VerticalAlignment="Center" Text="Repeatable" />
+                      <ToggleSwitch
+                          x:Name="KeybindingPrefixRepeatable"
+                          IsChecked="{Binding KeybindingEditorSession.PrefixRepeatable}"
+                          IsCheckedChanged="OnKeybindingPrefixOptionsChanged"
+                          AutomationProperties.Name="Repeatable prefix" />
+                    </StackPanel>
+                  </Grid>
+
+                  <Grid
+                      Grid.Row="1"
+                      ColumnDefinitions="180,360,*,Auto"
+                      ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock Classes="Eyebrow" Text="TIMEOUT (MS)" />
+                      <NumericUpDown
+                          x:Name="KeybindingPrefixTimeout"
+                          Minimum="50"
+                          Maximum="10000"
+                          Increment="50"
+                          Value="{Binding KeybindingEditorSession.PrefixTimeoutMilliseconds}"
+                          IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}"
+                          ValueChanged="OnKeybindingPrefixOptionsChanged" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock Classes="Eyebrow" Text="ON UNKNOWN SEQUENCE" />
+                      <ComboBox
+                          x:Name="KeybindingPrefixFailure"
+                          ItemsSource="{Binding KeybindingEditorSession.FailedSequenceBehaviors}"
+                          SelectedItem="{Binding KeybindingEditorSession.PrefixFailedBehavior}"
+                          SelectionChanged="OnKeybindingPrefixOptionsChanged"
+                          IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}" />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Column="3"
+                        VerticalAlignment="Bottom"
+                        Orientation="Horizontal"
+                        Spacing="{DynamicResource ShellSpaceSm}">
+                      <Button Classes="SecondaryButton" Click="OnRecordKeybindingPrefixClick" Content="Record prefix" IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}" />
+                      <Button Classes="TextButton" Click="OnClearKeybindingPrefixClick" Content="Clear" IsEnabled="{Binding KeybindingEditorSession.CanEditPrefix}" />
+                    </StackPanel>
+                  </Grid>
                 </Grid>
               </controls:SurfaceCard>
 
@@ -400,14 +449,14 @@
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="How the caret is drawn and how much history each session keeps." />
                 </StackPanel>
                 <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                  <controls:SurfaceCard Tone="Raised">
+                  <controls:SurfaceCard>
                     <controls:LabeledField
                         Label="Cursor shape">
                       <ComboBox ItemsSource="{Binding TerminalSettingsEditor.CursorStyles}" SelectedItem="{Binding TerminalSettingsEditor.CursorStyle}" AutomationProperties.Name="Cursor shape" />
 
                     </controls:LabeledField>
                   </controls:SurfaceCard>
-                  <controls:SurfaceCard Tone="Raised" Grid.Column="1">
+                  <controls:SurfaceCard Grid.Column="1">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                       <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
                         <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Blink cursor" />
@@ -416,7 +465,7 @@
                       <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" IsChecked="{Binding TerminalSettingsEditor.CursorBlink}" AutomationProperties.Name="Blink cursor" />
                     </Grid>
                   </controls:SurfaceCard>
-                  <controls:SurfaceCard Tone="Raised" Grid.Column="2">
+                  <controls:SurfaceCard Grid.Column="2">
                     <controls:LabeledField
                         Label="Scrollback lines">
                       <NumericUpDown Minimum="0" Maximum="10000000" Increment="1000" Value="{Binding TerminalSettingsEditor.ScrollbackLines}" AutomationProperties.Name="Scrollback lines" />

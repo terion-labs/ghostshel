@@ -10,6 +10,8 @@ namespace GhostShell.App.Views.RuntimePanels;
 
 public sealed partial class BrowserRuntimePanelView : UserControl
 {
+    private const string BlankAddressPlaceholder = "about:blank";
+
     public BrowserRuntimePanelView()
     {
         InitializeComponent();
@@ -47,6 +49,24 @@ public sealed partial class BrowserRuntimePanelView : UserControl
     {
         _ = sender;
         AddressKeyDown?.Invoke(RuntimeBrowser, e);
+    }
+
+    private static void OnAddressGotFocus(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is TextBox addressBox)
+        {
+            addressBox.PlaceholderText = null;
+        }
+    }
+
+    private static void OnAddressLostFocus(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is TextBox addressBox)
+        {
+            addressBox.PlaceholderText = BlankAddressPlaceholder;
+        }
     }
 
     private void OnBackClick(object? sender, RoutedEventArgs e)

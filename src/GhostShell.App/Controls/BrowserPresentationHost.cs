@@ -96,7 +96,7 @@ public sealed class BrowserPresentationHost : ContentControl
     private IBrowserRenderer? _subscribedRenderer;
     private long _initializationGeneration;
     private bool _isAttachedToVisualTree;
-    private string _addressText = BrowserAddress.Blank.ToString();
+    private string _addressText = string.Empty;
     private string _statusText = "WAITING";
     private string _statusMessage = string.Empty;
     private IBrush _statusBrush = WaitingBrush;
@@ -579,7 +579,9 @@ public sealed class BrowserPresentationHost : ContentControl
 
     private void ApplyBrowserState(BrowserSessionState state)
     {
-        AddressText = state.Address.ToString();
+        AddressText = state.Address == BrowserAddress.Blank
+            ? string.Empty
+            : state.Address.ToString();
         IsLoading = state.LoadState == BrowserLoadState.Loading;
         CanGoBack = state.CanGoBack;
         CanGoForward = state.CanGoForward;

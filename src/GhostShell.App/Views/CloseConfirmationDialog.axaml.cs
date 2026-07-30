@@ -28,9 +28,11 @@ public sealed partial class CloseConfirmationDialog : Window
             _ => "Close active sessions?",
         };
         // Not "has active work" — that claims more than the signal supports. The
-        // terminal answers this from whether its cursor is at a shell prompt, which
-        // needs the shell to emit prompt markers; without them the honest statement
-        // is that idleness could not be confirmed.
+        // terminal answers this from whether its cursor is at a shell prompt. Local
+        // shells provide semantic prompt markers; SSH sessions use a conservative
+        // prompt-shape fallback because libghostty cannot inspect the remote process
+        // tree. When neither signal is conclusive, the honest statement is that
+        // idleness could not be confirmed.
         Detail = confirmation.Sessions.Count == 1
             ? "This session could not be confirmed idle. Closing it ends the session."
             : $"{confirmation.Sessions.Count} sessions could not be confirmed idle. Closing ends them.";

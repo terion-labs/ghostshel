@@ -8,6 +8,7 @@ namespace GhostShell.App.Views;
 public sealed partial class ConnectionEditorDialog : Window
 {
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly ConnectionEditorDialogPurpose _purpose;
 
     public ConnectionEditorDialog()
     {
@@ -15,10 +16,30 @@ public sealed partial class ConnectionEditorDialog : Window
     }
 
     public ConnectionEditorDialog(ConnectionEditorViewModel viewModel)
+        : this(viewModel, ConnectionEditorDialogPurpose.Save)
+    {
+    }
+
+    public ConnectionEditorDialog(
+        ConnectionEditorViewModel viewModel,
+        ConnectionEditorDialogPurpose purpose)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
+        _purpose = purpose;
         InitializeComponent();
         DataContext = viewModel;
+        if (purpose == ConnectionEditorDialogPurpose.Connect)
+        {
+            if (this.FindControl<CheckBox>("SaveConnectionCheckBox") is { } saveConnection)
+            {
+                saveConnection.IsVisible = true;
+            }
+
+            if (this.FindControl<Button>("SubmitButton") is { } submit)
+            {
+                submit.Content = "Connect";
+            }
+        }
     }
 
     private ConnectionEditorViewModel ViewModel => DataContext as ConnectionEditorViewModel
@@ -62,14 +83,25 @@ public sealed partial class ConnectionEditorDialog : Window
         }
     }
 
-    private void OnSaveClick(object? sender, RoutedEventArgs e)
+    private void OnSubmitClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
         try
         {
             HideValidationError();
-            Close(ViewModel.CreateSaveRequest());
+            var request = ViewModel.CreateSaveRequest();
+            if (_purpose == ConnectionEditorDialogPurpose.Connect)
+            {
+                var saveConnection =
+                    this.FindControl<CheckBox>("SaveConnectionCheckBox")?.IsChecked == true;
+                Close(new ConnectionEditorConnectRequest(
+                    request.Profile,
+                    saveConnection));
+                return;
+            }
+
+            Close(request);
         }
         catch (Exception exception) when (exception is ArgumentException or OverflowException)
         {
@@ -92,4 +124,10 @@ public sealed partial class ConnectionEditorDialog : Window
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+}
+
+public enum ConnectionEditorDialogPurpose
+{
+    Save,
+    Connect,
 }

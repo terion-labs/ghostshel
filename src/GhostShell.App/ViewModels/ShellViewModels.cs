@@ -926,52 +926,215 @@ public sealed class RuntimeTabViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Moves the boundary between two adjacent tracks, taking from one and giving
-    /// to the other so the total stays whole.
+    /// Moves a split by pointer pixels. The tab owns the constraint policy because
+    /// it owns panel spans and minimums; the view supplies only the current
+    /// viewport, which is the one fact the model cannot know.
     /// </summary>
-    /// <param name="boundary">The gap after this track index.</param>
-    /// <param name="delta">How far to move it, as a fraction of the whole.</param>
-    /// <param name="minimum">
-    /// The smallest fraction either neighbour may be reduced to. Passed in because
-    /// only the view knows how many pixels the canvas has, and a minimum in pixels
-    /// is the only kind a user recognises.
-    /// </param>
-    public bool MoveColumnSplit(int boundary, double delta, double minimum) =>
-        MoveSplit(Weights(ref _columnWeights, Columns), boundary, delta, minimum);
+    public bool MoveColumnSplit(
+        int boundary,
+        double deltaPixels,
+        double viewportWidth) =>
+        MoveSplit(TrackAxis.Columns, boundary, deltaPixels, viewportWidth);
 
-    public bool MoveRowSplit(int boundary, double delta, double minimum) =>
-        MoveSplit(Weights(ref _rowWeights, Rows), boundary, delta, minimum);
+    public bool MoveRowSplit(
+        int boundary,
+        double deltaPixels,
+        double viewportHeight) =>
+        MoveSplit(TrackAxis.Rows, boundary, deltaPixels, viewportHeight);
 
-    private bool MoveSplit(double[] weights, int boundary, double delta, double minimum)
+    private bool MoveSplit(
+        TrackAxis axis,
+        int boundary,
+        double deltaPixels,
+        double viewportPixels)
     {
-        if (boundary < 0 || boundary + 1 >= weights.Length || !double.IsFinite(delta))
+        var weights = axis == TrackAxis.Columns
+            ? Weights(ref _columnWeights, Columns)
+            : Weights(ref _rowWeights, Rows);
+        if (boundary < 0
+            || boundary + 1 >= weights.Length
+            || !double.IsFinite(deltaPixels)
+            || !double.IsFinite(viewportPixels)
+            || viewportPixels <= 0)
         {
             return false;
         }
 
-        // Clamp against both neighbours before moving anything, so a drag that
-        // would collapse a panel stops at the limit instead of being refused.
-        var room = Math.Clamp(delta, minimum - weights[boundary], weights[boundary + 1] - minimum);
-        if (Math.Abs(room) < 0.0001)
+        var currentBoundary = TrackOffset(weights, boundary + 1);
+        var adjacentStart = TrackOffset(weights, boundary);
+        var adjacentEnd = TrackOffset(weights, boundary + 2);
+        var adjacentSpan = adjacentEnd - adjacentStart;
+        var visibleTrackFloor = Math.Min(
+            Math.Min(0.01, 1 / viewportPixels),
+            adjacentSpan / 2);
+        var minimumBoundary = adjacentStart + visibleTrackFloor;
+        var maximumBoundary = adjacentEnd - visibleTrackFloor;
+
+        // Minimum sizes constrain panel edges, not individual grid tracks. A
+        // spanning panel is unaffected by moving an internal track boundary.
+        // When the window is smaller than the requested canvas minimum, using the
+        // virtual minimum canvas turns hard pixels into proportional soft limits.
+        var requestedCanvasMinimum = axis == TrackAxis.Columns
+            ? MinimumCanvasWidth
+            : MinimumCanvasHeight;
+        var constraintViewport = Math.Max(viewportPixels, requestedCanvasMinimum);
+        foreach (var panel in Panels)
+        {
+            var start = axis == TrackAxis.Columns
+                ? panel.LayoutColumn
+                : panel.LayoutRow;
+            var span = Math.Max(
+                1,
+                axis == TrackAxis.Columns
+                    ? panel.LayoutColumnSpan
+                    : panel.LayoutRowSpan);
+            var end = start + span;
+            var panelMinimum = axis == TrackAxis.Columns
+                ? panel.LayoutMinimumWidth
+                : panel.LayoutMinimumHeight;
+            var minimumFraction = panelMinimum / constraintViewport;
+
+            if (end == boundary + 1)
+            {
+                minimumBoundary = Math.Max(
+                    minimumBoundary,
+                    TrackOffset(weights, start) + minimumFraction);
+            }
+
+            if (start == boundary + 1)
+            {
+                maximumBoundary = Math.Min(
+                    maximumBoundary,
+                    TrackOffset(weights, end) - minimumFraction);
+            }
+        }
+
+        if (minimumBoundary > maximumBoundary
+            && minimumBoundary - maximumBoundary <= 0.000001)
+        {
+            var sharedBoundary = (minimumBoundary + maximumBoundary) / 2;
+            minimumBoundary = sharedBoundary;
+            maximumBoundary = sharedBoundary;
+        }
+        else if (minimumBoundary > maximumBoundary)
+        {
+            // An irregular saved layout can make neighbouring minimum requests
+            // mutually impossible while other boundaries stay fixed. In that
+            // state minimums are soft, but the two adjacent tracks remain visible.
+            minimumBoundary = adjacentStart + visibleTrackFloor;
+            maximumBoundary = adjacentEnd - visibleTrackFloor;
+        }
+
+        var proposedBoundary = currentBoundary + (deltaPixels / viewportPixels);
+        var nextBoundary = ConstrainBoundary(
+            currentBoundary,
+            proposedBoundary,
+            minimumBoundary,
+            maximumBoundary);
+        var applied = nextBoundary - currentBoundary;
+        if (Math.Abs(applied) < 0.000001)
         {
             return false;
         }
 
-        weights[boundary] += room;
-        weights[boundary + 1] -= room;
-        NotifyPanelLayoutChanged();
+        weights[boundary] += applied;
+        weights[boundary + 1] -= applied;
+        OnPropertyChanged(
+            axis == TrackAxis.Columns
+                ? nameof(ColumnWeights)
+                : nameof(RowWeights));
         return true;
+    }
+
+    private static double ConstrainBoundary(
+        double current,
+        double proposed,
+        double minimum,
+        double maximum)
+    {
+        if (current < minimum)
+        {
+            return proposed <= current
+                ? current
+                : Math.Min(proposed, maximum);
+        }
+
+        if (current > maximum)
+        {
+            return proposed >= current
+                ? current
+                : Math.Max(proposed, minimum);
+        }
+
+        return Math.Clamp(proposed, minimum, maximum);
+    }
+
+    private static double TrackOffset(IReadOnlyList<double> weights, int track)
+    {
+        var offset = 0d;
+        for (var index = 0; index < track && index < weights.Count; index++)
+        {
+            offset += weights[index];
+        }
+
+        return offset;
     }
 
     public bool UsesAutomaticLayout => _usesAutomaticLayout;
 
-    public double MinimumCanvasWidth => Panels.Count == 0
-        ? DefaultPanelMinimumWidth
-        : Panels.Max(panel => panel.LayoutMinimumWidth / panel.LayoutColumnSpan) * Columns;
+    public double MinimumCanvasWidth => MinimumCanvasSize(TrackAxis.Columns);
 
-    public double MinimumCanvasHeight => Panels.Count == 0
-        ? DefaultPanelMinimumHeight
-        : Panels.Max(panel => panel.LayoutMinimumHeight / panel.LayoutRowSpan) * Rows;
+    public double MinimumCanvasHeight => MinimumCanvasSize(TrackAxis.Rows);
+
+    /// <summary>
+    /// Finds the smallest canvas that can satisfy every panel interval. Prefix
+    /// boundaries form a directed acyclic graph: tracks contribute a zero-cost
+    /// edge and every panel contributes an edge from its first boundary to its
+    /// last, weighted by that panel's minimum. The longest path is the exact
+    /// minimum; multiplying the largest per-track request overestimates layouts
+    /// whose neighbouring panels have different minimums.
+    /// </summary>
+    private double MinimumCanvasSize(TrackAxis axis)
+    {
+        if (Panels.Count == 0)
+        {
+            return axis == TrackAxis.Columns
+                ? DefaultPanelMinimumWidth
+                : DefaultPanelMinimumHeight;
+        }
+
+        var tracks = axis == TrackAxis.Columns ? Columns : Rows;
+        var minimumAtBoundary = new double[tracks + 1];
+        for (var boundary = 1; boundary <= tracks; boundary++)
+        {
+            minimumAtBoundary[boundary] = minimumAtBoundary[boundary - 1];
+            foreach (var panel in Panels)
+            {
+                var start = axis == TrackAxis.Columns
+                    ? panel.LayoutColumn
+                    : panel.LayoutRow;
+                var span = Math.Max(
+                    1,
+                    axis == TrackAxis.Columns
+                        ? panel.LayoutColumnSpan
+                        : panel.LayoutRowSpan);
+                var end = start + span;
+                if (end != boundary || start < 0 || start >= boundary)
+                {
+                    continue;
+                }
+
+                var panelMinimum = axis == TrackAxis.Columns
+                    ? panel.LayoutMinimumWidth
+                    : panel.LayoutMinimumHeight;
+                minimumAtBoundary[boundary] = Math.Max(
+                    minimumAtBoundary[boundary],
+                    minimumAtBoundary[start] + panelMinimum);
+            }
+        }
+
+        return minimumAtBoundary[tracks];
+    }
 
     public void AddPanel(RuntimePanelViewModel panel, LayoutSlotId? slotId = null)
     {
@@ -1323,6 +1486,47 @@ public sealed class RuntimeTabViewModel : ObservableObject
         FillVacatedCell(vacatedLeft, vacatedTop, vacatedRight, vacatedBottom);
         CompactLayout();
         ApplyZoomState();
+        NotifyPanelLayoutChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// Replaces the runtime behind a panel without changing its identity or cell.
+    /// The session host continues to see the same panel graph; only the adapter
+    /// session attached to that panel changes.
+    /// </summary>
+    public bool ReplacePanel(
+        RuntimePanelViewModel current,
+        RuntimePanelViewModel replacement)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(replacement);
+        var index = Panels.IndexOf(current);
+        if (index < 0
+            || replacement.Id != current.Id
+            || replacement.Kind != current.Kind
+            || !string.Equals(replacement.Title, current.Title, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        replacement.AssignLayout(
+            current.LayoutColumns,
+            current.LayoutRows,
+            new LayoutGridBounds(
+                current.LayoutColumn,
+                current.LayoutRow,
+                current.LayoutColumnSpan,
+                current.LayoutRowSpan),
+            new LayoutMinimumSize(
+                current.LayoutMinimumWidth,
+                current.LayoutMinimumHeight));
+        replacement.IsActive = current.IsActive;
+        replacement.IsVisibleInLayout = current.IsVisibleInLayout;
+        replacement.IsZoomed = current.IsZoomed;
+        Panels[index] = replacement;
+        current.Dispose();
+        OnPropertyChanged(nameof(ActivePanel));
         NotifyPanelLayoutChanged();
         return true;
     }
@@ -1849,6 +2053,12 @@ public sealed class RuntimeTabViewModel : ObservableObject
         }
     }
 
+    private enum TrackAxis
+    {
+        Columns,
+        Rows,
+    }
+
     private sealed record PanelLayoutSnapshot(
         RuntimePanelViewModel Panel,
         LayoutGridBounds Bounds,
@@ -2108,6 +2318,11 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel
     public ClientId ClientId { get; }
 
     public ConnectionId ConnectionId => _connection.Id;
+
+    public string ConnectionDisplayName =>
+        _connection.Endpoint is ConnectionEndpoint.Local
+            ? "Local"
+            : _connection.Name;
 
     /// <summary>
     /// A logical location may be replayed after a crash. Startup commands are intentionally not

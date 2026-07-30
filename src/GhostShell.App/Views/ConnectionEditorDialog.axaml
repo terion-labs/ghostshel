@@ -62,7 +62,7 @@
             <Grid ColumnDefinitions="*,110,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding Host}" PlaceholderText="server.example.com" /></StackPanel>
               <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Port" /><NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" /></StackPanel>
-              <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" PlaceholderText="deploy" /></StackPanel>
+              <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" PlaceholderText="Current local user" /></StackPanel>
             </Grid>
             <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Authentication" /><ComboBox ItemsSource="{Binding AuthenticationChoices}" SelectedItem="{Binding Authentication}" /></StackPanel>
@@ -179,9 +179,17 @@
 
     <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
       <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Opening revalidates runtime, credentials, and platform support." />
+        <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Opening revalidates runtime, credentials, and platform support." />
+          <CheckBox
+              x:Name="SaveConnectionCheckBox"
+              Content="Save connection"
+              IsChecked="True"
+              IsVisible="False"
+              AutomationProperties.Name="Save this connection for later" />
+        </StackPanel>
         <Button Grid.Column="1" MinWidth="120" Classes="SecondaryButton" Click="OnTestClick" Content="Run diagnostics" />
-        <Button Grid.Column="2" MinWidth="110" Classes="PrimaryButton" Click="OnSaveClick" Content="Save" IsDefault="True" />
+        <Button x:Name="SubmitButton" Grid.Column="2" MinWidth="110" Classes="PrimaryButton" Click="OnSubmitClick" Content="Save" IsDefault="True" />
       </Grid>
     </Border>
   </Grid>

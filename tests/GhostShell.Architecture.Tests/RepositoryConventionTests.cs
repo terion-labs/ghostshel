@@ -7,6 +7,46 @@ namespace GhostShell.Architecture.Tests;
 
 public sealed partial class RepositoryConventionTests
 {
+    [Fact]
+    public void Macos_packaging_opts_the_apphost_into_current_native_chrome()
+    {
+        var packageScript = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "package-macos.sh"));
+        var declarationScript = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "declare-macos-sdk26.sh"));
+        var desktopProject = File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot,
+                "src",
+                "GhostShell.Desktop",
+                "GhostShell.Desktop.csproj"));
+
+        Assert.Contains(
+            "-set-build-version macos \"${minimum_macos}\" 26.0",
+            declarationScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "codesign --force --sign -",
+            declarationScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "declared_sdk",
+            declarationScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "does not declare macOS SDK 26.0",
+            declarationScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "declare-macos-sdk26.sh",
+            packageScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "AfterTargets=\"Build\"",
+            desktopProject,
+            StringComparison.Ordinal);
+    }
+
     private static readonly string RepositoryRoot = FindRepositoryRoot();
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();
@@ -633,6 +673,18 @@ public sealed partial class RepositoryConventionTests
         var codeBehind = ApplicationViews.FindPartialClassSources("MainWindow");
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DataFormat.CreateStringApplicationFormat(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "dragItem.Set(RuntimeTabDragFormat, candidate.Payload);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "dragItem.Set(RuntimeTabDragNativeMarkerFormat, \"runtime-tab\");",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(

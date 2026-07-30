@@ -71,11 +71,11 @@ public sealed class RuntimePanelViewContractTests
         "Close File Viewer panel")]
     [InlineData(
         "StatisticsRuntimePanelView",
-        "Local host statistics panel",
+        "Statistics panel",
         "Close Statistics panel")]
     [InlineData(
         "ProcessMonitorRuntimePanelView",
-        "Local process monitor panel",
+        "Process monitor panel",
         "Close Process Monitor panel")]
     [InlineData(
         "UnavailableRuntimePanelView",
@@ -161,6 +161,47 @@ public sealed class RuntimePanelViewContractTests
     }
 
     [Fact]
+    public void Empty_panel_reuses_the_new_item_catalog_without_workspaces()
+    {
+        var document = LoadRuntimePanelView("PanelPlaceholderView");
+        var root = Assert.IsType<XElement>(document.Root);
+
+        var chooser = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "NewItemChooserView");
+        Assert.Equal("False", AttributeValue(chooser, "ShowWorkspaces"));
+        Assert.Equal("False", AttributeValue(chooser, "ShowCloseAction"));
+        Assert.Equal(
+            "{Binding $parent[Window].DataContext}",
+            AttributeValue(chooser, "DataContext"));
+        Assert.Equal(
+            "OnOpenConnectionClick",
+            AttributeValue(chooser, "OpenConnectionRequested"));
+        Assert.Equal(
+            "OnOpenScreenClick",
+            AttributeValue(chooser, "OpenScreenRequested"));
+        Assert.Equal(
+            "OnChooseTerminalClick",
+            AttributeValue(chooser, "NewLocalTerminalRequested"));
+        Assert.Equal(
+            "OnChooseBrowserClick",
+            AttributeValue(chooser, "NewBrowserRequested"));
+        Assert.Equal(
+            "OnChooseFileViewerClick",
+            AttributeValue(chooser, "NewFileViewerRequested"));
+        Assert.Equal(
+            "OnChooseStatisticsClick",
+            AttributeValue(chooser, "NewStatisticsRequested"));
+        Assert.Equal(
+            "OnChooseProcessMonitorClick",
+            AttributeValue(chooser, "NewProcessMonitorRequested"));
+
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => HasClass(element, "InlinePanelChooser"));
+    }
+
+    [Fact]
     public void Terminal_panel_view_preserves_native_host_and_typed_shell_interactions()
     {
         var mainWindow = LoadView("MainWindow");
@@ -180,6 +221,12 @@ public sealed class RuntimePanelViewContractTests
             "OnCancelConnectionReconnectClick",
             AttributeValue(component, "CancelReconnectRequested"));
         Assert.Equal(
+            "OnTerminalConnectionSelected",
+            AttributeValue(component, "ConnectionSelected"));
+        Assert.Equal(
+            "OnTerminalNewConnectionRequested",
+            AttributeValue(component, "NewConnectionRequested"));
+        Assert.Equal(
             "OnRetryConnectionPanelClick",
             AttributeValue(component, "RetryConnectionRequested"));
         Assert.Equal(
@@ -194,6 +241,34 @@ public sealed class RuntimePanelViewContractTests
 
         var document = LoadRuntimePanelView("TerminalRuntimePanelView");
         var root = Assert.IsType<XElement>(document.Root);
+        var connectionSelector = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "PanelConnectionSelectorView");
+        Assert.Equal(
+            "{Binding $parent[Window].DataContext.PanelConnectionOptions}",
+            AttributeValue(connectionSelector, "Options"));
+        Assert.Equal(
+            "{Binding ConnectionDisplayName}",
+            AttributeValue(connectionSelector, "SelectedLabel"));
+        Assert.Equal(
+            "OnConnectionSelected",
+            AttributeValue(connectionSelector, "ConnectionSelected"));
+        Assert.Equal(
+            "OnNewConnectionRequested",
+            AttributeValue(connectionSelector, "NewConnectionRequested"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && string.Equals(
+                    AttributeValue(element, "Text"),
+                    "Terminal",
+                    StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Text"),
+                "{Binding KindLabel}",
+                StringComparison.Ordinal));
         var terminal = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "TerminalPresentationHost");
@@ -242,6 +317,40 @@ public sealed class RuntimePanelViewContractTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Panel_connection_selector_filters_saved_connections_and_reports_intent()
+    {
+        var path = Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "Components",
+            "PanelConnectionSelectorView.axaml");
+        var root = Assert.IsType<XElement>(XDocument.Load(path).Root);
+        var filter = FindUniqueAccessibleElement(root, "Filter saved connections");
+        Assert.Equal("OnFilterTextChanged", AttributeValue(filter, "TextChanged"));
+        Assert.Equal("Filter connections", AttributeValue(filter, "PlaceholderText"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding FilteredOptions, ElementName=Root}",
+                    StringComparison.Ordinal));
+        var create = FindUniqueAccessibleElement(
+            root,
+            "Create and connect a new connection");
+        Assert.Equal("OnNewConnectionClick", AttributeValue(create, "Click"));
+
+        var codeBehind = File.ReadAllText($"{path}.cs");
+        Assert.Contains("connection.Name.Contains", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("connection.Kind.Contains", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("connection.Detail.Contains", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ISessionHostClient", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -310,6 +419,13 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal(
             "{Binding AddressText, ElementName=RuntimeBrowser, Mode=TwoWay}",
             AttributeValue(address, "Text"));
+        Assert.Equal("about:blank", AttributeValue(address, "PlaceholderText"));
+        Assert.Equal(
+            "OnAddressGotFocus",
+            AttributeValue(address, "GotFocus"));
+        Assert.Equal(
+            "OnAddressLostFocus",
+            AttributeValue(address, "LostFocus"));
 
         var status = FindUniqueAccessibleElement(root, "Browser session status");
         Assert.Equal(
@@ -323,6 +439,14 @@ public sealed class RuntimePanelViewContractTests
         // context — one context cannot answer both, so the view names the host.
         Assert.Contains(
             "AddressKeyDown?.Invoke(RuntimeBrowser, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "addressBox.PlaceholderText = null;",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "addressBox.PlaceholderText = BlankAddressPlaceholder;",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -358,7 +482,6 @@ public sealed class RuntimePanelViewContractTests
             ["LocationKeyDown"] = "OnFileLocationKeyDown",
             ["NavigateUpRequested"] = "OnFileNavigateUpClick",
             ["OpenExternallyRequested"] = "OnFileOpenExternallyClick",
-            ["ProfileSelectionChanged"] = "OnFileProfileSelectionChanged",
             ["RefreshRequested"] = "OnFileRefreshClick",
             ["RenameRequested"] = "OnFileRenameClick",
             ["TransferRequested"] = "OnFileTransferClick",
@@ -372,6 +495,22 @@ public sealed class RuntimePanelViewContractTests
 
         var document = LoadRuntimePanelView("FileRuntimePanelView");
         var root = Assert.IsType<XElement>(document.Root);
+        var connectionSelector = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "PanelConnectionSelectorView");
+        Assert.Equal(
+            "{Binding $parent[Window].DataContext.FileConnectionOptions}",
+            AttributeValue(connectionSelector, "Options"));
+        Assert.Equal(
+            "{Binding ConnectionDisplayName}",
+            AttributeValue(connectionSelector, "SelectedLabel"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "ComboBox"
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "File provider profile",
+                    StringComparison.Ordinal));
         Assert.Equal(
             3,
             root.Descendants().Count(element =>
@@ -380,6 +519,75 @@ public sealed class RuntimePanelViewContractTests
                     AttributeValue(element, "ItemsSource"),
                     "{Binding Entries}",
                     StringComparison.Ordinal)));
+        var viewOptionsButton = FindUniqueAccessibleElement(
+            root,
+            "Open file sort and view options");
+        var viewOptionsFlyout = Assert.Single(
+            viewOptionsButton.Descendants(),
+            element => element.Name.LocalName == "Flyout");
+        Assert.Equal(
+            3,
+            viewOptionsFlyout.Descendants().Count(element =>
+                element.Name.LocalName == "ComboBox"));
+        Assert.DoesNotContain(
+            root.Descendants().Where(element => element.Name.LocalName == "ComboBox"),
+            element => !element.Ancestors().Contains(viewOptionsFlyout));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && string.Equals(
+                    AttributeValue(element, "Text"),
+                    "{Binding KindLabel}",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && HasClass(element, "FileToolbarGroup"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && HasClass(element, "FileToolbarAction"));
+        var previewToggle = FindUniqueAccessibleElement(root, "Toggle file preview");
+        Assert.Equal("OnTogglePreviewClick", AttributeValue(previewToggle, "Click"));
+        Assert.Equal(
+            "{Binding IsPreviewVisible}",
+            AttributeValue(previewToggle, "Classes.active"));
+        var previewSplitter = FindUniqueAccessibleElement(root, "Resize file preview");
+        Assert.Equal(
+            "{Binding IsPreviewVisible}",
+            AttributeValue(previewSplitter, "IsVisible"));
+        Assert.Equal("Columns", AttributeValue(previewSplitter, "ResizeDirection"));
+        Assert.Equal(
+            "PreviousAndNext",
+            AttributeValue(previewSplitter, "ResizeBehavior"));
+        foreach (var columnSplitterName in new[]
+                 {
+                     "Resize file name and size columns",
+                     "Resize file size and modified columns",
+                 })
+        {
+            var columnSplitter = FindUniqueAccessibleElement(root, columnSplitterName);
+            Assert.Equal("Columns", AttributeValue(columnSplitter, "ResizeDirection"));
+            Assert.Equal(
+                "PreviousAndNext",
+                AttributeValue(columnSplitter, "ResizeBehavior"));
+        }
+
+        var uploadButton = FindUniqueAccessibleElement(root, "Upload file");
+        Assert.Equal("{Binding CanUpload}", AttributeValue(uploadButton, "IsVisible"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && string.Equals(
+                    AttributeValue(element, "Text"),
+                    "BOUNDED PREVIEW",
+                    StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "BorderThickness"),
+                "0,1,0,1",
+                StringComparison.Ordinal));
 
         Assert.Equal(
             "Polite",
@@ -432,13 +640,13 @@ public sealed class RuntimePanelViewContractTests
     [InlineData(
         "StatisticsRuntimePanelView",
         "Statistics state",
-        "Refresh local host statistics",
+        "Refresh statistics",
         "Statistics loading",
         "Statistics unavailable")]
     [InlineData(
         "ProcessMonitorRuntimePanelView",
         "Process monitor state",
-        "Refresh local processes",
+        "Refresh processes",
         "Process monitor loading",
         "Process monitor unavailable")]
     public void Monitoring_panel_views_preserve_commands_and_live_state_announcements(
@@ -467,6 +675,38 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal(
             "Assertive",
             AttributeValue(unavailable, "AutomationProperties.LiveSetting"));
+    }
+
+    [Fact]
+    public void Statistics_panel_presents_host_metrics_with_bounded_history_charts()
+    {
+        var document = LoadRuntimePanelView("StatisticsRuntimePanelView");
+        var root = Assert.IsType<XElement>(document.Root);
+        var charts = root
+            .Descendants()
+            .Where(element => element.Name.LocalName == "TimeSeriesChart")
+            .ToArray();
+
+        Assert.Equal(2, charts.Length);
+        Assert.Contains(
+            charts,
+            chart => AttributeValue(chart, "Values") == "{Binding CpuHistory}"
+                && AttributeValue(chart, "Maximum") == "100");
+        Assert.Contains(
+            charts,
+            chart => AttributeValue(chart, "Values") == "{Binding MemoryHistory}");
+
+        var visibleCopy = string.Join(
+            " ",
+            root.Descendants()
+                .Select(element => AttributeValue(element, "Text"))
+                .OfType<string>());
+        Assert.DoesNotContain("OBSERVED", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("GHOSTSHELL CPU", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("GHOSTSHELL MEMORY", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CPU USAGE", visibleCopy, StringComparison.Ordinal);
+        Assert.Contains("PROCESS MEMORY", visibleCopy, StringComparison.Ordinal);
+        Assert.Contains("RUNNING PROCESSES", visibleCopy, StringComparison.Ordinal);
     }
 
     private static XElement FindUniqueAccessibleElement(

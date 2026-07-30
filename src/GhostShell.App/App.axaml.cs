@@ -394,6 +394,10 @@ public sealed partial class App : Avalonia.Application
         foreach (var baseFontSize in ScalableFontSizes)
         {
             Resources[$"ShellFontSize{baseFontSize}"] = resources.ScaleFontSize(baseFontSize);
+            Resources[$"ShellLineHeight{baseFontSize}"] =
+                Math.Round(
+                    resources.ScaleFontSize(baseFontSize) * 1.35 * 2,
+                    MidpointRounding.AwayFromZero) / 2;
         }
 
         Resources["ShellControlMinHeight"] = resources.ControlMinHeight;
@@ -428,9 +432,9 @@ public sealed partial class App : Avalonia.Application
 
         // Named insets, for the three shapes that recur often enough that spelling
         // them out at each use site is how they drifted apart in the first place.
-        Resources["ShellCardPadding"] = new Thickness(spacing.Medium);
+        Resources["ShellCardPadding"] = new Thickness(spacing.Large);
         Resources["ShellPagePadding"] = new Thickness(spacing.Large);
-        Resources["ShellRowPadding"] = new Thickness(spacing.Medium, spacing.Small);
+        Resources["ShellRowPadding"] = new Thickness(spacing.Large, spacing.Medium);
         Resources["ShellPillPadding"] = new Thickness(spacing.Small, spacing.ExtraSmall);
 
         // For a native child view that has to round its own layer because Avalonia

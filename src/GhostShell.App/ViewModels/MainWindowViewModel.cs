@@ -315,6 +315,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<LauncherConnectionViewModel> Connections { get; } = [];
 
+    public IReadOnlyList<SavedConnectionShortcutViewModel> SavedConnectionShortcuts =>
+        BuildSavedConnectionShortcuts();
+
+    public IEnumerable<PanelConnectionOptionViewModel> PanelConnectionOptions =>
+        Connections.Select(connection => new PanelConnectionOptionViewModel(
+            new PanelConnectionOptionViewModel.Target.Connection(connection.Id),
+            connection.Name,
+            connection.Kind,
+            connection.Detail,
+            connection.CanOpen));
+
+    public IReadOnlyList<PanelConnectionOptionViewModel> FileConnectionOptions =>
+        BuildFileConnectionOptions();
+
     public ObservableCollection<LauncherScreenViewModel> Screens { get; } = [];
 
     public ObservableCollection<LayoutCardViewModel> Layouts { get; } = [];
@@ -458,17 +472,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// About page promising an inventory and then showing nothing at all.
     /// </summary>
     public bool HasNoProductComponents => ProductComponents.Count == 0;
-
-    /// <summary>
-    /// Leading inset that clears the host's own window controls. On macOS the
-    /// traffic lights end around 70px, so content starts far enough past them to
-    /// read as a separate group rather than a fourth button.
-    /// </summary>
-    public Avalonia.Thickness WindowTitleBarContentMargin => OperatingSystem.IsMacOS()
-        ? new Avalonia.Thickness(92, 0, 14, 0)
-        : OperatingSystem.IsWindows()
-            ? new Avalonia.Thickness(10, 0, 148, 0)
-            : new Avalonia.Thickness(10, 0);
 
     public bool HasWorkspaces => Workspaces.Count > 0;
 
@@ -812,8 +815,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public string NewItemLauncherTitle => HasRuntimeWorkspace ? "New Tab" : "New Session";
 
+    public bool CanStartBrowserSession => _browserRendererViewFactory is not null;
+
     public bool CanCreateBrowserPanel =>
-        _browserRendererViewFactory is not null
+        CanStartBrowserSession
         && RuntimeWorkspace?.ActiveTab is not null;
 
     public RuntimePanelViewModel? ActivePanel => RuntimeWorkspace?.ActiveTab?.ActivePanel;
@@ -2072,8 +2077,64 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 runtime.Id,
                 tab.Id,
                 PanelInstanceId.New(),
-                kind == PanelKind.Statistics ? "Local statistics" : "Local processes",
+                kind == PanelKind.Statistics ? "Statistics" : "Process Monitor",
                 kind);
+            tab.AddPanel(panel);
+            runtime.Tabs.Add(tab);
+            runtime.ActiveTab = tab;
+            if (!await RegisterRuntimeWorkspaceAsync(runtime, cancellationToken))
+            {
+                return false;
+            }
+
+            RuntimeWorkspace = runtime;
+            _runtimeHistorySource = null;
+            StartAcceptedRuntimePanels(runtime);
+            StartRuntimeGraphWatch(runtime);
+            Route = ShellRoute.Workspace;
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+        finally
+        {
+            DisposeRuntimeWorkspaceUnlessOwned(runtime);
+        }
+    }
+
+    public async Task<bool> OpenLocalBrowserWorkspaceAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ClearError();
+        if (_browserRendererViewFactory is null)
+        {
+            SetError("The native browser adapter is unavailable in this build.");
+            return false;
+        }
+
+        var runtime = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            "Browser",
+            ThemePreference.BronzeFallback.ToString(),
+            []);
+        try
+        {
+            var tab = new RuntimeTabViewModel(
+                TabInstanceId.New(),
+                "Browser",
+                "LOCAL");
+            var panel = CreateBrowserPanel(
+                runtime.Id,
+                tab.Id,
+                PanelInstanceId.New(),
+                "Browser",
+                BrowserAddress.Blank);
+            if (panel is not BrowserRuntimePanelViewModel)
+            {
+                SetError("The native browser adapter could not be initialized.");
+                panel.Dispose();
+                return false;
+            }
+
             tab.AddPanel(panel);
             runtime.Tabs.Add(tab);
             runtime.ActiveTab = tab;
@@ -3867,7 +3928,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             workspace.Id,
             tab.Id,
             connection,
-            "Local terminal",
+            "Terminal",
             PanelStartupBehavior.None);
         return await AddRuntimePanelUnderReceiptAsync(
             workspace,
@@ -3937,6 +3998,209 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 TrackRecentSession(panel);
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Changes the connection behind an existing terminal while preserving the
+    /// panel ID, tab, layout cell, and panel chrome. The caller closes the old
+    /// hosted session first, including any required active-work confirmation.
+    /// </summary>
+    public bool ReplaceTerminalConnection(
+        TerminalRuntimePanelViewModel currentPanel,
+        ConnectionProfile connection)
+    {
+        ArgumentNullException.ThrowIfNull(currentPanel);
+        ArgumentNullException.ThrowIfNull(connection);
+        ClearError();
+
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.Tabs.SingleOrDefault(candidate =>
+            candidate.Panels.Any(panel => panel.Id == currentPanel.Id));
+        if (workspace is null || tab is null)
+        {
+            SetError("That terminal panel is no longer open.");
+            return false;
+        }
+
+        var livePanel = tab.Panels
+            .OfType<TerminalRuntimePanelViewModel>()
+            .SingleOrDefault(candidate => candidate.Id == currentPanel.Id);
+        if (livePanel is null)
+        {
+            SetError("The terminal changed before its connection could be switched.");
+            return false;
+        }
+
+        var replacement = CreateTerminalPanel(
+            workspace.Id,
+            tab.Id,
+            connection,
+            livePanel.Title,
+            PanelStartupBehavior.None,
+            livePanel.Id);
+        if (!tab.ReplacePanel(livePanel, replacement))
+        {
+            replacement.Dispose();
+            SetError("The terminal changed before its connection could be switched.");
+            return false;
+        }
+
+        workspace.AddConnections(Connections.Where(item => item.Id == connection.Id));
+        StartTrackingRecovery(replacement);
+        TrackRecentSession(replacement);
+        RefreshAgentTerminalSelectionOptions(resetSelection: true);
+        QueueRuntimeRecoverySnapshot();
+        return true;
+    }
+
+    public bool ReplaceTerminalConnection(
+        TerminalRuntimePanelViewModel currentPanel,
+        ConnectionId connectionId)
+    {
+        var connection = FindConnection(connectionId);
+        if (connection is null)
+        {
+            SetError("That connection no longer exists.");
+            return false;
+        }
+
+        return ReplaceTerminalConnection(currentPanel, connection);
+    }
+
+    public bool ReplacePanelConnection(
+        RuntimePanelViewModel currentPanel,
+        ConnectionProfile connection)
+    {
+        ArgumentNullException.ThrowIfNull(currentPanel);
+        ArgumentNullException.ThrowIfNull(connection);
+        ClearError();
+
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.Tabs.SingleOrDefault(candidate =>
+            candidate.Panels.Any(panel => panel.Id == currentPanel.Id));
+        if (workspace is null || tab is null)
+        {
+            SetError("That panel is no longer open.");
+            return false;
+        }
+
+        var livePanel = tab.Panels.SingleOrDefault(candidate => candidate.Id == currentPanel.Id);
+        if (livePanel is null || livePanel.Kind != currentPanel.Kind)
+        {
+            SetError("The panel changed before its connection could be switched.");
+            return false;
+        }
+
+        RuntimePanelViewModel replacement;
+        if (livePanel is FileRuntimePanelViewModel)
+        {
+            if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+            {
+                SetError(
+                    "That execution connection cannot back File Viewer. "
+                    + "Choose a file connection from the panel selector.");
+                return false;
+            }
+
+            var profileId = connection.Endpoint is ConnectionEndpoint.Ssh
+                ? ConnectionFileProviderProfiles.Id(connection.Id)
+                : BuiltInFileProviders.HomeId;
+            replacement = CreateFilePanel(
+                workspace.Id,
+                tab.Id,
+                livePanel.Id,
+                livePanel.Title,
+                profileId,
+                connection: connection,
+                deferInitialization: true);
+        }
+        else if (livePanel.Kind is PanelKind.Statistics or PanelKind.ProcessMonitor)
+        {
+            replacement = CreateMonitorPanel(
+                workspace.Id,
+                tab.Id,
+                livePanel.Id,
+                livePanel.Title,
+                livePanel.Kind,
+                connection);
+        }
+        else
+        {
+            SetError("This panel type does not support connection switching.");
+            return false;
+        }
+
+        if (!tab.ReplacePanel(livePanel, replacement))
+        {
+            replacement.Dispose();
+            SetError("The panel changed before its connection could be switched.");
+            return false;
+        }
+
+        workspace.AddConnections(Connections.Where(item => item.Id == connection.Id));
+        StartTrackingRecovery(replacement);
+        StartAcceptedRuntimePanel(replacement);
+        QueueRuntimeRecoverySnapshot();
+        return true;
+    }
+
+    public bool ReplacePanelConnection(
+        RuntimePanelViewModel currentPanel,
+        ConnectionId connectionId)
+    {
+        var connection = FindConnection(connectionId);
+        if (connection is null)
+        {
+            SetError("That connection no longer exists.");
+            return false;
+        }
+
+        return ReplacePanelConnection(currentPanel, connection);
+    }
+
+    public bool ReplaceFilePanelProfile(
+        FileRuntimePanelViewModel currentPanel,
+        FileProviderProfileId profileId)
+    {
+        ArgumentNullException.ThrowIfNull(currentPanel);
+        ClearError();
+
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.Tabs.SingleOrDefault(candidate =>
+            candidate.Panels.Any(panel => panel.Id == currentPanel.Id));
+        if (workspace is null || tab is null)
+        {
+            SetError("That File Viewer panel is no longer open.");
+            return false;
+        }
+
+        var livePanel = tab.Panels
+            .OfType<FileRuntimePanelViewModel>()
+            .SingleOrDefault(candidate => candidate.Id == currentPanel.Id);
+        if (livePanel is null)
+        {
+            SetError("The File Viewer changed before its connection could be switched.");
+            return false;
+        }
+
+        var replacement = CreateFilePanel(
+            workspace.Id,
+            tab.Id,
+            livePanel.Id,
+            livePanel.Title,
+            profileId,
+            deferInitialization: true);
+        if (!tab.ReplacePanel(livePanel, replacement))
+        {
+            replacement.Dispose();
+            SetError("The File Viewer changed before its connection could be switched.");
+            return false;
+        }
+
+        StartTrackingRecovery(replacement);
+        StartAcceptedRuntimePanel(replacement);
+        QueueRuntimeRecoverySnapshot();
+        return true;
     }
 
     public async Task<bool> AddFilePanelAsync(
@@ -4178,6 +4442,156 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             cancellationToken);
     }
 
+    public Task<bool> AddSavedConnectionTabAsync(
+        SavedConnectionLaunchViewModel launch,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(launch);
+        return launch.Target switch
+        {
+            PanelConnectionOptionViewModel.Target.Connection connection =>
+                AddConnectionPanelTabAsync(
+                    connection.Id,
+                    launch.Panel,
+                    cancellationToken),
+            PanelConnectionOptionViewModel.Target.FileProvider fileProvider =>
+                AddFileProviderTabAsync(
+                    fileProvider.Id,
+                    launch.Panel,
+                    cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(launch),
+                launch.Target.GetType(),
+                "The saved connection target is unsupported."),
+        };
+    }
+
+    private Task<bool> AddConnectionPanelTabAsync(
+        ConnectionId connectionId,
+        PanelKind panel,
+        CancellationToken cancellationToken)
+    {
+        if (panel == PanelKind.Terminal)
+        {
+            return AddConnectionTabAsync(connectionId, cancellationToken);
+        }
+
+        ClearError();
+        if (!CanAppendSavedDefinitionTab())
+        {
+            return Task.FromResult(false);
+        }
+
+        var workspace = RuntimeWorkspace;
+        var connection = FindConnection(connectionId);
+        var launchItem = Connections.SingleOrDefault(item => item.Id == connectionId);
+        if (workspace is null)
+        {
+            SetError("Open a workspace before adding a saved connection as a tab.");
+            return Task.FromResult(false);
+        }
+
+        if (connection is null)
+        {
+            SetError("That connection no longer exists.");
+            return Task.FromResult(false);
+        }
+
+        if (launchItem is not { CanOpen: true })
+        {
+            SetError(launchItem?.Status ?? "That connection is unavailable on this platform.");
+            return Task.FromResult(false);
+        }
+
+        if (!connection.Endpoint.PanelLaunchCapabilities.Supports(panel))
+        {
+            SetError($"{connection.Name} cannot open {PanelTitle(panel)}.");
+            return Task.FromResult(false);
+        }
+
+        return AppendRuntimeTabAsync(
+            workspace,
+            runtime =>
+            {
+                var currentConnection = FindConnection(connectionId);
+                if (currentConnection is null)
+                {
+                    SetError("That connection no longer exists.");
+                    return null;
+                }
+
+                if (!currentConnection.Endpoint.PanelLaunchCapabilities.Supports(panel))
+                {
+                    SetError($"{currentConnection.Name} cannot open {PanelTitle(panel)}.");
+                    return null;
+                }
+
+                return CreateConnectionPanelTab(
+                    runtime.Id,
+                    currentConnection,
+                    panel,
+                    runtime.AgentPolicy);
+            },
+            $"{PanelTitle(panel)} connection tab creation",
+            cancellationToken);
+    }
+
+    private Task<bool> AddFileProviderTabAsync(
+        FileProviderProfileId profileId,
+        PanelKind panel,
+        CancellationToken cancellationToken)
+    {
+        ClearError();
+        if (!CanAppendSavedDefinitionTab())
+        {
+            return Task.FromResult(false);
+        }
+
+        var workspace = RuntimeWorkspace;
+        var storedProfile = _catalog.Snapshot.FileProviderProfiles
+            .SingleOrDefault(item => item.Value.Id == profileId);
+        if (workspace is null)
+        {
+            SetError("Open a workspace before adding a saved connection as a tab.");
+            return Task.FromResult(false);
+        }
+
+        if (storedProfile is null)
+        {
+            SetError("That file connection no longer exists.");
+            return Task.FromResult(false);
+        }
+
+        if (!storedProfile.Value.Configuration.PanelLaunchCapabilities.Supports(panel))
+        {
+            SetError($"{storedProfile.Value.Name} cannot open {PanelTitle(panel)}.");
+            return Task.FromResult(false);
+        }
+
+        if (_filePanelClient.Profiles.All(profile => profile.Id != profileId.Value))
+        {
+            SetError("That file connection is not ready yet.");
+            return Task.FromResult(false);
+        }
+
+        return AppendRuntimeTabAsync(
+            workspace,
+            runtime =>
+            {
+                var currentProfile = _catalog.Snapshot.FileProviderProfiles
+                    .SingleOrDefault(item => item.Value.Id == profileId);
+                if (currentProfile is null)
+                {
+                    SetError("That file connection no longer exists.");
+                    return null;
+                }
+
+                return CreateFileProviderTab(runtime.Id, currentProfile.Value);
+            },
+            "file connection tab creation",
+            cancellationToken);
+    }
+
     public Task<bool> AddScreenTabAsync(
         ScreenId screenId,
         CancellationToken cancellationToken = default)
@@ -4275,6 +4689,127 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             "tab creation",
             cancellationToken);
     }
+
+    public Task<bool> AddBrowserTabAsync(
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.Browser, cancellationToken);
+
+    public Task<bool> AddFileViewerTabAsync(
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.FileViewer, cancellationToken);
+
+    public Task<bool> AddStatisticsTabAsync(
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.Statistics, cancellationToken);
+
+    public Task<bool> AddProcessMonitorTabAsync(
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.ProcessMonitor, cancellationToken);
+
+    /// <summary>
+    /// Appends a one-panel tab for a local adapter. The New Tab catalog uses this
+    /// path; the visually identical catalog inside a placed placeholder continues
+    /// to use the panel-creation methods instead.
+    /// </summary>
+    private Task<bool> AddSinglePanelTabAsync(
+        PanelKind kind,
+        CancellationToken cancellationToken)
+    {
+        if (kind is not (PanelKind.Browser
+            or PanelKind.FileViewer
+            or PanelKind.Statistics
+            or PanelKind.ProcessMonitor))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+        }
+
+        ClearError();
+        if (HasOverlay)
+        {
+            SetError("Close the current overlay before creating a tab.");
+            return Task.FromResult(false);
+        }
+
+        var workspace = RuntimeWorkspace;
+        if (workspace is null)
+        {
+            SetError("Open a workspace before creating a tab.");
+            return Task.FromResult(false);
+        }
+
+        if (kind == PanelKind.Browser && _browserRendererViewFactory is null)
+        {
+            SetError("The native browser adapter is unavailable in this build.");
+            return Task.FromResult(false);
+        }
+
+        return AppendRuntimeTabAsync(
+            workspace,
+            runtime => CreateSinglePanelTab(runtime.Id, kind),
+            $"{SinglePanelTabTitle(kind)} tab creation",
+            cancellationToken);
+    }
+
+    private RuntimeTabViewModel? CreateSinglePanelTab(
+        WorkspaceInstanceId workspaceId,
+        PanelKind kind)
+    {
+        var title = SinglePanelTabTitle(kind);
+        var source = kind is PanelKind.Statistics or PanelKind.ProcessMonitor
+            ? "LOCAL HOST"
+            : "LOCAL";
+        var tab = new RuntimeTabViewModel(TabInstanceId.New(), title, source);
+        try
+        {
+            var panel = kind switch
+            {
+                PanelKind.Browser => CreateBrowserPanel(
+                    workspaceId,
+                    tab.Id,
+                    PanelInstanceId.New(),
+                    title,
+                    BrowserAddress.Blank),
+                PanelKind.FileViewer => CreateFilePanel(
+                    workspaceId,
+                    tab.Id,
+                    PanelInstanceId.New(),
+                    title,
+                    deferInitialization: true),
+                PanelKind.Statistics or PanelKind.ProcessMonitor =>
+                    CreateMonitorPanel(
+                        workspaceId,
+                        tab.Id,
+                        PanelInstanceId.New(),
+                        title,
+                        kind),
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+            };
+            if (kind == PanelKind.Browser
+                && panel is not BrowserRuntimePanelViewModel)
+            {
+                SetError("The native browser adapter could not be initialized.");
+                panel.Dispose();
+                return null;
+            }
+
+            AddPanelOrDispose(tab, panel);
+            return tab;
+        }
+        catch
+        {
+            tab.DisposePanels();
+            throw;
+        }
+    }
+
+    private static string SinglePanelTabTitle(PanelKind kind) => kind switch
+    {
+        PanelKind.Browser => "Browser",
+        PanelKind.FileViewer => "File Viewer",
+        PanelKind.Statistics => "Statistics",
+        PanelKind.ProcessMonitor => "Process Monitor",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
 
     private bool CanAppendSavedDefinitionTab()
     {
@@ -5278,7 +5813,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 error.Code == RecentSessionStoreErrorCode.StorageUnavailable
                     ? ApplicationRunErrorCode.StorageUnavailable
                     : ApplicationRunErrorCode.StorageFailure,
-                "Recent-session metadata could not be persisted safely."));
+                $"Recent-session metadata could not be persisted safely: {error.Message}"));
     }
 
     private void ActivateRuntimeWorkspace(
@@ -6486,7 +7021,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 }
             }
 
-            await RefreshRecentSessionsCoreAsync(token);
+            // Once the desktop lifetime has ended there is no visible history view to
+            // refresh, and its dispatcher is no longer available. The durable completion
+            // above is the only shutdown work this operation owns.
+            if (!_shutdownStarted)
+            {
+                await RefreshRecentSessionsCoreAsync(token);
+            }
         });
     }
 
@@ -6522,11 +7063,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            ApplyRecentSessionFailure(new RecentSessionStoreError(
+            var error = new RecentSessionStoreError(
                 RecentSessionStoreErrorCode.StorageFailure,
-                "Recent-session metadata is temporarily unavailable."));
+                $"Recent-session metadata is temporarily unavailable ({exception.GetType().Name}).");
+            Console.Error.WriteLine(
+                $"[ghostshell:history] queued history operation failed: {exception}");
+            ApplyRecentSessionFailure(error);
         }
     }
 
@@ -6881,6 +7425,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             Screens.Take(HomePreviewScreenCount).ToArray(),
             static (a, b) => a.PresentsSameAs(b));
         OnPropertyChanged(nameof(HasConnections));
+        OnPropertyChanged(nameof(PanelConnectionOptions));
+        OnPropertyChanged(nameof(FileConnectionOptions));
         OnPropertyChanged(nameof(HasNoConnections));
         OnPropertyChanged(nameof(HasScreens));
         OnPropertyChanged(nameof(HasNoScreens));
@@ -7029,6 +7575,117 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             })],
             static (a, b) => a == b);
         OnPropertyChanged(nameof(FileProviderProfiles));
+        OnPropertyChanged(nameof(FileConnectionOptions));
+        OnPropertyChanged(nameof(SavedConnectionShortcuts));
+    }
+
+    private IReadOnlyList<SavedConnectionShortcutViewModel> BuildSavedConnectionShortcuts()
+    {
+        var connectionItems = Connections.ToDictionary(item => item.Id);
+        var shortcuts = _catalog.Snapshot.Connections
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item =>
+            {
+                connectionItems.TryGetValue(item.Value.Id, out var launchItem);
+                return CreateSavedConnectionShortcut(
+                    new PanelConnectionOptionViewModel.Target.Connection(item.Value.Id),
+                    item.Value.Name,
+                    ConnectionKindBadge(item.Value.ConnectionKind),
+                    launchItem is { CanOpen: true },
+                    item.Value.Endpoint.PanelLaunchCapabilities);
+            })
+            .ToList();
+
+        var liveFileProfiles = _filePanelClient.Profiles
+            .Select(profile => profile.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        shortcuts.AddRange(_catalog.Snapshot.FileProviderProfiles
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => CreateSavedConnectionShortcut(
+                new PanelConnectionOptionViewModel.Target.FileProvider(item.Value.Id),
+                item.Value.Name,
+                FileProviderKindLabel(item.Value.ProviderKind),
+                liveFileProfiles.Contains(item.Value.Id.Value),
+                item.Value.Configuration.PanelLaunchCapabilities)));
+        return shortcuts
+            .OrderBy(shortcut => shortcut.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(shortcut => shortcut.Kind, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static SavedConnectionShortcutViewModel CreateSavedConnectionShortcut(
+        PanelConnectionOptionViewModel.Target target,
+        string name,
+        string kind,
+        bool canOpen,
+        PanelLaunchCapabilities capabilities)
+    {
+        var launches = capabilities.SupportedPanels
+            .Select(panel => new SavedConnectionLaunchViewModel(
+                target,
+                panel,
+                PanelLaunchLabel(panel),
+                PanelLaunchIcon(panel)))
+            .ToArray();
+        var defaultLaunch = launches.Single(launch =>
+            launch.Panel == capabilities.DefaultPanel);
+        return new SavedConnectionShortcutViewModel(
+            target,
+            name,
+            kind,
+            canOpen,
+            defaultLaunch,
+            launches.Where(launch => launch != defaultLaunch).ToArray());
+    }
+
+    private static string PanelLaunchLabel(PanelKind panel) => panel switch
+    {
+        PanelKind.Terminal => "Open terminal",
+        PanelKind.FileViewer => "Open files",
+        PanelKind.Statistics => "Open statistics",
+        PanelKind.ProcessMonitor => "Open processes",
+        _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
+    };
+
+    private static Symbol PanelLaunchIcon(PanelKind panel) => panel switch
+    {
+        PanelKind.Terminal => Symbol.WindowConsole,
+        PanelKind.FileViewer => Symbol.Folder,
+        PanelKind.Statistics => Symbol.PulseSquare,
+        PanelKind.ProcessMonitor => Symbol.Gauge,
+        _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
+    };
+
+    private IReadOnlyList<PanelConnectionOptionViewModel> BuildFileConnectionOptions()
+    {
+        var liveProfiles = _filePanelClient.Profiles.ToDictionary(
+            profile => profile.Id,
+            StringComparer.Ordinal);
+        var options = _catalog.Snapshot.FileProviderProfiles
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => new PanelConnectionOptionViewModel(
+                new PanelConnectionOptionViewModel.Target.FileProvider(item.Value.Id),
+                item.Value.Name,
+                FileProviderKindLabel(item.Value.ProviderKind),
+                FileProviderEndpoint(item.Value.Configuration),
+                liveProfiles.ContainsKey(item.Value.Id.Value)))
+            .ToList();
+        var durableIds = _catalog.Snapshot.FileProviderProfiles
+            .Select(item => item.Value.Id.Value)
+            .ToHashSet(StringComparer.Ordinal);
+        options.AddRange(liveProfiles.Values
+            .Where(profile => !durableIds.Contains(profile.Id))
+            .Select(profile => new PanelConnectionOptionViewModel(
+                new PanelConnectionOptionViewModel.Target.FileProvider(
+                    new FileProviderProfileId(profile.Id)),
+                profile.Name,
+                FileProviderFamilyLabel(profile.Family),
+                FileProviderDetail(profile),
+                true)));
+        return options
+            .OrderBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(option => option.Kind, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private void RefreshAiProviderDefinitions(DefinitionCatalogSnapshot snapshot)
@@ -7543,7 +8200,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var canStartFileViewer = RuntimeWorkspace?.ActiveTab is not null
             || Workspaces.Count > 0
             || Connections.Any(connection => connection.CanOpen);
-        var canStartBrowser = CanCreateBrowserPanel;
+        var canStartBrowser = CanStartBrowserSession;
         candidates.AddRange(
         [
             new LauncherSearchResultViewModel(
@@ -7566,9 +8223,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 canStartBrowser,
                 canStartBrowser
                     ? null
-                    : _browserRendererViewFactory is null
-                        ? "The native browser adapter is unavailable in this build."
-                        : "Open a workspace tab before adding a browser panel.",
+                    : "The native browser adapter is unavailable in this build.",
                 ["create", "new", "browser", "web", "panel"]),
             new LauncherSearchResultViewModel(
                 new LauncherSearchTarget.CreatePanel(PanelKind.FileViewer),
@@ -7850,14 +8505,99 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    private RuntimeTabViewModel CreateConnectionPanelTab(
+        WorkspaceInstanceId workspaceId,
+        ConnectionProfile connection,
+        PanelKind panel,
+        RuntimeAgentPolicyProvenance agentPolicy)
+    {
+        if (panel == PanelKind.Terminal)
+        {
+            return CreateConnectionTab(
+                workspaceId,
+                connection,
+                agentPolicy: agentPolicy);
+        }
+
+        var title = PanelTitle(panel);
+        var tab = new RuntimeTabViewModel(
+            TabInstanceId.New(),
+            title,
+            connection.Name,
+            historySource: new RuntimeHistorySource(connection.Key, connection.Name),
+            agentPolicy: agentPolicy);
+        try
+        {
+            var runtimePanel = panel switch
+            {
+                PanelKind.FileViewer => CreateFilePanel(
+                    workspaceId,
+                    tab.Id,
+                    PanelInstanceId.New(),
+                    title,
+                    connection.Endpoint is ConnectionEndpoint.Ssh
+                        ? ConnectionFileProviderProfiles.Id(connection.Id)
+                        : BuiltInFileProviders.HomeId,
+                    deferInitialization: true,
+                    connection: connection),
+                PanelKind.Statistics or PanelKind.ProcessMonitor =>
+                    CreateMonitorPanel(
+                        workspaceId,
+                        tab.Id,
+                        PanelInstanceId.New(),
+                        title,
+                        panel,
+                        connection),
+                _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
+            };
+            AddPanelOrDispose(tab, runtimePanel);
+            return tab;
+        }
+        catch
+        {
+            tab.DisposePanels();
+            throw;
+        }
+    }
+
+    private RuntimeTabViewModel CreateFileProviderTab(
+        WorkspaceInstanceId workspaceId,
+        FileProviderProfile profile)
+    {
+        var title = PanelTitle(PanelKind.FileViewer);
+        var tab = new RuntimeTabViewModel(
+            TabInstanceId.New(),
+            profile.Name,
+            FileProviderKindLabel(profile.ProviderKind),
+            historySource: new RuntimeHistorySource(profile.Key, profile.Name));
+        try
+        {
+            AddPanelOrDispose(
+                tab,
+                CreateFilePanel(
+                    workspaceId,
+                    tab.Id,
+                    PanelInstanceId.New(),
+                    title,
+                    profile.Id,
+                    deferInitialization: true));
+            return tab;
+        }
+        catch
+        {
+            tab.DisposePanels();
+            throw;
+        }
+    }
+
     private RuntimeWorkspaceViewModel RestoreWorkspace(
         RuntimeWorkspaceRecoveryPayload recovered)
     {
         var connectionIds = recovered.ConnectionIds
             .Concat(recovered.Tabs
                 .SelectMany(tab => tab.Panels)
-                .Where(panel => panel.Kind == RuntimePanelRecoveryKind.Terminal)
-                .Select(panel => panel.ConnectionId!))
+                .Select(panel => panel.ConnectionId)
+                .OfType<string>())
             .Select(id => new ConnectionId(id))
             .ToHashSet();
         var runtime = new RuntimeWorkspaceViewModel(
@@ -7954,7 +8694,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (recovered.Kind == RuntimePanelRecoveryKind.Terminal)
         {
-            var connection = FindConnection(new ConnectionId(recovered.ConnectionId!));
+            var connection = recovered.ConnectionId is { } statisticsConnectionId
+                ? FindConnection(new ConnectionId(statisticsConnectionId))
+                : LocalConnection();
             return connection is null
                 ? new UnavailableRuntimePanelViewModel(
                     PanelInstanceId.New(),
@@ -7981,7 +8723,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 recovered.Title,
                 profileId is null ? null : new FileProviderProfileId(profileId),
                 location,
-                deferInitialization: true);
+                deferInitialization: true,
+                connection: recovered.ConnectionId is { } fileConnectionId
+                    ? FindConnection(new ConnectionId(fileConnectionId))
+                    : null);
             panel.Filter = recovered.Filter ?? string.Empty;
             panel.ShowHidden = recovered.ShowHidden;
             return panel;
@@ -8008,22 +8753,48 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Statistics)
         {
+            var connection = recovered.ConnectionId is { } processConnectionId
+                ? FindConnection(new ConnectionId(processConnectionId))
+                : LocalConnection();
+            if (connection is null)
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Statistics,
+                    recovered.Title,
+                    "STATISTICS",
+                    "The recovered monitoring connection is no longer available.");
+            }
+
             return CreateMonitorPanel(
                 workspaceId,
                 tabId,
                 PanelInstanceId.New(),
                 recovered.Title,
-                PanelKind.Statistics);
+                PanelKind.Statistics,
+                connection);
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.ProcessMonitor)
         {
+            var connection = FindConnection(new ConnectionId(recovered.ConnectionId!));
+            if (connection is null)
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.ProcessMonitor,
+                    recovered.Title,
+                    "PROCESS MONITOR",
+                    "The recovered monitoring connection is no longer available.");
+            }
+
             return CreateMonitorPanel(
                 workspaceId,
                 tabId,
                 PanelInstanceId.New(),
                 recovered.Title,
-                PanelKind.ProcessMonitor);
+                PanelKind.ProcessMonitor,
+                connection);
         }
 
         return new UnavailableRuntimePanelViewModel(
@@ -8220,19 +8991,25 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         TabInstanceId tabId,
         ConnectionProfile connection,
         string title,
-        PanelStartupBehavior startup)
+        PanelStartupBehavior startup,
+        PanelInstanceId? panelId = null)
     {
-        var panelId = PanelInstanceId.New();
+        var resolvedPanelId = panelId ?? PanelInstanceId.New();
         var terminalProfile = ActiveTerminalProfile;
         var terminalKeymap = terminalProfile is null
             ? null
             : ResolveTerminalKeymap(_catalog.Snapshot, terminalProfile.KeymapId);
         return new TerminalRuntimePanelViewModel(
-            panelId,
+            resolvedPanelId,
             title,
             _connectionRuntime,
             connection,
-            new SessionOwner(HostMode.Desktop, WindowId, workspaceId, tabId, panelId),
+            new SessionOwner(
+                HostMode.Desktop,
+                WindowId,
+                workspaceId,
+                tabId,
+                resolvedPanelId),
             startup,
             terminalProfile is not null
                 ? TerminalRenderProfileSnapshot.FromProfile(terminalProfile)
@@ -8270,8 +9047,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         FileProviderProfileId? initialProfileId = null,
         FilePanelLocation? initialLocation = null,
         string? initialLocationText = null,
-        bool deferInitialization = false)
+        bool deferInitialization = false,
+        ConnectionProfile? connection = null)
     {
+        connection ??= ConnectionForFileProfile(initialProfileId) ?? LocalConnection();
         var profile = ResolveFileProfile(initialProfileId);
         var hostInitialLocation = initialLocation ?? profile?.Root;
         var owner = new SessionOwner(
@@ -8306,7 +9085,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             initialProfileId,
             initialLocation,
             initialLocationText,
-            deferInitialization);
+            deferInitialization,
+            connection);
     }
 
     private FileProviderProfileDescriptor? ResolveFileProfile(
@@ -8370,8 +9150,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         TabInstanceId tabId,
         PanelInstanceId panelId,
         string title,
-        PanelKind kind)
+        PanelKind kind,
+        ConnectionProfile? connection = null)
     {
+        connection ??= LocalConnection() ?? BuiltInConnections.Local;
         var owner = new SessionOwner(
             HostMode.Desktop,
             WindowId,
@@ -8386,6 +9168,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 SessionClient,
                 ClientId,
                 owner,
+                connection,
                 _uiThreadDispatcher),
             PanelKind.ProcessMonitor => new ProcessMonitorRuntimePanelViewModel(
                 panelId,
@@ -8393,6 +9176,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 SessionClient,
                 ClientId,
                 owner,
+                connection,
                 _uiThreadDispatcher),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
@@ -8497,6 +9281,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         .Select(item => item.Value)
         .SingleOrDefault(item => item.Id == id);
 
+    private ConnectionProfile? LocalConnection() => _catalog.Snapshot.Connections
+        .Select(item => item.Value)
+        .FirstOrDefault(item => item.Endpoint is ConnectionEndpoint.Local);
+
+    private ConnectionProfile? ConnectionForFileProfile(FileProviderProfileId? profileId)
+    {
+        if (profileId is null || profileId == BuiltInFileProviders.HomeId)
+        {
+            return LocalConnection();
+        }
+
+        return _catalog.Snapshot.Connections
+            .Select(item => item.Value)
+            .Where(item => item.Endpoint is ConnectionEndpoint.Ssh)
+            .FirstOrDefault(item =>
+                ConnectionFileProviderProfiles.Id(item.Id) == profileId.Value);
+    }
+
     private const int DefaultSshPort = 22;
 
     private const int ScreenSummaryConnectionLimit = 2;
@@ -8590,6 +9392,43 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             FileProviderConfiguration.WebDav value => value.BaseUri.AbsoluteUri,
             _ => "Unsupported provider",
         };
+
+    private static string FileProviderKindLabel(FileProviderKind kind) => kind switch
+    {
+        FileProviderKind.Local => "LOCAL",
+        FileProviderKind.S3 => "S3",
+        FileProviderKind.Sftp => "SFTP",
+        FileProviderKind.Ftp => "FTP/FTPS",
+        FileProviderKind.Smb => "SMB",
+        FileProviderKind.WebDav => "WEBDAV",
+        _ => kind.ToString().ToUpperInvariant(),
+    };
+
+    private static string FileProviderFamilyLabel(FileProviderFamily family) => family switch
+    {
+        FileProviderFamily.Posix or FileProviderFamily.Windows => "LOCAL",
+        FileProviderFamily.S3 => "S3",
+        FileProviderFamily.Sftp => "SFTP",
+        FileProviderFamily.Ftp => "FTP/FTPS",
+        FileProviderFamily.Smb => "SMB",
+        FileProviderFamily.WebDav => "WEBDAV",
+        _ => family.ToString().ToUpperInvariant(),
+    };
+
+    private static string FileProviderDetail(FileProviderProfileDescriptor profile)
+    {
+        var root = FileLocationPresentation.Display(profile.Root);
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return string.IsNullOrWhiteSpace(profile.Root.Authority)
+                ? "Configured root"
+                : profile.Root.Authority;
+        }
+
+        return string.IsNullOrWhiteSpace(profile.Root.Authority)
+            ? root
+            : $"{profile.Root.Authority} · {root}";
+    }
 
     public Task QuiesceForShutdownAsync(CancellationToken cancellationToken)
     {
@@ -8743,6 +9582,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private static string PanelTitle(PanelKind kind) => kind switch
     {
+        PanelKind.Terminal => "Terminal",
+        PanelKind.Browser => "Browser",
+        PanelKind.FileViewer => "File Viewer",
         PanelKind.Statistics => "Statistics",
         PanelKind.ProcessMonitor => "Process Monitor",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),

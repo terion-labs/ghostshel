@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia.Controls;
 using GhostShell.App;
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -9,6 +10,14 @@ namespace GhostShell.App.Tests;
 
 public sealed class BrowserRuntimePanelViewModelTests
 {
+    [Fact]
+    public void Blank_browser_address_starts_as_empty_editor_text()
+    {
+        var browser = new BrowserPresentationHost();
+
+        Assert.Empty(browser.AddressText);
+    }
+
     [Fact]
     public void BrowserStateFlowsIntoRecoveryAndRendererLifetimeIsReleasedOnce()
     {

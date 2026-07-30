@@ -45,7 +45,7 @@ public sealed class RuntimePanelResizeTests
         }
 
         var before = tab.ColumnWeights.ToArray();
-        Assert.True(tab.MoveColumnSplit(0, 0.1, 0.1));
+        Assert.True(tab.MoveColumnSplit(0, 100, 1_000));
 
         Assert.Equal(before[0] + 0.1, tab.ColumnWeights[0], 6);
         Assert.Equal(before[1] - 0.1, tab.ColumnWeights[1], 6);
@@ -65,10 +65,118 @@ public sealed class RuntimePanelResizeTests
             return;
         }
 
-        Assert.True(tab.MoveColumnSplit(0, 5, 0.2));
+        Assert.True(tab.MoveColumnSplit(0, 5_000, 1_000));
 
-        Assert.Equal(0.8, tab.ColumnWeights[0], 6);
-        Assert.Equal(0.2, tab.ColumnWeights[1], 6);
+        Assert.Equal(0.78, tab.ColumnWeights[0], 6);
+        Assert.Equal(0.22, tab.ColumnWeights[1], 6);
+    }
+
+    [Fact]
+    public void Window_resize_does_not_make_the_next_drag_jump()
+    {
+        var tab = Tab(2);
+        Assert.True(tab.MoveColumnSplit(0, 5_000, 1_000));
+        var atLargeViewport = tab.ColumnWeights.ToArray();
+
+        // At 300 px the requested panel minimums no longer fit. A drag farther
+        // into the invalid side is refused without rewriting the stored split.
+        Assert.False(tab.MoveColumnSplit(0, 10, 300));
+        Assert.Equal(atLargeViewport, tab.ColumnWeights);
+
+        // Reversing direction moves by exactly the new pointer delta; it does not
+        // jump to a limit derived from the resized window.
+        Assert.True(tab.MoveColumnSplit(0, -10, 300));
+        Assert.Equal(atLargeViewport[0] - (10d / 300), tab.ColumnWeights[0], 6);
+        Assert.Equal(atLargeViewport[1] + (10d / 300), tab.ColumnWeights[1], 6);
+    }
+
+    [Fact]
+    public void A_spanning_panel_minimum_constrains_its_whole_span()
+    {
+        var leftSlot = new LayoutSlotDefinition(
+            new LayoutSlotId("left"),
+            new LayoutGridBounds(0, 0, 2, 1),
+            new LayoutMinimumSize(300, 140));
+        var rightSlot = new LayoutSlotDefinition(
+            new LayoutSlotId("right"),
+            new LayoutGridBounds(2, 0, 1, 1),
+            new LayoutMinimumSize(150, 140));
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId("spanning-tab"),
+            "Spanning",
+            "source",
+            new LayoutDefinition(
+                new LayoutId("spanning-layout"),
+                LayoutDefinition.CurrentSchemaVersion,
+                "Spanning",
+                new LayoutGrid(3, 1),
+                [leftSlot, rightSlot]));
+        tab.AddPanel(
+            new UnavailableRuntimePanelViewModel(
+                new PanelInstanceId("left-panel"),
+                PanelKind.Terminal,
+                "Left",
+                "LOCAL",
+                "unavailable"),
+            leftSlot.Id);
+        tab.AddPanel(
+            new UnavailableRuntimePanelViewModel(
+                new PanelInstanceId("right-panel"),
+                PanelKind.Terminal,
+                "Right",
+                "LOCAL",
+                "unavailable"),
+            rightSlot.Id);
+
+        Assert.True(tab.MoveColumnSplit(1, -5_000, 600));
+        Assert.Equal(0.5, tab.ColumnWeights.Take(2).Sum(), 6);
+
+        Assert.True(tab.MoveColumnSplit(1, 5_000, 600));
+        Assert.Equal(0.75, tab.ColumnWeights.Take(2).Sum(), 6);
+    }
+
+    [Fact]
+    public void Uneven_panel_minimums_use_the_exact_required_canvas()
+    {
+        var leftSlot = new LayoutSlotDefinition(
+            new LayoutSlotId("small"),
+            new LayoutGridBounds(0, 0, 1, 1),
+            new LayoutMinimumSize(100, 140));
+        var rightSlot = new LayoutSlotDefinition(
+            new LayoutSlotId("large"),
+            new LayoutGridBounds(1, 0, 1, 1),
+            new LayoutMinimumSize(500, 140));
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId("uneven-tab"),
+            "Uneven",
+            "source",
+            new LayoutDefinition(
+                new LayoutId("uneven-layout"),
+                LayoutDefinition.CurrentSchemaVersion,
+                "Uneven",
+                new LayoutGrid(2, 1),
+                [leftSlot, rightSlot]));
+        tab.AddPanel(
+            new UnavailableRuntimePanelViewModel(
+                new PanelInstanceId("small-panel"),
+                PanelKind.Terminal,
+                "Small",
+                "LOCAL",
+                "unavailable"),
+            leftSlot.Id);
+        tab.AddPanel(
+            new UnavailableRuntimePanelViewModel(
+                new PanelInstanceId("large-panel"),
+                PanelKind.Terminal,
+                "Large",
+                "LOCAL",
+                "unavailable"),
+            rightSlot.Id);
+
+        Assert.Equal(600, tab.MinimumCanvasWidth);
+        Assert.True(tab.MoveColumnSplit(0, -5_000, 600));
+        Assert.Equal(1d / 6, tab.ColumnWeights[0], 6);
+        Assert.Equal(5d / 6, tab.ColumnWeights[1], 6);
     }
 
     /// <summary>
@@ -121,8 +229,10 @@ public sealed class RuntimePanelResizeTests
     {
         var tab = Tab(2);
 
-        Assert.False(tab.MoveColumnSplit(-1, 0.1, 0.1));
-        Assert.False(tab.MoveColumnSplit(99, 0.1, 0.1));
-        Assert.False(tab.MoveColumnSplit(0, double.NaN, 0.1));
+        Assert.False(tab.MoveColumnSplit(-1, 10, 500));
+        Assert.False(tab.MoveColumnSplit(99, 10, 500));
+        Assert.False(tab.MoveColumnSplit(0, double.NaN, 500));
+        Assert.False(tab.MoveColumnSplit(0, 10, double.NaN));
+        Assert.False(tab.MoveColumnSplit(0, 10, 0));
     }
 }

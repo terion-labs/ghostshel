@@ -9,7 +9,7 @@ namespace GhostShell.Core;
 [JsonDerivedType(typeof(FileProviderConfiguration.Ftp), "ftp")]
 [JsonDerivedType(typeof(FileProviderConfiguration.Smb), "smb")]
 [JsonDerivedType(typeof(FileProviderConfiguration.WebDav), "webdav")]
-public abstract record FileProviderConfiguration
+public abstract record FileProviderConfiguration : IPanelLaunchCapabilitySource
 {
     private FileProviderConfiguration()
     {
@@ -17,6 +17,10 @@ public abstract record FileProviderConfiguration
 
     [JsonIgnore]
     public abstract FileProviderKind Kind { get; }
+
+    [JsonIgnore]
+    public PanelLaunchCapabilities PanelLaunchCapabilities =>
+        BuiltInPanelLaunchCapabilities.FilesOnly;
 
     public sealed record Local : FileProviderConfiguration
     {

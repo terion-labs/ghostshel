@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Windows.Input;
+using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -60,6 +61,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private const int DefaultPreviewBytes = 256 * 1024;
     private const int MaximumFormattedBinaryBytes = 16 * 1024;
     private readonly IFilePanelClient _client;
+    private readonly ConnectionProfile _connection;
     private readonly IHostedFilePanelClient? _hostedClient;
     private readonly IFileTransferQueueClient? _transferQueue;
     private readonly IFileProviderProfileRuntime? _profileRuntime;
@@ -96,9 +98,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private bool _isLoading;
     private bool _isPreviewLoading;
     private bool _isMetadataLoading;
+    private bool _isPreviewVisible = true;
     private FileEntrySortField _sortField = FileEntrySortField.Name;
     private FileEntrySortDirection _sortDirection = FileEntrySortDirection.Ascending;
     private FileBrowserViewMode _viewMode = FileBrowserViewMode.Details;
+    private GridLength _fileNameColumnWidth = new(1, GridUnitType.Star);
+    private GridLength _fileSizeColumnWidth = new(90);
+    private GridLength _fileModifiedColumnWidth = new(140);
     private bool _initialSelectionPending;
     private bool _initialSelectionRetryRequested;
     private bool _hasLoadedListing;
@@ -113,10 +119,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         FileProviderProfileId? initialProfileId = null,
         FilePanelLocation? initialLocation = null,
         string? initialLocationText = null,
-        bool deferInitialization = false)
+        bool deferInitialization = false,
+        ConnectionProfile? connection = null)
         : base(id, PanelKind.FileViewer, title, "FILES")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
+        _connection = connection ?? BuiltInConnections.Local;
         _retryCommand = new AsyncActionCommand(
             () => RetryAsync(),
             () => CanRetryContentState);
@@ -185,6 +193,30 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public IHostedFilePanelClient? HostedClient => _hostedClient;
 
+    public ConnectionId ConnectionId => _connection.Id;
+
+    public string ConnectionDisplayName =>
+        SelectedProfile is null
+            ? (_connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name)
+            : SelectedProfile.Id == BuiltInFileProviders.HomeId.Value
+                ? "Local"
+                : SelectedProfile.Name;
+
+    public bool UsesConnection(ConnectionId connectionId)
+    {
+        if (SelectedProfile?.Id == BuiltInFileProviders.HomeId.Value)
+        {
+            return connectionId == _connection.Id
+                && _connection.Endpoint is ConnectionEndpoint.Local;
+        }
+
+        return SelectedProfile?.Id == ConnectionFileProviderProfiles.Id(connectionId).Value;
+    }
+
+    public bool UsesProfile(FileProviderProfileId profileId) =>
+        SelectedProfile?.Id == profileId.Value
+        || (SelectedProfile is null && _initialProfileId == profileId.Value);
+
     public FileProviderProfileDescriptor? SelectedProfile
     {
         get => _selectedProfile;
@@ -192,6 +224,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (SetProperty(ref _selectedProfile, value))
             {
+                OnPropertyChanged(nameof(ConnectionDisplayName));
                 OnPropertyChanged(nameof(CanCreateFolder));
                 OnPropertyChanged(nameof(CanRename));
                 OnPropertyChanged(nameof(CanDelete));
@@ -354,6 +387,24 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool IsGridView => ViewMode == FileBrowserViewMode.Grid;
 
+    public GridLength FileNameColumnWidth
+    {
+        get => _fileNameColumnWidth;
+        set => SetProperty(ref _fileNameColumnWidth, value);
+    }
+
+    public GridLength FileSizeColumnWidth
+    {
+        get => _fileSizeColumnWidth;
+        set => SetProperty(ref _fileSizeColumnWidth, value);
+    }
+
+    public GridLength FileModifiedColumnWidth
+    {
+        get => _fileModifiedColumnWidth;
+        set => SetProperty(ref _fileModifiedColumnWidth, value);
+    }
+
     public void ChangeSort(FileEntrySortField field)
     {
         if (!Enum.IsDefined(field))
@@ -396,6 +447,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (SetProperty(ref _isLoading, value))
             {
+                NotifyFileInteractionStateChanged();
                 OnPropertyChanged(nameof(ShowEmptyState));
                 OnContentPresentationChanged();
             }
@@ -419,6 +471,25 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         get => _isMetadataLoading;
         private set => SetProperty(ref _isMetadataLoading, value);
     }
+
+    /// <summary>
+    /// Whether the optional inspector occupies layout space. Preview content is
+    /// retained while hidden, so reopening the panel does not repeat a remote read.
+    /// </summary>
+    public bool IsPreviewVisible
+    {
+        get => _isPreviewVisible;
+        set
+        {
+            if (SetProperty(ref _isPreviewVisible, value))
+            {
+                OnPropertyChanged(nameof(PreviewVisibilityStatus));
+            }
+        }
+    }
+
+    public string PreviewVisibilityStatus =>
+        IsPreviewVisible ? "Preview visible" : "Preview hidden";
 
     public string Status
     {
@@ -538,7 +609,10 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public FileBrowserContentState ContentState => ContentPresentation.State;
 
-    public bool ShowLoadingState => ContentState == FileBrowserContentState.Loading;
+    public bool ShowLoadingState =>
+        ContentState == FileBrowserContentState.Loading && !_hasLoadedListing;
+
+    public bool ShowNavigationProgress => IsLoading && _hasLoadedListing;
 
     public bool ShowEmptyLocationState =>
         ContentState == FileBrowserContentState.EmptyLocation;
@@ -554,40 +628,47 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public ICommand RetryCommand => _retryCommand;
 
-    public bool CanSelectProfile => !IsInitialHostedBindingPending;
+    public bool CanSelectProfile => !IsLoading && !IsInitialHostedBindingPending;
 
-    public bool CanEditLocation => !IsInitialHostedBindingPending;
+    public bool CanEditLocation => !IsLoading && !IsInitialHostedBindingPending;
 
-    public bool CanNavigateUp => !IsInitialHostedBindingPending
+    public bool CanNavigateUp => !IsLoading
+        && !IsInitialHostedBindingPending
         && CurrentLocation?.Address is FilePanelAddress.Hierarchical hierarchical
         && !hierarchical.Path.IsRoot;
 
     public bool HasMore => !string.IsNullOrWhiteSpace(_continuationToken);
 
-    public bool CanCreateFolder => !IsInitialHostedBindingPending
+    public bool CanCreateFolder => !IsLoading
+        && !IsInitialHostedBindingPending
         && SelectedProfile?.Capabilities.HasFlag(
         FilePanelCapability.CreateDirectory) == true
         && CurrentLocation?.Address is FilePanelAddress.Hierarchical;
 
-    public bool CanRename => SelectedEntry is not null
+    public bool CanRename => !IsLoading
+        && SelectedEntry is not null
         && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Rename) == true;
 
-    public bool CanDelete => SelectedEntry is not null
+    public bool CanDelete => !IsLoading
+        && SelectedEntry is not null
         && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Delete) == true;
 
-    public bool CanTransfer => _transferQueue is not null
+    public bool CanTransfer => !IsLoading
+        && _transferQueue is not null
         && SelectedEntry?.Entry.Kind == FilePanelEntryKind.File;
 
     public bool CanDownload => CanTransfer
         && Profiles.Any(profile => profile.Id == "builtin.files.home");
 
-    public bool CanUpload => !IsInitialHostedBindingPending
+    public bool CanUpload => !IsLoading
+        && !IsInitialHostedBindingPending
         && _transferQueue is not null
         && CurrentLocation is not null
         && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.StreamingWrite) == true
         && Profiles.Any(profile => profile.Id == "builtin.files.home");
 
-    public bool CanOpenExternally => SelectedProfile?.Id == "builtin.files.home"
+    public bool CanOpenExternally => !IsLoading
+        && SelectedProfile?.Id == "builtin.files.home"
         && SelectedEntry?.Entry.Kind == FilePanelEntryKind.File;
 
     private bool IsInitialHostedBindingPending =>
@@ -1243,11 +1324,6 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         CancellationToken cancellationToken)
     {
         var operation = ReplaceNavigation(cancellationToken);
-        if (!append)
-        {
-            ResetListing();
-        }
-
         IsLoading = true;
         ClearError();
         Status = append ? "Loading more items…" : "Loading folder…";
@@ -1271,6 +1347,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (!operation.IsCancellationRequested)
             {
+                if (!append)
+                {
+                    ResetListing();
+                }
+
                 SetContentIssue(FileOperationIssue.Unexpected(
                     "The file provider failed unexpectedly while listing this location."));
             }
@@ -1292,9 +1373,21 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
         if (!result.IsSuccess)
         {
+            if (!append)
+            {
+                ResetListing();
+            }
+
             Status = "Location unavailable";
             SetContentIssue(FileOperationIssue.FromProvider(result.Error!));
             return;
+        }
+
+        if (!append)
+        {
+            // Preserve the current folder until the replacement has arrived. Clearing and
+            // repopulating now happens in one UI turn, avoiding a blank loading frame.
+            ResetListing();
         }
 
         _allEntries.AddRange(result.Value!.Entries);
@@ -1307,11 +1400,21 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     private void NotifyInitialBindingStateChanged()
     {
+        NotifyFileInteractionStateChanged();
+    }
+
+    private void NotifyFileInteractionStateChanged()
+    {
         OnPropertyChanged(nameof(CanSelectProfile));
         OnPropertyChanged(nameof(CanEditLocation));
         OnPropertyChanged(nameof(CanNavigateUp));
         OnPropertyChanged(nameof(CanCreateFolder));
+        OnPropertyChanged(nameof(CanRename));
+        OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(CanTransfer));
+        OnPropertyChanged(nameof(CanDownload));
         OnPropertyChanged(nameof(CanUpload));
+        OnPropertyChanged(nameof(CanOpenExternally));
     }
 
     private async Task LoadMetadataAsync(
@@ -1671,6 +1774,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(ContentPresentation));
         OnPropertyChanged(nameof(ContentState));
         OnPropertyChanged(nameof(ShowLoadingState));
+        OnPropertyChanged(nameof(ShowNavigationProgress));
         OnPropertyChanged(nameof(ShowEmptyLocationState));
         OnPropertyChanged(nameof(ShowSearchNoResultsState));
         OnPropertyChanged(nameof(ShowErrorState));

@@ -5,13 +5,15 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Focusable="False"
     HorizontalContentAlignment="Stretch">
-  <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+  <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
     <TextBlock
         FontSize="{DynamicResource ShellFontSize25}"
         FontWeight="SemiBold"
+        LineHeight="{DynamicResource ShellLineHeight25}"
         Text="{Binding Heading, ElementName=Root}" />
     <TextBlock
         Classes="Muted"
+        LineHeight="{DynamicResource ShellLineHeight12}"
         Text="{Binding Description, ElementName=Root}"
         TextWrapping="Wrap" />
   </StackPanel>

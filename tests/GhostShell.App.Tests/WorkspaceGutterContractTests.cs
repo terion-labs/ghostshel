@@ -39,12 +39,12 @@ public sealed class WorkspaceGutterContractTests
 
         var canvasMargin = (string?)canvas.Attribute("Margin");
 
-        // Both take the same step off the spacing scale, which is what makes the
-        // gap between two panels equal the gap to any edge. Naming the step rather
-        // than the number is also what lets the density setting move both together.
-        // The same step, in each of the two forms the framework needs: a markup
-        // extension on an element, a resource in a style setter.
-        Assert.Equal("{controls:Inset Xs}", canvasMargin);
+        // The shortcut row supplies the first half of the top gutter below its
+        // centred controls. The canvas supplies its half on the other three
+        // edges, while every panel supplies the remaining half everywhere.
+        Assert.Equal(
+            "{controls:Inset Left=Xs, Right=Xs, Bottom=Xs}",
+            canvasMargin);
         Assert.Contains("{DynamicResource ShellInsetXs}", panelMargin);
 
         // Uniform on every side: one step, not an edge-specific inset.
@@ -61,11 +61,14 @@ public sealed class WorkspaceGutterContractTests
     {
         const double canvas = 4;
         const double panel = 4;
+        const double shortcutRowRemainder = 4;
 
         var edgeGap = canvas + panel;
+        var topGap = shortcutRowRemainder + panel;
         var interiorGap = panel + panel;
 
         Assert.Equal(edgeGap, interiorGap);
+        Assert.Equal(edgeGap, topGap);
     }
 
     private static string FindRepositoryRoot()

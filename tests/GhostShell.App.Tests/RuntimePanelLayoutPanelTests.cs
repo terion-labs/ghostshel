@@ -85,6 +85,34 @@ public sealed class RuntimePanelLayoutPanelTests
     }
 
     [Fact]
+    public void Constrained_canvas_compresses_instead_of_exceeding_the_window()
+    {
+        var tab = new RuntimeTabViewModel(TabInstanceId.New(), "Compact", "WORKSPACE TAB");
+        var first = new TestRuntimePanel("first");
+        var second = new TestRuntimePanel("second");
+        tab.AddPanel(first);
+        tab.AddPanel(second);
+        var firstControl = new Border { DataContext = first };
+        var secondControl = new Border { DataContext = second };
+        var layout = new RuntimePanelLayoutPanel
+        {
+            Tab = tab,
+            Children =
+            {
+                firstControl,
+                secondControl,
+            },
+        };
+
+        layout.Measure(new Size(300, 100));
+        layout.Arrange(new Rect(0, 0, 300, 100));
+
+        Assert.Equal(new Size(300, 100), layout.DesiredSize);
+        Assert.Equal(new Rect(0, 0, 150, 100), firstControl.Bounds);
+        Assert.Equal(new Rect(150, 0, 150, 100), secondControl.Bounds);
+    }
+
+    [Fact]
     public void Ad_hoc_tabs_reflow_and_saved_tabs_append_without_mutating_existing_geometry()
     {
         var automatic = new RuntimeTabViewModel(TabInstanceId.New(), "Ad hoc", "WORKSPACE TAB");

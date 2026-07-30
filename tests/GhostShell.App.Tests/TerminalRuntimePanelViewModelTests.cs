@@ -27,6 +27,7 @@ public sealed class TerminalRuntimePanelViewModelTests
 
         await panel.Initialization;
 
+        Assert.Equal("SSH", panel.ConnectionDisplayName);
         Assert.Equal(ConnectionPanelState.CredentialBrokerRequired, panel.ConnectionState);
         Assert.Null(panel.SessionRequest);
         Assert.True(panel.HasConnectionOverlay);
@@ -54,6 +55,7 @@ public sealed class TerminalRuntimePanelViewModelTests
 
         await panel.Initialization;
 
+        Assert.Equal("Local", panel.ConnectionDisplayName);
         Assert.Equal(ConnectionPanelState.Ready, panel.ConnectionState);
         Assert.NotNull(panel.SessionRequest);
         Assert.Same(render, panel.SessionRequest.Launch.RenderProfile);

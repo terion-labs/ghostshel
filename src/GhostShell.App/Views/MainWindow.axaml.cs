@@ -15,6 +15,17 @@ namespace GhostShell.App.Views;
 
 public sealed partial class MainWindow : Window
 {
+    public static readonly DirectProperty<MainWindow, double> TitleBarChromeHeightProperty =
+        AvaloniaProperty.RegisterDirect<MainWindow, double>(
+            nameof(TitleBarChromeHeight),
+            window => window.TitleBarChromeHeight);
+
+    public static readonly DirectProperty<MainWindow, Thickness>
+        WindowTitleBarContentMarginProperty =
+            AvaloniaProperty.RegisterDirect<MainWindow, Thickness>(
+                nameof(WindowTitleBarContentMargin),
+                window => window.WindowTitleBarContentMargin);
+
     private readonly CancellationTokenSource _lifetime = new();
     private ApplicationKeySequenceResolver _applicationKeys = new(
         BuiltInKeymaps.TmuxApplication);
@@ -27,6 +38,26 @@ public sealed partial class MainWindow : Window
     private bool _closeApproved;
     private bool _closeInProgress;
     private bool _restoreRouteFocusWhenActivated;
+    private double _titleBarChromeHeight = 44;
+    private Thickness _windowTitleBarContentMargin = new(10, 0);
+
+    public double TitleBarChromeHeight
+    {
+        get => _titleBarChromeHeight;
+        private set => SetAndRaise(
+            TitleBarChromeHeightProperty,
+            ref _titleBarChromeHeight,
+            value);
+    }
+
+    public Thickness WindowTitleBarContentMargin
+    {
+        get => _windowTitleBarContentMargin;
+        private set => SetAndRaise(
+            WindowTitleBarContentMarginProperty,
+            ref _windowTitleBarContentMargin,
+            value);
+    }
 
     public MainWindow()
     {
@@ -91,7 +122,21 @@ public sealed partial class MainWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        RefreshWindowChromeMetrics();
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            RefreshWindowChromeMetrics,
+            Avalonia.Threading.DispatcherPriority.Loaded);
         RefreshAppearanceControlsFromStoredProfile();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowDecorationMarginProperty
+            || change.Property == WindowStateProperty)
+        {
+            RefreshWindowChromeMetrics();
+        }
     }
 
     protected override void OnClosed(EventArgs e)
@@ -603,28 +648,28 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        await RequestNewFileViewerAsync();
+        await RequestNewAdapterTabAsync(PanelKind.FileViewer);
     }
 
     private async void OnNewBrowserClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        await RequestNewBrowserAsync();
+        await RequestNewAdapterTabAsync(PanelKind.Browser);
     }
 
     private async void OnNewStatisticsClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        await RequestNewStatisticsAsync();
+        await RequestNewAdapterTabAsync(PanelKind.Statistics);
     }
 
     private async void OnNewProcessMonitorClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        await RequestNewProcessMonitorAsync();
+        await RequestNewAdapterTabAsync(PanelKind.ProcessMonitor);
     }
 
     private async void OnAddConnectionClick(object? sender, RoutedEventArgs e)
@@ -1892,12 +1937,40 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
+        RefreshWindowChromeMetrics();
         if (_restoreRouteFocusWhenActivated)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(
                 RestoreRouteFocusIfActive,
                 Avalonia.Threading.DispatcherPriority.Loaded);
         }
+    }
+
+    private void RefreshWindowChromeMetrics()
+    {
+        const double horizontalSpacing = 14;
+        var reportedHeight = WindowDecorationMargin.Top;
+        TitleBarChromeHeight = double.IsFinite(reportedHeight) && reportedHeight > 0
+            ? reportedHeight
+            : 44;
+
+        if (OperatingSystem.IsMacOS())
+        {
+            var trafficLightRightEdge = WindowState == WindowState.FullScreen
+                ? 0
+                : MacOsWindowChromeMetrics.TryGetTrafficLightRightEdge(this)
+                    ?? Math.Max(92, TitleBarChromeHeight * 2.25);
+            WindowTitleBarContentMargin = new Thickness(
+                trafficLightRightEdge + horizontalSpacing,
+                0,
+                horizontalSpacing,
+                0);
+            return;
+        }
+
+        WindowTitleBarContentMargin = OperatingSystem.IsWindows()
+            ? new Thickness(10, 0, 148, 0)
+            : new Thickness(10, 0);
     }
 
     private void RestoreRouteFocusIfActive()

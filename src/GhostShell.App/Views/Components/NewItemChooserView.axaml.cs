@@ -1,39 +1,51 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 
-namespace GhostShell.App.Views.Overlays;
+namespace GhostShell.App.Views.Components;
 
-public sealed partial class NewItemLauncherView : UserControl
+public sealed partial class NewItemChooserView : UserControl
 {
-    public NewItemLauncherView()
+    public static readonly StyledProperty<bool> ShowCloseActionProperty =
+        AvaloniaProperty.Register<NewItemChooserView, bool>(
+            nameof(ShowCloseAction),
+            defaultValue: true);
+
+    public static readonly StyledProperty<bool> ShowWorkspacesProperty =
+        AvaloniaProperty.Register<NewItemChooserView, bool>(
+            nameof(ShowWorkspaces),
+            defaultValue: true);
+
+    public NewItemChooserView() => InitializeComponent();
+
+    public bool ShowCloseAction
     {
-        InitializeComponent();
+        get => GetValue(ShowCloseActionProperty);
+        set => SetValue(ShowCloseActionProperty, value);
+    }
+
+    public bool ShowWorkspaces
+    {
+        get => GetValue(ShowWorkspacesProperty);
+        set => SetValue(ShowWorkspacesProperty, value);
     }
 
     public event EventHandler<RoutedEventArgs>? AddConnectionRequested;
-
     public event EventHandler<RoutedEventArgs>? CloseRequested;
     public event EventHandler<RoutedEventArgs>? NewBrowserRequested;
-
     public event EventHandler<RoutedEventArgs>? NewFileViewerRequested;
-
     public event EventHandler<RoutedEventArgs>? NewLocalTerminalRequested;
-
     public event EventHandler<RoutedEventArgs>? NewProcessMonitorRequested;
-
     public event EventHandler<RoutedEventArgs>? NewStatisticsRequested;
-
     public event EventHandler<RoutedEventArgs>? OpenConnectionRequested;
-
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
-
     public event EventHandler<RoutedEventArgs>? OpenWorkspaceRequested;
-
     public event EventHandler<RoutedEventArgs>? ShowCommandPaletteRequested;
-
     public event EventHandler<RoutedEventArgs>? ShowLayoutDesignerRequested;
 
-    internal void FocusInitialAction() => Chooser.FocusInitialAction();
+    internal void FocusInitialAction() =>
+        NewTerminalButton.Focus(NavigationMethod.Tab);
 
     private void OnAddConnectionClick(object? sender, RoutedEventArgs e) =>
         AddConnectionRequested?.Invoke(sender, e);

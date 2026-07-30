@@ -359,11 +359,21 @@
           </controls:LabeledField>
         </controls:SurfaceCard>
         <controls:SurfaceCard Tone="Raised" Grid.Column="2">
-          <controls:LabeledField
-              Label="Line height">
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding TerminalSettingsEditor.LineHeight, StringFormat={}{0:0.00}}" />
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <Grid Margin="{controls:Inset Horizontal=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <TextBlock
+                  VerticalAlignment="Center"
+                  Foreground="{DynamicResource ShellMutedBrush}"
+                  FontSize="{DynamicResource ShellFontSize12}"
+                  LineHeight="{DynamicResource ShellLineHeight12}"
+                  Text="Line height" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize12}"
+                  FontWeight="SemiBold"
+                  LineHeight="{DynamicResource ShellLineHeight12}"
+                  Text="{Binding TerminalSettingsEditor.LineHeight, StringFormat={}{0:0.00}}" />
             </Grid>
             <Slider
                 Minimum="1"
@@ -373,10 +383,7 @@
                 Value="{Binding TerminalSettingsEditor.LineHeight, Mode=TwoWay}"
                 ValueChanged="OnAppearanceChanged"
                 AutomationProperties.Name="Terminal line height" />
-
-
-            </StackPanel>
-</controls:LabeledField>
+          </StackPanel>
         </controls:SurfaceCard>
       </Grid>
     </StackPanel>
@@ -463,7 +470,7 @@
       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+            <StackPanel Classes="CardText" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Show tab bar" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #ShowTabBarSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
             </StackPanel>
@@ -472,7 +479,7 @@
         </controls:SurfaceCard>
         <controls:SurfaceCard Tone="Raised" Grid.Column="1">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+            <StackPanel Classes="CardText" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Blink cursor" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TerminalSettingsEditor.CursorBlink, Converter={StaticResource OnOffConverter}}" />
             </StackPanel>
@@ -497,7 +504,7 @@
       </StackPanel>
       <controls:SurfaceCard Tone="Raised">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+          <StackPanel Classes="CardText" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Show workspaces panel" />
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #ShowWorkspacesPanelSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
           </StackPanel>
@@ -506,7 +513,7 @@
       </controls:SurfaceCard>
       <controls:SurfaceCard Tone="Raised">
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel Classes="CardText" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
             <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Tab placement" />
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Where the tab strip sits" />
           </StackPanel>
@@ -564,7 +571,7 @@
       </controls:SurfaceCard>
       <controls:SurfaceCard Tone="Raised">
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel Classes="CardText" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
             <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Workspaces panel placement" />
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Which edge the squares dock to" />
           </StackPanel>

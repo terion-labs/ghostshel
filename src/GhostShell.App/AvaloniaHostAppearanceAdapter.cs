@@ -204,7 +204,10 @@ internal sealed record EffectiveAppearanceResources(
                 "A base font size must be finite and greater than zero.");
         }
 
-        return baseFontSize * TextScale;
+        // Small labels still use the platform's normal readable UI size. The
+        // numeric tokens express hierarchy, not permission to render application
+        // chrome below the host's standard body text.
+        return Math.Max(BaseFontSize, baseFontSize * TextScale);
     }
 }
 
@@ -305,7 +308,7 @@ internal static class EffectiveAppearanceResourceMapper
             Parse(isLight ? "#B46B20" : "#75502F"),
             Blend(accent, border, 0.55),
             ResolveFontFamily(metrics),
-            12 * theme.TextScale,
+            metrics.BaseFontSize * theme.TextScale,
             theme.TextScale,
             metrics.ControlMinHeight * theme.TextScale * densityScale,
             new CornerRadius(controlRadius),
@@ -429,6 +432,7 @@ internal static class EffectiveAppearanceResourceMapper
     private sealed record PlatformMetrics(
         string FontFamily,
         bool UsesSystemFont,
+        double BaseFontSize,
         double ControlMinHeight,
         double ControlCornerRadius,
         double HorizontalPadding,
@@ -446,6 +450,7 @@ internal static class EffectiveAppearanceResourceMapper
             PlatformProfile.MacOsClassic => new(
                 "SF Pro Text, Inter, sans-serif",
                 UsesSystemFont: true,
+                13,
                 28,
                 7,
                 10,
@@ -457,6 +462,7 @@ internal static class EffectiveAppearanceResourceMapper
             PlatformProfile.MacOsLiquidGlass => new(
                 "SF Pro Text, Inter, sans-serif",
                 UsesSystemFont: true,
+                13,
                 30,
                 10,
                 11,
@@ -468,6 +474,7 @@ internal static class EffectiveAppearanceResourceMapper
             PlatformProfile.Windows11 => new(
                 "Segoe UI Variable, Segoe UI, Inter, sans-serif",
                 UsesSystemFont: true,
+                14,
                 32,
                 6,
                 11,
@@ -479,6 +486,7 @@ internal static class EffectiveAppearanceResourceMapper
             PlatformProfile.Gnome => new(
                 "Cantarell, Inter, sans-serif",
                 UsesSystemFont: true,
+                11,
                 34,
                 9,
                 12,
@@ -490,6 +498,7 @@ internal static class EffectiveAppearanceResourceMapper
             PlatformProfile.Kde => new(
                 "Noto Sans, Inter, sans-serif",
                 UsesSystemFont: true,
+                10,
                 30,
                 4,
                 10,
@@ -503,6 +512,7 @@ internal static class EffectiveAppearanceResourceMapper
             _ => new(
                 "Inter, Segoe UI, sans-serif",
                 UsesSystemFont: false,
+                13,
                 30,
                 7,
                 10,

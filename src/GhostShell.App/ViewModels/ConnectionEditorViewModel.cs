@@ -6,7 +6,7 @@ namespace GhostShell.App.ViewModels;
 
 public enum ConnectionAuthenticationChoice
 {
-    None,
+    SystemConfiguration,
     SshAgent,
     Password,
     PrivateKey,
@@ -15,6 +15,10 @@ public enum ConnectionAuthenticationChoice
 public sealed record ConnectionEditorSaveRequest(
     ConnectionProfile Profile,
     long? ExpectedRevision);
+
+public sealed record ConnectionEditorConnectRequest(
+    ConnectionProfile Profile,
+    bool SaveConnection);
 
 public sealed class ConnectionEditorViewModel : ObservableObject
 {
@@ -456,6 +460,11 @@ public sealed class ConnectionEditorViewModel : ObservableObject
             {
                 ConnectionRuntimeErrorCode.UnknownHostKey => "Unknown host key",
                 ConnectionRuntimeErrorCode.HostKeyChanged => "Host key changed",
+                ConnectionRuntimeErrorCode.AuthenticationRequired => "Authentication required",
+                ConnectionRuntimeErrorCode.AuthenticationFailed => "Authentication failed",
+                ConnectionRuntimeErrorCode.PermissionDenied => "Permission denied",
+                ConnectionRuntimeErrorCode.Timeout => "Connection timed out",
+                ConnectionRuntimeErrorCode.Offline => "Connection unavailable",
                 _ => "Diagnostics found a problem",
             };
             TestDetail = $"{diagnosticFailure.Message} {RecoveryText(diagnosticFailure.RecoveryAction)}".Trim();
@@ -516,7 +525,8 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 
     private ConnectionAuthentication BuildAuthentication() => Authentication switch
     {
-        ConnectionAuthenticationChoice.None => new ConnectionAuthentication.None(),
+        ConnectionAuthenticationChoice.SystemConfiguration =>
+            new ConnectionAuthentication.None(),
         ConnectionAuthenticationChoice.SshAgent => new ConnectionAuthentication.SshAgent(),
         ConnectionAuthenticationChoice.Password => new ConnectionAuthentication.Password(
             new SecretRef(Required(SecretReference, "Password secret reference"))),
@@ -558,7 +568,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
         switch (authentication)
         {
             case ConnectionAuthentication.None:
-                _authentication = ConnectionAuthenticationChoice.None;
+                _authentication = ConnectionAuthenticationChoice.SystemConfiguration;
                 break;
             case ConnectionAuthentication.SshAgent:
                 _authentication = ConnectionAuthenticationChoice.SshAgent;
