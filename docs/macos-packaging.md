@@ -35,9 +35,12 @@ mkdir -p artifacts/macos-arm64-rc
 The destination must be named `GhostShell.app` and must not already exist. The
 script publishes `osx-arm64` self-contained output, rejects symbolic links and
 special entries, verifies the arm64 Mach-O executable and native libraries,
-checks the shim's colocated libghostty linkage, assembles the bundle through the
+checks the shim's colocated libghostty linkage, updates the apphost's
+`LC_BUILD_VERSION` SDK field to macOS 26.0, assembles the bundle through the
 tested packaging tool, validates `Info.plist`, and fingerprints the finished
-package through the same boundary used by accessibility acceptance.
+package through the same boundary used by accessibility acceptance. The SDK
+marker opts the native AppKit chrome into the current macOS appearance; it does
+not raise the existing apphost minimum system version.
 First-party portable PDBs are excluded from the application bundle, and the
 script rejects any first-party assembly that embeds the physical build-host
 repository path.
@@ -145,7 +148,9 @@ respectively.
 
 ## Outstanding release work
 
-This is not a distributable release. Developer ID signing, hardened-runtime
+This is not a distributable release. The apphost receives an ad-hoc signature
+after its Mach-O load command is updated so the arm64 candidate remains
+launchable; this is not release signing. Developer ID signing, hardened-runtime
 entitlements, notarization, stapling, an icon pipeline, DMG or PKG creation,
 update-feed policy, and named-host launch/accessibility acceptance remain
 separate release gates. Those steps require product decisions or external Apple

@@ -13,6 +13,7 @@ native_component_catalog="${repository_dir}/licenses/native-macos-components.jso
 native_build_receipt="${repository_dir}/native/artifacts/osx-arm64/native-macos-build-receipt.json"
 native_build_evidence="${repository_dir}/native/ghostty/provenance/macos-arm64-build-evidence.json"
 native_resource_evidence="${repository_dir}/native/ghostty/provenance/macos-arm64-resource-evidence.json"
+declare_macos_sdk="${repository_dir}/scripts/declare-macos-sdk26.sh"
 nuget_packages="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
 
 usage() {
@@ -75,6 +76,11 @@ fi
 
 if [[ ! -x "${dotnet}" ]]; then
     echo "Run ./scripts/bootstrap.sh before packaging GhostSHELL." >&2
+    exit 1
+fi
+
+if [[ ! -x "${declare_macos_sdk}" ]]; then
+    echo "The macOS SDK declaration helper is unavailable." >&2
     exit 1
 fi
 
@@ -160,6 +166,11 @@ for required in "${required_publish[@]}"; do
         exit 1
     fi
 done
+
+# macOS uses the apphost's SDK marker for compatibility styling. Rewrite the
+# temporary apphost before any package fingerprint is produced; release signing
+# replaces the helper's ad-hoc signature later.
+"${declare_macos_sdk}" "${publish_dir}/GhostShell"
 
 if find "${publish_dir}" -maxdepth 1 -type f -name 'GhostShell*.pdb' -print -quit \
         | grep -q .; then

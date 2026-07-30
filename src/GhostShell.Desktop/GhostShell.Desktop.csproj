@@ -63,4 +63,16 @@
     <Content Include="../../native/ghostty/provenance/macos-arm64-resource-evidence.json" Link="macos-arm64-resource-evidence.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../native/ghostty/provenance/macos-arm64-resource-evidence.json')" />
   </ItemGroup>
 
+  <!--
+    .NET 10's apphost currently advertises SDK 15.5, which makes macOS 26 retain
+    compatibility chrome. Keep ordinary `dotnet run` builds on the same native
+    title-bar path as packaged builds until the runtime ships an SDK-26 apphost.
+  -->
+  <Target
+      Name="DeclareMacOs26Sdk"
+      AfterTargets="Build"
+      Condition="$([MSBuild]::IsOSPlatform('OSX')) and Exists('$(TargetDir)$(AssemblyName)')">
+    <Exec Command="&quot;$(GhostShellRepositoryRoot)scripts/declare-macos-sdk26.sh&quot; &quot;$(TargetDir)$(AssemblyName)&quot;" />
+  </Target>
+
 </Project>
