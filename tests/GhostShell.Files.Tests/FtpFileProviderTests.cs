@@ -10,6 +10,9 @@ public sealed class FtpFileProviderTests
 
         Assert.Equal(FtpTransportSecurity.Plaintext, provider.Options.TransportSecurity);
         Assert.Equal(FileNameComparison.ProviderDefined, provider.Capabilities.NameComparison);
+        Assert.True(
+            provider.Capabilities.Limits.MaximumWriteBytes
+            > 2L * 1024 * 1024 * 1024);
         var warning = Assert.Single(provider.Diagnostics);
         Assert.Equal("ftp_plaintext_transport", warning.StableCode);
         Assert.Contains("without TLS", warning.Message, StringComparison.Ordinal);

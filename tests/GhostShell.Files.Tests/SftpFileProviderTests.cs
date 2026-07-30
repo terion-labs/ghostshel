@@ -21,6 +21,9 @@ public sealed class SftpFileProviderTests
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Permissions));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Versioning));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Checksum));
+        Assert.True(
+            provider.Capabilities.Limits.MaximumWriteBytes
+            > 2L * 1024 * 1024 * 1024);
     }
 
     [Fact]

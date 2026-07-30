@@ -59,7 +59,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 {
     private const int DefaultPageSize = 250;
     private const int DefaultPreviewBytes = 256 * 1024;
-    private const long DefaultDirectoryTransferBytes = 512L * 1024 * 1024;
+    private const long DefaultDirectoryTransferBytes =
+        1024L * 1024 * 1024 * 1024;
     private const int MaximumFormattedBinaryBytes = 16 * 1024;
     private readonly IFilePanelClient _client;
     private readonly ConnectionProfile _connection;

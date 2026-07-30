@@ -99,6 +99,104 @@ public sealed class FileTransferQueueTests
     }
 
     [Fact]
+    public async Task CrossProviderReadUsesChunksBeyondTheSourceNativeTransferLimit()
+    {
+        var sourceProfileId = new FileProviderProfileId("bounded-source");
+        var destinationProfileId = new FileProviderProfileId("bounded-destination");
+        var sourceAuthority = new FileAuthority("source");
+        var destinationAuthority = new FileAuthority("destination");
+        var sourceLimits = new FileProviderLimits(
+            maximumListPageSize: 100,
+            maximumReadBytes: 512,
+            maximumWriteBytes: 4_096,
+            maximumTransferBytes: 1_024,
+            maximumBufferSize: 256);
+        var destinationLimits = new FileProviderLimits(
+            maximumListPageSize: 100,
+            maximumReadBytes: 4_096,
+            maximumWriteBytes: 4_096,
+            maximumTransferBytes: 4_096,
+            maximumBufferSize: 256);
+        var sourceProvider = new InMemoryFileProvider(
+            sourceProfileId,
+            sourceAuthority,
+            sourceLimits);
+        var destinationProvider = new InMemoryFileProvider(
+            destinationProfileId,
+            destinationAuthority,
+            destinationLimits);
+        var sourceRoot = new FileLocation(
+            sourceProfileId,
+            sourceAuthority,
+            FilePath.Root);
+        var destinationRoot = new FileLocation(
+            destinationProfileId,
+            destinationAuthority,
+            FilePath.Root);
+        var source = sourceRoot.Child(new FilePathSegment("large.bin"));
+        var destination = destinationRoot.Child(new FilePathSegment("large.bin"));
+        var payload = Enumerable.Range(0, 2_048)
+            .Select(index => (byte)(index % 251))
+            .ToArray();
+        await using (var content = new MemoryStream(payload))
+        {
+            var seeded = await sourceProvider.WriteAsync(
+                new FileWriteRequest(
+                    source,
+                    payload.Length,
+                    bufferSize: 256,
+                    new FileMutationPrecondition.MustNotExist()),
+                content,
+                progress: null,
+                CancellationToken.None);
+            Assert.True(seeded.IsSuccess, seeded.Error?.Message);
+        }
+
+        using var client = new FilePanelClient(
+        [
+            new FileProviderRegistration(
+                "Source",
+                FileProviderFamily.Posix,
+                sourceProvider,
+                sourceRoot),
+            new FileProviderRegistration(
+                "Destination",
+                FileProviderFamily.Posix,
+                destinationProvider,
+                destinationRoot),
+        ]);
+        var sourcePanelRoot = client.Profiles.Single(profile =>
+            profile.Id == sourceProfileId.Value).Root;
+        var destinationPanelRoot = client.Profiles.Single(profile =>
+            profile.Id == destinationProfileId.Value).Root;
+        var queued = await client.EnqueueAsync(
+            new FilePanelTransferRequest(
+                Child(sourcePanelRoot, "large.bin"),
+                Child(destinationPanelRoot, "large.bin"),
+                FilePanelTransferOperation.Copy,
+                FilePanelConflictPolicy.Fail,
+                payload.Length),
+            CancellationToken.None);
+        var completed = await WaitForTerminalStateAsync(client, queued.Value!.Id);
+
+        Assert.True(
+            completed.State == FilePanelTransferState.Completed,
+            $"{completed.Error?.StableCode}: {completed.Error?.Message}");
+        await using var copied = new MemoryStream();
+        var read = await destinationProvider.ReadAsync(
+            new FileReadRequest(
+                destination,
+                offset: 0,
+                maximumBytes: payload.Length,
+                bufferSize: 256),
+            copied,
+            progress: null,
+            CancellationToken.None);
+        Assert.True(read.IsSuccess, read.Error?.Message);
+        Assert.Equal(payload, copied.ToArray());
+    }
+
+    [Fact]
     public async Task CrossProviderDirectoryCopyStreamsFilesAndPreservesEmptyFolders()
     {
         using var sourceRoot = TemporaryDirectory.Create();
