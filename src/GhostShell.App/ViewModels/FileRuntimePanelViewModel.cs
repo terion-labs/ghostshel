@@ -639,6 +639,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasMore => !string.IsNullOrWhiteSpace(_continuationToken);
 
+    public bool HasListingSummary => _hasLoadedListing;
+
     public bool CanCreateFolder => !IsLoading
         && !IsInitialHostedBindingPending
         && SelectedProfile?.Capabilities.HasFlag(
@@ -664,6 +666,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         && !IsInitialHostedBindingPending
         && _transferQueue is not null
         && CurrentLocation is not null
+        && SelectedProfile?.Id != BuiltInFileProviders.HomeId.Value
         && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.StreamingWrite) == true
         && Profiles.Any(profile => profile.Id == "builtin.files.home");
 
@@ -1393,6 +1396,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _allEntries.AddRange(result.Value!.Entries);
         _continuationToken = result.Value.ContinuationToken;
         _hasLoadedListing = true;
+        OnPropertyChanged(nameof(HasListingSummary));
         ApplyFilter();
         UpdateListingStatus();
         OnPropertyChanged(nameof(HasMore));
@@ -1748,6 +1752,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _allEntries.Clear();
         _continuationToken = null;
         _hasLoadedListing = false;
+        OnPropertyChanged(nameof(HasListingSummary));
         SelectedEntry = null;
         ClearMetadata();
         _preview?.Cancel();
