@@ -4,6 +4,33 @@ This is the living visual-verification record for the desktop implementation. Th
 
 The HTML source confirms the shared baseline used by the build: a 1440 × 900 shell, 44 px top chrome, 244 px launcher/settings sidebar, 526 px Quick Terminal panel, predominantly 8 px control/card radii, SF Pro-style application chrome, JetBrains Mono terminal/data surfaces, `#111111`/`#18181B`/`#2E2E2E` neutral layers, `#B8B9B6` muted text, and `#FF8400` as the supplied example accent. Platform adaptation and host-accent following remain intentional product requirements.
 
+## File Viewer ForkLift-style pass — updated 2026-07-30
+
+- Source visual truth: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-4bc0ab7f-9180-48c2-9614-17109c0a426b.png` (2864 × 1808).
+- Previous GhostSHELL state: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-a77fa415-a7d5-483d-aed9-5f85890111bb.png` (2026 × 1618).
+- Intended state: a loaded remote location in details view with no selected file.
+- Density normalization: not applicable yet; the supplied images have different window crops and this pass intentionally borrows ForkLift's visual hierarchy rather than reproducing its sidebar and dual-location workflow.
+- Implementation screenshot: blocked. The running GhostSHELL process predates the rebuilt XAML and owns active terminal/remote state, so it was not terminated merely to obtain a screenshot.
+- Full-view evidence: the source and previous state were opened at original resolution. The implementation adopts the source's grouped compact toolbar, location-summary row, calm same-tone list and preview surfaces, dense full-width rows, system UI typography for filenames and metadata, and restrained column headers.
+- Focused-region evidence: code-level only until restart. The file-list region removes the raised gray slab and rounded inset rows; the toolbar region groups navigation and mutation controls without changing their commands.
+- Interaction coverage: existing connection selection, path entry, filtering, hidden-files toggle, sorting, view switching, navigation, transfer, create/rename/delete, upload/download, selection, preview, retry, pagination, and loading-state bindings are preserved. Build and automated contracts pass.
+- Iteration 2 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-89d840ac-3a46-4e18-ab3f-f62e7a3f2b0d.png` (2002 × 200) showed that the first implementation still exposed three large selector fields and text actions as a second form-like row. `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-baf57388-0cda-444f-9512-454948ea7a79.png` (596 × 108) also showed the favourites control clipped at its upper antialiased edge.
+- Iteration 2 fixes: sort, order, layout, and hidden-file choices now live in one compact view-options flyout; path, grouped navigation, grouped semantic file actions, and search occupy one ForkLift-shaped toolbar; the following row is only the location and item summary. Shortcut controls now opt out of clipping at both component containers and reserve the shared one-pixel top clearance inside the scroll viewport. Architecture contracts preserve both decisions.
+- Iteration 3 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-a32e0915-22a0-47b9-a9bc-0f8dac0a47e6.png` (2002 × 320) showed that disabled actions still inherited separate filled capsules, so the toolbar read as a sequence of unrelated generic buttons rather than ForkLift's grouped control surface. `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-028557f5-c617-4147-9a40-f337a2cb898b.png` (600 × 102) confirmed that child-level margin and clip settings had not protected shortcut strokes at the actual scroll-viewport boundary. `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-e7a859fc-c7f3-40c6-9f98-232f3071f182.png` (298 × 70) identified the redundant `FILES` superlabel and terminal-style panel-title typography.
+- Iteration 3 fixes: file actions now share explicit clipped toolbar capsules with transparent disabled presenters; view controls and common mutations form one compact group, while open/transfer/rename move to a single overflow menu. The shortcut strip now owns asymmetric internal viewport padding instead of asking each child control to escape clipping. Runtime panel titles and saved-connection labels use the platform UI face, redundant panel-kind superlabels are removed, and the application `Monospace` presentation class resolves to the platform UI family so terminal typography cannot leak into application chrome. Native terminal rendering remains profile-controlled.
+- Regression evidence: the desktop build succeeds with zero warnings, 190 architecture tests pass, and 816 app tests pass.
+- Iteration 4 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-83fa3412-b1f9-41b1-8d2e-dc99d06e8dc5.png` (1348 × 152) confirms that the toolbar grouping and shortcut clipping corrections are materially improved. It also shows undersized file-list chrome, a location-summary band using a different surface, and a fixed preview allocation.
+- Iteration 4 fixes: all scalable application text now has a per-platform system-body-size floor while larger hierarchy and host accessibility scaling remain intact. The location summary uses the same solid surface as its surrounding file chrome. Preview is now an explicit toolbar toggle and a true three-column layout with a draggable divider; hiding it collapses both its column and splitter, while reopening restores the last visible width and retains already-loaded preview data.
+- Regression evidence after iteration 4: the desktop build succeeds with zero warnings, 190 architecture tests pass, and 817 app tests pass.
+- Iteration 5 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-73768eba-afe8-44e5-8241-134813a95d74.png` (548 × 114) showed that the stock split-button template still painted its child halves across the favourite's upper border. `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-7ccb7870-aee7-4417-a202-7dc80d4802ae.png` (462 × 216) showed exposed gutter background between the file-list and preview header surfaces.
+- Iteration 5 fixes: saved-connection favourites now use one owned rounded border with plain primary and menu-button hit regions, eliminating the competing split-button chrome. The file-list and preview headers paint edge-to-edge solid surfaces, the redundant preview qualifier is removed, upload disappears when the active provider cannot upload, and two draggable column dividers share their live widths with every details row.
+- Regression evidence after iteration 5: the desktop build succeeds with zero warnings, 190 architecture tests pass, and 818 app tests pass.
+- Iteration 6 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-e88a1ff8-abc3-4a98-8dac-4e4d60549364.png` showed that the location summary still carried a horizontal separator through an otherwise continuous solid surface.
+- Iteration 6 fix: the location summary no longer draws its own top or bottom border; the active panel outline remains the only accent boundary.
+- Remaining P2 verification: capture the rebuilt loaded local and SFTP states at the same window size and check favourite strokes, upload visibility, header continuity, preview resizing, and table-column resizing visually.
+
+final result: blocked
+
 ## M1 durable desktop shell — updated 2026-07-23
 
 ### Comparison setup
@@ -1403,5 +1430,207 @@ The Quick Terminal settings page is the worked example: 290 lines of hand-built
 cards with four disagreeing column widths, ten hand-placed separators, and a
 description style restated fourteen times, down to 197 lines that say only what
 each setting is.
+
+final result: passed
+
+## New Panel inset and deterministic panel resizing — updated 2026-07-28
+
+### Comparison setup
+
+- Source visual truth:
+  `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-47f36bb3-4387-4b64-b1b6-c1e2d9d43d6f.png`
+- Rendered implementation:
+  `design-qa-artifacts/new-panel-implementation.png`
+- Same-input comparison:
+  `design-qa-artifacts/new-panel-comparison.png`
+- Resize evidence:
+  `design-qa-artifacts/panel-layout-wide.png` and
+  `design-qa-artifacts/panel-layout-compressed.png`
+- State: dark desktop shell, live local terminal, New Panel placeholder on the
+  right, catalog scrolled to its top.
+- Viewport and normalization: the source and implementation catalog regions are
+  both 1014 × 398 pixels. Both are 2× Retina captures of a 507 × 199 logical
+  region, so no density resampling was required. The surrounding implementation
+  was captured from a 1440 × 900 logical app window at 2×.
+
+The full source crop is already a focused component view, so a second crop would
+remove the panel edge needed to judge its inset. The full-view comparison is
+therefore also the focused-region comparison.
+
+### Comparison history and fixes
+
+- [P2] The New Panel search row reserved column spacing for a hidden close
+  action, creating a visibly larger right inset than the left inset. The shared
+  chooser now places the spacing on the close button itself, so the spacing is
+  present only when that button is visible. The post-fix comparison shows
+  balanced 50 px logical left and right search insets.
+- [P1] Panel minimums were enforced twice: the canvas exceeded the finite window
+  size inside a scroll host, while pointer dragging separately applied an
+  approximate per-track floor. Resizing the window could therefore change which
+  limiter won and make the next drag feel sticky or arbitrary. The canvas now
+  always arranges to the finite viewport, and one tab-owned policy constrains
+  divider movement from real panel edges, spans, and minimums.
+- [P2] Pointer overshoot accumulated while a divider was at its limit, so
+  reversing direction first had to traverse an invisible stale delta. Every
+  pointer delta is now consumed even at a constraint, and lost pointer capture
+  clears the drag state.
+
+### Required fidelity surfaces
+
+- Fonts and typography: the shared chooser keeps the existing family, optical
+  weights, sizes, line heights, truncation, and small uppercase panel label.
+- Spacing and layout rhythm: the search field has balanced side insets; header
+  height, section gap, card widths, radii, and vertical rhythm remain unchanged.
+- Colors and visual tokens: the implementation continues to use the existing
+  dark surface, neutral border, muted copy, and orange active-border tokens.
+- Image quality and asset fidelity: there are no raster assets in the compared
+  region; the existing Fluent vector icons remain unchanged and sharp.
+- Copy and content: all chooser labels and search guidance match the shared
+  catalog; no new or placeholder product copy was introduced.
+
+### Interaction and regression checks
+
+- [x] A finite window constrains the panel canvas instead of producing a larger
+  scrollable minimum canvas.
+- [x] Divider motion is expressed in pointer pixels against the current viewport.
+- [x] Minimums constrain whole panel edges, including panels spanning multiple
+  grid tracks; an internal boundary does not incorrectly constrain the spanning
+  panel.
+- [x] Shrinking the window does not rewrite stored split weights or make the next
+  drag jump.
+- [x] Dragging past a limit stops at the limit; reversing begins on the next
+  pointer delta.
+- [x] Lost pointer capture resets hover, drag, and resize-cursor state.
+- [x] Formatting verification and the full solution build pass with zero warnings
+  and zero errors.
+- [x] The full test suite passes: 3,760 passed and 1 explicitly skipped native
+  vault integration test.
+
+No actionable P0, P1, or P2 findings remain in the reported regions.
+
+final result: passed
+
+## Catalog header and browser blank-address polish — updated 2026-07-28
+
+### Comparison setup
+
+- Source visual truth:
+  `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-d5369cf4-896e-468b-a422-acc9e02e386b.png`
+  (864 × 286) and
+  `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-6f3cd428-2d12-4076-ba9d-1ab52745b79b.png`
+  (1084 × 348).
+- Implementation evidence:
+  `design/qa/current/catalog-header-polish-implementation.png` and
+  `design/qa/current/browser-placeholder-focused-implementation.png`
+  (3456 × 2234 pixels at a 1728 × 1117 CSS-point desktop viewport and 2×
+  density).
+- Combined comparison evidence:
+  `design/qa/current/catalog-header-polish-comparison.png` (980 × 542) and
+  `design/qa/current/browser-placeholder-comparison.png` (1120 × 620).
+- State: a placed-panel chooser with one saved connection and one saved screen,
+  followed by a live blank browser panel at rest and with the address editor
+  focused.
+- Density normalization: focused implementation regions were cropped at native
+  2× density. The source and implementation were centered without resampling so
+  typography, borders, and focus treatment remained inspectable at their native
+  sharpness.
+
+### Findings and comparison history
+
+- [P2] The catalog heading row originally let the heading, count, and action
+  measure against different vertical constraints. The shared chooser now uses
+  the existing `CountPill`, centers the heading group, and removes the text
+  action's unrelated minimum control height. The post-fix comparison shows both
+  counts and actions on the heading's optical center.
+- [P2] `ListRow` supplied a leading separator to the first generated catalog
+  item, producing a second horizontal line beneath the card's own rounded top
+  border. Catalog rows now defer surrounding chrome to `SurfaceCard`; the
+  post-fix comparison shows one clean rounded outline and no inset top rule.
+- [P2] `about:blank` was editor content rather than blank-state guidance. The
+  browser host now exposes empty editor text for the blank address, the textbox
+  presents `about:blank` as placeholder copy, and focus removes it. The combined
+  evidence contains both the resting placeholder and focused empty editor.
+
+### Required fidelity surfaces
+
+- Fonts and typography: existing shell font families, weights, sizes, and
+  truncation are unchanged; count chips and section actions now share the
+  heading's vertical rhythm.
+- Spacing and layout rhythm: header alignment and card-top chrome match the
+  supplied intent; no new padding or panel geometry was introduced.
+- Colors and visual tokens: all surfaces, borders, muted placeholder copy, and
+  orange focus treatment continue to use existing shell tokens.
+- Image quality and asset fidelity: no raster or illustrative assets are present
+  in these regions; the existing Fluent icons remain sharp.
+- Copy and content: catalog labels are unchanged. `about:blank` remains visible
+  only as blank-state guidance and disappears while the user edits.
+
+### Interaction and regression checks
+
+- [x] Blank browser shows `about:blank` as muted placeholder copy.
+- [x] Focusing the address field removes the placeholder and shows an empty
+  caret-ready editor.
+- [x] Count chips and section actions align with both saved-list headings.
+- [x] The catalog's first rows have no duplicate top separator.
+- [x] The user confirmed both reported defects are fixed in the running build.
+- [x] Focused architecture contracts and the desktop build pass.
+
+No actionable P0, P1, or P2 differences remain in the reported regions. Focused
+regions were required because the defects were line-level alignment, one-pixel
+chrome, and input-focus behavior; the full desktop captures establish that the
+surrounding panel layout remains intact.
+
+final result: passed
+
+## Shared New Tab / New Panel catalog — updated 2026-07-28
+
+### Comparison setup
+
+The user-provided New Session reference and the running 1440 × 900 desktop build
+were normalized and inspected together in
+`design/qa/current/new-item-catalog-comparison.png`. The panel state was then
+captured separately in `design/qa/current/new-panel-shared-catalog.png`, with the
+same catalog rendered inside a placed panel and only the Workspaces section
+disabled. `design/qa/current/home-icon-tab.png` records the icon-only Home tab,
+and `design/qa/current/new-panel-browser-working.png` records a browser created
+by selecting Browser from the placed-panel catalog.
+
+### Visual and interaction checks
+
+- [x] New Session and New Panel render one `NewItemChooserView`; the overlay and
+  panel are wrappers and do not maintain separate chooser markup.
+- [x] Search, the five creation cards, saved connections, and saved screens keep
+  the same hierarchy, labels, icons, spacing, radii, borders, and catalog row
+  treatment in both hosts.
+- [x] New Panel hides Workspaces and the duplicate overlay close action, while
+  retaining its own panel header and close action.
+- [x] Narrow-panel chooser content is constrained by the actual card width, so
+  titles and descriptions ellipsize instead of measuring to zero or disappearing.
+- [x] Selecting Browser from New Session creates the first runtime workspace and
+  tab; selecting Browser from a placed panel replaces that exact placeholder.
+- [x] Home is a persistent predefined tab in both routes and is rendered as a
+  single 32 × 32 icon with a tooltip and accessible name.
+- [x] The New Session comparison preserves the supplied five-card row,
+  Workspaces strip, two-column saved-catalog region, dark neutral palette, and
+  orange active treatment. Differences are limited to the implementation's
+  current typography metrics and the real persisted catalog data.
+- [x] Native build, formatting verification, 185 architecture tests, and 788 app
+  tests pass after the shared-component extraction.
+
+### Result
+
+The New Panel surface no longer invents or owns a second chooser design. The
+shared catalog remains coherent in the overlay and in both narrow and wide panel
+placements, Browser creation works from both entry points, and Home remains an
+icon-only predefined tab.
+
+final result: passed
+
+## Latest verification status — 2026-07-28
+
+The New Panel inset and deterministic panel-resizing report above is the latest
+verification pass. Its same-input visual comparison, native resize exercise,
+build, formatting check, and full solution test run have no remaining actionable
+P0, P1, or P2 finding.
 
 final result: passed
