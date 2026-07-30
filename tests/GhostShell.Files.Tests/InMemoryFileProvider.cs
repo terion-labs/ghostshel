@@ -7,7 +7,10 @@ internal sealed partial class InMemoryFileProvider : IFileProvider
     private readonly Dictionary<FilePath, MemoryNode> _nodes = new();
     private long _revision;
 
-    public InMemoryFileProvider(FileProviderProfileId profileId, FileAuthority authority)
+    public InMemoryFileProvider(
+        FileProviderProfileId profileId,
+        FileAuthority authority,
+        FileProviderLimits? limits = null)
     {
         ProfileId = profileId;
         _authority = authority;
@@ -24,7 +27,7 @@ internal sealed partial class InMemoryFileProvider : IFileProvider
             | FileProviderCapability.AtomicReplace
             | FileProviderCapability.Pagination,
             FileNameComparison.CaseSensitive,
-            new FileProviderLimits(
+            limits ?? new FileProviderLimits(
                 maximumListPageSize: 100,
                 maximumReadBytes: 1024 * 1024,
                 maximumWriteBytes: 10 * 1024 * 1024,

@@ -50,22 +50,13 @@ public sealed partial class FilePanelClient
             return FilePanelResult<FilePanelTransferSnapshot>.Failure(error!);
         }
 
-        var maximum = Math.Min(
-            sourceRegistration!.Provider.Capabilities.Limits.MaximumTransferBytes,
-            destinationRegistration!.Provider.Capabilities.Limits.MaximumTransferBytes);
-        if (request.MaximumBytes > maximum)
-        {
-            return Failure<FilePanelTransferSnapshot>(
-                FilePanelErrorCode.LimitExceeded,
-                "file_transfer_limit_exceeded",
-                "The requested transfer exceeds a provider's configured transfer bound.");
-        }
-
+        var sourceProvider = sourceRegistration!;
+        var destinationProvider = destinationRegistration!;
         var effectiveDestination = request.Destination.WithVersion(null);
         if (request.ConflictPolicy is FilePanelConflictPolicy.Skip or FilePanelConflictPolicy.KeepBoth)
         {
             var existence = await DestinationExistsAsync(
-                    destinationRegistration,
+                    destinationProvider,
                     effectiveDestination,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -93,7 +84,7 @@ public sealed partial class FilePanelClient
             if (existence.Value == true)
             {
                 var alternative = await FindKeepBothDestinationAsync(
-                        destinationRegistration,
+                        destinationProvider,
                         effectiveDestination,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -114,7 +105,7 @@ public sealed partial class FilePanelClient
             "Queued",
             linked);
         AddRecord(record);
-        _ = RunTransferAsync(record, sourceRegistration, destinationRegistration);
+        _ = RunTransferAsync(record, sourceProvider, destinationProvider);
         return FilePanelResult<FilePanelTransferSnapshot>.Success(record.Snapshot);
     }
 
@@ -456,7 +447,6 @@ public sealed partial class FilePanelClient
         }
 
         if (contentLength > record.Snapshot.Request.MaximumBytes
-            || contentLength > sourceProvider.Capabilities.Limits.MaximumTransferBytes
             || contentLength > destinationProvider.Capabilities.Limits.MaximumWriteBytes)
         {
             return Failure<long>(
@@ -501,7 +491,6 @@ public sealed partial class FilePanelClient
         }
 
         if (contentLength > record.Snapshot.Request.MaximumBytes
-            || contentLength > sourceProvider.Capabilities.Limits.MaximumTransferBytes
             || contentLength > destinationProvider.Capabilities.Limits.MaximumWriteBytes
             || contentLength > destinationProvider.Capabilities.Limits.MaximumTransferBytes)
         {
