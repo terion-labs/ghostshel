@@ -13,6 +13,7 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
     private static readonly TimeSpan ReviewLifetime = TimeSpan.FromMinutes(5);
     private readonly IConnectionRuntime _connectionRuntime;
     private readonly SshKnownHostStore _knownHosts;
+    private readonly OpenSshKnownHostTrustSource _openSshKnownHosts;
     private readonly ISshHostKeyScanner _scanner;
     private readonly ISshAuthenticationProbe _authenticationProbe;
     private readonly TimeProvider _timeProvider;
@@ -28,7 +29,8 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
             knownHosts,
             new SshNetHostKeyScanner(),
             new SshNetAuthenticationProbe(secretVault, knownHosts),
-            timeProvider)
+            timeProvider,
+            OpenSshKnownHostTrustSource.CreateDefault())
     {
     }
 
@@ -37,10 +39,12 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
         SshKnownHostStore knownHosts,
         ISshHostKeyScanner scanner,
         ISshAuthenticationProbe authenticationProbe,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        OpenSshKnownHostTrustSource? openSshKnownHosts = null)
     {
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _knownHosts = knownHosts ?? throw new ArgumentNullException(nameof(knownHosts));
+        _openSshKnownHosts = openSshKnownHosts ?? new OpenSshKnownHostTrustSource([]);
         _scanner = scanner ?? throw new ArgumentNullException(nameof(scanner));
         _authenticationProbe = authenticationProbe ?? throw new ArgumentNullException(nameof(authenticationProbe));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
@@ -64,10 +68,26 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
             return ConnectionRuntimeResult<SshHostKeyReview>.Fail(scanFailure.Error);
         }
 
+        var candidate = ((ConnectionRuntimeResult<SshHostKeyCandidate>.Success)scanned).Value;
         SshHostKeyCandidate? trusted;
         try
         {
             trusted = await _knownHosts.ReadAsync(profile.Id, cancellationToken).ConfigureAwait(false);
+            if (trusted is null
+                && profile.HostKeyPolicy != SshHostKeyPolicy.InsecureIgnore
+                && await _openSshKnownHosts.ContainsAsync(endpoint, candidate, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                var imported = await _knownHosts.WriteAsync(
+                        profile.Id,
+                        candidate,
+                        expectedCurrent: null,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                trusted = imported == SshKnownHostWriteResult.ChangedSinceReview
+                    ? await _knownHosts.ReadAsync(profile.Id, cancellationToken).ConfigureAwait(false)
+                    : candidate;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -78,7 +98,6 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
             return FailReview(ConnectionRuntimeErrorCode.ProcessFailed);
         }
 
-        var candidate = ((ConnectionRuntimeResult<SshHostKeyCandidate>.Success)scanned).Value;
         var disposition = profile.HostKeyPolicy switch
         {
             SshHostKeyPolicy.InsecureIgnore => SshHostKeyDisposition.VerificationDisabled,
@@ -208,15 +227,46 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
         SshHostKeyReview? hostKeyReview = null;
         if (profile.ConnectionKind == ConnectionKind.Ssh)
         {
-            var inspection = await InspectSshHostKeyAsync(profile, progress, cancellationToken)
-                .ConfigureAwait(false);
-            if (inspection is ConnectionRuntimeResult<SshHostKeyReview>.Failure inspectionFailure)
+            SshHostKeyCandidate? pinnedHostKey = null;
+            if (profile.HostKeyPolicy != SshHostKeyPolicy.InsecureIgnore)
             {
-                items.Add(Failed(ConnectionDiagnosticStage.HostKey, inspectionFailure.Error));
-                return ReportResult(profile, items, failure: inspectionFailure.Error);
+                try
+                {
+                    pinnedHostKey = await _knownHosts.ReadAsync(profile.Id, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    var error = ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.Cancelled);
+                    items.Add(Failed(ConnectionDiagnosticStage.HostKey, error));
+                    return ReportResult(profile, items, failure: error);
+                }
+                catch (Exception exception) when (exception is
+                    IOException or InvalidDataException or UnauthorizedAccessException)
+                {
+                    var error = ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed);
+                    items.Add(Failed(ConnectionDiagnosticStage.HostKey, error));
+                    return ReportResult(profile, items, failure: error);
+                }
             }
 
-            hostKeyReview = ((ConnectionRuntimeResult<SshHostKeyReview>.Success)inspection).Value;
+            if (pinnedHostKey is not null)
+            {
+                hostKeyReview = CreatePinnedReview(profile, pinnedHostKey);
+            }
+            else
+            {
+                var inspection = await InspectSshHostKeyAsync(profile, progress, cancellationToken)
+                    .ConfigureAwait(false);
+                if (inspection is ConnectionRuntimeResult<SshHostKeyReview>.Failure inspectionFailure)
+                {
+                    items.Add(Failed(ConnectionDiagnosticStage.HostKey, inspectionFailure.Error));
+                    return ReportResult(profile, items, failure: inspectionFailure.Error);
+                }
+
+                hostKeyReview = ((ConnectionRuntimeResult<SshHostKeyReview>.Success)inspection).Value;
+            }
+
             switch (hostKeyReview.Disposition)
             {
                 case SshHostKeyDisposition.Unknown:
@@ -232,17 +282,7 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
                         return ReportResult(profile, items, failure: error, hostKeyReview: hostKeyReview);
                     }
                 case SshHostKeyDisposition.VerificationDisabled:
-                    items.Add(new ConnectionDiagnosticItem(
-                        ConnectionDiagnosticStage.HostKey,
-                        ConnectionDiagnosticStatus.Warning,
-                        "connection_host_key_verification_disabled",
-                        "Host-key verification is explicitly disabled for this profile."));
-                    break;
                 case SshHostKeyDisposition.Trusted:
-                    items.Add(Passed(
-                        ConnectionDiagnosticStage.HostKey,
-                        "connection_host_key_trusted",
-                        "The presented SSH host key matches the trusted identity."));
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -256,6 +296,27 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
             : await _connectionRuntime.TestAsync(profile, progress, cancellationToken).ConfigureAwait(false);
         if (testResult is ConnectionRuntimeResult<ConnectionTestReport>.Failure testFailure)
         {
+            if (profile.ConnectionKind == ConnectionKind.Ssh
+                && testFailure.Error.Code is
+                    ConnectionRuntimeErrorCode.HostKeyChanged or
+                    ConnectionRuntimeErrorCode.UnknownHostKey)
+            {
+                var inspection = await InspectSshHostKeyAsync(profile, progress, cancellationToken)
+                    .ConfigureAwait(false);
+                if (inspection is ConnectionRuntimeResult<SshHostKeyReview>.Success inspected)
+                {
+                    hostKeyReview = inspected.Value;
+                }
+
+                items.Add(Failed(ConnectionDiagnosticStage.HostKey, testFailure.Error));
+                return ReportResult(
+                    profile,
+                    items,
+                    failure: testFailure.Error,
+                    hostKeyReview: hostKeyReview);
+            }
+
+            AddHostKeyDiagnostic(items, hostKeyReview);
             items.Add(Failed(
                 profile.ConnectionKind == ConnectionKind.Ssh
                     ? ConnectionDiagnosticStage.Authentication
@@ -269,6 +330,7 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
         }
 
         var test = ((ConnectionRuntimeResult<ConnectionTestReport>.Success)testResult).Value;
+        AddHostKeyDiagnostic(items, hostKeyReview);
         items.Add(Passed(
             profile.ConnectionKind == ConnectionKind.Ssh
                 ? ConnectionDiagnosticStage.Authentication
@@ -308,6 +370,51 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
             {
                 _pendingReviews.TryRemove(id, out _);
             }
+        }
+    }
+
+    private SshHostKeyReview CreatePinnedReview(
+        ConnectionProfile profile,
+        SshHostKeyCandidate pinned)
+    {
+        var endpoint = (ConnectionEndpoint.Ssh)profile.Endpoint;
+        return new SshHostKeyReview(
+            SshHostKeyReviewId.New(),
+            profile.Id,
+            FormatEndpoint(endpoint),
+            SshHostKeyDisposition.Trusted,
+            pinned.Identity,
+            pinned.Identity,
+            _timeProvider.GetUtcNow() + ReviewLifetime);
+    }
+
+    private static void AddHostKeyDiagnostic(
+        ICollection<ConnectionDiagnosticItem> items,
+        SshHostKeyReview? review)
+    {
+        switch (review?.Disposition)
+        {
+            case null:
+                break;
+            case SshHostKeyDisposition.VerificationDisabled:
+                items.Add(new ConnectionDiagnosticItem(
+                    ConnectionDiagnosticStage.HostKey,
+                    ConnectionDiagnosticStatus.Warning,
+                    "connection_host_key_verification_disabled",
+                    "Host-key verification is explicitly disabled for this profile."));
+                break;
+            case SshHostKeyDisposition.Trusted:
+                items.Add(Passed(
+                    ConnectionDiagnosticStage.HostKey,
+                    "connection_host_key_trusted",
+                    "The trusted SSH host key is pinned and enforced for this connection."));
+                break;
+            case SshHostKeyDisposition.Unknown:
+            case SshHostKeyDisposition.Changed:
+                throw new InvalidOperationException(
+                    "Untrusted SSH host keys must stop diagnostics before authentication.");
+            default:
+                throw new ArgumentOutOfRangeException(nameof(review), review.Disposition, null);
         }
     }
 

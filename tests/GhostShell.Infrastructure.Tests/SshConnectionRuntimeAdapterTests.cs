@@ -6,6 +6,34 @@ namespace GhostShell.Infrastructure.Tests;
 public sealed class SshConnectionRuntimeAdapterTests
 {
     [Fact]
+    public async Task SystemConfigurationPublishesSuccessfulIdentityForSdkChannels()
+    {
+        using var vault = new RecordingSecretVault();
+        var adapter = new SshConnectionRuntimeAdapter(
+            vault,
+            LocatorWithSsh(),
+            new RecordingCommandRunner(),
+            KnownHosts());
+        var profile = ConnectionRuntimeTestSupport.Profile(
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.None(),
+            hostKeyPolicy: SshHostKeyPolicy.Strict);
+
+        var plan = ConnectionRuntimeTestSupport.Success(await adapter.PlanOpenAsync(
+            profile,
+            null,
+            CancellationToken.None));
+
+        Assert.Equal(ConnectionAuthenticationMode.None, plan.Authentication);
+        Assert.Contains("AddKeysToAgent=yes", plan.Launch.Arguments);
+        Assert.DoesNotContain(
+            plan.Launch.Arguments,
+            argument => argument.StartsWith(
+                "PreferredAuthentications=",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Plan_preserves_host_key_agent_keepalive_and_argument_boundaries()
     {
         using var vault = new RecordingSecretVault();
@@ -46,6 +74,7 @@ public sealed class SshConnectionRuntimeAdapterTests
         Assert.Contains("ServerAliveInterval=17", plan.Launch.Arguments);
         Assert.Contains("ServerAliveCountMax=4", plan.Launch.Arguments);
         Assert.Contains("PreferredAuthentications=publickey", plan.Launch.Arguments);
+        Assert.Contains("AddKeysToAgent=yes", plan.Launch.Arguments);
         var binding = knownHosts.Binding(profile.Id);
         Assert.False(File.Exists(binding.FilePath));
         Assert.Contains($"UserKnownHostsFile={binding.FilePath}", plan.Launch.Arguments);
@@ -67,6 +96,35 @@ public sealed class SshConnectionRuntimeAdapterTests
             "exec /bin/sh -c 'cd \"$1\" && exec \"${SHELL:-/bin/sh}\" -l' ghostshell-startup '/remote/work'",
             plan.Launch.Arguments[separator + 2]);
         Assert.Contains("operator name", plan.Launch.Arguments);
+    }
+
+    [Fact]
+    public async Task Known_host_path_is_quoted_for_open_ssh_config_parsing()
+    {
+        using var vault = new RecordingSecretVault();
+        var knownHosts = new SshKnownHostStore(Path.Combine(
+            Path.GetTempPath(),
+            "GhostShell Data",
+            $"known-hosts-{Guid.NewGuid():N}"));
+        var adapter = new SshConnectionRuntimeAdapter(
+            vault,
+            LocatorWithSsh(),
+            new RecordingCommandRunner(),
+            knownHosts);
+        var profile = ConnectionRuntimeTestSupport.Profile(
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.SshAgent(),
+            hostKeyPolicy: SshHostKeyPolicy.Strict);
+
+        var plan = ConnectionRuntimeTestSupport.Success(await adapter.PlanOpenAsync(
+            profile,
+            null,
+            CancellationToken.None));
+
+        var binding = knownHosts.Binding(profile.Id);
+        Assert.Contains(
+            $"UserKnownHostsFile=\"{binding.FilePath}\"",
+            plan.Launch.Arguments);
     }
 
     [Fact]

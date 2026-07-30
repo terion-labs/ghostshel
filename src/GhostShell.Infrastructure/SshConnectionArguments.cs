@@ -68,7 +68,10 @@ internal static class SshConnectionArguments
         }
         else if (knownHostBinding is not null)
         {
-            AddOption(arguments, "UserKnownHostsFile", knownHostBinding.FilePath);
+            AddOption(
+                arguments,
+                "UserKnownHostsFile",
+                QuoteOpenSshOptionValue(knownHostBinding.FilePath));
             AddOption(arguments, "GlobalKnownHostsFile", NullKnownHostsPath());
             AddOption(arguments, "HostKeyAlias", knownHostBinding.Alias);
         }
@@ -94,12 +97,22 @@ internal static class SshConnectionArguments
         switch (authentication)
         {
             case ConnectionAuthentication.None:
+                // "None" means GhostShell has no app-managed credential. OpenSSH still applies
+                // the user's system configuration, identity files, platform credential store,
+                // and agent. Publish any file-backed identity it successfully uses so SDK-backed
+                // SSH channels can reuse the same signing capability.
+                AddOption(arguments, "AddKeysToAgent", "yes");
                 return;
             case ConnectionAuthentication.SshAgent:
                 AddOption(arguments, "PreferredAuthentications", "publickey");
                 AddOption(arguments, "PubkeyAuthentication", "yes");
                 AddOption(arguments, "PasswordAuthentication", "no");
                 AddOption(arguments, "KbdInteractiveAuthentication", "no");
+                // Keep the system OpenSSH process as the authority for configured identities
+                // and platform credential stores. Once OpenSSH authenticates, expose that same
+                // signing identity through the agent so in-process SSH consumers (for example
+                // SFTP) can reuse it without reading private-key material.
+                AddOption(arguments, "AddKeysToAgent", "yes");
                 return;
             case ConnectionAuthentication.Password:
                 AddOption(arguments, "PreferredAuthentications", "password");
@@ -139,6 +152,28 @@ internal static class SshConnectionArguments
     {
         arguments.Add("-o");
         arguments.Add($"{name}={value}");
+    }
+
+    private static string QuoteOpenSshOptionValue(string value)
+    {
+        if (value.IndexOfAny(['\r', '\n', '\0']) >= 0)
+        {
+            throw new ArgumentException("An OpenSSH option value cannot contain a line break or null character.");
+        }
+
+        var normalized = OperatingSystem.IsWindows()
+            ? value.Replace('\\', '/')
+            : value;
+        normalized = normalized.Replace("%", "%%", StringComparison.Ordinal);
+        if (!normalized.Any(character =>
+                char.IsWhiteSpace(character) || character is '"' or '\\' or '#'))
+        {
+            return normalized;
+        }
+
+        return $"\"{normalized
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
     }
 
     private static string BuildRemoteLoginCommand(string directory)
