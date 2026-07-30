@@ -35,6 +35,50 @@ public sealed class SftpFileProviderTests
     }
 
     [Fact]
+    public void DirectMetadataLookupTreatsCanonicalPathChangesAsLinks()
+    {
+        Assert.Equal(
+            FileEntryKind.Link,
+            SshNetSftpSessionFactory.ClassifyEntryKind(
+                isSymbolicLink: false,
+                isDirectory: true,
+                isRegularFile: false,
+                canonicalPathChanged: true));
+        Assert.True(
+            SshNetSftpSessionFactory.CanonicalPathChanged(
+                "/srv/data/link",
+                "/mnt/target"));
+        Assert.False(
+            SshNetSftpSessionFactory.CanonicalPathChanged(
+                "/srv/data/",
+                "/srv/data"));
+    }
+
+    [Fact]
+    public async Task WholePathLinkInspectionAvoidsWalkingEveryAncestor()
+    {
+        var sessions = new FakeRemoteSessionFactory
+        {
+            StatDetectsAnyLinkInPath = true,
+        };
+        sessions.SeedDirectory("/home");
+        sessions.SeedDirectory("/home/coder");
+        var provider = new SftpFileProvider(
+            sessions,
+            RemoteProviderTestProfiles.SftpOptions());
+        var location = new FileLocation(provider.ProfileId, provider.Authority, FilePath.Root)
+            .Child(new FilePathSegment("home"))
+            .Child(new FilePathSegment("coder"));
+
+        var result = await provider.ListAsync(
+            new FileListRequest(location, 10),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(["/home/coder"], sessions.StatPaths);
+    }
+
+    [Fact]
     public async Task MetadataReconnectRetriesExactlyOnceOnAFreshSession()
     {
         var sessions = new FakeRemoteSessionFactory { FailOpenCount = 1 };
@@ -123,6 +167,27 @@ public sealed class SftpFileProviderTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(providerError, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task AuthenticationFailureIsNotReportedAsFilePermissionDenial()
+    {
+        var sessions = new FakeRemoteSessionFactory
+        {
+            OpenError = RemoteFileSessionErrorCode.AuthenticationFailed,
+        };
+        var provider = new SftpFileProvider(
+            sessions,
+            RemoteProviderTestProfiles.SftpOptions());
+        var root = new FileLocation(provider.ProfileId, provider.Authority, FilePath.Root);
+
+        var result = await provider.ListAsync(
+            new FileListRequest(root, 10),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(FileProviderErrorCode.AuthenticationRequired, result.Error!.Code);
+        Assert.Equal("authentication_required", result.Error.StableCode);
     }
 
     [Fact]

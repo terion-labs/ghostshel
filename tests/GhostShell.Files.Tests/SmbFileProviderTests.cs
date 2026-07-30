@@ -76,7 +76,7 @@ public sealed class SmbFileProviderTests
         var result = await provider.StatAsync(new FileStatRequest(root), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(FileProviderErrorCode.AccessDenied, result.Error!.Code);
+        Assert.Equal(FileProviderErrorCode.AuthenticationRequired, result.Error!.Code);
         Assert.DoesNotContain("vault-exposed-reference", result.Error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(
             ((SmbAuthentication.Password)options.Authentication).PasswordSecret.Value,

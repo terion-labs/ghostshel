@@ -76,7 +76,7 @@ refresh retires the old generation but cannot retarget the live session; a
 newly opened panel receives the replacement generation. This is a
 backend-identity invariant, not only a presentation cache.
 
-Before a saved hosted panel binds, its provider picker continues to follow
+Before a saved hosted panel binds, its connection selector continues to follow
 catalog materialization only to find the exact saved profile. If that profile
 is unavailable, the panel creates no host session and refuses selection of a
 different profile, fallback to a provider root, or location editing. The first

@@ -36,19 +36,17 @@ public abstract partial class RemoteHierarchicalFileProvider
         }
 
         await using var session = await _sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
-        var linkError = await EnsureNoLinksAsync(
+        var inspection = await InspectNoLinksAsync(
             session,
             directory,
             includeLeaf: true,
             cancellationToken).ConfigureAwait(false);
-        if (linkError is not null)
+        if (inspection.Error is not null)
         {
-            return FileProviderResult<FilePage>.Failure(linkError);
+            return FileProviderResult<FilePage>.Failure(inspection.Error);
         }
 
-        var directoryEntry = await session
-            .StatAsync(directory.RemotePath, cancellationToken)
-            .ConfigureAwait(false);
+        var directoryEntry = inspection.Leaf;
         if (directoryEntry is null)
         {
             return Failure<FilePage>(FileProviderErrorCode.NotFound, "The remote directory was not found.");
@@ -169,53 +167,81 @@ public abstract partial class RemoteHierarchicalFileProvider
         IRemoteHierarchicalFileSession session,
         ResolvedRemotePath path,
         bool includeLeaf,
+        CancellationToken cancellationToken) =>
+        (await InspectNoLinksAsync(
+            session,
+            path,
+            includeLeaf,
+            cancellationToken).ConfigureAwait(false)).Error;
+
+    private async ValueTask<RemotePathInspection> InspectNoLinksAsync(
+        IRemoteHierarchicalFileSession session,
+        ResolvedRemotePath path,
+        bool includeLeaf,
         CancellationToken cancellationToken)
     {
+        if (session.StatDetectsAnyLinkInPath)
+        {
+            return await InspectWholePathAsync(
+                session,
+                path,
+                includeLeaf,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var relativeComponentsToCheck = includeLeaf
             ? path.RelativeSegments.Count
             : Math.Max(0, path.RelativeSegments.Count - 1);
         var root = await session.StatAsync("/", cancellationToken).ConfigureAwait(false);
         if (root is null)
         {
-            return FileProviderError.Create(FileProviderErrorCode.NotFound, "The remote filesystem root was not found.");
+            return RemotePathInspection.Failed(
+                FileProviderError.Create(
+                    FileProviderErrorCode.NotFound,
+                    "The remote filesystem root was not found."));
         }
 
         if (root.Kind == FileEntryKind.Link)
         {
-            return FileProviderError.Create(
-                FileProviderErrorCode.LinkNotAllowed,
-                "The remote filesystem root is a symbolic link.");
+            return RemotePathInspection.Failed(
+                FileProviderError.Create(
+                    FileProviderErrorCode.LinkNotAllowed,
+                    "The remote filesystem root is a symbolic link."));
         }
 
         if (root.Kind != FileEntryKind.Directory)
         {
-            return FileProviderError.Create(
-                FileProviderErrorCode.NotDirectory,
-                "The remote filesystem root is not a directory.");
+            return RemotePathInspection.Failed(
+                FileProviderError.Create(
+                    FileProviderErrorCode.NotDirectory,
+                    "The remote filesystem root is not a directory."));
         }
 
         var components = _remoteRootSegments
             .Concat(path.RelativeSegments.Take(relativeComponentsToCheck))
             .ToArray();
         var current = "/";
+        var currentEntry = root;
         for (var index = 0; index < components.Length; index++)
         {
             current = ChildRemotePath(current, components[index]);
             var entry = await session.StatAsync(current, cancellationToken).ConfigureAwait(false);
             if (entry is null)
             {
-                return FileProviderError.Create(
-                    FileProviderErrorCode.NotFound,
-                    index < _remoteRootSegments.Count
-                        ? "The configured remote root was not found."
-                        : "A remote path component was not found.");
+                return RemotePathInspection.Failed(
+                    FileProviderError.Create(
+                        FileProviderErrorCode.NotFound,
+                        index < _remoteRootSegments.Count
+                            ? "The configured remote root was not found."
+                            : "A remote path component was not found."));
             }
 
             if (entry.Kind == FileEntryKind.Link)
             {
-                return FileProviderError.Create(
-                    FileProviderErrorCode.LinkNotAllowed,
-                    "A remote path component is a symbolic link.");
+                return RemotePathInspection.Failed(
+                    FileProviderError.Create(
+                        FileProviderErrorCode.LinkNotAllowed,
+                        "A remote path component is a symbolic link."));
             }
 
             var isIncludedLeaf = includeLeaf
@@ -223,13 +249,68 @@ public abstract partial class RemoteHierarchicalFileProvider
                 && index == components.Length - 1;
             if (!isIncludedLeaf && entry.Kind != FileEntryKind.Directory)
             {
-                return FileProviderError.Create(
-                    FileProviderErrorCode.NotDirectory,
-                    "A remote path component is not a directory.");
+                return RemotePathInspection.Failed(
+                    FileProviderError.Create(
+                        FileProviderErrorCode.NotDirectory,
+                        "A remote path component is not a directory."));
             }
+
+            currentEntry = entry;
         }
 
-        return null;
+        return new RemotePathInspection(null, currentEntry);
+    }
+
+    private async ValueTask<RemotePathInspection> InspectWholePathAsync(
+        IRemoteHierarchicalFileSession session,
+        ResolvedRemotePath path,
+        bool includeLeaf,
+        CancellationToken cancellationToken)
+    {
+        var inspectedPath = includeLeaf || path.RelativeSegments.Count == 0
+            ? path.RemotePath
+            : ParentRemotePath(path.RemotePath);
+        var entry = await session.StatAsync(inspectedPath, cancellationToken)
+            .ConfigureAwait(false);
+        if (entry is null)
+        {
+            return RemotePathInspection.Failed(
+                FileProviderError.Create(
+                    FileProviderErrorCode.NotFound,
+                    "A remote path component was not found."));
+        }
+
+        if (entry.Kind == FileEntryKind.Link)
+        {
+            return RemotePathInspection.Failed(
+                FileProviderError.Create(
+                    FileProviderErrorCode.LinkNotAllowed,
+                    "A remote path component is a symbolic link."));
+        }
+
+        if (!includeLeaf && entry.Kind != FileEntryKind.Directory)
+        {
+            return RemotePathInspection.Failed(
+                FileProviderError.Create(
+                    FileProviderErrorCode.NotDirectory,
+                    "A remote path component is not a directory."));
+        }
+
+        return new RemotePathInspection(null, includeLeaf ? entry : null);
+    }
+
+    private static string ParentRemotePath(string path)
+    {
+        var separator = path.LastIndexOf('/');
+        return separator <= 0 ? "/" : path[..separator];
+    }
+
+    private sealed record RemotePathInspection(
+        FileProviderError? Error,
+        RemoteFileEntry? Leaf)
+    {
+        public static RemotePathInspection Failed(FileProviderError error) =>
+            new(error, null);
     }
 
     private FileProviderError? CheckLocationVersion(

@@ -420,8 +420,10 @@ public abstract partial class RemoteHierarchicalFileProvider
                 "The remote transfer source and destination must be different paths.");
         }
 
-        await using var sourceSession = await _sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var destinationSession = await _sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transferSessions = await OpenTransferSessionsAsync(
+            cancellationToken).ConfigureAwait(false);
+        var sourceSession = transferSessions.Source;
+        var destinationSession = transferSessions.Destination;
         var sourceLinkError = await EnsureNoLinksAsync(
             sourceSession,
             source,
@@ -626,6 +628,29 @@ public abstract partial class RemoteHierarchicalFileProvider
             {
                 await TryDeleteFileAsync(destinationSession, temporaryPath).ConfigureAwait(false);
             }
+        }
+    }
+
+    private async ValueTask<RemoteFileTransferSessions> OpenTransferSessionsAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_sessions is IRemoteFileTransferSessionFactory transferFactory)
+        {
+            return await transferFactory
+                .OpenTransferSessionsAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var source = await _sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var destination = await _sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+            return new RemoteFileTransferSessions(source, destination);
+        }
+        catch
+        {
+            await source.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
     }
 

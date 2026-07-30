@@ -25,6 +25,7 @@ public sealed record FileProviderError(
         FileProviderErrorCode.PreconditionFailed => "precondition_failed",
         FileProviderErrorCode.RangeNotSatisfiable => "range_not_satisfiable",
         FileProviderErrorCode.LimitExceeded => "limit_exceeded",
+        FileProviderErrorCode.AuthenticationRequired => "authentication_required",
         FileProviderErrorCode.AccessDenied => "access_denied",
         FileProviderErrorCode.HostKeyUnknown => "host_key_unknown",
         FileProviderErrorCode.HostKeyChanged => "host_key_changed",
