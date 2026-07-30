@@ -41,6 +41,95 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
     }
 
     [Fact]
+    public async Task Matching_user_open_ssh_key_bootstraps_the_connection_pin()
+    {
+        var candidate = Candidate(9);
+        var openSshFile = Path.Combine(_knownHostsDirectory, "user-known-hosts");
+        Directory.CreateDirectory(_knownHostsDirectory);
+        await File.WriteAllTextAsync(
+            openSshFile,
+            $"host.example {candidate.Identity.Algorithm} {candidate.PublicKeyBase64}\n");
+        var store = new SshKnownHostStore(_knownHostsDirectory);
+        using var vault = new RecordingSecretVault();
+        var runtime = Runtime(
+            store,
+            vault,
+            new FixedHostKeyScanner(candidate),
+            openSshKnownHosts: new OpenSshKnownHostTrustSource([openSshFile]));
+        var profile = SshProfile("open-ssh-bootstrap");
+
+        var review = Success(await runtime.InspectSshHostKeyAsync(
+            profile,
+            null,
+            CancellationToken.None));
+
+        Assert.Equal(SshHostKeyDisposition.Trusted, review.Disposition);
+        Assert.Equal(candidate.Identity, review.Trusted);
+        Assert.Equal(candidate, await store.ReadAsync(profile.Id, CancellationToken.None));
+        Assert.True(File.Exists(store.Binding(profile.Id).FilePath));
+    }
+
+    [Fact]
+    public async Task Different_user_open_ssh_key_does_not_bootstrap_trust()
+    {
+        var candidate = Candidate(10);
+        var different = Candidate(11);
+        var openSshFile = Path.Combine(_knownHostsDirectory, "user-known-hosts");
+        Directory.CreateDirectory(_knownHostsDirectory);
+        await File.WriteAllTextAsync(
+            openSshFile,
+            $"host.example {different.Identity.Algorithm} {different.PublicKeyBase64}\n");
+        var store = new SshKnownHostStore(_knownHostsDirectory);
+        using var vault = new RecordingSecretVault();
+        var runtime = Runtime(
+            store,
+            vault,
+            new FixedHostKeyScanner(candidate),
+            openSshKnownHosts: new OpenSshKnownHostTrustSource([openSshFile]));
+        var profile = SshProfile("open-ssh-mismatch");
+
+        var review = Success(await runtime.InspectSshHostKeyAsync(
+            profile,
+            null,
+            CancellationToken.None));
+
+        Assert.Equal(SshHostKeyDisposition.Unknown, review.Disposition);
+        Assert.Null(await store.ReadAsync(profile.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Existing_connection_pin_remains_authoritative_over_user_open_ssh_key()
+    {
+        var pinned = Candidate(12);
+        var presented = Candidate(13);
+        var openSshFile = Path.Combine(_knownHostsDirectory, "user-known-hosts");
+        Directory.CreateDirectory(_knownHostsDirectory);
+        await File.WriteAllTextAsync(
+            openSshFile,
+            $"host.example {presented.Identity.Algorithm} {presented.PublicKeyBase64}\n");
+        var store = new SshKnownHostStore(_knownHostsDirectory);
+        var profile = SshProfile("existing-pin");
+        Assert.Equal(
+            SshKnownHostWriteResult.Stored,
+            await store.WriteAsync(profile.Id, pinned, null, CancellationToken.None));
+        using var vault = new RecordingSecretVault();
+        var runtime = Runtime(
+            store,
+            vault,
+            new FixedHostKeyScanner(presented),
+            openSshKnownHosts: new OpenSshKnownHostTrustSource([openSshFile]));
+
+        var review = Success(await runtime.InspectSshHostKeyAsync(
+            profile,
+            null,
+            CancellationToken.None));
+
+        Assert.Equal(SshHostKeyDisposition.Changed, review.Disposition);
+        Assert.Equal(pinned.Identity, review.Trusted);
+        Assert.Equal(pinned, await store.ReadAsync(profile.Id, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Changed_key_requires_the_explicit_replacement_action()
     {
         var first = Candidate(1);
@@ -141,6 +230,84 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
             item.Stage == ConnectionDiagnosticStage.HostKey
             && item.Status == ConnectionDiagnosticStatus.Failed);
         Assert.Equal(0, authentication.CallCount);
+    }
+
+    [Fact]
+    public async Task Repeated_diagnostics_reuse_the_pinned_key_instead_of_opening_a_second_handshake()
+    {
+        var candidate = Candidate(1);
+        var scanner = new FixedHostKeyScanner(candidate);
+        var store = new SshKnownHostStore(_knownHostsDirectory);
+        var profile = SshProfile(id: "repeat-diagnostics");
+        Assert.Equal(
+            SshKnownHostWriteResult.Stored,
+            await store.WriteAsync(profile.Id, candidate, null, CancellationToken.None));
+        using var vault = new RecordingSecretVault();
+        var locator = new RecordingExecutableLocator();
+        locator.Add("ssh", "/usr/bin/ssh");
+        var commandRunner = new RecordingCommandRunner
+        {
+            Result = new ConnectionProbeResult(
+                ConnectionProbeOutcome.Exited,
+                255,
+                "Permission denied (publickey)."),
+        };
+        var connectionRuntime = new ConnectionRuntime([
+            new SshConnectionRuntimeAdapter(vault, locator, commandRunner, store),
+        ]);
+        var runtime = new ConnectionSecurityRuntime(
+            connectionRuntime,
+            store,
+            scanner,
+            new FixedAuthenticationProbe(),
+            TimeProvider.System);
+
+        var first = Success(await runtime.DiagnoseAsync(profile, null, CancellationToken.None));
+        commandRunner.Result = ConnectionProbeResult.Success;
+        var retry = Success(await runtime.DiagnoseAsync(profile, null, CancellationToken.None));
+
+        Assert.Equal(ConnectionRuntimeErrorCode.AuthenticationFailed, first.Failure?.Code);
+        Assert.True(retry.Succeeded);
+        Assert.Equal(0, scanner.CallCount);
+        Assert.Equal(2, commandRunner.Commands.Count);
+        Assert.All(
+            new[] { first, retry },
+            report => Assert.Contains(report.Items, item =>
+                item.Stage == ConnectionDiagnosticStage.HostKey
+                && item.Status == ConnectionDiagnosticStatus.Passed));
+    }
+
+    [Fact]
+    public async Task Authentication_host_key_change_triggers_a_review_scan()
+    {
+        var pinned = Candidate(1);
+        var changed = Candidate(2);
+        var scanner = new FixedHostKeyScanner(changed);
+        var store = new SshKnownHostStore(_knownHostsDirectory);
+        var password = new SecretRef("password");
+        var profile = SshProfile(
+            id: "changed-during-authentication",
+            authentication: new ConnectionAuthentication.Password(password));
+        Assert.Equal(
+            SshKnownHostWriteResult.Stored,
+            await store.WriteAsync(profile.Id, pinned, null, CancellationToken.None));
+        using var vault = new RecordingSecretVault();
+        vault.Add(password, profile.Id.Value);
+        var authentication = new FixedAuthenticationProbe
+        {
+            FailureCode = ConnectionRuntimeErrorCode.HostKeyChanged,
+        };
+        var runtime = Runtime(store, vault, scanner, authentication);
+
+        var report = Success(await runtime.DiagnoseAsync(profile, null, CancellationToken.None));
+
+        Assert.Equal(ConnectionRuntimeErrorCode.HostKeyChanged, report.Failure?.Code);
+        Assert.Equal(SshHostKeyDisposition.Changed, report.HostKeyReview?.Disposition);
+        Assert.Equal(changed.Identity, report.HostKeyReview?.Presented);
+        Assert.Equal(pinned.Identity, report.HostKeyReview?.Trusted);
+        Assert.Equal(1, scanner.CallCount);
+        Assert.DoesNotContain(report.Items, item =>
+            item.Stage == ConnectionDiagnosticStage.Authentication);
     }
 
     [Fact]
@@ -291,7 +458,8 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
         SshKnownHostStore store,
         RecordingSecretVault vault,
         ISshHostKeyScanner scanner,
-        ISshAuthenticationProbe? authentication = null)
+        ISshAuthenticationProbe? authentication = null,
+        OpenSshKnownHostTrustSource? openSshKnownHosts = null)
     {
         var locator = new RecordingExecutableLocator();
         locator.Add("ssh", "/usr/bin/ssh");
@@ -303,7 +471,8 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
             store,
             scanner,
             authentication ?? new FixedAuthenticationProbe(),
-            TimeProvider.System);
+            TimeProvider.System,
+            openSshKnownHosts);
     }
 
     private static ConnectionProfile SshProfile(
@@ -328,11 +497,14 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
     {
         public SshHostKeyCandidate Candidate { get; set; } = candidate;
 
+        public int CallCount { get; private set; }
+
         public ValueTask<ConnectionRuntimeResult<SshHostKeyCandidate>> ScanAsync(
             ConnectionProfile profile,
             CancellationToken cancellationToken)
         {
             _ = profile;
+            CallCount++;
             return ValueTask.FromResult(cancellationToken.IsCancellationRequested
                 ? ConnectionRuntimeResult<SshHostKeyCandidate>.Fail(
                     ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.Cancelled))
@@ -346,6 +518,8 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
 
         public ConnectionProfile? LastProfile { get; private set; }
 
+        public ConnectionRuntimeErrorCode? FailureCode { get; set; }
+
         public ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> AuthenticateAsync(
             ConnectionProfile profile,
             CancellationToken cancellationToken)
@@ -353,6 +527,13 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             CallCount++;
             LastProfile = profile;
+            if (FailureCode is { } failureCode)
+            {
+                return ValueTask.FromResult(
+                    ConnectionRuntimeResult<ConnectionTestReport>.Fail(
+                        ConnectionRuntimeError.Create(failureCode)));
+            }
+
             return ValueTask.FromResult(ConnectionRuntimeResult<ConnectionTestReport>.Succeed(
                 new ConnectionTestReport(
                     profile.Id,

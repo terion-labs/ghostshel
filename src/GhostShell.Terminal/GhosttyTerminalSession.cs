@@ -465,13 +465,13 @@ internal sealed class GhosttyTerminalSession : ITerminalPanelSession
                     "The terminal process exited."));
             }
 
-            var hasActiveWork = GhosttyNativeTerminal.NeedsCloseConfirmation(_terminal);
+            var hasActiveWork = NeedsCloseConfirmationUnsafe();
             return ValueTask.FromResult(new PanelSessionSnapshot(
                 SessionLifecycle.Active,
                 SessionHealth.Healthy,
                 hasActiveWork,
                 hasActiveWork
-                    ? "The terminal has a running foreground process."
+                    ? "The terminal could not be confirmed at an idle shell prompt."
                     : "libghostty 1.3.1 · Metal · live"));
         }
     }
@@ -507,7 +507,7 @@ internal sealed class GhosttyTerminalSession : ITerminalPanelSession
 
             if (_terminal is not null
                 && mode == PanelCloseMode.Graceful
-                && GhosttyNativeTerminal.NeedsCloseConfirmation(_terminal))
+                && NeedsCloseConfirmationUnsafe())
             {
                 return ValueTask.FromResult(PanelCloseOutcome.ConfirmationRequired);
             }
@@ -544,6 +544,32 @@ internal sealed class GhosttyTerminalSession : ITerminalPanelSession
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    private bool NeedsCloseConfirmationUnsafe()
+    {
+        var terminal = _terminal;
+        if (terminal is null || !GhosttyNativeTerminal.NeedsCloseConfirmation(terminal))
+        {
+            return false;
+        }
+
+        if (!RemoteTerminalIdleClassifier.AppliesTo(_launch))
+        {
+            return true;
+        }
+
+        try
+        {
+            return !RemoteTerminalIdleClassifier.IsAtShellPrompt(
+                GhosttyNativeTerminal.ReadScreen(terminal),
+                GhosttyNativeTerminal.ReadScreenState(terminal));
+        }
+        catch (GhosttyNativeException)
+        {
+            // A failed canonical read must not turn an uncertain remote session into a silent close.
+            return true;
+        }
     }
 
     private GhosttyTerminalHandle RequireTerminal() =>

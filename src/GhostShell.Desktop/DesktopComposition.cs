@@ -69,6 +69,7 @@ public static class DesktopComposition
         services.AddSingleton<IConnectionRuntimeAdapter, DockerConnectionRuntimeAdapter>();
         services.AddSingleton<IConnectionRuntimeAdapter, WslConnectionRuntimeAdapter>();
         services.AddSingleton<IConnectionRuntime, ConnectionRuntime>();
+        services.AddSingleton<IConnectionCommandExecutor, ConnectionCommandExecutor>();
         services.AddSingleton<SshKnownHostStore>();
         services.AddSingleton<ISshHostKeyTrustStore>(provider =>
             provider.GetRequiredService<SshKnownHostStore>());
