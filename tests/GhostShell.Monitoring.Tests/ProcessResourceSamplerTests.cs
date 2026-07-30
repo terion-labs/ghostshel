@@ -22,9 +22,7 @@ public sealed class ProcessResourceSamplerTests
         var sample = Assert.IsType<ProcessResourceSample>(result.Value);
         Assert.Null(Assert.Single(sample.Processes).CpuPercent);
         Assert.Null(sample.Statistics.ObservedCpuPercent);
-        Assert.Null(sample.Statistics.GhostShellCpuPercent);
         Assert.Equal(128, sample.Statistics.ObservedWorkingSetBytes);
-        Assert.Equal(128, sample.Statistics.GhostShellWorkingSetBytes);
     }
 
     [Fact]
@@ -47,7 +45,6 @@ public sealed class ProcessResourceSamplerTests
         var sample = Assert.IsType<ProcessResourceSample>(result.Value);
         Assert.Equal(expected, Assert.Single(sample.Processes).CpuPercent!.Value, 10);
         Assert.Equal(expected, sample.Statistics.ObservedCpuPercent!.Value, 10);
-        Assert.Equal(expected, sample.Statistics.GhostShellCpuPercent!.Value, 10);
     }
 
     [Fact]
@@ -136,6 +133,54 @@ public sealed class ProcessResourceSamplerTests
         Assert.Equal(0, source.CaptureCount);
     }
 
+    [Fact]
+    public async Task OverlappingConsumersShareOneProcessCapture()
+    {
+        var captureStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCapture = new ManualResetEventSlim();
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(cancellationToken =>
+        {
+            captureStarted.TrySetResult();
+            releaseCapture.Wait(cancellationToken);
+            return Capture(
+                Process(41, "shared", 128, TimeSpan.FromSeconds(2), FirstStart));
+        });
+        var sampler = new ProcessResourceSampler(
+            source,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+
+        var statistics = Task.Run(async () => await sampler.CaptureAsync(
+            ProcessResourceConsumer.Statistics,
+            CancellationToken.None));
+        await captureStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var processes = Task.Run(async () => await sampler.CaptureAsync(
+            ProcessResourceConsumer.ProcessMonitor,
+            CancellationToken.None));
+        releaseCapture.Set();
+        var results = await Task.WhenAll(statistics, processes);
+
+        Assert.All(results, result => Assert.True(result.IsSuccess, result.Error?.Message));
+        Assert.Same(results[0], results[1]);
+        Assert.Equal(1, source.CaptureCount);
+    }
+
+    [Fact]
+    public async Task UnexpectedProjectionFailureRemainsATypedCaptureFailure()
+    {
+        var clock = new ThrowingTimestampTimeProvider();
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(41, "process", 128, TimeSpan.FromSeconds(2), FirstStart)));
+        var sampler = new ProcessResourceSampler(source, clock);
+
+        var result = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MonitorPanelErrorCode.CaptureFailed, result.Error!.Code);
+    }
+
     private static RawProcessCapture Capture(params RawProcessObservation[] processes) =>
         new(
             TimeSpan.FromHours(3),
@@ -157,4 +202,10 @@ public sealed class ProcessResourceSamplerTests
             processorTime,
             startedAtUtc,
             isGhostShell);
+
+    private sealed class ThrowingTimestampTimeProvider : TimeProvider
+    {
+        public override long GetTimestamp() =>
+            throw new ArgumentOutOfRangeException("timestamp");
+    }
 }

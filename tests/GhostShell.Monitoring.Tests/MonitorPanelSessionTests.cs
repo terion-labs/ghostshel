@@ -139,7 +139,7 @@ public sealed class MonitorPanelSessionTests
     }
 
     [Fact]
-    public async Task FactoryCreatesIndependentSamplersWithLeastPrivilegeCapabilities()
+    public async Task FactoryCreatesLeastPrivilegeSessionsOverOneConnectionSampler()
     {
         var source = new SequenceProcessSnapshotSource();
         source.Enqueue(Capture(Process(1, "statistics", 10)));
@@ -165,6 +165,42 @@ public sealed class MonitorPanelSessionTests
         Assert.True((await processes.ListProcessesAsync(
             new ProcessMonitorQuery(),
             CancellationToken.None)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task EquivalentConnectionSnapshotsShareOneCapturePipeline()
+    {
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(Process(1, "shared", 10)));
+        var factory = new SystemMonitorPanelSessionFactory(
+            source,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+        var firstConnection = BuiltInConnections.Local;
+        var secondConnection = new ConnectionProfile(
+            firstConnection.Id,
+            firstConnection.SchemaVersion,
+            firstConnection.Name,
+            firstConnection.Endpoint,
+            firstConnection.Authentication,
+            firstConnection.Startup,
+            firstConnection.KeepAlive,
+            firstConnection.HostKeyPolicy,
+            firstConnection.Tags.ToArray());
+
+        await using var statistics = await factory.CreateStatisticsAsync(
+            new SessionId("statistics-equivalent"),
+            firstConnection,
+            CancellationToken.None);
+        await using var processes = await factory.CreateProcessMonitorAsync(
+            new SessionId("processes-equivalent"),
+            secondConnection,
+            CancellationToken.None);
+
+        Assert.True((await statistics.ReadStatisticsAsync(CancellationToken.None)).IsSuccess);
+        Assert.True((await processes.ListProcessesAsync(
+            new ProcessMonitorQuery(),
+            CancellationToken.None)).IsSuccess);
+        Assert.Equal(1, source.CaptureCount);
     }
 
     private static ProcessMonitorPanelSession ProcessSession(

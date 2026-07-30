@@ -47,7 +47,9 @@ internal sealed class ProcessMonitorPanelSession : IProcessMonitorPanelSession
         using var operationCancellation =
             _lifetime.CreateOperationCancellation(cancellationToken);
         var captured = await _sampler
-            .CaptureAsync(operationCancellation.Token)
+            .CaptureAsync(
+                ProcessResourceConsumer.ProcessMonitor,
+                operationCancellation.Token)
             .ConfigureAwait(false);
         if (operationCancellation.IsCancellationRequested)
         {

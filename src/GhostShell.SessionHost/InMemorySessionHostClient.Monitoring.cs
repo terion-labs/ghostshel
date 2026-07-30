@@ -16,10 +16,12 @@ public sealed partial class InMemorySessionHostClient
             request.SessionId,
             request.Owner,
             request.Title,
+            request.Connection.Id,
             PanelKind.Statistics,
             ApplicationOperations.StatisticsOpen,
             cancellationToken => CreateStatisticsEngineAsync(
                 request.SessionId,
+                request.Connection,
                 cancellationToken),
             context,
             cancellationToken);
@@ -36,10 +38,12 @@ public sealed partial class InMemorySessionHostClient
             request.SessionId,
             request.Owner,
             request.Title,
+            request.Connection.Id,
             PanelKind.ProcessMonitor,
             ApplicationOperations.ProcessesOpen,
             cancellationToken => CreateProcessMonitorEngineAsync(
                 request.SessionId,
+                request.Connection,
                 cancellationToken),
             context,
             cancellationToken);
@@ -83,6 +87,7 @@ public sealed partial class InMemorySessionHostClient
         SessionId sessionId,
         SessionOwner owner,
         string title,
+        ConnectionId connectionId,
         PanelKind kind,
         string operationName,
         Func<CancellationToken, ValueTask<IPanelSession>> createEngine,
@@ -93,7 +98,8 @@ public sealed partial class InMemorySessionHostClient
         var fingerprint = Fingerprint(
             operationName,
             sessionId.Value,
-            owner.PanelId.Value);
+            owner.PanelId.Value,
+            connectionId.Value);
         if (TryReplay(context, fingerprint, 0, out HostResult<SessionSnapshot>? replay))
         {
             return replay;
@@ -345,16 +351,18 @@ public sealed partial class InMemorySessionHostClient
 
     private async ValueTask<IPanelSession> CreateStatisticsEngineAsync(
         SessionId sessionId,
+        ConnectionProfile connection,
         CancellationToken cancellationToken) =>
         await _systemMonitorFactory!
-            .CreateStatisticsAsync(sessionId, cancellationToken)
+            .CreateStatisticsAsync(sessionId, connection, cancellationToken)
             .ConfigureAwait(false);
 
     private async ValueTask<IPanelSession> CreateProcessMonitorEngineAsync(
         SessionId sessionId,
+        ConnectionProfile connection,
         CancellationToken cancellationToken) =>
         await _systemMonitorFactory!
-            .CreateProcessMonitorAsync(sessionId, cancellationToken)
+            .CreateProcessMonitorAsync(sessionId, connection, cancellationToken)
             .ConfigureAwait(false);
 
     private static HostResult<T> MonitoringEngineFailure<T>(long revision) =>

@@ -32,6 +32,7 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
 
     public ValueTask<IStatisticsPanelSession> CreateStatisticsAsync(
         SessionId sessionId,
+        ConnectionProfile connection,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -45,6 +46,7 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
 
     public ValueTask<IProcessMonitorPanelSession> CreateProcessMonitorAsync(
         SessionId sessionId,
+        ConnectionProfile connection,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -164,9 +166,7 @@ internal sealed class FakeStatisticsPanelSession(
                 8,
                 7,
                 12.5,
-                4_096,
-                1.5,
-                512)));
+                4_096)));
     }
 }
 
