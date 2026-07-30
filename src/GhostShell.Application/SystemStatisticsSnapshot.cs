@@ -1,8 +1,8 @@
 namespace GhostShell.Application;
 
 /// <summary>
-/// A bounded local-host observation. "Observed" totals include only processes whose public
-/// resource counters the operating system allowed GhostSHELL to read.
+/// A bounded local-host sample. CPU and working-set totals include only processes whose
+/// public resource counters the operating system allowed the session host to read.
 /// </summary>
 public sealed record SystemStatisticsSnapshot(
     DateTimeOffset CapturedAtUtc,
@@ -11,6 +11,4 @@ public sealed record SystemStatisticsSnapshot(
     int EnumeratedProcessCount,
     int ObservedProcessCount,
     double? ObservedCpuPercent,
-    long ObservedWorkingSetBytes,
-    double? GhostShellCpuPercent,
-    long GhostShellWorkingSetBytes);
+    long ObservedWorkingSetBytes);

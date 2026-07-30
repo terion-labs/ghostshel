@@ -24,13 +24,15 @@ internal sealed class SequenceProcessSnapshotSource : IProcessSnapshotSource
         _captures.Enqueue(_ => throw exception);
     }
 
-    public RawProcessCapture Capture(CancellationToken cancellationToken)
+    public ValueTask<RawProcessCapture> CaptureAsync(
+        CancellationToken cancellationToken)
     {
         CaptureCount++;
         cancellationToken.ThrowIfCancellationRequested();
-        return _captures.Count > 0
+        var capture = _captures.Count > 0
             ? _captures.Dequeue()(cancellationToken)
             : throw new InvalidOperationException("No process capture was queued.");
+        return ValueTask.FromResult(capture);
     }
 }
 
@@ -54,5 +56,21 @@ internal sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
 
         _utcNow += duration;
         _timestamp = checked(_timestamp + duration.Ticks);
+    }
+}
+
+internal sealed class RecordingPosixCommandTransport : IPosixCommandTransport
+{
+    public Queue<PosixCommandResult> Results { get; } = [];
+
+    public List<PosixCommand> Commands { get; } = [];
+
+    public ValueTask<PosixCommandResult> ExecuteAsync(
+        PosixCommand command,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Commands.Add(command);
+        return ValueTask.FromResult(Results.Dequeue());
     }
 }

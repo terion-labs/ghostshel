@@ -10,9 +10,11 @@ public interface ISystemMonitorPanelSessionFactory
 
     ValueTask<IStatisticsPanelSession> CreateStatisticsAsync(
         SessionId sessionId,
+        ConnectionProfile connection,
         CancellationToken cancellationToken);
 
     ValueTask<IProcessMonitorPanelSession> CreateProcessMonitorAsync(
         SessionId sessionId,
+        ConnectionProfile connection,
         CancellationToken cancellationToken);
 }

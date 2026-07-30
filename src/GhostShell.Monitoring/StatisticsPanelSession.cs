@@ -40,7 +40,9 @@ internal sealed class StatisticsPanelSession : IStatisticsPanelSession
         using var operationCancellation =
             _lifetime.CreateOperationCancellation(cancellationToken);
         var captured = await _sampler
-            .CaptureAsync(operationCancellation.Token)
+            .CaptureAsync(
+                ProcessResourceConsumer.Statistics,
+                operationCancellation.Token)
             .ConfigureAwait(false);
         if (operationCancellation.IsCancellationRequested)
         {
