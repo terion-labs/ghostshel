@@ -23,6 +23,8 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? CancelAgentChatRequested;
 
+    public event EventHandler<RoutedEventArgs>? CancelFileTransferRequested;
+
     public event EventHandler<RoutedEventArgs>? ClearAgentChatRequested;
 
     public event EventHandler<RoutedEventArgs>? CloseRuntimeTabRequested;
@@ -44,6 +46,8 @@ public sealed partial class WorkspaceView : UserControl
     public event EventHandler<RoutedEventArgs>? OpenWorkspaceRequested;
 
     public event EventHandler<RoutedEventArgs>? RefreshAgentAuditRequested;
+
+    public event EventHandler<RoutedEventArgs>? RetryFileTransferRequested;
 
     public event EventHandler<SavedConnectionLaunchViewModel>?
         SavedConnectionLaunchRequested;
@@ -106,6 +110,9 @@ public sealed partial class WorkspaceView : UserControl
     private void OnCancelAgentChatClick(object? sender, RoutedEventArgs e) =>
         CancelAgentChatRequested?.Invoke(sender, e);
 
+    private void OnCancelFileTransferClick(object? sender, RoutedEventArgs e) =>
+        CancelFileTransferRequested?.Invoke(sender, e);
+
     private void OnClearAgentChatClick(object? sender, RoutedEventArgs e) =>
         ClearAgentChatRequested?.Invoke(sender, e);
 
@@ -138,6 +145,9 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnRefreshAgentAuditClick(object? sender, RoutedEventArgs e) =>
         RefreshAgentAuditRequested?.Invoke(sender, e);
+
+    private void OnRetryFileTransferClick(object? sender, RoutedEventArgs e) =>
+        RetryFileTransferRequested?.Invoke(sender, e);
 
     private void OnSavedConnectionLaunchRequested(
         object? sender,

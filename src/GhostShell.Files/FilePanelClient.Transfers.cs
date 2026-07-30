@@ -10,6 +10,7 @@ public sealed partial class FilePanelClient
     private readonly object _transferGate = new();
     private readonly Dictionary<FilePanelTransferId, TransferRecord> _transfers = [];
     private readonly CancellationTokenSource _transferLifetime = new();
+    private readonly SemaphoreSlim _transferExecutionGate = new(1, 1);
     private bool _disposed;
 
     public event EventHandler? TransfersChanged;
@@ -204,6 +205,48 @@ public sealed partial class FilePanelClient
         FileProviderRegistration destinationRegistration)
     {
         var cancellationToken = record.Cancellation!.Token;
+        try
+        {
+            await _transferExecutionGate
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            UpdateRecord(record, snapshot => snapshot with
+            {
+                State = FilePanelTransferState.Cancelled,
+                Stage = "Cancelled",
+                Error = new FilePanelError(
+                    FilePanelErrorCode.Cancelled,
+                    "file_transfer_cancelled",
+                    "The transfer was cancelled.",
+                    true),
+                CompletedAt = _timeProvider.GetUtcNow(),
+            });
+            return;
+        }
+
+        try
+        {
+            await RunTransferCoreAsync(
+                    record,
+                    sourceRegistration,
+                    destinationRegistration)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _transferExecutionGate.Release();
+        }
+    }
+
+    private async Task RunTransferCoreAsync(
+        TransferRecord record,
+        FileProviderRegistration sourceRegistration,
+        FileProviderRegistration destinationRegistration)
+    {
+        var cancellationToken = record.Cancellation!.Token;
         UpdateRecord(record, snapshot => snapshot with
         {
             State = FilePanelTransferState.Running,
@@ -214,18 +257,12 @@ public sealed partial class FilePanelClient
         FilePanelResult<long> result;
         try
         {
-            result = ReferenceEquals(sourceRegistration, destinationRegistration)
-                ? await RunSameProviderTransferAsync(
-                        record,
-                        sourceRegistration.Provider,
-                        cancellationToken)
-                    .ConfigureAwait(false)
-                : await RunCrossProviderTransferAsync(
-                        record,
-                        sourceRegistration.Provider,
-                        destinationRegistration.Provider,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+            result = await RunResolvedTransferAsync(
+                    record,
+                    sourceRegistration,
+                    destinationRegistration,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -279,6 +316,77 @@ public sealed partial class FilePanelClient
         });
     }
 
+    private async ValueTask<FilePanelResult<long>> RunResolvedTransferAsync(
+        TransferRecord record,
+        FileProviderRegistration sourceRegistration,
+        FileProviderRegistration destinationRegistration,
+        CancellationToken cancellationToken)
+    {
+        var sameProvider = ReferenceEquals(sourceRegistration, destinationRegistration);
+        var requestedCapability = record.Snapshot.Request.Operation
+            == FilePanelTransferOperation.Copy
+            ? FileProviderCapability.Copy
+            : FileProviderCapability.Move;
+        if (sameProvider
+            && sourceRegistration.Provider.Capabilities.Supports(
+                requestedCapability))
+        {
+            return await RunSameProviderTransferAsync(
+                    record,
+                    sourceRegistration.Provider,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (!TryResolve(record.Snapshot.Request.Source, out _, out var source, out var error)
+            || !TryResolve(
+                record.Snapshot.EffectiveDestination,
+                out _,
+                out var destination,
+                out error))
+        {
+            return FilePanelResult<long>.Failure(error!);
+        }
+
+        var sourceStat = await sourceRegistration.Provider.StatAsync(
+                new FileStatRequest(source!),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!sourceStat.IsSuccess)
+        {
+            return FilePanelResult<long>.Failure(MapError(sourceStat.Error!));
+        }
+
+        if (sourceStat.Value!.Kind == FileEntryKind.Directory)
+        {
+            return await RunDirectoryTransferAsync(
+                    record,
+                    sourceRegistration.Provider,
+                    destinationRegistration.Provider,
+                    source!,
+                    destination!,
+                    sourceStat.Value,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return sameProvider
+            ? await RunSameProviderTransferAsync(
+                    record,
+                    sourceRegistration.Provider,
+                    cancellationToken)
+                .ConfigureAwait(false)
+            : await RunCrossProviderTransferAsync(
+                    record,
+                    sourceRegistration.Provider,
+                    destinationRegistration.Provider,
+                    source!,
+                    destination!,
+                    sourceStat.Value,
+                    cancellationToken)
+                .ConfigureAwait(false);
+    }
+
     private async ValueTask<FilePanelResult<long>> RunSameProviderTransferAsync(
         TransferRecord record,
         IFileProvider provider,
@@ -325,6 +433,9 @@ public sealed partial class FilePanelClient
         TransferRecord record,
         IFileProvider sourceProvider,
         IFileProvider destinationProvider,
+        FileLocation source,
+        FileLocation destination,
+        FileEntry sourceEntry,
         CancellationToken cancellationToken)
     {
         if (!sourceProvider.Capabilities.Supports(FileProviderCapability.RangedRead)
@@ -336,20 +447,7 @@ public sealed partial class FilePanelClient
                 "Cross-provider transfer requires bounded reads and streaming writes.");
         }
 
-        if (!TryResolve(record.Snapshot.Request.Source, out _, out var source, out var error)
-            || !TryResolve(record.Snapshot.EffectiveDestination, out _, out var destination, out error))
-        {
-            return FilePanelResult<long>.Failure(error!);
-        }
-
-        var stat = await sourceProvider.StatAsync(new FileStatRequest(source!), cancellationToken)
-            .ConfigureAwait(false);
-        if (!stat.IsSuccess)
-        {
-            return FilePanelResult<long>.Failure(MapError(stat.Error!));
-        }
-
-        if (stat.Value!.Kind != FileEntryKind.File || stat.Value.Size is not { } contentLength)
+        if (sourceEntry.Kind != FileEntryKind.File || sourceEntry.Size is not { } contentLength)
         {
             return Failure<long>(
                 FilePanelErrorCode.UnsupportedCapability,
@@ -358,8 +456,54 @@ public sealed partial class FilePanelClient
         }
 
         if (contentLength > record.Snapshot.Request.MaximumBytes
-            || contentLength > sourceProvider.Capabilities.Limits.MaximumReadBytes
+            || contentLength > sourceProvider.Capabilities.Limits.MaximumTransferBytes
             || contentLength > destinationProvider.Capabilities.Limits.MaximumWriteBytes)
+        {
+            return Failure<long>(
+                FilePanelErrorCode.LimitExceeded,
+                "file_transfer_content_limit_exceeded",
+                "The source file exceeds a provider or request transfer bound.");
+        }
+
+        return await StreamFileAsync(
+                record,
+                sourceProvider,
+                destinationProvider,
+                source,
+                destination,
+                sourceEntry,
+                progressBase: 0,
+                aggregateTotalBytes: contentLength,
+                deleteSource: record.Snapshot.Request.Operation
+                    == FilePanelTransferOperation.Move,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<FilePanelResult<long>> StreamFileAsync(
+        TransferRecord record,
+        IFileProvider sourceProvider,
+        IFileProvider destinationProvider,
+        FileLocation source,
+        FileLocation destination,
+        FileEntry sourceEntry,
+        long progressBase,
+        long aggregateTotalBytes,
+        bool deleteSource,
+        CancellationToken cancellationToken)
+    {
+        if (sourceEntry.Size is not { } contentLength)
+        {
+            return Failure<long>(
+                FilePanelErrorCode.UnsupportedCapability,
+                "file_cross_provider_size_unknown",
+                "The source provider did not report a bounded file size.");
+        }
+
+        if (contentLength > record.Snapshot.Request.MaximumBytes
+            || contentLength > sourceProvider.Capabilities.Limits.MaximumTransferBytes
+            || contentLength > destinationProvider.Capabilities.Limits.MaximumWriteBytes
+            || contentLength > destinationProvider.Capabilities.Limits.MaximumTransferBytes)
         {
             return Failure<long>(
                 FilePanelErrorCode.LimitExceeded,
@@ -379,19 +523,25 @@ public sealed partial class FilePanelClient
             Math.Min(
                 sourceProvider.Capabilities.Limits.MaximumBufferSize,
                 destinationProvider.Capabilities.Limits.MaximumBufferSize));
-        var readProgress = new InlineProgress<FileTransferProgress>(value =>
-            ReportProgress(record, "Reading source", value.BytesTransferred, contentLength));
         var writeProgress = new InlineProgress<FileTransferProgress>(value =>
-            ReportProgress(record, "Writing destination", value.BytesTransferred, contentLength));
-        var readTask = sourceProvider.ReadAsync(
-                new FileReadRequest(source!, 0, contentLength, bufferSize),
-                output,
-                readProgress,
-                operation.Token)
-            .AsTask();
+            ReportProgress(
+                record,
+                "Writing destination",
+                progressBase + value.BytesTransferred,
+                aggregateTotalBytes));
+        var readTask = ReadFileChunksAsync(
+            record,
+            sourceProvider,
+            source,
+            output,
+            contentLength,
+            bufferSize,
+            progressBase,
+            aggregateTotalBytes,
+            operation.Token);
         var writeTask = destinationProvider.WriteAsync(
                 new FileWriteRequest(
-                    destination!,
+                    destination,
                     contentLength,
                     bufferSize,
                     DestinationPrecondition(record.Snapshot.Request.ConflictPolicy)),
@@ -400,7 +550,7 @@ public sealed partial class FilePanelClient
                 operation.Token)
             .AsTask();
 
-        FileProviderResult<FileReadReceipt>? readResult = null;
+        FileProviderResult<long>? readResult = null;
         FileProviderResult<FileWriteReceipt>? writeResult = null;
         try
         {
@@ -454,13 +604,13 @@ public sealed partial class FilePanelClient
                     "The destination stream failed before the transfer completed.");
         }
 
-        if (record.Snapshot.Request.Operation == FilePanelTransferOperation.Move)
+        if (deleteSource)
         {
             var delete = await sourceProvider.DeleteAsync(
                     new FileDeleteRequest(
-                        source!,
+                        source,
                         recursive: false,
-                        new FileMutationPrecondition.VersionMatches(stat.Value.Version)),
+                        new FileMutationPrecondition.VersionMatches(sourceEntry.Version)),
                     cancellationToken)
                 .ConfigureAwait(false);
             if (!delete.IsSuccess)
@@ -473,6 +623,59 @@ public sealed partial class FilePanelClient
         }
 
         return FilePanelResult<long>.Success(writeResult.Value!.BytesWritten);
+    }
+
+    private async Task<FileProviderResult<long>> ReadFileChunksAsync(
+        TransferRecord record,
+        IFileProvider sourceProvider,
+        FileLocation source,
+        Stream output,
+        long contentLength,
+        int bufferSize,
+        long progressBase,
+        long aggregateTotalBytes,
+        CancellationToken cancellationToken)
+    {
+        long offset = 0;
+        while (offset < contentLength)
+        {
+            var chunkLength = Math.Min(
+                contentLength - offset,
+                sourceProvider.Capabilities.Limits.MaximumReadBytes);
+            var chunkOffset = offset;
+            var progress = new InlineProgress<FileTransferProgress>(value =>
+                ReportProgress(
+                    record,
+                    "Reading source",
+                    progressBase + chunkOffset + value.BytesTransferred,
+                    aggregateTotalBytes));
+            var result = await sourceProvider.ReadAsync(
+                    new FileReadRequest(
+                        source,
+                        chunkOffset,
+                        chunkLength,
+                        bufferSize),
+                    output,
+                    progress,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return FileProviderResult<long>.Failure(result.Error!);
+            }
+
+            if (result.Value!.BytesRead <= 0)
+            {
+                return FileProviderResult<long>.Failure(
+                    FileProviderError.Create(
+                        FileProviderErrorCode.IoFailure,
+                        "The source stream ended before the reported file size."));
+            }
+
+            offset = checked(offset + result.Value.BytesRead);
+        }
+
+        return FileProviderResult<long>.Success(offset);
     }
 
     private async ValueTask<FilePanelResult<bool>> DestinationExistsAsync(

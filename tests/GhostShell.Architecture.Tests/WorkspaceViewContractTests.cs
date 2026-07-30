@@ -16,6 +16,7 @@ public sealed class WorkspaceViewContractTests
             ["ApproveAgentActionRequested"] = "OnApproveAgentActionClick",
             ["CancelAgentActionRequested"] = "OnCancelAgentActionClick",
             ["CancelAgentChatRequested"] = "OnCancelAgentChatClick",
+            ["CancelFileTransferRequested"] = "OnCancelFileTransferClick",
             ["ClearAgentChatRequested"] = "OnClearAgentChatClick",
             ["CloseRuntimeTabRequested"] = "OnCloseRuntimeTabClick",
             ["DeclineAgentQuestionRequested"] = "OnDeclineAgentQuestionClick",
@@ -27,6 +28,7 @@ public sealed class WorkspaceViewContractTests
             ["LoadOlderAgentAuditRequested"] = "OnLoadOlderAgentAuditClick",
             ["OpenWorkspaceRequested"] = "OnOpenWorkspaceClick",
             ["RefreshAgentAuditRequested"] = "OnRefreshAgentAuditClick",
+            ["RetryFileTransferRequested"] = "OnRetryFileTransferClick",
             ["RuntimeTabDragEnterRequested"] = "OnRuntimeTabDragEnter",
             ["RuntimeTabDragLeaveRequested"] = "OnRuntimeTabDragLeave",
             ["RuntimeTabDragOverRequested"] = "OnRuntimeTabDragOver",
@@ -241,6 +243,30 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "AutomationProperties.LiveSetting"),
                     "Polite",
                     StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "IsVisible"),
+                    "{Binding HasFileTransfers}",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "Open transfer manager",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding FileTransfers}",
+                    StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Text"),
+                "{Binding HostStatus}",
+                StringComparison.Ordinal));
     }
 
     private static void AssertTitleBarDragRegion(XElement root)

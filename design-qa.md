@@ -1640,3 +1640,34 @@ build, formatting check, and full solution test run have no remaining actionable
 P0, P1, or P2 finding.
 
 final result: passed
+
+## Protocol-independent file transfers — 2026-07-31
+
+### Implementation and interaction review
+
+- [x] Copy, cut, paste, and drag-and-drop use one provider-neutral payload and
+  create queue requests at the destination panel boundary.
+- [x] Multiple selected files and folders create individual queue entries, with
+  one active transfer at a time and the remainder visibly queued.
+- [x] Cross-provider files stream through bounded local pipes; directories are
+  planned recursively, preserve empty folders, reject links and special entries,
+  and delete a moved source only after every destination write succeeds.
+- [x] Same-provider transfers continue to use the provider's native copy/move
+  capability when available.
+- [x] The bottom-right host/agent labels are replaced by a transfer summary only
+  when transfer history exists. Clicking it opens the compact transfer manager
+  with state, progress, errors, cancel, and retry actions.
+- [x] A completed transfer refreshes open File Viewer panels using either the
+  source or destination provider.
+- [x] The complete solution suite passes: 3,850 tests, with the existing
+  opt-in native-vault integration test skipped.
+
+### Visual verification status
+
+The current desktop build was launched and the File Viewer shell was inspected.
+The transfer-manager popup cannot be truthfully marked visually verified without
+executing a real queued transfer in the running application. Its structure and
+bindings are covered by architecture tests, but a final active/completed/failed
+state screenshot and direct manipulation pass are still required.
+
+final result: blocked

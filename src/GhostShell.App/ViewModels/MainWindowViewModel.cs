@@ -89,6 +89,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly HashSet<RuntimeTabViewModel> _agentSelectionTrackedTabs = [];
     private readonly HashSet<TerminalRuntimePanelViewModel>
         _agentSelectionTrackedTerminals = [];
+    private readonly HashSet<FilePanelTransferId> _refreshedFileTransfers = [];
     private readonly Dictionary<
         McpServerProfileId,
         McpServerTestPresentation> _mcpServerTests = [];
@@ -703,6 +704,37 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasFileTransfers => FileTransfers.Count > 0;
 
     public bool HasNoFileTransfers => !HasFileTransfers;
+
+    public int ActiveFileTransferCount =>
+        FileTransfers.Count(transfer => transfer.IsActive);
+
+    public int FailedFileTransferCount =>
+        FileTransfers.Count(transfer => transfer.HasError);
+
+    public string FileTransferStatusText
+    {
+        get
+        {
+            var active = FileTransfers.FirstOrDefault(transfer => transfer.IsActive);
+            if (active is not null)
+            {
+                return ActiveFileTransferCount == 1
+                    ? active.HasKnownProgress
+                        ? $"Transfer · {active.ProgressPercent:0}%"
+                        : "Transfer in progress"
+                    : $"{ActiveFileTransferCount} transfers";
+            }
+
+            if (FailedFileTransferCount > 0)
+            {
+                return FailedFileTransferCount == 1
+                    ? "1 transfer failed"
+                    : $"{FailedFileTransferCount} transfers failed";
+            }
+
+            return "Transfers complete";
+        }
+    }
 
     public IReadOnlyList<SecretKind> SecretKinds { get; } = Enum.GetValues<SecretKind>();
 
@@ -2996,6 +3028,23 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         ClearError();
         var result = await ResolveFileTransferQueue(id).CancelAsync(id, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            SetError(result.Error!.Message);
+            return false;
+        }
+
+        RefreshFileTransfers();
+        return true;
+    }
+
+    public async ValueTask<bool> QueueFileTransferAsync(
+        FilePanelTransferRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ClearError();
+        var result = await _fileTransferQueue.EnqueueAsync(request, cancellationToken);
         if (!result.IsSuccess)
         {
             SetError(result.Error!.Message);
@@ -5523,7 +5572,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void RefreshFileTransfers()
     {
-        Replace(FileTransfers, _fileTransferQueue.Transfers.Select(snapshot =>
+        var snapshots = _fileTransferQueue.Transfers;
+        Replace(FileTransfers, snapshots.Select(snapshot =>
             new FileTransferItemViewModel(
                 snapshot.Id,
                 FileLocationPresentation.Display(snapshot.Request.Source),
@@ -5536,9 +5586,62 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 snapshot.Error is not null,
                 snapshot.CanCancel,
                 snapshot.CanRetry,
+                snapshot.State is
+                    FilePanelTransferState.Queued or FilePanelTransferState.Running,
+                snapshot.TotalBytes is > 0,
+                TransferPercent(snapshot),
                 snapshot.QueuedAt)));
         OnPropertyChanged(nameof(HasFileTransfers));
         OnPropertyChanged(nameof(HasNoFileTransfers));
+        OnPropertyChanged(nameof(ActiveFileTransferCount));
+        OnPropertyChanged(nameof(FailedFileTransferCount));
+        OnPropertyChanged(nameof(FileTransferStatusText));
+
+        foreach (var snapshot in snapshots.Where(snapshot =>
+                     snapshot.State == FilePanelTransferState.Completed
+                     && _refreshedFileTransfers.Add(snapshot.Id)))
+        {
+            _ = RefreshPanelsAfterTransferAsync(snapshot);
+        }
+    }
+
+    private async Task RefreshPanelsAfterTransferAsync(
+        FilePanelTransferSnapshot transfer)
+    {
+        if (RuntimeWorkspace is null || _shutdownStarted)
+        {
+            return;
+        }
+
+        var profileIds = new HashSet<string>(StringComparer.Ordinal)
+        {
+            transfer.Request.Source.ProviderProfileId,
+            transfer.EffectiveDestination.ProviderProfileId,
+        };
+        var panels = RuntimeWorkspace.Tabs
+            .SelectMany(tab => tab.Panels)
+            .OfType<FileRuntimePanelViewModel>()
+            .Where(panel => panel.SelectedProfile is not null
+                && profileIds.Contains(panel.SelectedProfile.Id))
+            .ToArray();
+
+        foreach (var panel in panels)
+        {
+            try
+            {
+                await panel
+                    .RefreshAsync(_runtimeGraphLifetime.Token)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+                when (_runtimeGraphLifetime.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
     }
 
     private IFileTransferQueueClient ResolveFileTransferQueue(FilePanelTransferId id) =>
@@ -9535,12 +9638,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (snapshot.TotalBytes is > 0 and var total)
         {
-            var percent = Math.Clamp((double)snapshot.BytesTransferred / total * 100, 0, 100);
+            var percent = TransferPercent(snapshot);
             return $"{percent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)}% · {snapshot.BytesTransferred:N0} / {total:N0} bytes";
         }
 
         return $"{snapshot.BytesTransferred:N0} bytes";
     }
+
+    private static double TransferPercent(FilePanelTransferSnapshot snapshot) =>
+        snapshot.TotalBytes is > 0 and var total
+            ? Math.Clamp((double)snapshot.BytesTransferred / total * 100, 0, 100)
+            : 0;
 
     private static string Initials(string name)
     {
