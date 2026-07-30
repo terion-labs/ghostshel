@@ -380,6 +380,9 @@ public sealed record FileTransferItemViewModel(
     bool HasError,
     bool CanCancel,
     bool CanRetry,
+    bool IsActive,
+    bool HasKnownProgress,
+    double ProgressPercent,
     DateTimeOffset QueuedAt);
 
 public sealed record FileProviderProfileItemViewModel(

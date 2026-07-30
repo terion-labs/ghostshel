@@ -478,6 +478,8 @@ public sealed class RuntimePanelViewContractTests
             ["DownloadRequested"] = "OnFileDownloadClick",
             ["EntryDoubleTapped"] = "OnFileEntryDoubleTapped",
             ["EntrySelectionChanged"] = "OnFileEntrySelectionChanged",
+            ["EntryTransferDropRequested"] = "OnFileEntryTransferDropRequested",
+            ["EntryTransferKeyRequested"] = "OnFileEntryTransferKeyRequested",
             ["LoadMoreRequested"] = "OnFileLoadMoreClick",
             ["LocationKeyDown"] = "OnFileLocationKeyDown",
             ["NavigateUpRequested"] = "OnFileNavigateUpClick",
@@ -659,7 +661,9 @@ public sealed class RuntimePanelViewContractTests
 
         var codeBehind = File.ReadAllText(
             RuntimePanelPath("FileRuntimePanelView", ".axaml.cs"));
-        foreach (var interaction in shellInteractions.Keys)
+        foreach (var interaction in shellInteractions.Keys.Except(
+                     ["EntryTransferDropRequested", "EntryTransferKeyRequested"],
+                     StringComparer.Ordinal))
         {
             Assert.Contains(
                 $"{interaction}?.Invoke(sender, e);",
@@ -667,7 +671,19 @@ public sealed class RuntimePanelViewContractTests
                 StringComparison.Ordinal);
         }
 
-        Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryTransferKeyRequested?.Invoke(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryTransferDropRequested?.Invoke(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "private async void OnFilePointerMoved",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Equal(1, codeBehind.Split("private async ", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);

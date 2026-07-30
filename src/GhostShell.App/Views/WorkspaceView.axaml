@@ -221,7 +221,7 @@
     </DockPanel>
 
     <Border Grid.Row="4" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}" Margin="{controls:Inset Horizontal=Sm}">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}" Margin="{controls:Inset Horizontal=Sm}">
         <TextBlock VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding RuntimeWorkspace.ActiveTab.Source}" />
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding WorkspaceStatus}" />
         <TextBlock
@@ -233,12 +233,100 @@
             TextTrimming="CharacterEllipsis"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="{Binding TabReorderStatus, StringFormat={}Tab order status · {0}}" />
-        <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HostStatus}" />
-        <TextBlock
-            Grid.Column="4"
+        <Button
+            Grid.Column="3"
             VerticalAlignment="Center"
-            Classes="Eyebrow"
-            Text="{Binding AgentChat.ConnectionStatus, StringFormat={}AGENT · {0}}" />
+            Padding="{controls:Inset Horizontal=Sm}"
+            MinHeight="22"
+            Classes="TextButton"
+            IsVisible="{Binding HasFileTransfers}"
+            AutomationProperties.Name="Open transfer manager">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+            <icons:SymbolIcon
+                VerticalAlignment="Center"
+                Symbol="ArrowClockwise"
+                FontSize="11"
+                Foreground="{DynamicResource ShellAccentBrush}" />
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="{DynamicResource ShellFontSize9}"
+                FontWeight="SemiBold"
+                Text="{Binding FileTransferStatusText}"
+                AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+          <Button.Flyout>
+            <Flyout Placement="Top">
+              <Border
+                  Width="460"
+                  MaxHeight="420"
+                  Padding="{controls:Inset Md}"
+                  Background="{DynamicResource ShellSurfaceBrush}">
+                <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="File transfers" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Transfers stream through this computer between file providers." />
+                    </StackPanel>
+                    <controls:StatusChip
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Content="{Binding FileTransferStatusText}" />
+                  </Grid>
+                  <ScrollViewer Grid.Row="1" MaxHeight="330" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding FileTransfers}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border
+                              Padding="{controls:Inset Vertical=Sm}"
+                              BorderBrush="{DynamicResource ShellBorderBrush}"
+                              BorderThickness="0,0,0,1">
+                            <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                                  <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Operation}" />
+                                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Stage}" />
+                                </StackPanel>
+                                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
+                                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                                  <icons:SymbolIcon Symbol="ArrowRight" FontSize="10" Foreground="{DynamicResource ShellMutedBrush}" />
+                                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Destination}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                              </StackPanel>
+                              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                                <controls:StatusChip Content="{Binding State}" />
+                                <Button Classes="IconButton" Click="OnCancelFileTransferClick" IsVisible="{Binding CanCancel}" ToolTip.Tip="Cancel transfer" AutomationProperties.Name="Cancel file transfer"><icons:SymbolIcon Symbol="Dismiss" FontSize="11" /></Button>
+                                <Button Classes="IconButton" Click="OnRetryFileTransferClick" IsVisible="{Binding CanRetry}" ToolTip.Tip="Retry transfer" AutomationProperties.Name="Retry file transfer"><icons:SymbolIcon Symbol="ArrowClockwise" FontSize="11" /></Button>
+                              </StackPanel>
+                              <ProgressBar
+                                  Grid.Row="1"
+                                  Grid.ColumnSpan="2"
+                                  Height="2"
+                                  Margin="{controls:Inset Top=Sm}"
+                                  Minimum="0"
+                                  Maximum="100"
+                                  Value="{Binding ProgressPercent}"
+                                  IsIndeterminate="{Binding !HasKnownProgress}"
+                                  IsVisible="{Binding IsActive}" />
+                              <TextBlock
+                                  Grid.Row="2"
+                                  Grid.ColumnSpan="2"
+                                  Margin="{controls:Inset Top=Xs}"
+                                  Foreground="{DynamicResource ShellDangerBrush}"
+                                  FontSize="{DynamicResource ShellFontSize9}"
+                                  Text="{Binding Error}"
+                                  TextWrapping="Wrap"
+                                  IsVisible="{Binding HasError}" />
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Grid>
+              </Border>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
       </Grid>
     </Border>
   </Grid>

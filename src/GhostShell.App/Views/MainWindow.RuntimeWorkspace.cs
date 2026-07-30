@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Components;
+using GhostShell.App.Views.RuntimePanels;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -23,6 +24,7 @@ public sealed partial class MainWindow
         DataFormat.CreateStringApplicationFormat(
             "ghostshell.runtime-tab-drag");
 
+    private FilePanelTransferPayload? _fileTransferClipboard;
     private RuntimeTabDragCandidate? _runtimeTabDragCandidate;
     private Grid? _runtimeTabDropTarget;
     private bool _runtimeTabDragInProgress;
@@ -1203,6 +1205,89 @@ public sealed partial class MainWindow
         {
             await panel.PreviewSelectedAsync(_lifetime.Token);
         }
+    }
+
+    private async void OnFileEntryTransferKeyRequested(
+        object? sender,
+        FilePanelTransferKeyEventArgs e)
+    {
+        if (sender is not ListBox { DataContext: FileRuntimePanelViewModel panel })
+        {
+            return;
+        }
+
+        if (e.KeyEvent.Key is Key.C or Key.X)
+        {
+            if (e.Entries.Count == 0)
+            {
+                return;
+            }
+
+            _fileTransferClipboard = new FilePanelTransferPayload(
+                e.Entries,
+                e.KeyEvent.Key == Key.X
+                    ? FilePanelTransferOperation.Move
+                    : FilePanelTransferOperation.Copy);
+            e.KeyEvent.Handled = true;
+            return;
+        }
+
+        if (e.KeyEvent.Key != Key.V)
+        {
+            return;
+        }
+
+        e.KeyEvent.Handled = true;
+        if (_fileTransferClipboard is not { } clipboard)
+        {
+            panel.ReportValidationError("Copy or cut a file or folder first.");
+            return;
+        }
+
+        if (await QueueIncomingFileTransferAsync(panel, clipboard)
+            && clipboard.Operation == FilePanelTransferOperation.Move)
+        {
+            _fileTransferClipboard = null;
+        }
+    }
+
+    private async void OnFileEntryTransferDropRequested(
+        object? sender,
+        FilePanelTransferDropEventArgs e)
+    {
+        _ = sender;
+        _ = await QueueIncomingFileTransferAsync(e.Destination, e.Payload);
+    }
+
+    private async Task<bool> QueueIncomingFileTransferAsync(
+        FileRuntimePanelViewModel destination,
+        FilePanelTransferPayload payload)
+    {
+        var queuedAll = true;
+        foreach (var entry in payload.Entries)
+        {
+            try
+            {
+                var request = destination.CreateIncomingTransferRequest(
+                    entry,
+                    payload.Operation);
+                queuedAll &= await ViewModel.QueueFileTransferAsync(
+                    request,
+                    _lifetime.Token);
+            }
+            catch (ArgumentException exception)
+            {
+                destination.ReportValidationError(exception.Message);
+                queuedAll = false;
+            }
+            catch (InvalidOperationException exception)
+            {
+                destination.ReportValidationError(exception.Message);
+                queuedAll = false;
+            }
+        }
+
+        return queuedAll;
     }
 
     private async void OnFileCreateFolderClick(object? sender, RoutedEventArgs e)

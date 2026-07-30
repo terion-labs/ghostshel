@@ -59,6 +59,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 {
     private const int DefaultPageSize = 250;
     private const int DefaultPreviewBytes = 256 * 1024;
+    private const long DefaultDirectoryTransferBytes = 512L * 1024 * 1024;
     private const int MaximumFormattedBinaryBytes = 16 * 1024;
     private readonly IFilePanelClient _client;
     private readonly ConnectionProfile _connection;
@@ -657,7 +658,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool CanTransfer => !IsLoading
         && _transferQueue is not null
-        && SelectedEntry?.Entry.Kind == FilePanelEntryKind.File;
+        && SelectedEntry?.Entry.Kind is
+            FilePanelEntryKind.File or FilePanelEntryKind.Directory;
 
     public bool CanDownload => CanTransfer
         && Profiles.Any(profile => profile.Id == "builtin.files.home");
@@ -903,13 +905,80 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     {
         if (!CanTransfer || SelectedEntry is null)
         {
-            throw new InvalidOperationException("Choose a regular file before creating a transfer.");
+            throw new InvalidOperationException(
+                "Choose a file or folder before creating a transfer.");
         }
 
         return new FileTransferEditorViewModel(
             SelectedEntry.Entry,
             Profiles,
             SelectedProfile?.Id);
+    }
+
+    public FilePanelTransferRequest CreateIncomingTransferRequest(
+        FilePanelEntry source,
+        FilePanelTransferOperation operation)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!Enum.IsDefined(operation))
+        {
+            throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
+        }
+
+        if (IsLoading || CurrentLocation is null || SelectedProfile is null)
+        {
+            throw new InvalidOperationException(
+                "Wait for the destination folder to finish loading.");
+        }
+
+        if (source.Kind is not (
+            FilePanelEntryKind.File or FilePanelEntryKind.Directory))
+        {
+            throw new InvalidOperationException(
+                "Only regular files and folders can be transferred.");
+        }
+
+        var requiredCapabilities = source.Kind == FilePanelEntryKind.Directory
+            ? FilePanelCapability.CreateDirectory | FilePanelCapability.StreamingWrite
+            : FilePanelCapability.StreamingWrite;
+        if (!SelectedProfile.Capabilities.HasFlag(requiredCapabilities))
+        {
+            throw new InvalidOperationException(
+                "The selected destination cannot receive this item type.");
+        }
+
+        var destination = FileLocationPresentation.Child(
+            CurrentLocation,
+            source.Name);
+        return new FilePanelTransferRequest(
+            source.Location,
+            destination,
+            operation,
+            FilePanelConflictPolicy.KeepBoth,
+            Math.Max(
+                1,
+                source.Size ?? DefaultDirectoryTransferBytes));
+    }
+
+    public bool CanReceiveTransfer(FilePanelEntry source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (IsLoading || CurrentLocation is null || SelectedProfile is null)
+        {
+            return false;
+        }
+
+        var requiredCapabilities = source.Kind switch
+        {
+            FilePanelEntryKind.File =>
+                FilePanelCapability.StreamingWrite,
+            FilePanelEntryKind.Directory =>
+                FilePanelCapability.CreateDirectory
+                | FilePanelCapability.StreamingWrite,
+            _ => FilePanelCapability.None,
+        };
+        return requiredCapabilities != FilePanelCapability.None
+            && SelectedProfile.Capabilities.HasFlag(requiredCapabilities);
     }
 
     public FileTransferEditorViewModel CreateDownloadEditor()

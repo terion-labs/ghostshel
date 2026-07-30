@@ -786,6 +786,36 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task IncomingDirectoryTransferTargetsTheCurrentFolderAndKeepsBoth()
+    {
+        var client = new StubFilePanelClient();
+        var sourceProfile = client.AddProfile("files.source", "Source");
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+        var source = Entry(
+            sourceProfile.Root,
+            "project",
+            FilePanelEntryKind.Directory,
+            null);
+
+        var request = panel.CreateIncomingTransferRequest(
+            source,
+            FilePanelTransferOperation.Copy);
+
+        Assert.Equal(source.Location, request.Source);
+        Assert.Equal(
+            client.Root.Child(new FilePanelPathSegment("project")),
+            request.Destination);
+        Assert.Equal(FilePanelConflictPolicy.KeepBoth, request.ConflictPolicy);
+        Assert.Equal(FilePanelTransferOperation.Copy, request.Operation);
+        Assert.True(request.MaximumBytes >= 512L * 1024 * 1024);
+    }
+
+    [Fact]
     public async Task DownloadEditorPrefersBuiltInHomeDestination()
     {
         var client = new StubFilePanelClient();

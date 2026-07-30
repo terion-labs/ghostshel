@@ -60,4 +60,29 @@ internal static class FileLocationPresentation
             _ => name,
         };
     }
+
+    public static FilePanelLocation Child(
+        FilePanelLocation parent,
+        string name)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return parent.Address switch
+        {
+            FilePanelAddress.Hierarchical =>
+                parent.Child(new FilePanelPathSegment(name)),
+            FilePanelAddress.ObjectKey value => new FilePanelLocation(
+                parent.ProviderProfileId,
+                parent.Authority,
+                new FilePanelAddress.ObjectKey(
+                    $"{value.Key.TrimEnd('/')}/{name}")),
+            FilePanelAddress.ContainerRoot => new FilePanelLocation(
+                parent.ProviderProfileId,
+                parent.Authority,
+                new FilePanelAddress.ObjectKey(name)),
+            _ => throw new ArgumentException(
+                "This destination cannot contain files or folders.",
+                nameof(parent)),
+        };
+    }
 }

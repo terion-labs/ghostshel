@@ -99,6 +99,54 @@ public sealed class FileTransferQueueTests
     }
 
     [Fact]
+    public async Task CrossProviderDirectoryCopyStreamsFilesAndPreservesEmptyFolders()
+    {
+        using var sourceRoot = TemporaryDirectory.Create();
+        using var destinationRoot = TemporaryDirectory.Create();
+        var sourceDirectory = Directory.CreateDirectory(
+            Path.Combine(sourceRoot.Path, "project"));
+        var nestedDirectory = sourceDirectory.CreateSubdirectory("src");
+        _ = sourceDirectory.CreateSubdirectory("empty");
+        await File.WriteAllTextAsync(
+            Path.Combine(sourceDirectory.FullName, "README.md"),
+            "project");
+        await File.WriteAllBytesAsync(
+            Path.Combine(nestedDirectory.FullName, "app.bin"),
+            [1, 2, 3, 4, 5]);
+        using var client = CreateLocalClient(
+            ("local-source", "source", sourceRoot.Path),
+            ("local-destination", "destination", destinationRoot.Path));
+        var sourceProfile = client.Profiles.Single(profile => profile.Id == "local-source");
+        var destinationProfile = client.Profiles.Single(profile =>
+            profile.Id == "local-destination");
+
+        var queued = await client.EnqueueAsync(
+            new FilePanelTransferRequest(
+                Child(sourceProfile.Root, "project"),
+                Child(destinationProfile.Root, "project-copy"),
+                FilePanelTransferOperation.Copy,
+                FilePanelConflictPolicy.Fail,
+                1024),
+            CancellationToken.None);
+        var completed = await WaitForTerminalStateAsync(client, queued.Value!.Id);
+
+        Assert.True(
+            completed.State == FilePanelTransferState.Completed,
+            $"{completed.Error?.StableCode}: {completed.Error?.Message}");
+        Assert.Equal(12, completed.BytesTransferred);
+        Assert.Equal(
+            "project",
+            await File.ReadAllTextAsync(
+                Path.Combine(destinationRoot.Path, "project-copy", "README.md")));
+        Assert.Equal(
+            [1, 2, 3, 4, 5],
+            await File.ReadAllBytesAsync(
+                Path.Combine(destinationRoot.Path, "project-copy", "src", "app.bin")));
+        Assert.True(Directory.Exists(
+            Path.Combine(destinationRoot.Path, "project-copy", "empty")));
+    }
+
+    [Fact]
     public async Task RunningTransferCanBeCancelledAndRetriedWithANewIdentity()
     {
         var provider = new BlockingTransferProvider();
@@ -130,6 +178,55 @@ public sealed class FileTransferQueueTests
         Assert.NotEqual(queued.Value.Id, retried.Value!.Id);
         _ = await client.CancelAsync(retried.Value.Id, CancellationToken.None);
         _ = await WaitForTerminalStateAsync(client, retried.Value.Id);
+    }
+
+    [Fact]
+    public async Task TransfersRemainQueuedUntilThePreviousTransferFinishes()
+    {
+        var provider = new BlockingTransferProvider();
+        using var client = new FilePanelClient(
+        [
+            new FileProviderRegistration(
+                "Blocking",
+                FileProviderFamily.Posix,
+                provider,
+                provider.Root),
+        ]);
+        var profile = Assert.Single(client.Profiles);
+        var first = await client.EnqueueAsync(
+            new FilePanelTransferRequest(
+                Child(profile.Root, "source-1"),
+                Child(profile.Root, "destination-1"),
+                FilePanelTransferOperation.Copy,
+                FilePanelConflictPolicy.Fail,
+                1024),
+            CancellationToken.None);
+        await WaitForStateAsync(
+            client,
+            first.Value!.Id,
+            FilePanelTransferState.Running);
+        var second = await client.EnqueueAsync(
+            new FilePanelTransferRequest(
+                Child(profile.Root, "source-2"),
+                Child(profile.Root, "destination-2"),
+                FilePanelTransferOperation.Copy,
+                FilePanelConflictPolicy.Fail,
+                1024),
+            CancellationToken.None);
+        var secondId = second.Value!.Id;
+
+        Assert.Equal(
+            FilePanelTransferState.Queued,
+            client.Transfers.Single(item => item.Id == secondId).State);
+
+        _ = await client.CancelAsync(first.Value.Id, CancellationToken.None);
+        _ = await WaitForTerminalStateAsync(client, first.Value.Id);
+        await WaitForStateAsync(
+            client,
+            secondId,
+            FilePanelTransferState.Running);
+        _ = await client.CancelAsync(secondId, CancellationToken.None);
+        _ = await WaitForTerminalStateAsync(client, secondId);
     }
 
     private static FilePanelClient CreateLocalClient(
