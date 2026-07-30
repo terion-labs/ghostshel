@@ -495,6 +495,28 @@ public sealed class RuntimePanelViewContractTests
 
         var document = LoadRuntimePanelView("FileRuntimePanelView");
         var root = Assert.IsType<XElement>(document.Root);
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Grid"
+                && string.Equals(
+                    AttributeValue(element, "RowDefinitions"),
+                    "36,Auto,*",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && string.Equals(
+                    AttributeValue(element, "Grid.Row"),
+                    "1",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Padding"),
+                    "{controls:Inset Left=Sm, Top=Xs, Right=Sm, Bottom=Sm}",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Background"),
+                    "{DynamicResource ShellSurfaceBrush}",
+                    StringComparison.Ordinal));
         var connectionSelector = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "PanelConnectionSelectorView");
@@ -549,6 +571,7 @@ public sealed class RuntimePanelViewContractTests
                 && HasClass(element, "FileToolbarAction"));
         var previewToggle = FindUniqueAccessibleElement(root, "Toggle file preview");
         Assert.Equal("OnTogglePreviewClick", AttributeValue(previewToggle, "Click"));
+        Assert.True(HasClass(previewToggle, "InsetToggle"));
         Assert.Equal(
             "{Binding IsPreviewVisible}",
             AttributeValue(previewToggle, "Classes.active"));
@@ -575,6 +598,22 @@ public sealed class RuntimePanelViewContractTests
 
         var uploadButton = FindUniqueAccessibleElement(root, "Upload file");
         Assert.Equal("{Binding CanUpload}", AttributeValue(uploadButton, "IsVisible"));
+        var itemCount = FindUniqueAccessibleElement(root, "File Viewer item count");
+        Assert.Equal("{Binding Status}", AttributeValue(itemCount, "Value"));
+        Assert.Equal(
+            "{Binding HasListingSummary}",
+            AttributeValue(itemCount, "IsVisible"));
+        Assert.Equal(
+            1,
+            root.Descendants().Count(element => string.Equals(
+                AttributeValue(element, "Text"),
+                "{Binding LocationText}",
+                StringComparison.Ordinal)));
+        Assert.Equal(
+            "OnLoadMoreClick",
+            AttributeValue(
+                FindUniqueAccessibleElement(root, "Load more files"),
+                "Click"));
         Assert.DoesNotContain(
             root.Descendants(),
             element => element.Name.LocalName == "TextBlock"

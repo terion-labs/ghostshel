@@ -39,6 +39,7 @@ public sealed class FileRuntimePanelViewModelTests
             new StubFilePanelClient(),
             deferInitialization: true);
 
+        Assert.False(panel.HasListingSummary);
         Assert.True(panel.IsPreviewVisible);
         Assert.Equal("Preview visible", panel.PreviewVisibilityStatus);
 
@@ -194,6 +195,7 @@ public sealed class FileRuntimePanelViewModelTests
 
         await panel.Initialization;
 
+        Assert.True(panel.HasListingSummary);
         Assert.Equal("Home", panel.SelectedProfile?.Name);
         Assert.Equal("/", panel.LocationText);
         Assert.Collection(
@@ -984,6 +986,7 @@ public sealed class FileRuntimePanelViewModelTests
                     FilePanelCapability.List
                         | FilePanelCapability.Stat
                         | FilePanelCapability.RangedRead
+                        | FilePanelCapability.StreamingWrite
                         | FilePanelCapability.CreateDirectory
                         | FilePanelCapability.Rename
                         | FilePanelCapability.Delete,

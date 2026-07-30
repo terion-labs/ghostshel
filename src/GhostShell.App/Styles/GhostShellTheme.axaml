@@ -121,8 +121,10 @@
     <Setter Property="Background" Value="Transparent" />
   </Style>
 
-  <Style Selector="Button.IconButton.FileToolbarAction.active /template/ ContentPresenter">
+  <Style Selector="Button.IconButton.FileToolbarAction.InsetToggle.active /template/ ContentPresenter">
+    <Setter Property="Margin" Value="{DynamicResource ShellInsetXs}" />
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
   </Style>
 
   <!-- Title-bar navigation keeps keyboard focus visible without drawing a heavy

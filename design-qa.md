@@ -27,7 +27,13 @@ The HTML source confirms the shared baseline used by the build: a 1440 × 900 sh
 - Regression evidence after iteration 5: the desktop build succeeds with zero warnings, 190 architecture tests pass, and 818 app tests pass.
 - Iteration 6 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-e88a1ff8-abc3-4a98-8dac-4e4d60549364.png` showed that the location summary still carried a horizontal separator through an otherwise continuous solid surface.
 - Iteration 6 fix: the location summary no longer draws its own top or bottom border; the active panel outline remains the only accent boundary.
-- Remaining P2 verification: capture the rebuilt loaded local and SFTP states at the same window size and check favourite strokes, upload visibility, header continuity, preview resizing, and table-column resizing visually.
+- Iteration 7 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-fc4dafa2-e3c6-41ba-8e02-4be46e9162b2.png` showed the active path twice in adjacent rows, with the item count consuming a second full-width band.
+- Iteration 7 fix: the duplicate location-summary row is removed. Its live item count now occupies a compact trailing badge beside the editable toolbar path, and paginated locations retain a nearby **More** action instead of losing pagination.
+- Iteration 8 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-e905986d-f145-415c-a847-8950d66fc506.png` and `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-7e252627-8ff0-4d9a-a8a9-fe21a1d1c082.png` confirmed the consolidated header, while exposing asymmetric toolbar breathing room, an upload action on the built-in local provider, and a preview selection that filled its complete toolbar slot.
+- Iteration 8 fixes: the toolbar row now sizes from explicit vertical padding, the built-in Home provider is ineligible as an upload destination at the view-model boundary, and the preview toggle uses a dedicated inset rounded active surface.
+- Iteration 9 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-037ec807-ec43-497d-8858-532f56b08295.png` showed that equal raw toolbar padding compounded the existing optical clearance above the controls and made the visible top gap larger than the bottom gap.
+- Iteration 9 fix: the toolbar keeps the larger bottom inset while restoring the smaller top inset, balancing the visible clearance without changing the consolidated surface.
+- Remaining P2 verification: capture the rebuilt loaded local and SFTP states at the same window size and check favourite strokes, the consolidated path/count toolbar, symmetric toolbar spacing, local upload visibility, inset preview selection, header continuity, preview resizing, and table-column resizing visually.
 
 final result: blocked
 

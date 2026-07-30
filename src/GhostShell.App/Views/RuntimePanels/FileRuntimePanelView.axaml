@@ -12,7 +12,7 @@
     IsVisible="{Binding IsVisibleInLayout}">
   <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
-    <Grid RowDefinitions="36,44,42,*">
+    <Grid RowDefinitions="36,Auto,*">
       <Border Classes="PanelHeader">
         <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" Margin="{controls:Inset Horizontal=Md}">
           <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{DynamicResource ShellSuccessBrush}" />
@@ -53,8 +53,11 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceBrush}">
-        <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="Auto,*,Auto,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <Border
+          Grid.Row="1"
+          Padding="{controls:Inset Left=Sm, Top=Xs, Right=Sm, Bottom=Sm}"
+          Background="{DynamicResource ShellSurfaceBrush}">
+        <Grid ColumnDefinitions="Auto,*,Auto,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <Border
               Classes="FileToolbarGroup">
             <StackPanel Orientation="Horizontal">
@@ -67,16 +70,36 @@
               </Button>
             </StackPanel>
           </Border>
-          <TextBox
+          <Grid
               Grid.Column="1"
-              FontSize="{DynamicResource ShellFontSize10}"
-              FontWeight="SemiBold"
-              Background="Transparent"
-              BorderThickness="0"
-              Text="{Binding LocationText}"
-              IsEnabled="{Binding CanEditLocation}"
-              KeyDown="OnLocationKeyDown"
-              AutomationProperties.Name="Editable file location" />
+              ColumnDefinitions="*,Auto,Auto"
+              ColumnSpacing="{DynamicResource ShellSpaceXs}">
+            <TextBox
+                FontSize="{DynamicResource ShellFontSize10}"
+                FontWeight="SemiBold"
+                Background="Transparent"
+                BorderThickness="0"
+                Text="{Binding LocationText}"
+                IsEnabled="{Binding CanEditLocation}"
+                KeyDown="OnLocationKeyDown"
+                AutomationProperties.Name="Editable file location" />
+            <components:CountPill
+                Grid.Column="1"
+                IsVisible="{Binding HasListingSummary}"
+                Value="{Binding Status}"
+                AutomationProperties.LiveSetting="Polite"
+                AutomationProperties.Name="File Viewer item count" />
+            <Button
+                Grid.Column="2"
+                Padding="{controls:Inset Horizontal=Sm}"
+                MinHeight="24"
+                Classes="TextButton Accent"
+                Click="OnLoadMoreClick"
+                IsVisible="{Binding HasMore}"
+                Content="More"
+                ToolTip.Tip="Load more files"
+                AutomationProperties.Name="Load more files" />
+          </Grid>
           <Border
               Grid.Column="2"
               Classes="FileToolbarGroup">
@@ -104,7 +127,7 @@
                 </Button.Flyout>
               </Button>
               <Button
-                  Classes="IconButton FileToolbarAction"
+                  Classes="IconButton FileToolbarAction InsetToggle"
                   Classes.active="{Binding IsPreviewVisible}"
                   Click="OnTogglePreviewClick"
                   ToolTip.Tip="Show or hide preview"
@@ -149,25 +172,7 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}">
-        <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Xs}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <icons:SymbolIcon VerticalAlignment="Center" Symbol="Folder" FontSize="17" Foreground="{DynamicResource ShellWarningBrush}" />
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0">
-            <TextBlock FontWeight="SemiBold" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LocationText}" TextTrimming="CharacterEllipsis" />
-            <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Status}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="File Viewer status" />
-          </StackPanel>
-          <Button
-              Grid.Column="2"
-              Padding="{controls:Inset Horizontal=Sm}"
-              MinHeight="24"
-              Classes="TextButton Accent"
-              Click="OnLoadMoreClick"
-              IsVisible="{Binding HasMore}"
-              Content="Load more" />
-        </Grid>
-      </Border>
-
-      <Grid x:Name="FileContentGrid" Grid.Row="3">
+      <Grid x:Name="FileContentGrid" Grid.Row="2">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="3*" />
           <ColumnDefinition Width="5" />
@@ -429,7 +434,7 @@
 
       <Border
           Grid.Row="1"
-          Grid.RowSpan="3"
+          Grid.RowSpan="2"
           Background="Transparent"
           IsVisible="{Binding ShowNavigationProgress}"
           AutomationProperties.LiveSetting="Polite"
