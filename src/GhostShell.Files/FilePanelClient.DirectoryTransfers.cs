@@ -32,16 +32,10 @@ public sealed partial class FilePanelClient
                 "A directory cannot be transferred into one of its descendants.");
         }
 
-        var maximumBytes = Math.Min(
-            record.Snapshot.Request.MaximumBytes,
-            Math.Min(
-                sourceProvider.Capabilities.Limits.MaximumTransferBytes,
-                destinationProvider.Capabilities.Limits.MaximumTransferBytes));
         var plan = await BuildDirectoryTransferPlanAsync(
                 sourceProvider,
                 source,
                 destination,
-                maximumBytes,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!plan.IsSuccess)
@@ -120,7 +114,6 @@ public sealed partial class FilePanelClient
             IFileProvider sourceProvider,
             FileLocation source,
             FileLocation destination,
-            long maximumBytes,
             CancellationToken cancellationToken)
     {
         var directories = new List<FileLocation> { destination };
@@ -186,14 +179,6 @@ public sealed partial class FilePanelClient
                     }
 
                     totalBytes = checked(totalBytes + size);
-                    if (totalBytes > maximumBytes)
-                    {
-                        return Failure<DirectoryTransferPlan>(
-                            FilePanelErrorCode.LimitExceeded,
-                            "file_directory_transfer_limit_exceeded",
-                            "The directory contents exceed the bounded transfer size.");
-                    }
-
                     files.Add(new DirectoryTransferFile(
                         entry.Location,
                         childDestination,

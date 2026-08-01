@@ -1,8 +1,8 @@
 namespace GhostShell.Files;
 
 /// <summary>
-/// Describes a bounded copy or move within one provider profile. Cross-provider orchestration
-/// composes bounded read and write operations outside the provider adapter.
+/// Describes a copy or move within one provider profile. Transfers stream through the provider
+/// and remain cancellable without imposing an application-level file-size ceiling.
 /// </summary>
 public sealed record FileTransferRequest
 {
@@ -10,13 +10,11 @@ public sealed record FileTransferRequest
         FileLocation source,
         FileLocation destination,
         FileTransferKind kind,
-        long maximumBytes,
         int bufferSize,
         FileMutationPrecondition destinationPrecondition)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bufferSize);
         ArgumentNullException.ThrowIfNull(destinationPrecondition);
         if (!Enum.IsDefined(kind))
@@ -27,7 +25,6 @@ public sealed record FileTransferRequest
         Source = source;
         Destination = destination;
         Kind = kind;
-        MaximumBytes = maximumBytes;
         BufferSize = bufferSize;
         DestinationPrecondition = destinationPrecondition;
     }
@@ -37,8 +34,6 @@ public sealed record FileTransferRequest
     public FileLocation Destination { get; }
 
     public FileTransferKind Kind { get; }
-
-    public long MaximumBytes { get; }
 
     public int BufferSize { get; }
 

@@ -198,8 +198,7 @@ public sealed class CatalogFileProviderRuntimeTests
                 oldLocation.Child(new FilePanelPathSegment("retry-source.txt")),
                 oldLocation.Child(new FilePanelPathSegment("retried.txt")),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                1024),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         Assert.True(failed.IsSuccess, failed.Error?.Message);
         Assert.Equal(
@@ -230,8 +229,7 @@ public sealed class CatalogFileProviderRuntimeTests
                 oldLocation.Child(new FilePanelPathSegment("source.txt")),
                 oldLocation.Child(new FilePanelPathSegment("copied.txt")),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                1024),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         Assert.True(enqueued.IsSuccess, enqueued.Error?.Message);
         var completed = await WaitForTransferAsync(oldSession, enqueued.Value!.Id);

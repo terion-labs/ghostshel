@@ -20,13 +20,11 @@ public abstract partial class LocalFileProvider
         IProgress<FileTransferProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var limitError = ValidateStreamingLimits(
-            request.MaximumBytes,
-            Capabilities.Limits.MaximumTransferBytes,
-            request.BufferSize);
-        if (limitError is not null)
+        if (request.BufferSize > Capabilities.Limits.MaximumBufferSize)
         {
-            return FileProviderResult<FileTransferReceipt>.Failure(limitError);
+            return Failure<FileTransferReceipt>(
+                FileProviderErrorCode.LimitExceeded,
+                "The requested buffer exceeds the provider limit.");
         }
 
         var source = ResolveLocation(request.Source, allowLeafLink: false);
@@ -101,7 +99,7 @@ public abstract partial class LocalFileProvider
             return FileProviderResult<FileTransferReceipt>.Failure(preconditionError);
         }
 
-        var measured = MeasureEntry(source.Value!.Path, sourceEntry.Kind, request.MaximumBytes, cancellationToken);
+        var measured = MeasureEntry(source.Value!.Path, sourceEntry.Kind, cancellationToken);
         if (!measured.IsSuccess)
         {
             return FileProviderResult<FileTransferReceipt>.Failure(measured.Error!);
@@ -366,15 +364,11 @@ public abstract partial class LocalFileProvider
     private FileProviderResult<long> MeasureEntry(
         string path,
         FileEntryKind kind,
-        long maximumBytes,
         CancellationToken cancellationToken)
     {
         if (kind == FileEntryKind.File)
         {
-            var length = new FileInfo(path).Length;
-            return length > maximumBytes
-                ? TransferLimitExceeded()
-                : FileProviderResult<long>.Success(length);
+            return FileProviderResult<long>.Success(new FileInfo(path).Length);
         }
 
         long totalBytes = 0;
@@ -395,7 +389,6 @@ public abstract partial class LocalFileProvider
             var child = MeasureEntry(
                 childPath,
                 childKind,
-                maximumBytes - totalBytes,
                 cancellationToken);
             if (!child.IsSuccess)
             {
@@ -403,17 +396,9 @@ public abstract partial class LocalFileProvider
             }
 
             totalBytes += child.Value;
-            if (totalBytes > maximumBytes)
-            {
-                return TransferLimitExceeded();
-            }
         }
 
         return FileProviderResult<long>.Success(totalBytes);
-
-        static FileProviderResult<long> TransferLimitExceeded() => Failure<long>(
-            FileProviderErrorCode.LimitExceeded,
-            "The transfer source exceeds the requested maximum byte count.");
     }
 
     private static FileProviderError? ValidateTransferDestination(

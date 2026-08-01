@@ -207,9 +207,7 @@ public sealed partial class WebDavFileProvider
         IProgress<FileTransferProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var limitError = RemoteFileProviderUtilities.ValidateStreamingLimits(
-            request.MaximumBytes,
-            Capabilities.Limits.MaximumTransferBytes,
+        var limitError = RemoteFileProviderUtilities.ValidateBufferSize(
             request.BufferSize,
             Capabilities.Limits.MaximumBufferSize);
         if (limitError is not null)
@@ -249,17 +247,10 @@ public sealed partial class WebDavFileProvider
         {
             return Failure<FileTransferReceipt>(
                 FileProviderErrorCode.UnsupportedCapability,
-                "Bounded WebDAV transfer does not claim recursive collection COPY or MOVE.");
+                "WebDAV transfer does not claim recursive collection COPY or MOVE.");
         }
 
         var size = sourceEntry.Size!.Value;
-        if (size > request.MaximumBytes)
-        {
-            return Failure<FileTransferReceipt>(
-                FileProviderErrorCode.LimitExceeded,
-                "The WebDAV resource exceeds the requested transfer bound.");
-        }
-
         var destinationCondition = await PrepareDestinationAsync(
             request.Destination,
             request.DestinationPrecondition,

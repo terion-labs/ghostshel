@@ -62,8 +62,7 @@ public sealed class FilePanelSessionContractsTests
                 root.Child(new FilePanelPathSegment("source")),
                 root.Child(new FilePanelPathSegment("destination")),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                1024));
+                FilePanelConflictPolicy.Fail));
 
         Assert.Equal(owner, ensure.Owner);
         Assert.Equal(root, ensure.InitialLocation);

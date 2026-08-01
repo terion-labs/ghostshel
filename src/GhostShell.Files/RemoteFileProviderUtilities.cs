@@ -4,23 +4,15 @@ namespace GhostShell.Files;
 
 /// <summary>
 /// Shared mechanics for remote adapters. Protocol decisions remain in each provider; this type
-/// only centralizes the byte bounds and location-version invariant imposed by <see cref="IFileProvider"/>.
+/// only centralizes streaming validation and the location-version invariant imposed by
+/// <see cref="IFileProvider"/>.
 /// </summary>
 internal static class RemoteFileProviderUtilities
 {
-    public static FileProviderError? ValidateStreamingLimits(
-        long requestedBytes,
-        long maximumBytes,
+    public static FileProviderError? ValidateBufferSize(
         int requestedBufferSize,
         int maximumBufferSize)
     {
-        if (requestedBytes > maximumBytes)
-        {
-            return FileProviderError.Create(
-                FileProviderErrorCode.LimitExceeded,
-                $"The requested byte count exceeds the provider limit of {maximumBytes} bytes.");
-        }
-
         return requestedBufferSize > maximumBufferSize
             ? FileProviderError.Create(
                 FileProviderErrorCode.LimitExceeded,

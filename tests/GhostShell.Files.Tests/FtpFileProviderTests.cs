@@ -10,9 +10,7 @@ public sealed class FtpFileProviderTests
 
         Assert.Equal(FtpTransportSecurity.Plaintext, provider.Options.TransportSecurity);
         Assert.Equal(FileNameComparison.ProviderDefined, provider.Capabilities.NameComparison);
-        Assert.True(
-            provider.Capabilities.Limits.MaximumWriteBytes
-            > 2L * 1024 * 1024 * 1024);
+        Assert.True(provider.Capabilities.Supports(FileProviderCapability.StreamingWrite));
         var warning = Assert.Single(provider.Diagnostics);
         Assert.Equal("ftp_plaintext_transport", warning.StableCode);
         Assert.Contains("without TLS", warning.Message, StringComparison.Ordinal);
@@ -125,7 +123,6 @@ public sealed class FtpFileProviderTests
                 source,
                 destination,
                 FileTransferKind.Move,
-                maximumBytes: 64,
                 bufferSize: 8,
                 new FileMutationPrecondition.Any()),
             progress: null,
@@ -210,7 +207,6 @@ public sealed class FtpFileProviderTests
                 sourceLocation,
                 destination,
                 FileTransferKind.Move,
-                maximumBytes: 64,
                 bufferSize: 2,
                 new FileMutationPrecondition.MustNotExist()),
             progress: null,

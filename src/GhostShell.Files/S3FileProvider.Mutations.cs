@@ -57,9 +57,7 @@ public sealed partial class S3FileProvider
                 "S3 move is not claimed because copy-then-delete can commit only one side.");
         }
 
-        var limitError = RemoteFileProviderUtilities.ValidateStreamingLimits(
-            request.MaximumBytes,
-            Capabilities.Limits.MaximumTransferBytes,
+        var limitError = RemoteFileProviderUtilities.ValidateBufferSize(
             request.BufferSize,
             Capabilities.Limits.MaximumBufferSize);
         if (limitError is not null)
@@ -92,17 +90,10 @@ public sealed partial class S3FileProvider
         {
             return Failure<FileTransferReceipt>(
                 FileProviderErrorCode.IsDirectory,
-                "S3 prefix copies are not supported by the bounded object transfer contract.");
+                "S3 prefix copies are not supported by the object transfer contract.");
         }
 
         var size = sourceEntry.Size!.Value;
-        if (size > request.MaximumBytes)
-        {
-            return Failure<FileTransferReceipt>(
-                FileProviderErrorCode.LimitExceeded,
-                "The S3 object is larger than the requested transfer bound.");
-        }
-
         var precondition = RemoteFileProviderUtilities.MergeLocationVersion(
             request.Destination,
             request.DestinationPrecondition);

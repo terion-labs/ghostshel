@@ -21,9 +21,7 @@ public sealed class SftpFileProviderTests
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Permissions));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Versioning));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Checksum));
-        Assert.True(
-            provider.Capabilities.Limits.MaximumWriteBytes
-            > 2L * 1024 * 1024 * 1024);
+        Assert.True(provider.Capabilities.Supports(FileProviderCapability.StreamingWrite));
     }
 
     [Fact]
@@ -332,7 +330,6 @@ public sealed class SftpFileProviderTests
                 location,
                 location,
                 FileTransferKind.Move,
-                maximumBytes: 64,
                 bufferSize: 8,
                 new FileMutationPrecondition.Any()),
             progress: null,
@@ -412,7 +409,6 @@ public sealed class SftpFileProviderTests
                 sourceLocation,
                 destination,
                 FileTransferKind.Move,
-                maximumBytes: 64,
                 bufferSize: 2,
                 new FileMutationPrecondition.MustNotExist()),
             progress,

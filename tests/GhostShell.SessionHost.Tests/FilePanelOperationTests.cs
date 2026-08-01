@@ -272,6 +272,5 @@ public sealed class FilePanelOperationTests
         Child(root, source),
         Child(root, destination),
         FilePanelTransferOperation.Copy,
-        FilePanelConflictPolicy.Fail,
-        1024);
+        FilePanelConflictPolicy.Fail);
 }

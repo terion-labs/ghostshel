@@ -34,7 +34,6 @@ public sealed class FileTransferEditorViewModelTests
         Assert.Equal("releases/2026/artifact.zip", key.Key);
         Assert.Equal(FilePanelTransferOperation.Move, request.Operation);
         Assert.Equal(FilePanelConflictPolicy.KeepBoth, request.ConflictPolicy);
-        Assert.Equal(2048, request.MaximumBytes);
     }
 
     [Fact]

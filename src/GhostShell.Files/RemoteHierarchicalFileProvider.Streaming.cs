@@ -15,11 +15,16 @@ public abstract partial class RemoteHierarchicalFileProvider
                 "The destination stream is not writable.");
         }
 
-        var limitError = RemoteFileProviderUtilities.ValidateStreamingLimits(
-            request.MaximumBytes,
-            Capabilities.Limits.MaximumReadBytes,
+        var limitError = RemoteFileProviderUtilities.ValidateBufferSize(
             request.BufferSize,
             Capabilities.Limits.MaximumBufferSize);
+        if (request.MaximumBytes > Capabilities.Limits.MaximumReadBytes)
+        {
+            return Failure<FileReadReceipt>(
+                FileProviderErrorCode.LimitExceeded,
+                "The requested read exceeds the provider's bounded-read limit.");
+        }
+
         if (limitError is not null)
         {
             return FileProviderResult<FileReadReceipt>.Failure(limitError);
@@ -102,6 +107,19 @@ public abstract partial class RemoteHierarchicalFileProvider
         await using var remote = await session
             .OpenReadAsync(resolved.Value.RemotePath, request.Offset, cancellationToken)
             .ConfigureAwait(false);
+        using var cancelRead = cancellationToken.Register(
+            static state =>
+            {
+                try
+                {
+                    ((Stream)state!).Dispose();
+                }
+                catch (Exception)
+                {
+                    // Cancellation must remain best effort at the transport boundary.
+                }
+            },
+            remote);
         var bytesRead = await RemoteFileProviderUtilities.CopyAtMostAsync(
             remote,
             destination,
@@ -139,9 +157,7 @@ public abstract partial class RemoteHierarchicalFileProvider
                 "The source stream is not readable.");
         }
 
-        var limitError = RemoteFileProviderUtilities.ValidateStreamingLimits(
-            request.ContentLength,
-            Capabilities.Limits.MaximumWriteBytes,
+        var limitError = RemoteFileProviderUtilities.ValidateBufferSize(
             request.BufferSize,
             Capabilities.Limits.MaximumBufferSize);
         if (limitError is not null)

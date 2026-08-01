@@ -95,8 +95,7 @@ public sealed class SessionHostedFilePanelClientTests
             child,
             destination,
             FilePanelTransferOperation.Copy,
-            FilePanelConflictPolicy.Fail,
-            maximumBytes: 1024);
+            FilePanelConflictPolicy.Fail);
         var enqueued = await client.EnqueueAsync(transferRequest, CancellationToken.None);
         _ = await client.CancelAsync(enqueued.Value!.Id, CancellationToken.None);
         var retried = await client.RetryAsync(enqueued.Value.Id, CancellationToken.None);
@@ -378,8 +377,7 @@ public sealed class SessionHostedFilePanelClientTests
                 Root.Child(new FilePanelPathSegment("source")),
                 Root.Child(new FilePanelPathSegment("destination")),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                maximumBytes: 1024),
+                FilePanelConflictPolicy.Fail),
             Root.Child(new FilePanelPathSegment("destination")),
             state,
             stage,
@@ -572,8 +570,7 @@ public sealed class SessionHostedFilePanelClientTests
                 Root.Child(new FilePanelPathSegment("source")),
                 Root.Child(new FilePanelPathSegment("destination")),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                maximumBytes: 1024);
+                FilePanelConflictPolicy.Fail);
             return Mutate(
                 nameof(ISessionHostClient.RetryFileTransferAsync),
                 context,

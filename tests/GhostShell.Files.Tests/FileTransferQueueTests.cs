@@ -19,8 +19,7 @@ public sealed class FileTransferQueueTests
                 source,
                 destination,
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                1024),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         var completed = await WaitForTerminalStateAsync(client, queued.Value!.Id);
 
@@ -47,16 +46,14 @@ public sealed class FileTransferQueueTests
                 source,
                 destination,
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Skip,
-                1024),
+                FilePanelConflictPolicy.Skip),
             CancellationToken.None);
         var kept = await client.EnqueueAsync(
             new FilePanelTransferRequest(
                 source,
                 destination,
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.KeepBoth,
-                1024),
+                FilePanelConflictPolicy.KeepBoth),
             CancellationToken.None);
         var keptCompleted = await WaitForTerminalStateAsync(client, kept.Value!.Id);
 
@@ -86,8 +83,7 @@ public sealed class FileTransferQueueTests
                 Child(sourceProfile.Root, "source.bin"),
                 Child(destinationProfile.Root, "moved.bin"),
                 FilePanelTransferOperation.Move,
-                FilePanelConflictPolicy.Fail,
-                payload.Length),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         var completed = await WaitForTerminalStateAsync(client, queued.Value!.Id);
 
@@ -99,7 +95,7 @@ public sealed class FileTransferQueueTests
     }
 
     [Fact]
-    public async Task CrossProviderReadUsesChunksBeyondTheSourceNativeTransferLimit()
+    public async Task CrossProviderReadUsesChunksBoundedByTheSourceReadLimit()
     {
         var sourceProfileId = new FileProviderProfileId("bounded-source");
         var destinationProfileId = new FileProviderProfileId("bounded-destination");
@@ -108,14 +104,10 @@ public sealed class FileTransferQueueTests
         var sourceLimits = new FileProviderLimits(
             maximumListPageSize: 100,
             maximumReadBytes: 512,
-            maximumWriteBytes: 4_096,
-            maximumTransferBytes: 1_024,
             maximumBufferSize: 256);
         var destinationLimits = new FileProviderLimits(
             maximumListPageSize: 100,
             maximumReadBytes: 4_096,
-            maximumWriteBytes: 4_096,
-            maximumTransferBytes: 4_096,
             maximumBufferSize: 256);
         var sourceProvider = new InMemoryFileProvider(
             sourceProfileId,
@@ -174,8 +166,7 @@ public sealed class FileTransferQueueTests
                 Child(sourcePanelRoot, "large.bin"),
                 Child(destinationPanelRoot, "large.bin"),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                payload.Length),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         var completed = await WaitForTerminalStateAsync(client, queued.Value!.Id);
 
@@ -223,8 +214,7 @@ public sealed class FileTransferQueueTests
                 Child(sourceProfile.Root, "project"),
                 Child(destinationProfile.Root, "project-copy"),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                1024),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         var completed = await WaitForTerminalStateAsync(client, queued.Value!.Id);
 
@@ -261,16 +251,19 @@ public sealed class FileTransferQueueTests
             Child(profile.Root, "source"),
             Child(profile.Root, "destination"),
             FilePanelTransferOperation.Copy,
-            FilePanelConflictPolicy.Fail,
-            1024);
+            FilePanelConflictPolicy.Fail);
         var queued = await client.EnqueueAsync(request, CancellationToken.None);
         await WaitForStateAsync(client, queued.Value!.Id, FilePanelTransferState.Running);
 
         var cancelled = await client.CancelAsync(queued.Value.Id, CancellationToken.None);
+        var cancellationRequested = client.Transfers.Single(
+            transfer => transfer.Id == queued.Value.Id);
         var cancelledSnapshot = await WaitForTerminalStateAsync(client, queued.Value.Id);
         var retried = await client.RetryAsync(queued.Value.Id, CancellationToken.None);
 
         Assert.True(cancelled.IsSuccess, cancelled.Error?.Message);
+        Assert.True(cancellationRequested.CancellationRequested);
+        Assert.False(cancellationRequested.CanCancel);
         Assert.Equal(FilePanelTransferState.Cancelled, cancelledSnapshot.State);
         Assert.True(retried.IsSuccess, retried.Error?.Message);
         Assert.NotEqual(queued.Value.Id, retried.Value!.Id);
@@ -296,8 +289,7 @@ public sealed class FileTransferQueueTests
                 Child(profile.Root, "source-1"),
                 Child(profile.Root, "destination-1"),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                1024),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         await WaitForStateAsync(
             client,
@@ -308,8 +300,7 @@ public sealed class FileTransferQueueTests
                 Child(profile.Root, "source-2"),
                 Child(profile.Root, "destination-2"),
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                1024),
+                FilePanelConflictPolicy.Fail),
             CancellationToken.None);
         var secondId = second.Value!.Id;
 
@@ -397,7 +388,7 @@ public sealed class FileTransferQueueTests
             Capabilities = new FileProviderCapabilities(
                 FileProviderCapability.Copy,
                 FileNameComparison.CaseSensitive,
-                new FileProviderLimits(100, 1024, 1024, 1024, 1024));
+                new FileProviderLimits(100, 1024, 1024));
         }
 
         public FileProviderProfileId ProfileId { get; }

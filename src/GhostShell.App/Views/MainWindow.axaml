@@ -390,5 +390,44 @@
         <Button Grid.Column="2" Classes="IconButton" Click="OnClearErrorClick" AutomationProperties.Name="Dismiss error"><icons:SymbolIcon Symbol="Dismiss" FontSize="12" /></Button>
       </Grid>
     </Border>
+
+    <Canvas
+        x:Name="DragGhostLayer"
+        ZIndex="1000"
+        ClipToBounds="True"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch"
+        IsHitTestVisible="False">
+      <controls:SurfaceCard
+          x:Name="DragGhostPresenter"
+          MinWidth="148"
+          MaxWidth="320"
+          Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
+          Elevation="Overlay"
+          Tone="Raised"
+          Opacity="0"
+          KeyboardNavigation.TabNavigation="Cycle"
+          AutomationProperties.Name="Dragged item">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <icons:SymbolIcon
+              VerticalAlignment="Center"
+              FontSize="15"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Symbol="{Binding Symbol}" />
+          <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+            <TextBlock
+                FontSize="{DynamicResource ShellFontSize11}"
+                FontWeight="SemiBold"
+                Text="{Binding Title}"
+                TextTrimming="CharacterEllipsis" />
+            <TextBlock
+                FontSize="{DynamicResource ShellFontSize9}"
+                Foreground="{DynamicResource ShellMutedBrush}"
+                Text="{Binding Detail}"
+                TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Grid>
+      </controls:SurfaceCard>
+    </Canvas>
   </Grid>
 </Window>

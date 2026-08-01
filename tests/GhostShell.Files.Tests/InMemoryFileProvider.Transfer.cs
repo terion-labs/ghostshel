@@ -8,8 +8,7 @@ internal sealed partial class InMemoryFileProvider
         CancellationToken cancellationToken) =>
         ExecuteAsync(async token =>
         {
-            if (request.MaximumBytes > Capabilities.Limits.MaximumTransferBytes
-                || request.BufferSize > Capabilities.Limits.MaximumBufferSize)
+            if (request.BufferSize > Capabilities.Limits.MaximumBufferSize)
             {
                 return Failure<FileTransferReceipt>(
                     FileProviderErrorCode.LimitExceeded,
@@ -96,13 +95,6 @@ internal sealed partial class InMemoryFileProvider
             }
 
             var totalBytes = snapshot.Sum(pair => pair.Value.Content.LongLength);
-            if (totalBytes > request.MaximumBytes)
-            {
-                return Failure<FileTransferReceipt>(
-                    FileProviderErrorCode.LimitExceeded,
-                    "The source exceeds the transfer byte bound.");
-            }
-
             long transferred = 0;
             foreach (var pair in snapshot.Where(pair => pair.Value.Kind == FileEntryKind.File))
             {

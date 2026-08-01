@@ -468,8 +468,7 @@ public sealed class FileRuntimePanelViewModelTests
                 source.Location,
                 destination,
                 FilePanelTransferOperation.Copy,
-                FilePanelConflictPolicy.Fail,
-                maximumBytes: 1024));
+                FilePanelConflictPolicy.Fail));
 
         Assert.False(queued);
         Assert.Equal(FileBrowserContentState.Ready, panel.ContentState);
@@ -812,7 +811,93 @@ public sealed class FileRuntimePanelViewModelTests
             request.Destination);
         Assert.Equal(FilePanelConflictPolicy.KeepBoth, request.ConflictPolicy);
         Assert.Equal(FilePanelTransferOperation.Copy, request.Operation);
-        Assert.True(request.MaximumBytes >= 512L * 1024 * 1024);
+    }
+
+    [Fact]
+    public async Task IncomingTransferCanTargetAVisibleDestinationFolder()
+    {
+        var client = new StubFilePanelClient();
+        var sourceProfile = client.AddProfile("files.source", "Source");
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+        var source = Entry(
+            sourceProfile.Root,
+            "archive.zip",
+            FilePanelEntryKind.File,
+            2048);
+        var destinationFolder = client.Root.Child(
+            new FilePanelPathSegment("incoming"));
+
+        var request = panel.CreateIncomingTransferRequest(
+            source,
+            FilePanelTransferOperation.Copy,
+            destinationFolder);
+
+        Assert.Equal(
+            destinationFolder.Child(new FilePanelPathSegment("archive.zip")),
+            request.Destination);
+    }
+
+    [Fact]
+    public async Task IncomingTransferRejectsTheItemsExistingLocation()
+    {
+        var client = new StubFilePanelClient();
+        var source = Entry(
+            client.Root,
+            "archive.zip",
+            FilePanelEntryKind.File,
+            2048);
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+
+        Assert.False(panel.CanReceiveTransfer(source));
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            panel.CreateIncomingTransferRequest(
+                source,
+                FilePanelTransferOperation.Copy));
+
+        Assert.Contains(
+            "already in this destination",
+            error.Message,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task IncomingTransferRejectsADropFolderFromAnotherProvider()
+    {
+        var client = new StubFilePanelClient();
+        var sourceProfile = client.AddProfile("files.source", "Source");
+        var otherProfile = client.AddProfile("files.other", "Other");
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+        var source = Entry(
+            sourceProfile.Root,
+            "archive.zip",
+            FilePanelEntryKind.File,
+            2048);
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            panel.CreateIncomingTransferRequest(
+                source,
+                FilePanelTransferOperation.Copy,
+                otherProfile.Root));
+
+        Assert.Contains(
+            "does not belong",
+            error.Message,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

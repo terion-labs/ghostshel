@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
+using FluentIcons.Common;
 
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Components;
@@ -19,11 +20,11 @@ public sealed partial class FileRuntimePanelView : UserControl
     private static readonly DataFormat<FilePanelTransferPayload> FileDragFormat =
         DataFormat.CreateInProcessFormat<FilePanelTransferPayload>(
             "app.ghostshell.file-entry");
-    private static readonly DataFormat<string> FileDragNativeMarkerFormat =
-        DataFormat.CreateStringApplicationFormat(
-            "ghostshell.file-entry-drag");
     private GridLength _visiblePreviewWidth = new(2, GridUnitType.Star);
+    private ActiveFileDrag? _activeFileDrag;
+    private FileRuntimePanelView? _activeFileDropView;
     private FileDragCandidate? _fileDragCandidate;
+    private ListBoxItem? _folderDropTarget;
 
     public FileRuntimePanelView()
     {
@@ -42,7 +43,9 @@ public sealed partial class FileRuntimePanelView : UserControl
             PointerReleasedEvent,
             OnFilePointerReleased,
             RoutingStrategies.Tunnel);
+        PointerCaptureLost += OnFilePointerCaptureLost;
         AddHandler(DragDrop.DragOverEvent, OnFileDragOver);
+        AddHandler(DragDrop.DragLeaveEvent, OnFileDragLeave);
         AddHandler(DragDrop.DropEvent, OnFileDrop);
     }
 
@@ -229,13 +232,27 @@ public sealed partial class FileRuntimePanelView : UserControl
             list,
             entry.Entry,
             point.Position,
-            e.Pointer,
-            e);
+            e.Pointer);
     }
 
-    private async void OnFilePointerMoved(object? sender, PointerEventArgs e)
+    private void OnFilePointerMoved(object? sender, PointerEventArgs e)
     {
         _ = sender;
+        if (_activeFileDrag is { } active
+            && ReferenceEquals(e.Pointer, active.Pointer))
+        {
+            var current = e.GetCurrentPoint(this);
+            if (!current.Properties.IsLeftButtonPressed)
+            {
+                CancelActiveFileDrag(active.Pointer);
+                return;
+            }
+
+            UpdateActiveFileDrag(e, active);
+            e.Handled = true;
+            return;
+        }
+
         if (_fileDragCandidate is not { } candidate
             || !ReferenceEquals(e.Pointer, candidate.Pointer))
         {
@@ -263,62 +280,191 @@ public sealed partial class FileRuntimePanelView : UserControl
             entries = [candidate.Entry];
         }
 
+        if (DataContext is not FileRuntimePanelViewModel panel)
+        {
+            return;
+        }
+
         var payload = new FilePanelTransferPayload(
+            panel.Id,
             entries,
             FilePanelTransferOperation.Copy);
-        var item = new DataTransferItem();
-        item.Set(FileDragFormat, payload);
-        item.Set(FileDragNativeMarkerFormat, "file-entry");
-        var transfer = new DataTransfer();
-        transfer.Add(item);
-        try
+        var window = TopLevel.GetTopLevel(this) as MainWindow;
+        if (window is null)
         {
-            _ = await DragDrop.DoDragDropAsync(
-                candidate.TriggerEvent,
-                transfer,
-                DragDropEffects.Copy);
+            return;
         }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (InvalidOperationException)
-        {
-            if (DataContext is FileRuntimePanelViewModel panel)
-            {
-                panel.ReportValidationError("The file drag could not start.");
-            }
-        }
+
+        var activeDrag = new ActiveFileDrag(
+            candidate.Pointer,
+            payload,
+            CreateDragGhostPayload(entries, panel.ConnectionDisplayName));
+        // Changing capture can synchronously raise capture-lost for the list
+        // row. Establish the drag only after that old capture has unwound.
+        candidate.Pointer.Capture(this);
+        _activeFileDrag = activeDrag;
+        window.ShowDragGhost(activeDrag.Ghost, e.GetPosition(window));
+        UpdateActiveFileDrag(e, activeDrag);
+        e.Handled = true;
     }
 
     private void OnFilePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         _ = sender;
-        _ = e;
+        if (_activeFileDrag is { } active
+            && ReferenceEquals(e.Pointer, active.Pointer))
+        {
+            CompleteActiveFileDrag(e, active);
+            e.Handled = true;
+            return;
+        }
+
         _fileDragCandidate = null;
+    }
+
+    private void OnFilePointerCaptureLost(
+        object? sender,
+        PointerCaptureLostEventArgs e)
+    {
+        _ = sender;
+        if (_activeFileDrag is { } active
+            && ReferenceEquals(e.Pointer, active.Pointer))
+        {
+            CancelActiveFileDrag(active.Pointer, releaseCapture: false);
+        }
+    }
+
+    private void UpdateActiveFileDrag(
+        PointerEventArgs e,
+        ActiveFileDrag active)
+    {
+        if (TopLevel.GetTopLevel(this) is not MainWindow window)
+        {
+            CancelActiveFileDrag(active.Pointer);
+            return;
+        }
+
+        var position = e.GetPosition(window);
+        window.MoveDragGhost(position);
+        var target = ResolveInternalFileDropTarget(window, position, active.Payload);
+        if (!ReferenceEquals(_activeFileDropView, target?.View))
+        {
+            _activeFileDropView?.ClearTransferDropTarget();
+            _activeFileDropView = target?.View;
+        }
+
+        if (target is { } resolved)
+        {
+            resolved.View.SetTransferDropTarget(resolved.Target.Folder);
+        }
+        else
+        {
+            _activeFileDropView?.ClearTransferDropTarget();
+            _activeFileDropView = null;
+        }
+    }
+
+    private void CompleteActiveFileDrag(
+        PointerReleasedEventArgs e,
+        ActiveFileDrag active)
+    {
+        var window = TopLevel.GetTopLevel(this) as MainWindow;
+        var target = window is null
+            ? null
+            : ResolveInternalFileDropTarget(
+                window,
+                e.GetPosition(window),
+                active.Payload);
+
+        _activeFileDrag = null;
+        _fileDragCandidate = null;
+        _activeFileDropView?.ClearTransferDropTarget();
+        _activeFileDropView = null;
+        active.Pointer.Capture(null);
+        window?.HideDragGhost();
+
+        if (target is not { } resolved)
+        {
+            return;
+        }
+
+        resolved.View.EntryTransferDropRequested?.Invoke(
+            resolved.View,
+            new FilePanelTransferDropEventArgs(
+                resolved.Target.Panel,
+                resolved.Target.Payload,
+                resolved.Target.DestinationFolder));
+    }
+
+    private void CancelActiveFileDrag(
+        IPointer pointer,
+        bool releaseCapture = true)
+    {
+        _activeFileDrag = null;
+        _fileDragCandidate = null;
+        _activeFileDropView?.ClearTransferDropTarget();
+        _activeFileDropView = null;
+        if (releaseCapture)
+        {
+            pointer.Capture(null);
+        }
+
+        if (TopLevel.GetTopLevel(this) is MainWindow window)
+        {
+            window.HideDragGhost();
+        }
+    }
+
+    private static InternalFileDropTarget? ResolveInternalFileDropTarget(
+        MainWindow window,
+        Point position,
+        FilePanelTransferPayload payload)
+    {
+        if (window.InputHitTest(position) is not Control hit)
+        {
+            return null;
+        }
+
+        var view = hit as FileRuntimePanelView
+            ?? hit.FindAncestorOfType<FileRuntimePanelView>();
+        var target = view?.ResolveFileDropTarget(hit, payload);
+        return view is not null && target is not null
+            ? new InternalFileDropTarget(view, target)
+            : null;
     }
 
     private void OnFileDragOver(object? sender, DragEventArgs e)
     {
         _ = sender;
-        if (DataContext is FileRuntimePanelViewModel panel
-            && e.DataTransfer.TryGetValue(FileDragFormat) is { } payload
-            && payload.Entries.All(panel.CanReceiveTransfer))
+        if (ResolveFileDropTarget(e.Source, e.DataTransfer) is { } target)
         {
+            SetTransferDropTarget(target.Folder);
             e.DragEffects = DragDropEffects.Copy;
             e.Handled = true;
             return;
         }
 
+        ClearTransferDropTarget();
         e.DragEffects = DragDropEffects.None;
+    }
+
+    private void OnFileDragLeave(object? sender, DragEventArgs e)
+    {
+        _ = sender;
+        if (Bounds.Contains(e.GetPosition(this)))
+        {
+            return;
+        }
+
+        ClearTransferDropTarget();
     }
 
     private void OnFileDrop(object? sender, DragEventArgs e)
     {
         _ = sender;
-        if (DataContext is not FileRuntimePanelViewModel panel
-            || e.DataTransfer.TryGetValue(FileDragFormat) is not { } payload
-            || payload.Entries.Count == 0
-            || !payload.Entries.All(panel.CanReceiveTransfer))
+        var target = ResolveFileDropTarget(e.Source, e.DataTransfer);
+        ClearTransferDropTarget();
+        if (target is null)
         {
             e.DragEffects = DragDropEffects.None;
             return;
@@ -328,7 +474,81 @@ public sealed partial class FileRuntimePanelView : UserControl
         e.Handled = true;
         EntryTransferDropRequested?.Invoke(
             this,
-            new FilePanelTransferDropEventArgs(panel, payload));
+            new FilePanelTransferDropEventArgs(
+                target.Panel,
+                target.Payload,
+                target.DestinationFolder));
+    }
+
+    private void SetTransferDropTarget(ListBoxItem? folder)
+    {
+        TransferDropOutline.IsVisible = folder is null;
+        if (ReferenceEquals(_folderDropTarget, folder))
+        {
+            return;
+        }
+
+        _folderDropTarget?.Classes.Remove("transferDropTarget");
+        _folderDropTarget = folder;
+        _folderDropTarget?.Classes.Add("transferDropTarget");
+    }
+
+    private void ClearTransferDropTarget()
+    {
+        TransferDropOutline.IsVisible = false;
+        _folderDropTarget?.Classes.Remove("transferDropTarget");
+        _folderDropTarget = null;
+    }
+
+    private FileDropTarget? ResolveFileDropTarget(
+        object? source,
+        IDataTransfer dataTransfer)
+    {
+        return dataTransfer.TryGetValue(FileDragFormat) is { } payload
+            ? ResolveFileDropTarget(source, payload)
+            : null;
+    }
+
+    private FileDropTarget? ResolveFileDropTarget(
+        object? source,
+        FilePanelTransferPayload payload)
+    {
+        if (DataContext is not FileRuntimePanelViewModel panel
+            || payload.Entries.Count == 0)
+        {
+            return null;
+        }
+
+        var folder = FindDirectoryDropTarget(source);
+        var destinationFolder = folder?.DataContext is FileEntryViewModel folderEntry
+            ? folderEntry.Entry.Location
+            : null;
+
+        // The panel background represents its current folder. Returning a drag
+        // there to its source panel cannot change ownership or location.
+        if (payload.SourcePanelId == panel.Id && destinationFolder is null)
+        {
+            return null;
+        }
+
+        return payload.Entries.All(entry =>
+                panel.CanReceiveTransfer(entry, destinationFolder))
+            ? new FileDropTarget(panel, payload, folder, destinationFolder)
+            : null;
+    }
+
+    private static ListBoxItem? FindDirectoryDropTarget(object? source)
+    {
+        if (source is not Control control)
+        {
+            return null;
+        }
+
+        var item = control as ListBoxItem
+            ?? control.FindAncestorOfType<ListBoxItem>();
+        return item?.DataContext is FileEntryViewModel { IsDirectory: true }
+            ? item
+            : null;
     }
 
     private static ListBox? FindFileList(Control source) =>
@@ -345,15 +565,44 @@ public sealed partial class FileRuntimePanelView : UserControl
         modifiers.HasFlag(KeyModifiers.Meta)
         || modifiers.HasFlag(KeyModifiers.Control);
 
+    private static DragGhostPayload CreateDragGhostPayload(
+        IReadOnlyList<FilePanelEntry> entries,
+        string source)
+    {
+        var title = entries.Count == 1
+            ? entries[0].Name
+            : $"{entries.Count} items";
+        var symbol = entries.Count == 1
+            && entries[0].Kind == FilePanelEntryKind.Directory
+            ? Symbol.Folder
+            : Symbol.DocumentMultiple;
+        return new DragGhostPayload(symbol, title, $"From {source}");
+    }
+
+    private sealed record FileDropTarget(
+        FileRuntimePanelViewModel Panel,
+        FilePanelTransferPayload Payload,
+        ListBoxItem? Folder,
+        FilePanelLocation? DestinationFolder);
+
+    private sealed record InternalFileDropTarget(
+        FileRuntimePanelView View,
+        FileDropTarget Target);
+
+    private sealed record ActiveFileDrag(
+        IPointer Pointer,
+        FilePanelTransferPayload Payload,
+        DragGhostPayload Ghost);
+
     private sealed record FileDragCandidate(
         ListBox Source,
         FilePanelEntry Entry,
         Point Origin,
-        IPointer Pointer,
-        PointerPressedEventArgs TriggerEvent);
+        IPointer Pointer);
 }
 
 public sealed record FilePanelTransferPayload(
+    GhostShell.Core.PanelInstanceId SourcePanelId,
     IReadOnlyList<FilePanelEntry> Entries,
     FilePanelTransferOperation Operation);
 
@@ -370,11 +619,15 @@ public sealed class FilePanelTransferKeyEventArgs(
 
 public sealed class FilePanelTransferDropEventArgs(
     FileRuntimePanelViewModel destination,
-    FilePanelTransferPayload payload) : EventArgs
+    FilePanelTransferPayload payload,
+    FilePanelLocation? destinationFolder) : EventArgs
 {
     public FileRuntimePanelViewModel Destination { get; } =
         destination ?? throw new ArgumentNullException(nameof(destination));
 
     public FilePanelTransferPayload Payload { get; } =
         payload ?? throw new ArgumentNullException(nameof(payload));
+
+    public FilePanelLocation? DestinationFolder { get; } =
+        destinationFolder;
 }
