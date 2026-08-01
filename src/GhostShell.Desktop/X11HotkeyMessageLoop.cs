@@ -37,7 +37,6 @@ internal sealed class X11HotkeyMessageLoop : IX11HotkeyLoop
     private IntPtr _display;
     private nuint _rootWindow;
     private uint _numLockMask;
-    private byte _capturedError;
     private int _disposed;
 
     public X11HotkeyMessageLoop()
@@ -79,42 +78,20 @@ internal sealed class X11HotkeyMessageLoop : IX11HotkeyLoop
         }
 
         var ignoredModifierVariants = BuildIgnoredModifierVariants(_numLockMask);
-        byte errorCode;
-        lock (XErrorHandlerGate)
+        var errorCode = CaptureErrors(_display, () =>
         {
-            _ = XSync(_display, discard: false);
-            _capturedError = 0;
-            var captureContext = new XErrorCaptureContext(
-                _display,
-                errorCode => _capturedError = errorCode);
-            var previousHandler = XSetErrorHandler(ErrorHandlerPointer);
-            try
+            foreach (var ignoredModifiers in ignoredModifierVariants)
             {
-                captureContext.PreviousHandler = previousHandler;
-                Volatile.Write(ref s_errorCapture, captureContext);
-                foreach (var ignoredModifiers in ignoredModifierVariants)
-                {
-                    XGrabKey(
-                        _display,
-                        keyCode,
-                        gesture.Modifiers | ignoredModifiers,
-                        _rootWindow,
-                        ownerEvents: false,
-                        GrabModeAsync,
-                        GrabModeAsync);
-                }
-
-                _ = XSync(_display, discard: false);
-                errorCode = _capturedError;
+                XGrabKey(
+                    _display,
+                    keyCode,
+                    gesture.Modifiers | ignoredModifiers,
+                    _rootWindow,
+                    ownerEvents: false,
+                    GrabModeAsync,
+                    GrabModeAsync);
             }
-            finally
-            {
-                _ = XSetErrorHandler(previousHandler);
-                // Keep the previous-handler pointer available for a callback that another Xlib
-                // thread entered just before restoration. Deactivation drops the loop reference.
-                captureContext.Deactivate();
-            }
-        }
+        });
 
         if (errorCode != 0)
         {
@@ -369,6 +346,51 @@ internal sealed class X11HotkeyMessageLoop : IX11HotkeyLoop
 
         capture(errorCode);
         return 0;
+    }
+
+    internal static byte CaptureErrors(IntPtr display, Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (display == IntPtr.Zero)
+        {
+            throw new ArgumentException("An open X11 display is required.", nameof(display));
+        }
+
+        lock (XErrorHandlerGate)
+        {
+            _ = XSync(display, discard: false);
+            byte capturedError = 0;
+            var captureContext = new XErrorCaptureContext(
+                display,
+                errorCode => capturedError = capturedError == 0
+                    ? errorCode
+                    : capturedError);
+            var previousHandler = XSetErrorHandler(ErrorHandlerPointer);
+            try
+            {
+                captureContext.PreviousHandler = previousHandler;
+                Volatile.Write(ref s_errorCapture, captureContext);
+                try
+                {
+                    action();
+                }
+                finally
+                {
+                    // X errors are asynchronous. Flush every request while our temporary
+                    // handler is still installed, including when the managed action fails.
+                    _ = XSync(display, discard: false);
+                }
+
+                return capturedError;
+            }
+            finally
+            {
+                _ = XSetErrorHandler(previousHandler);
+                // Keep the previous-handler pointer available for a callback that another Xlib
+                // thread entered just before restoration. Deactivation drops the loop reference.
+                captureContext.Deactivate();
+            }
+        }
     }
 
     private static int ForwardToPreviousHandler(

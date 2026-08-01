@@ -14,9 +14,9 @@ public sealed class QuickTerminalSettingsEditorViewModelTests
             expectedRevision: 7)
         {
             HotkeyText = "Control + Option + K",
-            MonitorPolicy = QuickTerminalMonitorPolicy.Primary,
+            MonitorPolicy = QuickTerminalMonitorPolicy.ActiveWindow,
             HeightPercent = 40,
-            OpacityPercent = 70,
+            OpacityPercent = 40,
             BlurRadius = 0,
             AnimateSlide = false,
             AnimationDurationMilliseconds = 90,
@@ -31,11 +31,55 @@ public sealed class QuickTerminalSettingsEditorViewModelTests
         Assert.Equal(
             new KeyStroke("K", KeyModifiers.Control | KeyModifiers.Alt),
             request.Settings.Hotkey);
-        Assert.Equal(QuickTerminalMonitorPolicy.Primary, request.Settings.MonitorPolicy);
+        Assert.Equal(QuickTerminalMonitorPolicy.ActiveWindow, request.Settings.MonitorPolicy);
         Assert.Equal(0.4, request.Settings.HeightFraction);
-        Assert.Equal(0.7, request.Settings.Opacity);
+        Assert.Equal(0.4, request.Settings.Opacity);
         Assert.False(request.Settings.RestoreLastSession);
         Assert.False(request.Settings.HideOnFocusLoss);
+    }
+
+    [Fact]
+    public void Monitor_options_explain_each_distinct_display_policy()
+    {
+        var editor = new QuickTerminalSettingsEditorViewModel(
+            QuickTerminalSettings.Default,
+            expectedRevision: 1);
+
+        Assert.Equal(
+            new[]
+            {
+                (QuickTerminalMonitorPolicy.ActiveWindow, "Active window"),
+                (QuickTerminalMonitorPolicy.MainWindow, "GhostSHELL window"),
+                (QuickTerminalMonitorPolicy.Primary, "Primary display"),
+            },
+            editor.MonitorOptions
+                .Select(option => (option.Policy, option.DisplayName))
+                .ToArray());
+
+        editor.SelectedMonitorOption = editor.MonitorOptions[0];
+
+        Assert.Equal(QuickTerminalMonitorPolicy.ActiveWindow, editor.MonitorPolicy);
+        Assert.Equal(
+            QuickTerminalMonitorPolicy.ActiveWindow,
+            editor.CreateSaveRequest().Settings.MonitorPolicy);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(20)]
+    [InlineData(40)]
+    public void Save_request_preserves_low_opacity_percentages(double opacityPercent)
+    {
+        var editor = new QuickTerminalSettingsEditorViewModel(
+            QuickTerminalSettings.Default,
+            expectedRevision: 1)
+        {
+            OpacityPercent = opacityPercent,
+        };
+
+        var request = editor.CreateSaveRequest();
+
+        Assert.Equal(opacityPercent / 100, request.Settings.Opacity);
     }
 
     [Theory]

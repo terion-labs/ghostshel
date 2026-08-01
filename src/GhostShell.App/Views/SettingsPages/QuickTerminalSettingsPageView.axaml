@@ -70,11 +70,17 @@
         ControlWidth="280">
       <controls:SettingRow
           Label="Show on display"
-          Description="Follow the GhostSHELL window or always use the primary display.">
+          Description="Active window follows whichever app is in front and falls back to GhostSHELL where unsupported. GhostSHELL window follows this app; Primary always uses the OS primary display.">
         <ComboBox
-            ItemsSource="{Binding QuickTerminalSettingsEditor.MonitorPolicies}"
-            SelectedItem="{Binding QuickTerminalSettingsEditor.MonitorPolicy}"
-            AutomationProperties.Name="Quick Terminal display" />
+            ItemsSource="{Binding QuickTerminalSettingsEditor.MonitorOptions}"
+            SelectedItem="{Binding QuickTerminalSettingsEditor.SelectedMonitorOption}"
+            AutomationProperties.Name="Quick Terminal display">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding DisplayName}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
       </controls:SettingRow>
       <controls:SettingRow
           Label="Panel height"
@@ -100,15 +106,16 @@
         Description="Tune translucency and the compositor-backed blur treatment."
         ControlWidth="280">
       <controls:SettingRow
-          Label="Window opacity"
-          Description="Opacity of the Quick Terminal window, from 30 to 100 percent.">
+          Label="Background opacity"
+          Description="Opacity of the terminal backdrop; text, cursor, and controls stay crisp.">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <NumericUpDown
-              Minimum="30"
+              ClipValueToMinMax="True"
+              Minimum="0"
               Maximum="100"
               Increment="1"
               Value="{Binding QuickTerminalSettingsEditor.OpacityPercent}"
-              AutomationProperties.Name="Quick Terminal window opacity" />
+              AutomationProperties.Name="Quick Terminal background opacity" />
           <TextBlock
               Grid.Column="1"
               VerticalAlignment="Center"
@@ -117,15 +124,15 @@
         </Grid>
       </controls:SettingRow>
       <controls:SettingRow
-          Label="Background blur"
-          Description="Requested blur radius before platform capability fallback.">
+          Label="Backdrop blur"
+          Description="Blur behind the terminal; zero disables the effect.">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <NumericUpDown
               Minimum="0"
               Maximum="100"
               Increment="1"
               Value="{Binding QuickTerminalSettingsEditor.BlurRadius}"
-              AutomationProperties.Name="Quick Terminal background blur" />
+              AutomationProperties.Name="Quick Terminal backdrop blur" />
           <TextBlock
               Grid.Column="1"
               VerticalAlignment="Center"

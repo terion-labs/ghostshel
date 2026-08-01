@@ -16,7 +16,7 @@ public sealed class QuickTerminalSettingsRepositoryTests
             new QuickTerminalSettingsId("operator"),
             "Operator Quick Terminal",
             new KeyStroke("K", KeyModifiers.Control | KeyModifiers.Alt),
-            QuickTerminalMonitorPolicy.Primary,
+            QuickTerminalMonitorPolicy.ActiveWindow,
             0.48,
             0.74,
             12,

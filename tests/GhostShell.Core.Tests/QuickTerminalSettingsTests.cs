@@ -23,7 +23,7 @@ public sealed class QuickTerminalSettingsTests
     [Theory]
     [InlineData(0.24, 0.82, 24, 180)]
     [InlineData(0.91, 0.82, 24, 180)]
-    [InlineData(0.55, 0.29, 24, 180)]
+    [InlineData(0.55, -0.01, 24, 180)]
     [InlineData(0.55, 1.01, 24, 180)]
     [InlineData(0.55, 0.82, -1, 180)]
     [InlineData(0.55, 0.82, 101, 180)]
@@ -42,6 +42,21 @@ public sealed class QuickTerminalSettingsTests
             duration));
     }
 
+    [Theory]
+    [InlineData(0.00)]
+    [InlineData(0.20)]
+    [InlineData(0.40)]
+    public void Low_opacity_values_are_valid(double opacity)
+    {
+        var settings = Create(
+            height: 0.55,
+            opacity,
+            blur: 24,
+            duration: 180);
+
+        Assert.Equal(opacity, settings.Opacity);
+    }
+
     [Fact]
     public void Durable_payload_round_trips_every_behavior_choice()
     {
@@ -49,9 +64,9 @@ public sealed class QuickTerminalSettingsTests
             new QuickTerminalSettingsId("custom"),
             "Custom Quick Terminal",
             new KeyStroke("K", KeyModifiers.Control | KeyModifiers.Shift),
-            QuickTerminalMonitorPolicy.Primary,
+            QuickTerminalMonitorPolicy.ActiveWindow,
             0.4,
-            0.7,
+            0.2,
             0,
             animateSlide: false,
             animationDurationMilliseconds: 0,

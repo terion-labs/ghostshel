@@ -11,7 +11,7 @@ public sealed record QuickTerminalSettings : IDurableDefinition
     public const int CurrentSchemaVersion = 1;
     public const double MinimumHeightFraction = 0.25;
     public const double MaximumHeightFraction = 0.90;
-    public const double MinimumOpacity = 0.30;
+    public const double MinimumOpacity = 0.00;
     public const double MaximumOpacity = 1.00;
     public const int MaximumBlurRadius = 100;
     public const int MaximumAnimationDurationMilliseconds = 1_000;

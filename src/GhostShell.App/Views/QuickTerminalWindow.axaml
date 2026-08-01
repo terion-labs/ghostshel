@@ -12,58 +12,68 @@
     CanResize="False"
     ShowInTaskbar="False"
     WindowDecorations="None"
+    Background="Transparent"
     Topmost="True"
     WindowStartupLocation="Manual">
-  <Border
-      Background="{DynamicResource ShellBackgroundBrush}"
-      BorderBrush="{DynamicResource ShellAccentBrush}"
-      BorderThickness="0,0,0,1"
-      ClipToBounds="True"
-      CornerRadius="0,0,20,20">
-    <Grid RowDefinitions="*,36">
-      <Grid>
-        <controls:TerminalPresentationHost
-            x:Name="QuickTerminalHost"
-            Margin="1,1,1,0"
-            ClientId="{Binding ClientId}"
-            IsVisible="{Binding IsTerminalAvailable}"
-            SessionClient="{Binding SessionClient}"
-            SessionRequest="{Binding TerminalRequest}" />
+  <Grid
+      x:Name="RevealViewport"
+      Background="Transparent"
+      ClipToBounds="True">
+    <Border
+        x:Name="SlidingPanel"
+        Background="Transparent"
+        BorderBrush="{DynamicResource ShellAccentBrush}"
+        BorderThickness="0,0,0,1"
+        ClipToBounds="True"
+        CornerRadius="0,0,20,20">
+      <Grid RowDefinitions="*,36">
+        <Grid>
+          <controls:TerminalPresentationHost
+              x:Name="QuickTerminalHost"
+              ClientId="{Binding ClientId}"
+              IsVisible="{Binding IsTerminalAvailable}"
+              SessionClient="{Binding SessionClient}"
+              SessionRequest="{Binding TerminalRequest}" />
 
-        <Border
-            Padding="{controls:Inset Xxl}"
-            Background="{DynamicResource ShellBackgroundBrush}"
-            IsVisible="{Binding ShowTerminalPlaceholder}">
-          <StackPanel
-              MaxWidth="520"
-              HorizontalAlignment="Center"
-              VerticalAlignment="Center"
-              Spacing="{DynamicResource ShellSpaceSm}">
-            <icons:SymbolIcon
+          <Grid
+              IsVisible="{Binding ShowTerminalPlaceholder}">
+            <Border
+                x:Name="QuickTerminalPlaceholderBackground"
+                Background="{DynamicResource ShellBackgroundBrush}"
+                IsHitTestVisible="False" />
+            <StackPanel
+                MaxWidth="520"
+                Margin="{controls:Inset Xxl}"
                 HorizontalAlignment="Center"
-                Symbol="Warning"
-                FontSize="28"
-                Foreground="{DynamicResource ShellWarningBrush}" />
-            <TextBlock
-                HorizontalAlignment="Center"
-                FontSize="{DynamicResource ShellFontSize15}"
-                FontWeight="SemiBold"
-                Text="{Binding TerminalPlaceholderTitle}" />
-            <TextBlock
-                Classes="Muted"
-                Text="{Binding TerminalUnavailableMessage}"
-                TextAlignment="Center"
-                TextWrapping="Wrap" />
-          </StackPanel>
-        </Border>
-      </Grid>
+                VerticalAlignment="Center"
+                Spacing="{DynamicResource ShellSpaceSm}">
+              <icons:SymbolIcon
+                  HorizontalAlignment="Center"
+                  Symbol="Warning"
+                  FontSize="28"
+                  Foreground="{DynamicResource ShellWarningBrush}" />
+              <TextBlock
+                  HorizontalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize15}"
+                  FontWeight="SemiBold"
+                  Text="{Binding TerminalPlaceholderTitle}" />
+              <TextBlock
+                  Classes="Muted"
+                  Text="{Binding TerminalUnavailableMessage}"
+                  TextAlignment="Center"
+                  TextWrapping="Wrap" />
+            </StackPanel>
+          </Grid>
+        </Grid>
 
-      <Border
-          Grid.Row="1"
-          Background="{DynamicResource ShellSurfaceBrush}"
-          BorderBrush="{DynamicResource ShellBorderBrush}"
-          BorderThickness="0,1,0,0">
-        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+        <Grid Grid.Row="1">
+          <Border
+              x:Name="QuickTerminalStatusBackground"
+              Background="{DynamicResource ShellSurfaceBrush}"
+              BorderBrush="{DynamicResource ShellBorderBrush}"
+              BorderThickness="0,1,0,0"
+              IsHitTestVisible="False" />
+          <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
             <icons:SymbolIcon
                 Symbol="WindowConsole"
@@ -112,8 +122,9 @@
               <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
             </Button>
           </StackPanel>
+          </Grid>
         </Grid>
-      </Border>
-    </Grid>
-  </Border>
+      </Grid>
+    </Border>
+  </Grid>
 </Window>

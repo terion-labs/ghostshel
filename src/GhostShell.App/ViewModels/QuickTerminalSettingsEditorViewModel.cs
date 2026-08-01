@@ -7,6 +7,10 @@ public sealed record QuickTerminalSettingsSaveRequest(
     QuickTerminalSettings Settings,
     long ExpectedRevision);
 
+public sealed record QuickTerminalMonitorOption(
+    QuickTerminalMonitorPolicy Policy,
+    string DisplayName);
+
 public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
 {
     private string _hotkeyText;
@@ -48,8 +52,24 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
 
     public long ExpectedRevision { get; }
 
-    public IReadOnlyList<QuickTerminalMonitorPolicy> MonitorPolicies { get; } =
-        Enum.GetValues<QuickTerminalMonitorPolicy>();
+    public IReadOnlyList<QuickTerminalMonitorOption> MonitorOptions { get; } =
+    [
+        new(QuickTerminalMonitorPolicy.ActiveWindow, "Active window"),
+        new(QuickTerminalMonitorPolicy.MainWindow, "GhostSHELL window"),
+        new(QuickTerminalMonitorPolicy.Primary, "Primary display"),
+    ];
+
+    public QuickTerminalMonitorOption? SelectedMonitorOption
+    {
+        get => MonitorOptions.Single(option => option.Policy == MonitorPolicy);
+        set
+        {
+            if (value is not null)
+            {
+                MonitorPolicy = value.Policy;
+            }
+        }
+    }
 
     public string HotkeyExample => QuickTerminalHotkeyText.Example;
 
@@ -65,7 +85,13 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
     public QuickTerminalMonitorPolicy MonitorPolicy
     {
         get => _monitorPolicy;
-        set => SetProperty(ref _monitorPolicy, value);
+        set
+        {
+            if (SetProperty(ref _monitorPolicy, value))
+            {
+                OnPropertyChanged(nameof(SelectedMonitorOption));
+            }
+        }
     }
 
     public double HeightPercent
