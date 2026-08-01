@@ -250,8 +250,7 @@ public sealed class FilePanelSessionTests
         root.Child(new FilePanelPathSegment(source)),
         root.Child(new FilePanelPathSegment(destination)),
         FilePanelTransferOperation.Copy,
-        FilePanelConflictPolicy.Fail,
-        1024);
+        FilePanelConflictPolicy.Fail);
 
     private static FilePanelLocation Root() => new(
         "profile-1",

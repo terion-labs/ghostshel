@@ -5,7 +5,7 @@
 
 ## Context
 
-ADR 0008 requires real SFTP and FTP adapters behind the bounded `IFileProvider` contract. Both protocols expose hierarchical paths, but they differ in transport security, authentication, metadata quality, feature discovery, reconnect behavior, and conflict guarantees. The adapters must not turn an SSH or FTP library into a second public API, expose secret values, silently weaken TLS or host-key policy, or claim safe resume/atomicity that the current contract cannot deliver.
+ADR 0008 requires real SFTP and FTP adapters behind the `IFileProvider` contract. Both protocols expose hierarchical paths, but they differ in transport security, authentication, metadata quality, feature discovery, reconnect behavior, and conflict guarantees. The adapters must not turn an SSH or FTP library into a second public API, expose secret values, silently weaken TLS or host-key policy, impose an arbitrary transfer-size ceiling, or claim safe resume/atomicity that the current contract cannot deliver.
 
 ## Decision
 

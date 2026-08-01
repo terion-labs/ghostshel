@@ -87,7 +87,7 @@ public sealed class FilePanelContractsTests
     }
 
     [Fact]
-    public void TransferRequestRequiresBoundAndValidPolicies()
+    public void TransferRequestRequiresValidPolicies()
     {
         var source = Root().Child(new FilePanelPathSegment("source"));
         var destination = Root().Child(new FilePanelPathSegment("destination"));
@@ -95,15 +95,8 @@ public sealed class FilePanelContractsTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new FilePanelTransferRequest(
             source,
             destination,
-            FilePanelTransferOperation.Copy,
-            FilePanelConflictPolicy.Fail,
-            maximumBytes: 0));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new FilePanelTransferRequest(
-            source,
-            destination,
             (FilePanelTransferOperation)999,
-            FilePanelConflictPolicy.Fail,
-            maximumBytes: 1));
+            FilePanelConflictPolicy.Fail));
     }
 
     [Fact]

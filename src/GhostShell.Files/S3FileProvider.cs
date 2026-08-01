@@ -12,7 +12,6 @@ namespace GhostShell.Files;
 public sealed partial class S3FileProvider : IFileProvider
 {
     private const long MaximumReadBytes = 64L * 1024 * 1024;
-    private const long MaximumObjectMutationBytes = 5L * 1024 * 1024 * 1024;
     private const int MaximumBufferSize = 1024 * 1024;
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(
         encoderShouldEmitUTF8Identifier: false,
@@ -51,8 +50,6 @@ public sealed partial class S3FileProvider : IFileProvider
             new FileProviderLimits(
                 maximumListPageSize: 1_000,
                 maximumReadBytes: MaximumReadBytes,
-                maximumWriteBytes: MaximumObjectMutationBytes,
-                maximumTransferBytes: MaximumObjectMutationBytes,
                 maximumBufferSize: MaximumBufferSize));
 
     public FileProviderProfileId ProfileId { get; }

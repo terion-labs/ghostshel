@@ -47,11 +47,16 @@ public sealed partial class WebDavFileProvider
         IProgress<FileTransferProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var limitError = RemoteFileProviderUtilities.ValidateStreamingLimits(
-            request.MaximumBytes,
-            Capabilities.Limits.MaximumReadBytes,
+        var limitError = RemoteFileProviderUtilities.ValidateBufferSize(
             request.BufferSize,
             Capabilities.Limits.MaximumBufferSize);
+        if (request.MaximumBytes > Capabilities.Limits.MaximumReadBytes)
+        {
+            return Failure<FileReadReceipt>(
+                FileProviderErrorCode.LimitExceeded,
+                "The requested read exceeds the provider's bounded-read limit.");
+        }
+
         if (limitError is not null)
         {
             return FileProviderResult<FileReadReceipt>.Failure(limitError);
@@ -182,9 +187,7 @@ public sealed partial class WebDavFileProvider
         IProgress<FileTransferProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var limitError = RemoteFileProviderUtilities.ValidateStreamingLimits(
-            request.ContentLength,
-            Capabilities.Limits.MaximumWriteBytes,
+        var limitError = RemoteFileProviderUtilities.ValidateBufferSize(
             request.BufferSize,
             Capabilities.Limits.MaximumBufferSize);
         if (limitError is not null)

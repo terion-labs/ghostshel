@@ -51,8 +51,7 @@ public sealed record FilePanelTransferRequest
         FilePanelLocation source,
         FilePanelLocation destination,
         FilePanelTransferOperation operation,
-        FilePanelConflictPolicy conflictPolicy,
-        long maximumBytes)
+        FilePanelConflictPolicy conflictPolicy)
     {
         Source = source ?? throw new ArgumentNullException(nameof(source));
         Destination = destination ?? throw new ArgumentNullException(nameof(destination));
@@ -66,10 +65,8 @@ public sealed record FilePanelTransferRequest
             throw new ArgumentOutOfRangeException(nameof(conflictPolicy), conflictPolicy, null);
         }
 
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
         Operation = operation;
         ConflictPolicy = conflictPolicy;
-        MaximumBytes = maximumBytes;
     }
 
     public FilePanelLocation Source { get; }
@@ -79,8 +76,6 @@ public sealed record FilePanelTransferRequest
     public FilePanelTransferOperation Operation { get; }
 
     public FilePanelConflictPolicy ConflictPolicy { get; }
-
-    public long MaximumBytes { get; }
 }
 
 public sealed record FilePanelTransferSnapshot(
@@ -96,7 +91,11 @@ public sealed record FilePanelTransferSnapshot(
     DateTimeOffset? StartedAt,
     DateTimeOffset? CompletedAt)
 {
-    public bool CanCancel => State is FilePanelTransferState.Queued or FilePanelTransferState.Running;
+    public bool CancellationRequested { get; init; }
+
+    public bool CanCancel =>
+        !CancellationRequested
+        && State is (FilePanelTransferState.Queued or FilePanelTransferState.Running);
 
     public bool CanRetry => State is FilePanelTransferState.Failed or FilePanelTransferState.Cancelled;
 }

@@ -5,12 +5,9 @@ namespace GhostShell.Files;
 /// <summary>FTP, explicit FTPS, or implicit FTPS provider backed by FluentFTP.</summary>
 public sealed class FtpFileProvider : RemoteHierarchicalFileProvider
 {
-    private const long MaximumStreamingFileBytes = 1024L * 1024 * 1024 * 1024;
     private static readonly FileProviderLimits ProviderLimits = new(
         maximumListPageSize: 1_000,
         maximumReadBytes: 64L * 1024 * 1024,
-        maximumWriteBytes: MaximumStreamingFileBytes,
-        maximumTransferBytes: MaximumStreamingFileBytes,
         maximumBufferSize: 1024 * 1024);
     private readonly IFtpFeatureSource? _featureSource;
 

@@ -30,8 +30,6 @@ internal sealed partial class InMemoryFileProvider : IFileProvider
             limits ?? new FileProviderLimits(
                 maximumListPageSize: 100,
                 maximumReadBytes: 1024 * 1024,
-                maximumWriteBytes: 10 * 1024 * 1024,
-                maximumTransferBytes: 10 * 1024 * 1024,
                 maximumBufferSize: 64 * 1024));
         _nodes.Add(FilePath.Root, new MemoryNode(FileEntryKind.Directory, [], NextRevision()));
     }

@@ -46,13 +46,12 @@ public abstract partial class LocalFileProvider
         IProgress<FileTransferProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var limitError = ValidateStreamingLimits(
-            request.MaximumBytes,
-            Capabilities.Limits.MaximumReadBytes,
-            request.BufferSize);
-        if (limitError is not null)
+        if (request.MaximumBytes > Capabilities.Limits.MaximumReadBytes
+            || request.BufferSize > Capabilities.Limits.MaximumBufferSize)
         {
-            return FileProviderResult<FileReadReceipt>.Failure(limitError);
+            return Failure<FileReadReceipt>(
+                FileProviderErrorCode.LimitExceeded,
+                "The requested read exceeds the provider's read or buffer limit.");
         }
 
         var resolved = ResolveLocation(request.Location, allowLeafLink: false);
@@ -152,14 +151,11 @@ public abstract partial class LocalFileProvider
         IProgress<FileTransferProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var limitError = ValidateStreamingLimits(
-            request.ContentLength,
-            Capabilities.Limits.MaximumWriteBytes,
-            request.BufferSize,
-            allowZeroLength: true);
-        if (limitError is not null)
+        if (request.BufferSize > Capabilities.Limits.MaximumBufferSize)
         {
-            return FileProviderResult<FileWriteReceipt>.Failure(limitError);
+            return Failure<FileWriteReceipt>(
+                FileProviderErrorCode.LimitExceeded,
+                "The requested buffer exceeds the provider limit.");
         }
 
         var resolved = ResolveLocation(request.Location, allowLeafLink: true);
@@ -330,26 +326,6 @@ public abstract partial class LocalFileProvider
             : Failure<ResolvedLocalLocation>(
                 FileProviderErrorCode.NotDirectory,
                 "The destination parent is not a directory.");
-    }
-
-    private FileProviderError? ValidateStreamingLimits(
-        long requestedBytes,
-        long maximumBytes,
-        int bufferSize,
-        bool allowZeroLength = false)
-    {
-        if ((!allowZeroLength && requestedBytes <= 0)
-            || requestedBytes < 0
-            || requestedBytes > maximumBytes
-            || bufferSize <= 0
-            || bufferSize > Capabilities.Limits.MaximumBufferSize)
-        {
-            return FileProviderError.Create(
-                FileProviderErrorCode.LimitExceeded,
-                "The requested byte or buffer limit exceeds the provider bounds.");
-        }
-
-        return null;
     }
 
     private static FileProviderError? RejectNonFileDestination(FileEntry? existing) => existing?.Kind switch

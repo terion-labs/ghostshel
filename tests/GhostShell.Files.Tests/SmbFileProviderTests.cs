@@ -14,9 +14,7 @@ public sealed class SmbFileProviderTests
         Assert.Same(options, provider.Options);
         Assert.Equal(options.Authority, provider.Authority);
         Assert.Equal(FileNameComparison.ProviderDefined, provider.Capabilities.NameComparison);
-        Assert.True(
-            provider.Capabilities.Limits.MaximumWriteBytes
-            > 2L * 1024 * 1024 * 1024);
+        Assert.True(provider.Capabilities.Supports(FileProviderCapability.StreamingWrite));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.AtomicReplace));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.ResumableTransfer));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.ServerSideCopy));

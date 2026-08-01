@@ -28,7 +28,6 @@ public sealed class FileTransferEditorViewModel : ObservableObject
         _destination = FileLocationPresentation.ChildDisplay(
             _selectedDestinationProfile,
             source.Name);
-        MaximumBytes = Math.Max(1, source.Size ?? 1024L * 1024 * 1024);
     }
 
     public FilePanelEntry Source { get; }
@@ -79,8 +78,6 @@ public sealed class FileTransferEditorViewModel : ObservableObject
         set => SetProperty(ref _conflictPolicy, value);
     }
 
-    public long MaximumBytes { get; }
-
     public FilePanelTransferRequest CreateRequest()
     {
         var destination = FileLocationPresentation.Parse(
@@ -95,7 +92,6 @@ public sealed class FileTransferEditorViewModel : ObservableObject
             Source.Location,
             destination,
             Operation,
-            ConflictPolicy,
-            MaximumBytes);
+            ConflictPolicy);
     }
 }

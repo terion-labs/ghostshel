@@ -3,6 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     Classes="RuntimePanelFocusTarget"
@@ -10,6 +11,11 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}">
+  <UserControl.Styles>
+    <Style Selector="ListBoxItem.transferDropTarget /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    </Style>
+  </UserControl.Styles>
   <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="36,Auto,*">
@@ -23,10 +29,14 @@
               SelectedLabel="{Binding ConnectionDisplayName}"
               ConnectionSelected="OnConnectionSelected"
               NewConnectionRequested="OnNewConnectionRequested" />
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-            <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Title}" />
-            <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsZoomed}" Text="ZOOMED" />
-          </StackPanel>
+          <controls:PanelDockHandle
+              Grid.Column="2"
+              DataContext="{Binding $parent[dock:DockableControl].DataContext}">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
+              <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
+              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="ZOOMED" />
+            </StackPanel>
+          </controls:PanelDockHandle>
           <StackPanel
               Grid.Column="3"
               VerticalAlignment="Center"
@@ -245,11 +255,11 @@
                       <ColumnDefinition Width="5" />
                       <ColumnDefinition Width="{Binding $parent[UserControl].DataContext.FileModifiedColumnWidth}" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                       <icons:SymbolIcon VerticalAlignment="Center" Symbol="Folder" FontSize="13" Foreground="{DynamicResource ShellWarningBrush}" IsVisible="{Binding IsDirectory}" />
                       <icons:SymbolIcon VerticalAlignment="Center" Symbol="Code" FontSize="13" Foreground="{DynamicResource ShellMutedBrush}" IsVisible="{Binding !IsDirectory}" />
-                      <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                      <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                    </Grid>
                     <TextBlock Grid.Column="2" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Size}" />
                     <TextBlock Grid.Column="4" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Modified}" />
                   </Grid>
@@ -282,7 +292,7 @@
                   <Grid MinHeight="30" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <icons:SymbolIcon VerticalAlignment="Center" Symbol="Folder" FontSize="13" Foreground="{DynamicResource ShellWarningBrush}" IsVisible="{Binding IsDirectory}" />
                     <icons:SymbolIcon VerticalAlignment="Center" Symbol="Code" FontSize="13" Foreground="{DynamicResource ShellMutedBrush}" IsVisible="{Binding !IsDirectory}" />
-                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
                     <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Size}" />
                   </Grid>
                 </DataTemplate>
@@ -312,7 +322,7 @@
                     <StackPanel Margin="{controls:Inset Sm}" Spacing="{DynamicResource ShellSpaceXs}">
                       <icons:SymbolIcon Symbol="Folder" FontSize="20" Foreground="{DynamicResource ShellWarningBrush}" IsVisible="{Binding IsDirectory}" />
                       <icons:SymbolIcon Symbol="Code" FontSize="20" Foreground="{DynamicResource ShellMutedBrush}" IsVisible="{Binding !IsDirectory}" />
-                      <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
                       <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Size}" />
                     </StackPanel>
                   </controls:SurfaceCard>
@@ -442,6 +452,18 @@
           IsVisible="{Binding ShowNavigationProgress}"
           AutomationProperties.LiveSetting="Polite"
           AutomationProperties.Name="File Viewer loading folder" />
+      <Rectangle
+          x:Name="TransferDropOutline"
+          Grid.RowSpan="3"
+          Margin="2"
+          IsHitTestVisible="False"
+          IsVisible="False"
+          RadiusX="{DynamicResource ShellCardRadius}"
+          RadiusY="{DynamicResource ShellCardRadius}"
+          Stroke="{DynamicResource ShellAccentBrush}"
+          StrokeDashArray="4,3"
+          StrokeThickness="2"
+          AutomationProperties.Name="File transfer drop target" />
     </Grid>
   </controls:SurfaceCard>
 </UserControl>

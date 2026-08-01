@@ -5,7 +5,7 @@
 
 ## Context
 
-ADR 0008 defines a provider-neutral, bounded file API. S3 is an object store whose legal keys are not hierarchical paths; WebDAV is a hierarchical HTTP namespace whose mutation and destination-precondition rules differ from ordinary HTTP. Both adapters must preserve caller-owned streams, cancellation, opaque versions, and typed conflicts without requiring live credentials in the test suite.
+ADR 0008 defines a provider-neutral file API with bounded reads and open-ended streaming transfers. S3 is an object store whose legal keys are not hierarchical paths; WebDAV is a hierarchical HTTP namespace whose mutation and destination-precondition rules differ from ordinary HTTP. Both adapters must preserve caller-owned streams, cancellation, opaque versions, and typed conflicts without requiring live credentials in the test suite.
 
 ## Decision
 
@@ -17,7 +17,7 @@ The container root is structurally distinct from an object. `FileObjectKey` maps
 
 Reads use one conditional byte-range `GetObject`. Writes use one length-declared `PutObject` with `If-None-Match`, `If-Match: *`, or an ETag as required. Same-bucket copies use `CopyObject` with both source and destination ETag conditions and advertise `ServerSideCopy`. Conditional delete uses `DeleteObject.IfMatch`. The adapter advertises only `List`, `Stat`, `RangedRead`, `StreamingWrite`, `Copy`, `Delete`, `ServerSideCopy`, and `Pagination`.
 
-Portable S3 rename/move is not advertised: copy followed by delete can commit only one side, while the newer `RenameObject` operation is not available across general-purpose S3 and compatible services. Object buckets do not advertise directory creation. Recursive prefix deletion is rejected instead of expanding one user operation into an unbounded destructive batch. The adapter also does not advertise `AtomicReplace`, `Versioning`, resumable transfer, watch, search, permissions, ACLs, checksums, or symlinks. Single PUT and COPY are bounded to 5 GiB; larger future transfers require an explicitly designed multipart/resume contract.
+Portable S3 rename/move is not advertised: copy followed by delete can commit only one side, while the newer `RenameObject` operation is not available across general-purpose S3 and compatible services. Object buckets do not advertise directory creation. Recursive prefix deletion is rejected instead of expanding one user operation into an unbounded destructive batch. The adapter also does not advertise `AtomicReplace`, `Versioning`, resumable transfer, watch, search, permissions, ACLs, checksums, or symlinks. The current adapter issues one PUT or COPY operation and does not invent a smaller application ceiling; service-specific object or single-operation constraints remain typed provider failures. Multipart/resume remains a separate capability because it needs durable checkpoints and commit semantics.
 
 ### WebDAV
 
@@ -25,7 +25,7 @@ The WebDAV transport uses the platform `HttpClient` and RFC 4918 directly rather
 
 `PROPFIND` depth 0 implements stat; depth 1 implements list. Property bodies are capped at 8 MiB and 10,000 entries. Since RFC 4918 defines no collection pagination, the adapter exposes bounded client-side pagination over one immutable property snapshot; continuation cursors are provider-local, scope-checked, and limited to 32 retained states. A syntactically valid strong `getetag` is required because safe conditional reads and mutations cannot be represented with a weak or missing validator.
 
-Ranged reads issue `Range` plus `If-Match`, require a matching `Content-Range` on 206, and request identity encoding. A 200 response is accepted only for an offset-zero prefix; a server that ignores a nonzero range is rejected instead of downloading an unbounded prefix merely to skip it. PUT uses standard HTTP conditional headers and an exact-length caller-stream view. MKCOL creates collections. RFC 4918 COPY and MOVE use `Destination`, `Overwrite`, and tagged `If` lists so both source and destination ETags participate in the operation; COPY therefore advertises `ServerSideCopy`. DELETE of a collection is recursive under RFC 4918 and is sent only when the caller explicitly requests recursion. A shallow collection delete is rejected because a list-then-delete sequence has an unavoidable membership race. Bounded transfer currently accepts files, not recursive collections whose total size cannot be proven before the operation.
+Ranged reads issue `Range` plus `If-Match`, require a matching `Content-Range` on 206, and request identity encoding. A 200 response is accepted only for an offset-zero prefix; a server that ignores a nonzero range is rejected instead of downloading an unbounded prefix merely to skip it. PUT uses standard HTTP conditional headers and an exact-length caller-stream view. MKCOL creates collections. RFC 4918 COPY and MOVE use `Destination`, `Overwrite`, and tagged `If` lists so both source and destination ETags participate in the operation; COPY therefore advertises `ServerSideCopy`. DELETE of a collection is recursive under RFC 4918 and is sent only when the caller explicitly requests recursion. A shallow collection delete is rejected because a list-then-delete sequence has an unavoidable membership race. Provider-local WebDAV transfer currently accepts files, not recursive collections; cross-provider directory orchestration is owned by the transfer queue.
 
 The WebDAV adapter advertises `List`, `Stat`, `RangedRead`, `StreamingWrite`, `CreateDirectory`, `Rename`, `Copy`, `Move`, `Delete`, `ServerSideCopy`, and `Pagination`. It does not advertise `AtomicReplace`, `Versioning`, resumable transfer, watch, search, permissions, ACLs, checksums, or symlinks. Cancellation stops local request/response processing, but a remote server may have committed a request before observing transport cancellation; expected remote uncertainty is why neither remote adapter claims `AtomicReplace`.
 
@@ -50,5 +50,5 @@ No test requires cloud credentials or network access. S3 semantics run against a
 
 - The UI and agent can browse and preview these providers through the same typed contract without flattening exact S3 keys into unsafe paths.
 - Concurrency failures are visible and recoverable instead of silently overwriting newer data.
-- Server-side copies avoid downloading data through GhostSHELL, while byte bounds are checked before the operation.
+- Server-side copies avoid downloading data through GhostSHELL, while source identity and destination preconditions are checked before the operation.
 - Multipart S3 transfer, recursive WebDAV collection transfer, and S3 prefix deletion remain deliberate future features rather than partially safe implicit behavior.

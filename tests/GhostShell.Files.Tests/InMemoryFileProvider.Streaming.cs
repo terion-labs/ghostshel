@@ -96,8 +96,7 @@ internal sealed partial class InMemoryFileProvider
 
         return ExecuteAsync(async token =>
         {
-            if (request.ContentLength > Capabilities.Limits.MaximumWriteBytes
-                || request.BufferSize > Capabilities.Limits.MaximumBufferSize)
+            if (request.BufferSize > Capabilities.Limits.MaximumBufferSize)
             {
                 return Failure<FileWriteReceipt>(FileProviderErrorCode.LimitExceeded, "The write is too large.");
             }

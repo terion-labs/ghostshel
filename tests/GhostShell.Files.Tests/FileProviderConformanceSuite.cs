@@ -235,7 +235,6 @@ public abstract class FileProviderConformanceSuite
                 source,
                 copy,
                 FileTransferKind.Copy,
-                maximumBytes: 64,
                 bufferSize: 3,
                 new FileMutationPrecondition.MustNotExist()),
             progress: null,
@@ -252,7 +251,7 @@ public abstract class FileProviderConformanceSuite
     }
 
     [Fact]
-    public async Task TransferNeverExceedsItsRequestedByteBound()
+    public async Task TransferStreamsWithoutARequestSizeCeiling()
     {
         await using var context = await CreateContextAsync();
         if (!context.Provider.Capabilities.Supports(FileProviderCapability.Copy))
@@ -261,7 +260,7 @@ public abstract class FileProviderConformanceSuite
         }
 
         var source = context.Root.Child(new FilePathSegment("large-source.bin"));
-        var destination = context.Root.Child(new FilePathSegment("bounded-copy.bin"));
+        var destination = context.Root.Child(new FilePathSegment("streamed-copy.bin"));
         await WriteBytesAsync(
             context.Provider,
             source,
@@ -273,16 +272,17 @@ public abstract class FileProviderConformanceSuite
                 source,
                 destination,
                 FileTransferKind.Copy,
-                maximumBytes: 16,
                 bufferSize: 4,
                 new FileMutationPrecondition.MustNotExist()),
             progress: null,
             CancellationToken.None);
 
-        AssertError(result, FileProviderErrorCode.LimitExceeded);
-        AssertError(
-            await context.Provider.StatAsync(new FileStatRequest(destination), CancellationToken.None),
-            FileProviderErrorCode.NotFound);
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        var destinationEntry = await context.Provider.StatAsync(
+            new FileStatRequest(destination),
+            CancellationToken.None);
+        Assert.True(destinationEntry.IsSuccess, destinationEntry.Error?.Message);
+        Assert.Equal(32, destinationEntry.Value!.Size);
     }
 
     [Fact]
@@ -321,7 +321,6 @@ public abstract class FileProviderConformanceSuite
                 source,
                 destination,
                 FileTransferKind.Copy,
-                maximumBytes: 2_048,
                 bufferSize: 16,
                 new FileMutationPrecondition.Any()),
             progress,
@@ -353,7 +352,6 @@ public abstract class FileProviderConformanceSuite
                 source,
                 moved,
                 FileTransferKind.Move,
-                maximumBytes: 64,
                 bufferSize: 3,
                 new FileMutationPrecondition.MustNotExist()),
             progress: null,
@@ -444,18 +442,6 @@ public abstract class FileProviderConformanceSuite
             progress: null,
             CancellationToken.None);
         AssertError(oversizedRead, FileProviderErrorCode.LimitExceeded);
-
-        await using var source = new MemoryStream(Array.Empty<byte>());
-        var oversizedWrite = await context.Provider.WriteAsync(
-            new FileWriteRequest(
-                missing,
-                context.Provider.Capabilities.Limits.MaximumWriteBytes + 1,
-                bufferSize: 1,
-                new FileMutationPrecondition.MustNotExist()),
-            source,
-            progress: null,
-            CancellationToken.None);
-        AssertError(oversizedWrite, FileProviderErrorCode.LimitExceeded);
 
         await using var directoryDestination = new MemoryStream();
         var directoryRead = await context.Provider.ReadAsync(

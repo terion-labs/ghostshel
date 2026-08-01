@@ -5573,7 +5573,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private void RefreshFileTransfers()
     {
         var snapshots = _fileTransferQueue.Transfers;
-        Replace(FileTransfers, snapshots.Select(snapshot =>
+        var rows = snapshots.Select(snapshot =>
             new FileTransferItemViewModel(
                 snapshot.Id,
                 FileLocationPresentation.Display(snapshot.Request.Source),
@@ -5590,7 +5590,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     FilePanelTransferState.Queued or FilePanelTransferState.Running,
                 snapshot.TotalBytes is > 0,
                 TransferPercent(snapshot),
-                snapshot.QueuedAt)));
+                snapshot.QueuedAt))
+            .ToArray();
+        SynchronizeFileTransfers(rows);
         OnPropertyChanged(nameof(HasFileTransfers));
         OnPropertyChanged(nameof(HasNoFileTransfers));
         OnPropertyChanged(nameof(ActiveFileTransferCount));
@@ -5602,6 +5604,37 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                      && _refreshedFileTransfers.Add(snapshot.Id)))
         {
             _ = RefreshPanelsAfterTransferAsync(snapshot);
+        }
+    }
+
+    private void SynchronizeFileTransfers(
+        IReadOnlyList<FileTransferItemViewModel> latest)
+    {
+        var existingById = FileTransfers.ToDictionary(transfer => transfer.Id);
+        for (var index = 0; index < latest.Count; index++)
+        {
+            var candidate = latest[index];
+            if (!existingById.TryGetValue(candidate.Id, out var existing))
+            {
+                FileTransfers.Insert(index, candidate);
+                continue;
+            }
+
+            existing.UpdateFrom(candidate);
+            var currentIndex = FileTransfers.IndexOf(existing);
+            if (currentIndex != index)
+            {
+                FileTransfers.Move(currentIndex, index);
+            }
+        }
+
+        var liveIds = latest.Select(transfer => transfer.Id).ToHashSet();
+        for (var index = FileTransfers.Count - 1; index >= 0; index--)
+        {
+            if (!liveIds.Contains(FileTransfers[index].Id))
+            {
+                FileTransfers.RemoveAt(index);
+            }
         }
     }
 

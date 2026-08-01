@@ -5,12 +5,9 @@ namespace GhostShell.Files;
 /// <summary>Cross-platform SMB 2/3 provider backed by SMBLibrary.</summary>
 public sealed class SmbFileProvider : RemoteHierarchicalFileProvider
 {
-    private const long MaximumStreamingFileBytes = 1024L * 1024 * 1024 * 1024;
     private static readonly FileProviderLimits ProviderLimits = new(
         maximumListPageSize: 1_000,
         maximumReadBytes: 64L * 1024 * 1024,
-        maximumWriteBytes: MaximumStreamingFileBytes,
-        maximumTransferBytes: MaximumStreamingFileBytes,
         maximumBufferSize: 1024 * 1024);
 
     public SmbFileProvider(ISecretVault secretVault, SmbFileProviderOptions options)

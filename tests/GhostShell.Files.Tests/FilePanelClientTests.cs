@@ -385,8 +385,6 @@ public sealed class FilePanelClientTests
             new FileProviderLimits(
                 maximumListPageSize: 100,
                 maximumReadBytes: 1024,
-                maximumWriteBytes: 1024,
-                maximumTransferBytes: 1024,
                 maximumBufferSize: 1024));
 
         public ValueTask<FileProviderResult<FilePage>> ListAsync(

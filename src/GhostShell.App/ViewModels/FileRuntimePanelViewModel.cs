@@ -59,8 +59,6 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 {
     private const int DefaultPageSize = 250;
     private const int DefaultPreviewBytes = 256 * 1024;
-    private const long DefaultDirectoryTransferBytes =
-        1024L * 1024 * 1024 * 1024;
     private const int MaximumFormattedBinaryBytes = 16 * 1024;
     private readonly IFilePanelClient _client;
     private readonly ConnectionProfile _connection;
@@ -918,7 +916,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public FilePanelTransferRequest CreateIncomingTransferRequest(
         FilePanelEntry source,
-        FilePanelTransferOperation operation)
+        FilePanelTransferOperation operation,
+        FilePanelLocation? destinationFolder = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         if (!Enum.IsDefined(operation))
@@ -948,20 +947,47 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 "The selected destination cannot receive this item type.");
         }
 
+        var destinationParent = destinationFolder?.WithVersion(null)
+            ?? CurrentLocation;
+        if (!string.Equals(
+                destinationParent.ProviderProfileId,
+                SelectedProfile.Id,
+                StringComparison.Ordinal)
+            || !string.Equals(
+                destinationParent.Authority,
+                CurrentLocation.Authority,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The drop folder does not belong to the selected destination.");
+        }
+
         var destination = FileLocationPresentation.Child(
-            CurrentLocation,
+            destinationParent,
             source.Name);
+        if (source.Location.WithVersion(null) == destination.WithVersion(null))
+        {
+            throw new InvalidOperationException(
+                "The item is already in this destination.");
+        }
+
+        if (source.Kind == FilePanelEntryKind.Directory
+            && source.Location.WithVersion(null) == destinationParent)
+        {
+            throw new InvalidOperationException(
+                "A folder cannot be transferred into itself.");
+        }
+
         return new FilePanelTransferRequest(
             source.Location,
             destination,
             operation,
-            FilePanelConflictPolicy.KeepBoth,
-            Math.Max(
-                1,
-                source.Size ?? DefaultDirectoryTransferBytes));
+            FilePanelConflictPolicy.KeepBoth);
     }
 
-    public bool CanReceiveTransfer(FilePanelEntry source)
+    public bool CanReceiveTransfer(
+        FilePanelEntry source,
+        FilePanelLocation? destinationFolder = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         if (IsLoading || CurrentLocation is null || SelectedProfile is null)
@@ -978,8 +1004,33 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 | FilePanelCapability.StreamingWrite,
             _ => FilePanelCapability.None,
         };
-        return requiredCapabilities != FilePanelCapability.None
-            && SelectedProfile.Capabilities.HasFlag(requiredCapabilities);
+        if (requiredCapabilities == FilePanelCapability.None
+            || !SelectedProfile.Capabilities.HasFlag(requiredCapabilities))
+        {
+            return false;
+        }
+
+        var destinationParent = destinationFolder?.WithVersion(null)
+            ?? CurrentLocation;
+        if (!string.Equals(
+                destinationParent.ProviderProfileId,
+                SelectedProfile.Id,
+                StringComparison.Ordinal)
+            || !string.Equals(
+                destinationParent.Authority,
+                CurrentLocation.Authority,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var sourceLocation = source.Location.WithVersion(null);
+        var destination = FileLocationPresentation.Child(
+            destinationParent,
+            source.Name);
+        return sourceLocation != destination.WithVersion(null)
+            && (source.Kind != FilePanelEntryKind.Directory
+                || sourceLocation != destinationParent);
     }
 
     public FileTransferEditorViewModel CreateDownloadEditor()

@@ -522,7 +522,7 @@ public sealed partial class InMemorySessionHostClient
 
     private static string TransferKey(FilePanelTransferRequest request) =>
         $"{LocationKey(request.Source)}:{LocationKey(request.Destination)}:{request.Operation}:"
-        + $"{request.ConflictPolicy}:{request.MaximumBytes}";
+        + $"{request.ConflictPolicy}";
 
     private static string PreconditionKey(FilePanelMutationPrecondition precondition) =>
         $"{precondition.Kind}:{precondition.Version ?? string.Empty}";

@@ -10,7 +10,6 @@ namespace GhostShell.Files;
 public abstract partial class LocalFileProvider : IFileProvider
 {
     private const long MaximumReadBytes = 64L * 1024 * 1024;
-    private const long MaximumMutationBytes = 1024L * 1024 * 1024 * 1024;
     private const int MaximumBufferSize = 1024 * 1024;
     private readonly StringComparison _pathComparison;
 
@@ -55,8 +54,6 @@ public abstract partial class LocalFileProvider : IFileProvider
             new FileProviderLimits(
                 maximumListPageSize: 1_000,
                 maximumReadBytes: MaximumReadBytes,
-                maximumWriteBytes: MaximumMutationBytes,
-                maximumTransferBytes: MaximumMutationBytes,
                 maximumBufferSize: MaximumBufferSize));
     }
 

@@ -382,9 +382,7 @@ public abstract partial class RemoteHierarchicalFileProvider
         IProgress<FileTransferProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var limitError = RemoteFileProviderUtilities.ValidateStreamingLimits(
-            request.MaximumBytes,
-            Capabilities.Limits.MaximumTransferBytes,
+        var limitError = RemoteFileProviderUtilities.ValidateBufferSize(
             request.BufferSize,
             Capabilities.Limits.MaximumBufferSize);
         if (limitError is not null)
@@ -484,13 +482,6 @@ public abstract partial class RemoteHierarchicalFileProvider
             return Failure<FileTransferReceipt>(
                 FileProviderErrorCode.UnsupportedCapability,
                 $"The {_protocolName} server did not report a bounded source size.");
-        }
-
-        if (sourceSize > request.MaximumBytes)
-        {
-            return Failure<FileTransferReceipt>(
-                FileProviderErrorCode.LimitExceeded,
-                "The remote source exceeds the requested transfer bound.");
         }
 
         var destinationEntry = await destinationSession

@@ -7,6 +7,8 @@ namespace GhostShell.Files;
 public sealed partial class FilePanelClient
 {
     private const int TransferBufferSize = 64 * 1024;
+    private static readonly TimeSpan ProgressPublicationInterval =
+        TimeSpan.FromMilliseconds(100);
     private readonly object _transferGate = new();
     private readonly Dictionary<FilePanelTransferId, TransferRecord> _transfers = [];
     private readonly CancellationTokenSource _transferLifetime = new();
@@ -119,29 +121,35 @@ public sealed partial class FilePanelClient
             return ValueTask.FromResult(Cancelled<Unit>());
         }
 
-        TransferRecord? record;
+        CancellationTokenSource cancellation;
         lock (_transferGate)
         {
-            _transfers.TryGetValue(id, out record);
+            if (!_transfers.TryGetValue(id, out var record))
+            {
+                return ValueTask.FromResult(Failure<Unit>(
+                    FilePanelErrorCode.NotFound,
+                    "file_transfer_not_found",
+                    "The requested transfer is no longer in the queue."));
+            }
+
+            if (!record.Snapshot.CanCancel || record.Cancellation is null)
+            {
+                return ValueTask.FromResult(Failure<Unit>(
+                    FilePanelErrorCode.Conflict,
+                    "file_transfer_not_cancellable",
+                    "This transfer has already reached a terminal state."));
+            }
+
+            record.Snapshot = record.Snapshot with
+            {
+                CancellationRequested = true,
+                Stage = "Cancelling",
+            };
+            cancellation = record.Cancellation;
         }
 
-        if (record is null)
-        {
-            return ValueTask.FromResult(Failure<Unit>(
-                FilePanelErrorCode.NotFound,
-                "file_transfer_not_found",
-                "The requested transfer is no longer in the queue."));
-        }
-
-        if (!record.Snapshot.CanCancel || record.Cancellation is null)
-        {
-            return ValueTask.FromResult(Failure<Unit>(
-                FilePanelErrorCode.Conflict,
-                "file_transfer_not_cancellable",
-                "This transfer has already reached a terminal state."));
-        }
-
-        record.Cancellation.Cancel();
+        TransfersChanged?.Invoke(this, EventArgs.Empty);
+        cancellation.Cancel();
         return ValueTask.FromResult(FilePanelResult<Unit>.Success(Unit.Value));
     }
 
@@ -409,7 +417,6 @@ public sealed partial class FilePanelClient
                     record.Snapshot.Request.Operation == FilePanelTransferOperation.Copy
                         ? FileTransferKind.Copy
                         : FileTransferKind.Move,
-                    record.Snapshot.Request.MaximumBytes,
                     Math.Min(TransferBufferSize, provider.Capabilities.Limits.MaximumBufferSize),
                     DestinationPrecondition(record.Snapshot.Request.ConflictPolicy)),
                 progress,
@@ -446,15 +453,6 @@ public sealed partial class FilePanelClient
                 "Cross-provider queue transfers currently require a regular file with known size.");
         }
 
-        if (contentLength > record.Snapshot.Request.MaximumBytes
-            || contentLength > destinationProvider.Capabilities.Limits.MaximumWriteBytes)
-        {
-            return Failure<long>(
-                FilePanelErrorCode.LimitExceeded,
-                "file_transfer_content_limit_exceeded",
-                "The source file exceeds a provider or request transfer bound.");
-        }
-
         return await StreamFileAsync(
                 record,
                 sourceProvider,
@@ -488,16 +486,6 @@ public sealed partial class FilePanelClient
                 FilePanelErrorCode.UnsupportedCapability,
                 "file_cross_provider_size_unknown",
                 "The source provider did not report a bounded file size.");
-        }
-
-        if (contentLength > record.Snapshot.Request.MaximumBytes
-            || contentLength > destinationProvider.Capabilities.Limits.MaximumWriteBytes
-            || contentLength > destinationProvider.Capabilities.Limits.MaximumTransferBytes)
-        {
-            return Failure<long>(
-                FilePanelErrorCode.LimitExceeded,
-                "file_transfer_content_limit_exceeded",
-                "The source file exceeds a provider or request transfer bound.");
         }
 
         using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -808,13 +796,41 @@ public sealed partial class FilePanelClient
         TransferRecord record,
         string stage,
         long bytesTransferred,
-        long? totalBytes) =>
-        UpdateRecord(record, snapshot => snapshot with
+        long? totalBytes)
+    {
+        var publish = false;
+        lock (_transferGate)
         {
-            Stage = stage,
-            BytesTransferred = bytesTransferred,
-            TotalBytes = totalBytes,
-        });
+            if (!_transfers.ContainsKey(record.Snapshot.Id)
+                || record.Snapshot.CancellationRequested)
+            {
+                return;
+            }
+
+            record.Snapshot = record.Snapshot with
+            {
+                Stage = stage,
+                BytesTransferred = bytesTransferred,
+                TotalBytes = totalBytes,
+            };
+            var timestamp = _timeProvider.GetTimestamp();
+            publish = !record.HasPublishedProgress
+                || _timeProvider.GetElapsedTime(
+                    record.LastProgressPublishedTimestamp,
+                    timestamp) >= ProgressPublicationInterval
+                || totalBytes is { } total && bytesTransferred >= total;
+            if (publish)
+            {
+                record.HasPublishedProgress = true;
+                record.LastProgressPublishedTimestamp = timestamp;
+            }
+        }
+
+        if (publish)
+        {
+            TransfersChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     private static FilePanelResult<T> Cancelled<T>() =>
         Failure<T>(
@@ -830,6 +846,10 @@ public sealed partial class FilePanelClient
         public FilePanelTransferSnapshot Snapshot { get; set; } = snapshot;
 
         public CancellationTokenSource? Cancellation { get; } = cancellation;
+
+        public bool HasPublishedProgress { get; set; }
+
+        public long LastProgressPublishedTimestamp { get; set; }
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
