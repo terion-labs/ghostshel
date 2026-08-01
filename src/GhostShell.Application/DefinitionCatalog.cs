@@ -4,6 +4,32 @@ namespace GhostShell.Application;
 
 public sealed class DefinitionCatalog : IDefinitionCatalog
 {
+    private const string DefaultTerminalProfileId = "builtin.terminal.default";
+    private static readonly TerminalPalette LegacyGhostShellDarkPalette = new(
+        "GhostSHELL Dark",
+        RgbColor.Parse("#E8E4DE"),
+        RgbColor.Parse("#12100E"),
+        RgbColor.Parse("#D9944D"),
+        RgbColor.Parse("#4A3828"),
+        [
+            RgbColor.Parse("#1F1C19"),
+            RgbColor.Parse("#D26060"),
+            RgbColor.Parse("#72B57B"),
+            RgbColor.Parse("#D1A85A"),
+            RgbColor.Parse("#6B9BD2"),
+            RgbColor.Parse("#B17AC5"),
+            RgbColor.Parse("#66B8B2"),
+            RgbColor.Parse("#D8D2C8"),
+            RgbColor.Parse("#69625B"),
+            RgbColor.Parse("#EE7B72"),
+            RgbColor.Parse("#91D39A"),
+            RgbColor.Parse("#EBC574"),
+            RgbColor.Parse("#86B6EA"),
+            RgbColor.Parse("#CD98DF"),
+            RgbColor.Parse("#83D5CF"),
+            RgbColor.Parse("#FFF9F0"),
+        ]);
+
     private readonly IDefinitionRepository<ConnectionProfile> _connections;
     private readonly IDefinitionRepository<LayoutDefinition> _layouts;
     private readonly IDefinitionRepository<ScreenDefinition> _screens;
@@ -760,6 +786,13 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             }
         }
 
+        var migratedTerminal = await MigrateLegacyDefaultTerminalPaletteAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!migratedTerminal.IsSuccess)
+        {
+            return migratedTerminal;
+        }
+
         if (Snapshot.QuickTerminalSettings.Count == 0)
         {
             var saved = await _quickTerminalSettings.SaveAsync(
@@ -824,7 +857,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                 ? BuiltInKeymaps.WindowsTerminalId
                 : BuiltInKeymaps.LinuxTerminalId;
         return new TerminalProfile(
-            new TerminalProfileId("builtin.terminal.default"),
+            new TerminalProfileId(DefaultTerminalProfileId),
             "Default terminal",
             "JetBrains Mono",
             14,
@@ -834,6 +867,52 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             100_000,
             TerminalPalette.GhostShellDark,
             keymap);
+    }
+
+    private async ValueTask<DefinitionStoreResult<Unit>>
+        MigrateLegacyDefaultTerminalPaletteAsync(CancellationToken cancellationToken)
+    {
+        var stored = Snapshot.TerminalProfiles.FirstOrDefault(item =>
+            item.Value.Id.Value == DefaultTerminalProfileId);
+        if (stored is null
+            || !string.Equals(
+                stored.Value.Palette.Name,
+                LegacyGhostShellDarkPalette.Name,
+                StringComparison.Ordinal)
+            || !stored.Value.Palette.Matches(LegacyGhostShellDarkPalette))
+        {
+            return DefinitionStoreResult<Unit>.Success(Unit.Value);
+        }
+
+        // The built-in profile is editable. Replace only the exact palette that
+        // shipped before the neutral background; every other profile value stays
+        // under user ownership.
+        var profile = stored.Value;
+        var migrated = new TerminalProfile(
+            profile.Id,
+            profile.Name,
+            profile.FontFamily,
+            profile.FontSize,
+            profile.LineHeight,
+            profile.CursorStyle,
+            profile.CursorBlink,
+            profile.ScrollbackLines,
+            TerminalPalette.GhostShellDark,
+            profile.KeymapId,
+            clipboardPolicy: profile.ClipboardPolicy,
+            linkPolicy: profile.LinkPolicy,
+            imeEnabled: profile.ImeEnabled,
+            shellIntegration: profile.ShellIntegration,
+            bellMode: profile.BellMode,
+            compatibility: profile.Compatibility);
+        var saved = await _terminalProfiles.SaveAsync(
+                migrated,
+                stored.Revision,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return saved.IsSuccess
+            ? DefinitionStoreResult<Unit>.Success(Unit.Value)
+            : DefinitionStoreResult<Unit>.Failure(saved.Error!);
     }
 
     private static FirstRunDefinitions CreateFirstRunDefinitions()

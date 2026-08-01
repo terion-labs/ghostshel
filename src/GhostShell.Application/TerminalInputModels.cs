@@ -49,6 +49,295 @@ public enum TerminalKeyModifiers
     Alt = 1 << 1,
     Control = 1 << 2,
     Meta = 1 << 3,
+    CapsLock = 1 << 4,
+    NumLock = 1 << 5,
+    RightShift = 1 << 6,
+    RightControl = 1 << 7,
+    RightAlt = 1 << 8,
+    RightMeta = 1 << 9,
+}
+
+public enum TerminalKeyAction
+{
+    Release,
+    Press,
+    Repeat,
+}
+
+/// <summary>
+/// Layout-independent keyboard positions understood by the terminal engine.
+/// Names follow the W3C UI Events <c>code</c> values used by both Avalonia and
+/// Ghostty. The terminal adapter owns the pinned native mapping; callers must
+/// treat these values as symbolic application data rather than native integers.
+/// </summary>
+public enum TerminalPhysicalKey
+{
+    Unidentified,
+    Backquote,
+    Backslash,
+    BracketLeft,
+    BracketRight,
+    Comma,
+    Digit0,
+    Digit1,
+    Digit2,
+    Digit3,
+    Digit4,
+    Digit5,
+    Digit6,
+    Digit7,
+    Digit8,
+    Digit9,
+    Equal,
+    IntlBackslash,
+    IntlRo,
+    IntlYen,
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
+    Minus,
+    Period,
+    Quote,
+    Semicolon,
+    Slash,
+    AltLeft,
+    AltRight,
+    Backspace,
+    CapsLock,
+    ContextMenu,
+    ControlLeft,
+    ControlRight,
+    Enter,
+    MetaLeft,
+    MetaRight,
+    ShiftLeft,
+    ShiftRight,
+    Space,
+    Tab,
+    Convert,
+    KanaMode,
+    NonConvert,
+    Delete,
+    End,
+    Help,
+    Home,
+    Insert,
+    PageDown,
+    PageUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    NumLock,
+    NumPad0,
+    NumPad1,
+    NumPad2,
+    NumPad3,
+    NumPad4,
+    NumPad5,
+    NumPad6,
+    NumPad7,
+    NumPad8,
+    NumPad9,
+    NumPadAdd,
+    NumPadBackspace,
+    NumPadClear,
+    NumPadClearEntry,
+    NumPadComma,
+    NumPadDecimal,
+    NumPadDivide,
+    NumPadEnter,
+    NumPadEqual,
+    NumPadMemoryAdd,
+    NumPadMemoryClear,
+    NumPadMemoryRecall,
+    NumPadMemoryStore,
+    NumPadMemorySubtract,
+    NumPadMultiply,
+    NumPadParenLeft,
+    NumPadParenRight,
+    NumPadSubtract,
+    NumPadSeparator,
+    NumPadUp,
+    NumPadDown,
+    NumPadRight,
+    NumPadLeft,
+    NumPadBegin,
+    NumPadHome,
+    NumPadEnd,
+    NumPadInsert,
+    NumPadDelete,
+    NumPadPageUp,
+    NumPadPageDown,
+    Escape,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+    F13,
+    F14,
+    F15,
+    F16,
+    F17,
+    F18,
+    F19,
+    F20,
+    F21,
+    F22,
+    F23,
+    F24,
+    F25,
+    Fn,
+    FnLock,
+    PrintScreen,
+    ScrollLock,
+    Pause,
+    BrowserBack,
+    BrowserFavorites,
+    BrowserForward,
+    BrowserHome,
+    BrowserRefresh,
+    BrowserSearch,
+    BrowserStop,
+    Eject,
+    LaunchApp1,
+    LaunchApp2,
+    LaunchMail,
+    MediaPlayPause,
+    MediaSelect,
+    MediaStop,
+    MediaTrackNext,
+    MediaTrackPrevious,
+    Power,
+    Sleep,
+    AudioVolumeDown,
+    AudioVolumeMute,
+    AudioVolumeUp,
+    WakeUp,
+    Copy,
+    Cut,
+    Paste,
+}
+
+/// <summary>
+/// One platform keyboard event before terminal-protocol encoding.
+/// </summary>
+/// <remarks>
+/// <see cref="Text"/> is managed Unicode text and is converted to UTF-8 only at
+/// the libghostty-vt boundary. Committed IME text does not use this type: it is
+/// intentionally delivered through the direct text input port after composition
+/// has finished.
+/// </remarks>
+public sealed record TerminalPhysicalKeyEvent
+{
+    public TerminalPhysicalKeyEvent(
+        TerminalPhysicalKey PhysicalKey,
+        string LogicalKey,
+        string Text,
+        TerminalKeyModifiers Modifiers,
+        TerminalKeyModifiers ConsumedModifiers,
+        TerminalKeyAction Action,
+        uint UnshiftedCodepoint = 0,
+        bool IsComposing = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(LogicalKey);
+        ArgumentNullException.ThrowIfNull(Text);
+        if (!Enum.IsDefined(PhysicalKey))
+        {
+            throw new ArgumentOutOfRangeException(nameof(PhysicalKey));
+        }
+
+        if (!Enum.IsDefined(Action))
+        {
+            throw new ArgumentOutOfRangeException(nameof(Action));
+        }
+
+        if ((Modifiers & ~AllKeyboardModifiers) != 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(Modifiers));
+        }
+
+        if ((ConsumedModifiers & ~Modifiers) != 0)
+        {
+            throw new ArgumentException(
+                "Consumed modifiers must also be present in the keyboard event.",
+                nameof(ConsumedModifiers));
+        }
+
+        if (UnshiftedCodepoint > 0x10FFFF
+            || UnshiftedCodepoint is >= 0xD800 and <= 0xDFFF)
+        {
+            throw new ArgumentOutOfRangeException(nameof(UnshiftedCodepoint));
+        }
+
+        this.PhysicalKey = PhysicalKey;
+        this.LogicalKey = LogicalKey;
+        this.Text = Text;
+        this.Modifiers = Modifiers;
+        this.ConsumedModifiers = ConsumedModifiers;
+        this.Action = Action;
+        this.UnshiftedCodepoint = UnshiftedCodepoint;
+        this.IsComposing = IsComposing;
+    }
+
+    public TerminalPhysicalKey PhysicalKey { get; }
+
+    public string LogicalKey { get; }
+
+    public string Text { get; }
+
+    public TerminalKeyModifiers Modifiers { get; }
+
+    public TerminalKeyModifiers ConsumedModifiers { get; }
+
+    public TerminalKeyAction Action { get; }
+
+    public uint UnshiftedCodepoint { get; }
+
+    public bool IsComposing { get; }
+
+    internal const TerminalKeyModifiers AllKeyboardModifiers =
+        TerminalKeyModifiers.Shift
+        | TerminalKeyModifiers.Alt
+        | TerminalKeyModifiers.Control
+        | TerminalKeyModifiers.Meta
+        | TerminalKeyModifiers.CapsLock
+        | TerminalKeyModifiers.NumLock
+        | TerminalKeyModifiers.RightShift
+        | TerminalKeyModifiers.RightControl
+        | TerminalKeyModifiers.RightAlt
+        | TerminalKeyModifiers.RightMeta;
 }
 
 public sealed record TerminalKeyStroke
@@ -74,10 +363,7 @@ public sealed record TerminalKeyStroke
     public TerminalKeyModifiers Modifiers { get; }
 
     private const TerminalKeyModifiers AllModifiers =
-        TerminalKeyModifiers.Shift
-        | TerminalKeyModifiers.Alt
-        | TerminalKeyModifiers.Control
-        | TerminalKeyModifiers.Meta;
+        TerminalPhysicalKeyEvent.AllKeyboardModifiers;
 }
 
 public enum TerminalCharacterChordModifier
@@ -265,6 +551,11 @@ public sealed record TerminalKeyRequest(
     SessionId SessionId,
     InputLeaseId LeaseId,
     TerminalKeyStroke KeyStroke);
+
+public sealed record TerminalPhysicalKeyRequest(
+    SessionId SessionId,
+    InputLeaseId LeaseId,
+    TerminalPhysicalKeyEvent KeyEvent);
 
 public sealed record TerminalMouseRequest(
     SessionId SessionId,

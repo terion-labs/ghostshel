@@ -196,6 +196,13 @@ public sealed class TerminalOperationTests
                 new TerminalKeyStroke(TerminalKey.Enter)),
             harness.HumanContext(),
             default);
+        var deniedPhysicalKey = await harness.Client.SendTerminalPhysicalKeyAsync(
+            new TerminalPhysicalKeyRequest(
+                harness.SessionId,
+                unknownLease,
+                PhysicalKey()),
+            harness.HumanContext(),
+            default);
         var deniedMouse = await harness.Client.SendTerminalMouseAsync(
             new TerminalMouseRequest(
                 harness.SessionId,
@@ -230,6 +237,7 @@ public sealed class TerminalOperationTests
             default);
 
         Assert.Equal(HostErrorCode.LeaseDenied, deniedKey.Error().Code);
+        Assert.Equal(HostErrorCode.LeaseDenied, deniedPhysicalKey.Error().Code);
         Assert.Equal(HostErrorCode.LeaseDenied, deniedMouse.Error().Code);
         Assert.Equal(HostErrorCode.LeaseDenied, deniedPaste.Error().Code);
         Assert.Equal(HostErrorCode.LeaseDenied, deniedScroll.Error().Code);
@@ -241,6 +249,7 @@ public sealed class TerminalOperationTests
             harness.HumanContext(),
             default)).Value().Lease!;
         var key = new TerminalKeyStroke(TerminalKey.F4, TerminalKeyModifiers.Alt);
+        var physicalKey = PhysicalKey();
         var mouse = new TerminalMouseInput(TerminalMouseButton.Left, TerminalMouseEventKind.Down, 4, 2);
         var paste = new TerminalPasteInput("safe");
         var scroll = new TerminalViewportScrollInput(-3);
@@ -248,6 +257,10 @@ public sealed class TerminalOperationTests
 
         _ = (await harness.Client.SendTerminalKeyAsync(
             new TerminalKeyRequest(harness.SessionId, lease.Id, key),
+            harness.HumanContext(),
+            default)).Value();
+        _ = (await harness.Client.SendTerminalPhysicalKeyAsync(
+            new TerminalPhysicalKeyRequest(harness.SessionId, lease.Id, physicalKey),
             harness.HumanContext(),
             default)).Value();
         _ = (await harness.Client.SendTerminalMouseAsync(
@@ -272,6 +285,7 @@ public sealed class TerminalOperationTests
             default)).Value();
 
         Assert.Equal(key, harness.Factory[harness.SessionId].LastKeyStroke);
+        Assert.Equal(physicalKey, harness.Factory[harness.SessionId].LastPhysicalKeyEvent);
         Assert.Equal(mouse, harness.Factory[harness.SessionId].LastMouseInput);
         Assert.Equal(paste, harness.Factory[harness.SessionId].LastPasteInput);
         Assert.Equal(scroll, harness.Factory[harness.SessionId].LastScrollInput);
@@ -279,6 +293,35 @@ public sealed class TerminalOperationTests
         Assert.Equal("selected", selectedText.Text);
         Assert.True(pasteResult.Sent);
     }
+
+    [Fact]
+    public async Task Terminal_focus_gain_and_loss_reach_the_renderer_port()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+
+        _ = (await harness.Client.FocusTerminalAsync(
+            harness.SessionId,
+            harness.HumanContext(),
+            default)).Value();
+        _ = (await harness.Client.BlurTerminalAsync(
+            harness.SessionId,
+            harness.HumanContext(),
+            default)).Value();
+
+        var terminal = harness.Factory[harness.SessionId];
+        Assert.Equal(1, terminal.FocusCount);
+        Assert.Equal(1, terminal.BlurCount);
+    }
+
+    private static TerminalPhysicalKeyEvent PhysicalKey() => new(
+        TerminalPhysicalKey.A,
+        "A",
+        "a",
+        TerminalKeyModifiers.None,
+        TerminalKeyModifiers.None,
+        TerminalKeyAction.Press,
+        'a');
 
     [Fact]
     public async Task Buffer_commands_require_a_lease_and_reach_the_typed_terminal_engine()

@@ -17,6 +17,17 @@ public interface ITerminalAutomation
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Encodes one platform keyboard event using the terminal's negotiated
+    /// keyboard protocol. Unlike <see cref="WriteAsync"/>, this preserves
+    /// physical identity, repeat/release state, and consumed modifiers.
+    /// </summary>
+    ValueTask SendPhysicalKeyAsync(
+        TerminalPhysicalKeyEvent keyEvent,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException(
+            "Physical keyboard events are not supported by this terminal engine.");
+
+    /// <summary>
     /// Sends one bounded character chord. Normal completion is the engine's
     /// irreversible delivery receipt; cancellation or failure means the chord
     /// did not cross that input boundary.

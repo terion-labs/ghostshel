@@ -83,6 +83,44 @@ public sealed class TerminalContractsTests
             new TerminalFindInput(new string('x', TerminalFindInput.MaximumQueryLength + 1)));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new TerminalFindResult(0, 0, false));
+        Assert.Throws<ArgumentException>(() =>
+            new TerminalPhysicalKeyEvent(
+                TerminalPhysicalKey.A,
+                "A",
+                "A",
+                TerminalKeyModifiers.Shift,
+                TerminalKeyModifiers.Control,
+                TerminalKeyAction.Press));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TerminalPhysicalKeyEvent(
+                TerminalPhysicalKey.A,
+                "A",
+                "A",
+                TerminalKeyModifiers.None,
+                TerminalKeyModifiers.None,
+                TerminalKeyAction.Press,
+                0xD800));
+    }
+
+    [Fact]
+    public void Physical_key_contract_preserves_protocol_relevant_platform_fields()
+    {
+        var keyEvent = new TerminalPhysicalKeyEvent(
+            TerminalPhysicalKey.A,
+            "A",
+            "A",
+            TerminalKeyModifiers.Shift | TerminalKeyModifiers.RightShift,
+            TerminalKeyModifiers.Shift | TerminalKeyModifiers.RightShift,
+            TerminalKeyAction.Repeat,
+            'a',
+            IsComposing: true);
+
+        Assert.Equal(TerminalPhysicalKey.A, keyEvent.PhysicalKey);
+        Assert.Equal("A", keyEvent.LogicalKey);
+        Assert.Equal("A", keyEvent.Text);
+        Assert.Equal(TerminalKeyAction.Repeat, keyEvent.Action);
+        Assert.Equal((uint)'a', keyEvent.UnshiftedCodepoint);
+        Assert.True(keyEvent.IsComposing);
     }
 
     [Theory]

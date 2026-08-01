@@ -29,7 +29,7 @@ public sealed class TerminalProfileTests
             RgbColor.Parse("#336699")));
 
         Assert.Same(TerminalPalette.GhostShellDark, profile.Palette);
-        Assert.Equal(RgbColor.Parse("#12100E"), profile.Palette.Background);
+        Assert.Equal(RgbColor.Parse("#111111"), profile.Palette.Background);
         Assert.Equal(16, profile.Palette.AnsiColors.Count);
     }
 

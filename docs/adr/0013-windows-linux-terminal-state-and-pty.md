@@ -1,6 +1,6 @@
 # ADR 0013: Windows and Linux terminal state, PTY, and managed renderer boundary
 
-- Status: Accepted
+- Status: Superseded by [ADR 0040](0040-cross-platform-libghostty-vt-terminal.md)
 - Date: 2026-07-22
 
 ## Context

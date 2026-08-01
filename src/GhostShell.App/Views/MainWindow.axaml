@@ -36,7 +36,6 @@
           PointerPressed="OnRuntimePanelPointerPressed"
           SplitRequested="OnSplitRuntimePanelRequested"
           RetryConnectionRequested="OnRetryConnectionPanelClick"
-          TerminalFocusGained="OnRuntimePanelTerminalFocused"
           SessionInitializationFailed="OnTerminalSessionInitializationFailed"
           SessionSnapshotChanged="OnTerminalSessionSnapshotChanged"
           TrustHostKeyRequested="OnTrustConnectionHostKeyClick" />

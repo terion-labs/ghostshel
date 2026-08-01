@@ -22,10 +22,9 @@ internal readonly record struct TerminalCellMetrics(
     {
         var fontSize = profile?.FontSize ?? 13;
         var lineHeight = profile?.LineHeight ?? 1;
-        var fontFamily = profile?.FontFamily
-            ?? "JetBrains Mono, Menlo, Consolas, monospace";
+        var typeface = TerminalTypefaceResolver.Resolve(profile?.FontFamily);
         var padding = new Thickness(12, 10);
-        var metricKey = new FontMetricKey(fontFamily, fontSize);
+        var metricKey = new FontMetricKey(typeface, fontSize);
         var measured = FontMetrics.TryGetValue(metricKey, out var cached)
             ? cached
             : MeasureFont(metricKey);
@@ -55,7 +54,7 @@ internal readonly record struct TerminalCellMetrics(
         Math.Clamp((int)Math.Floor((point.X - Padding.Left) / CellWidth), 0, Columns - 1),
         Math.Clamp((int)Math.Floor((point.Y - Padding.Top) / CellHeight), 0, Rows - 1));
 
-    private readonly record struct FontMetricKey(string FontFamily, double FontSize);
+    private readonly record struct FontMetricKey(Typeface Typeface, double FontSize);
 
     private static (double Width, double Height) MeasureFont(FontMetricKey key)
     {
@@ -65,7 +64,7 @@ internal readonly record struct TerminalCellMetrics(
                 "M",
                 CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight,
-                new Typeface(key.FontFamily),
+                key.Typeface,
                 key.FontSize,
                 Brushes.White);
             var measured = (glyph.Width, glyph.Height);
@@ -81,33 +80,46 @@ internal readonly record struct TerminalCellMetrics(
     }
 }
 
-internal sealed record TerminalRenderCell(
+internal sealed record TerminalDrawCell(
     int Row,
     int Column,
     int Width,
     string Text,
     Color Foreground,
     Color Background,
-    TerminalCellStyle Style,
+    bool UsesDefaultBackground,
+    TerminalRenderCellStyle Style,
+    TerminalUnderlineKind Underline,
+    Color? UnderlineColor,
     string? Hyperlink,
     bool IsSelected);
 
-internal sealed record TerminalRenderFrame(
-    IReadOnlyList<TerminalRenderCell> Cells,
-    int CursorRow,
-    int CursorColumn,
-    bool IsCursorVisible);
+internal sealed record TerminalDrawCursor(
+    int Row,
+    int Column,
+    int Width,
+    TerminalCursorVisualStyle VisualStyle,
+    bool IsInViewport,
+    bool IsVisible,
+    bool IsBlinking,
+    bool IsPasswordInput,
+    Color? Color);
+
+internal sealed record TerminalDrawFrame(
+    IReadOnlyList<TerminalDrawCell> Cells,
+    TerminalDrawCursor Cursor,
+    TerminalKittyGraphicsFrame KittyGraphics);
 
 internal static class TerminalRenderLayout
 {
-    public static TerminalRenderFrame Create(
+    public static TerminalDrawFrame Create(
         TerminalScreenSnapshot snapshot,
         TerminalRenderProfileSnapshot? profile,
         TerminalCellMetrics metrics)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var palette = profile?.Palette ?? TerminalPalette.GhostShellDark;
-        var cells = new List<TerminalRenderCell>(
+        var cells = new List<TerminalDrawCell>(
             Math.Min(metrics.Rows * metrics.Columns, 32_768));
 
         foreach (var row in snapshot.StructuredRows)
@@ -132,25 +144,171 @@ internal static class TerminalRenderLayout
 
                 var width = Math.Min(cell.Width, metrics.Columns - column);
                 var colors = TerminalCellColors.Resolve(cell, palette);
-                cells.Add(new TerminalRenderCell(
+                cells.Add(new TerminalDrawCell(
                     row.Index,
                     column,
                     width,
                     cell.Text,
                     colors.Foreground,
                     colors.Background,
-                    cell.Style,
+                    UsesDefaultBackground(cell),
+                    ConvertStyle(cell.Style),
+                    cell.Style.HasFlag(TerminalCellStyle.Underline)
+                        ? TerminalUnderlineKind.Single
+                        : TerminalUnderlineKind.None,
+                    null,
                     cell.Hyperlink,
                     cell.IsSelected));
                 column += cell.Width;
             }
         }
 
-        return new TerminalRenderFrame(
+        return new TerminalDrawFrame(
             cells,
-            Math.Clamp(snapshot.CursorRow, 0, metrics.Rows - 1),
-            Math.Clamp(snapshot.CursorColumn, 0, metrics.Columns - 1),
-            snapshot.IsCursorVisible);
+            new TerminalDrawCursor(
+                Math.Clamp(snapshot.CursorRow, 0, metrics.Rows - 1),
+                Math.Clamp(snapshot.CursorColumn, 0, metrics.Columns - 1),
+                1,
+                profile?.CursorStyle switch
+                {
+                    TerminalCursorStyle.Bar => TerminalCursorVisualStyle.Bar,
+                    TerminalCursorStyle.Underline => TerminalCursorVisualStyle.Underline,
+                    _ => TerminalCursorVisualStyle.Block,
+                },
+                IsInViewport: snapshot.Rows > 0 && snapshot.Columns > 0,
+                snapshot.IsCursorVisible,
+                profile?.CursorBlink == true,
+                IsPasswordInput: false,
+                Color: null),
+            TerminalKittyGraphicsFrame.Empty);
+    }
+
+    public static TerminalDrawFrame Create(
+        GhostShell.Application.TerminalRenderFrame frame,
+        TerminalRenderProfileSnapshot? profile,
+        TerminalCellMetrics metrics)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        var palette = profile?.Palette ?? TerminalPalette.GhostShellDark;
+        var cells = new List<TerminalDrawCell>(
+            Math.Min(frame.Rows * frame.Columns, 32_768));
+        var visibleRows = Math.Min(frame.Rows, metrics.Rows);
+        var visibleColumns = Math.Min(frame.Columns, metrics.Columns);
+
+        for (var rowIndex = 0; rowIndex < visibleRows; rowIndex++)
+        {
+            var row = frame.ViewportRows[rowIndex];
+            for (var column = 0; column < visibleColumns; column++)
+            {
+                var cell = row.Cells[column];
+                var width = cell.Width == TerminalRenderCellWidth.Wide ? 2 : 1;
+                width = Math.Min(width, visibleColumns - column);
+                var colors = TerminalCellColors.Resolve(cell, palette);
+                Color? underlineColor = cell.UnderlineColor is null
+                    ? null
+                    : TerminalCellColors.Resolve(cell.UnderlineColor, palette, foreground: true);
+                cells.Add(new TerminalDrawCell(
+                    rowIndex,
+                    column,
+                    width,
+                    cell.HasText ? cell.Text : string.Empty,
+                    colors.Foreground,
+                    colors.Background,
+                    UsesDefaultBackground(cell),
+                    cell.Style,
+                    cell.Underline,
+                    underlineColor,
+                    cell.Hyperlink,
+                    cell.IsSelected));
+            }
+        }
+
+        var cursorInDrawViewport = frame.Cursor is
+        {
+            ViewportRow: int viewportRow,
+            ViewportColumn: int viewportColumn,
+        }
+            && viewportRow < visibleRows
+            && viewportColumn < visibleColumns;
+        var cursorRow = cursorInDrawViewport
+            ? frame.Cursor.ViewportRow!.Value
+            : 0;
+        var cursorColumn = cursorInDrawViewport
+            ? frame.Cursor.ViewportColumn!.Value
+            : 0;
+        var cursorWidth = 1;
+        if (cursorInDrawViewport && frame.Cursor.IsWideCharacterTail && cursorColumn > 0)
+        {
+            cursorColumn--;
+            cursorWidth = Math.Min(2, metrics.Columns - cursorColumn);
+        }
+        else if (cursorInDrawViewport
+            && frame.ViewportRows[cursorRow]
+                .Cells[cursorColumn]
+                .Width == TerminalRenderCellWidth.Wide)
+        {
+            cursorWidth = Math.Min(2, metrics.Columns - cursorColumn);
+        }
+
+        return new TerminalDrawFrame(
+            cells,
+            new TerminalDrawCursor(
+                cursorRow,
+                cursorColumn,
+                cursorWidth,
+                frame.Cursor.VisualStyle,
+                cursorInDrawViewport,
+                frame.Cursor.IsVisible,
+                frame.Cursor.IsBlinking,
+                frame.Cursor.IsPasswordInput,
+                frame.Cursor.Color is null
+                    ? null
+                    : TerminalCellColors.Resolve(
+                        frame.Cursor.Color,
+                        palette,
+                        foreground: true)),
+            frame.KittyGraphics);
+    }
+
+    private static bool UsesDefaultBackground(TerminalScreenCell cell) =>
+        cell.Background.Mode == TerminalColorMode.Default
+        && !cell.IsSelected
+        && !cell.Style.HasFlag(TerminalCellStyle.Inverse);
+
+    private static bool UsesDefaultBackground(
+        GhostShell.Application.TerminalRenderCell cell) =>
+        cell.Background.Mode == TerminalColorMode.Default
+        && !cell.IsSelected
+        && !cell.Style.HasFlag(TerminalRenderCellStyle.Inverse);
+
+    private static TerminalRenderCellStyle ConvertStyle(TerminalCellStyle style)
+    {
+        var result = TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Bold)
+            ? TerminalRenderCellStyle.Bold
+            : TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Dim)
+            ? TerminalRenderCellStyle.Faint
+            : TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Italic)
+            ? TerminalRenderCellStyle.Italic
+            : TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Blink)
+            ? TerminalRenderCellStyle.Blink
+            : TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Inverse)
+            ? TerminalRenderCellStyle.Inverse
+            : TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Invisible)
+            ? TerminalRenderCellStyle.Invisible
+            : TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Strikethrough)
+            ? TerminalRenderCellStyle.Strikethrough
+            : TerminalRenderCellStyle.None;
+        result |= style.HasFlag(TerminalCellStyle.Overline)
+            ? TerminalRenderCellStyle.Overline
+            : TerminalRenderCellStyle.None;
+        return result;
     }
 }
 
@@ -177,6 +335,38 @@ internal static class TerminalCellColors
         }
 
         if (cell.Style.HasFlag(TerminalCellStyle.Invisible))
+        {
+            foreground = background;
+        }
+
+        if (cell.IsSelected)
+        {
+            foreground = FromRgb(palette.Foreground);
+            background = FromRgb(palette.SelectionBackground);
+        }
+
+        return new TerminalResolvedColors(foreground, background);
+    }
+
+    public static TerminalResolvedColors Resolve(
+        GhostShell.Application.TerminalRenderCell cell,
+        TerminalPalette palette)
+    {
+        ArgumentNullException.ThrowIfNull(cell);
+        ArgumentNullException.ThrowIfNull(palette);
+        var foreground = Resolve(cell.Foreground, palette, foreground: true);
+        var background = Resolve(cell.Background, palette, foreground: false);
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Inverse))
+        {
+            (foreground, background) = (background, foreground);
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Faint))
+        {
+            foreground = Color.FromArgb(166, foreground.R, foreground.G, foreground.B);
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Invisible))
         {
             foreground = background;
         }

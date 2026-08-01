@@ -18,6 +18,27 @@ else
     echo "Installed .NET SDK ${sdk_version} in ${sdk_dir}."
 fi
 
-if [[ "$(uname -s)" == "Darwin" ]] && [[ "${GHOSTSHELL_SKIP_NATIVE-0}" != "1" ]]; then
-    "${script_dir}/build-native-macos.sh"
+if [[ "${GHOSTSHELL_SKIP_NATIVE-0}" != "1" ]]; then
+    host_os="$(uname -s)"
+    host_arch="$(uname -m)"
+    case "${host_os}:${host_arch}" in
+        Darwin:arm64)
+            native_rid="osx-arm64"
+            ;;
+        Darwin:x86_64)
+            native_rid="osx-x64"
+            ;;
+        Linux:aarch64|Linux:arm64)
+            native_rid="linux-arm64"
+            ;;
+        Linux:x86_64)
+            native_rid="linux-x64"
+            ;;
+        *)
+            echo "GhostSHELL has no native terminal build for ${host_os} ${host_arch}." >&2
+            exit 1
+            ;;
+    esac
+
+    "${script_dir}/build-libghostty-vt.sh" --rid "${native_rid}"
 fi

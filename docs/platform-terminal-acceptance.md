@@ -1,14 +1,20 @@
 # Windows and Linux terminal acceptance
 
-Windows and Linux packaging gates prove that managed code compiles and deterministic terminal
-contracts pass. They do not prove interactive PTY, compositor, keyboard, IME, clipboard, mouse,
-suspend, or process-lifecycle behavior. A release candidate needs observations from named physical
-or self-hosted interactive systems.
+Windows and Linux packaging gates prove that managed code compiles, the packaged libghostty-vt
+runtime is present, and deterministic terminal contracts pass. They do not prove interactive PTY,
+Avalonia rendering, compositor, keyboard, IME, accessibility, clipboard, mouse, suspend, or
+process-lifecycle behavior. A release candidate needs observations from named physical or
+self-hosted interactive systems.
+
+These checks exercise the unified desktop terminal described by
+[ADR 0040](adr/0040-cross-platform-libghostty-vt-terminal.md): Porta.Pty byte transport,
+libghostty-vt canonical state and protocol encoding, and an ordinary Avalonia-managed control.
+They do not assume an XTerm.NET fallback or a platform-native terminal child view.
 
 The named-host runner deliberately does not automate those observations. It fingerprints the exact
-package, identifies the expected renderer and PTY adapter from `GhostShell.deps.json`, starts that
-package, presents one bounded checklist, sanitizes operator notes, and rejects incomplete evidence.
-There is no `SKIP` state:
+package, identifies libghostty-vt from the native-terminal component manifest and Porta.Pty from
+`GhostShell.deps.json`, starts that package, presents one bounded checklist, sanitizes operator
+notes, and rejects incomplete evidence. There is no `SKIP` state:
 
 - `PASS` means the named operator performed and observed the check on that host and package;
 - `FAIL` means the behavior was exercised and did not meet the check;
@@ -66,7 +72,7 @@ global-shortcut, or sleep testing.
 The catalog is versioned with the runner and records all of these checks in a fixed order:
 
 1. named physical or self-hosted interactive desktop;
-2. fingerprinted package, XTerm.NET/Porta.Pty backend, and real PTY;
+2. fingerprinted package, libghostty-vt/Avalonia/Porta.Pty backend, and real PTY;
 3. interactive full-screen TUI with redraw and confirmation;
 4. Unicode glyph fallback, combining/wide characters, selection, wrap, and cell fidelity;
 5. real IME preedit, candidates, cancel/selection, committed text, and cursor alignment;
@@ -77,6 +83,12 @@ The catalog is versioned with the runner and records all of these checks in a fi
 10. OS-global Quick Terminal focus, toggle, restore, conflict, and Escape policy;
 11. real host sleep/wake recovery (screen lock, process stop, and container pause do not count);
 12. PTY/application lifecycle, active-work confirmation, repeated close, and process cleanup.
+
+This matrix does not replace the separate named-host
+[accessibility acceptance](platform-accessibility-acceptance.md). VoiceOver,
+Narrator, and Orca must verify the same packaged Avalonia terminal's accessible
+name, focus, caret and text exposure, announcements, scaling, and keyboard-only
+operation before that platform is release-ready.
 
 The final lifecycle check must close the package started by the runner. A claimed lifecycle `PASS`
 is changed to `FAIL` if that parent process remains alive, and a valid overall pass records both the
@@ -99,8 +111,9 @@ Each schema-v3 run writes a new directory beneath `artifacts/platform-acceptance
 
 Build identity includes the operator-supplied label, executable SHA-256, and a deterministic package
 manifest SHA-256 over every relative file name, length, and content digest. Backend identity records
-the packaged XTerm.NET and Porta.Pty versions plus the OS-specific PTY substrate. Evidence does not
-contain the absolute package path.
+the packaged libghostty-vt component identity, ordinary Avalonia managed presentation, Porta.Pty
+version, and OS-specific PTY substrate. Evidence does not contain the absolute package path. The
+identity proves what was packaged; the named-host checks prove how that package behaved.
 
 Free-form notes are normalized and bounded. Common credentials and authorization values, URLs,
 private-key material, email addresses, IPv4/IPv6 addresses, home and other absolute paths, and
@@ -133,7 +146,8 @@ The repository also includes a reproducible, bounded Docker/Xvfb run for the sel
 ```
 
 It builds from a source copy inside `mcr.microsoft.com/dotnet/sdk:10.0`, starts the packaged Avalonia
-desktop on a synthetic Xvfb display with Openbox, and drives the managed renderer into a real PTY.
+desktop on a synthetic Xvfb display with Openbox, and drives the libghostty-vt state engine and
+ordinary Avalonia terminal control through a real PTY.
 It records package hashes, logs, screenshots, Unicode byte round-trip, resize propagation, an
 interactive `less` session, SGR mouse reports, guarded paste behavior, OSC 52 policy, scoped X11
 shortcut behavior, active-work cancellation, and process cleanup. Guarded-paste acceptance uses a
@@ -152,6 +166,10 @@ The latest local artifact is
 focus sequence fails to deliver the final lifecycle command after close cancellation and Quick
 Terminal interaction. The package nevertheless exits with code 0 and no captured descendants. This
 failure is retained rather than converted into a pass.
+
+That retained artifact predates ADR 0040 and is historical evidence only. It is
+not evidence for the current libghostty-vt package; a current candidate needs a
+new receipt whose backend fingerprint names libghostty-vt and Porta.Pty.
 
 This supplementary run deliberately exits nonzero while any check is failed or not proven. Xvfb
 cannot prove IME preedit/candidate placement, glyph/cell fidelity without explicit visual review,

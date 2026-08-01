@@ -173,7 +173,7 @@ public sealed class EvidenceFilesTests : IDisposable
                 new HostEnvironmentSignals(false, false, false, false),
                 []),
             new BackendIdentity(
-                "XTerm.NET 1.0.15 managed renderer",
+                "libghostty-vt 0.1.0-dev state engine with Avalonia managed renderer",
                 "Porta.Pty 1.0.7",
                 "Windows ConPTY through Porta.Pty",
                 PackageFingerprint.IdentitySourceDescription),

@@ -2,7 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using Dock.Settings;
 using GhostShell.App;
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Infrastructure;
@@ -17,6 +19,8 @@ internal static class Program
     [STAThread]
     public static async Task Main(string[] args)
     {
+        ConfigureDockDiagnostics();
+
         var helperExitCode = await ConnectionCredentialProcessHost.TryRunAsync(
             args,
             CancellationToken.None);
@@ -127,11 +131,28 @@ internal static class Program
         }
     }
 
+    private static void ConfigureDockDiagnostics()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable("GHOSTSHELL_DOCK_DIAGNOSTICS"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DockSettings.EnableDiagnosticsLogging = true;
+        DockSettings.DiagnosticsLogHandler = Console.Error.WriteLine;
+    }
+
     internal static AppBuilder BuildAvaloniaApp(IServiceProvider services) =>
         AppBuilder
             .Configure(() => services.GetRequiredService<GhostShellApplication>())
             .UsePlatformDetect()
             .WithInterFont()
+            .ConfigureFonts(fontManager =>
+                fontManager.AddFontCollection(new GhostShellTerminalFontCollection()))
+            .SetDragPreviewOpacity(0.9)
             .LogToTrace();
 
     private static void ReportLifecycleFailure(

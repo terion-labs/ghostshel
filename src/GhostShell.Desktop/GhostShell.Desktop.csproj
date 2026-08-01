@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <Content Include="../../licenses/THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../native/artifacts/common/fonts/JetBrainsMono/OFL.txt" Link="JETBRAINS-MONO-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -44,6 +45,12 @@
     <GhostShellEffectiveRuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</GhostShellEffectiveRuntimeIdentifier>
     <GhostShellRuntimePackVersion>10.0.10</GhostShellRuntimePackVersion>
     <GhostShellRuntimePackDirectory>$(NuGetPackageRoot)microsoft.netcore.app.runtime.$(GhostShellEffectiveRuntimeIdentifier)/$(GhostShellRuntimePackVersion)</GhostShellRuntimePackDirectory>
+    <GhostShellNativeTerminalLibrary Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-arm64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-x64'">libghostty-vt.dylib</GhostShellNativeTerminalLibrary>
+    <GhostShellNativeTerminalLibrary Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-arm64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-x64'">libghostty-vt.so</GhostShellNativeTerminalLibrary>
+    <GhostShellNativeTerminalLibrary Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'win-x64'">ghostty-vt.dll</GhostShellNativeTerminalLibrary>
+    <GhostShellNativeTerminalRequired Condition="'$(GhostShellNativeTerminalLibrary)' != ''">true</GhostShellNativeTerminalRequired>
+    <GhostShellNativeTerminalArtifactDirectory>$(MSBuildThisFileDirectory)../../native/artifacts/$(GhostShellEffectiveRuntimeIdentifier)</GhostShellNativeTerminalArtifactDirectory>
+    <GhostShellNativeTerminalShellIntegrationDirectory>$(GhostShellNativeTerminalArtifactDirectory)/ghostty/shell-integration</GhostShellNativeTerminalShellIntegrationDirectory>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(GhostShellRuntimePackDirectory)/LICENSE.TXT') and Exists('$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT')">
@@ -51,17 +58,42 @@
     <Content Include="$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT" Link="DOTNET-THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-arm64' and Exists('../../native/artifacts/osx-arm64/libghostshell-ghostty.dylib')">
-    <Content Include="../../native/artifacts/osx-arm64/libghostshell-ghostty.dylib" Link="libghostshell-ghostty.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../native/artifacts/osx-arm64/libghostty.dylib" Link="libghostty.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../native/artifacts/osx-arm64/GHOSTTY-LICENSE" Link="GHOSTTY-LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../native/artifacts/osx-arm64/ghostty/**/*" Link="ghostty/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../native/artifacts/osx-arm64/terminfo/**/*" Link="terminfo/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../licenses/native-macos-components.json" Link="native-macos-components.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../licenses/native-macos-components.json')" />
-    <Content Include="../../native/artifacts/osx-arm64/native-macos-build-receipt.json" Link="native-macos-build-receipt.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../native/artifacts/osx-arm64/native-macos-build-receipt.json')" />
-    <Content Include="../../native/ghostty/provenance/macos-arm64-build-evidence.json" Link="macos-arm64-build-evidence.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../native/ghostty/provenance/macos-arm64-build-evidence.json')" />
-    <Content Include="../../native/ghostty/provenance/macos-arm64-resource-evidence.json" Link="macos-arm64-resource-evidence.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('../../native/ghostty/provenance/macos-arm64-resource-evidence.json')" />
+  <ItemGroup Condition="'$(GhostShellNativeTerminalRequired)' == 'true'">
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalArtifactDirectory)/$(GhostShellNativeTerminalLibrary)" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalArtifactDirectory)/GHOSTTY-LICENSE" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalArtifactDirectory)/ghostty-vt-required-exports.txt" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalArtifactDirectory)/native-terminal-build-receipt.json" />
+    <GhostShellNativeTerminalRequiredFile Include="$(MSBuildThisFileDirectory)../../licenses/native-terminal-components.json" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/MANIFEST.sha256" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/SHELL-INTEGRATION-NOTICE.md" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/bash/bash-preexec.sh" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/bash/ghostty.bash" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/fish/vendor_conf.d/ghostty-shell-integration.fish" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/zsh/.zshenv" />
+    <GhostShellNativeTerminalRequiredFile Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/zsh/ghostty-integration" />
+
+    <Content Include="$(GhostShellNativeTerminalArtifactDirectory)/$(GhostShellNativeTerminalLibrary)" Link="$(GhostShellNativeTerminalLibrary)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalArtifactDirectory)/GHOSTTY-LICENSE" Link="GHOSTTY-LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalArtifactDirectory)/ghostty-vt-required-exports.txt" Link="ghostty-vt-required-exports.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalArtifactDirectory)/native-terminal-build-receipt.json" Link="native-terminal-build-receipt.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../licenses/native-terminal-components.json" Link="native-terminal-components.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/MANIFEST.sha256" Link="ghostty/shell-integration/MANIFEST.sha256" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/SHELL-INTEGRATION-NOTICE.md" Link="ghostty/shell-integration/SHELL-INTEGRATION-NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/bash/bash-preexec.sh" Link="ghostty/shell-integration/bash/bash-preexec.sh" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/bash/ghostty.bash" Link="ghostty/shell-integration/bash/ghostty.bash" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/fish/vendor_conf.d/ghostty-shell-integration.fish" Link="ghostty/shell-integration/fish/vendor_conf.d/ghostty-shell-integration.fish" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/zsh/.zshenv" Link="ghostty/shell-integration/zsh/.zshenv" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/zsh/ghostty-integration" Link="ghostty/shell-integration/zsh/ghostty-integration" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Target
+      Name="ValidateNativeTerminalPayload"
+      BeforeTargets="PrepareForBuild;Publish"
+      Condition="'$(GhostShellNativeTerminalRequired)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error
+        Condition="!Exists('%(GhostShellNativeTerminalRequiredFile.Identity)')"
+        Text="The required libghostty-vt payload for $(GhostShellEffectiveRuntimeIdentifier) is incomplete; missing %(GhostShellNativeTerminalRequiredFile.Identity). Run ./scripts/build-libghostty-vt.sh --rid $(GhostShellEffectiveRuntimeIdentifier)." />
+  </Target>
 
   <!--
     .NET 10's apphost currently advertises SDK 15.5, which makes macOS 26 retain

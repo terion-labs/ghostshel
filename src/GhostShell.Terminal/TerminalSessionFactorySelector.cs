@@ -17,9 +17,9 @@ public static class TerminalSessionFactorySelector
 
     internal static ITerminalSessionFactory Create(TerminalRuntimePlatform platform) => platform switch
     {
-        TerminalRuntimePlatform.MacOs => new GhosttyTerminalSessionFactory(),
-        TerminalRuntimePlatform.Windows or TerminalRuntimePlatform.Linux =>
-            new PortableTerminalSessionFactory(),
+        TerminalRuntimePlatform.MacOs
+            or TerminalRuntimePlatform.Windows
+            or TerminalRuntimePlatform.Linux => new GhosttyVtTerminalSessionFactory(),
         TerminalRuntimePlatform.Unsupported => throw new PlatformNotSupportedException(
             "GhostSHELL terminal sessions support macOS, Windows, and Linux."),
         _ => throw new ArgumentOutOfRangeException(nameof(platform), platform, null),

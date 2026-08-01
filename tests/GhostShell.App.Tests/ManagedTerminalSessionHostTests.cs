@@ -89,6 +89,38 @@ public sealed class ManagedTerminalSessionHostTests
     }
 
     [Fact]
+    public async Task Rich_render_frame_is_the_managed_surface_drawing_source()
+    {
+        var renderFrame = new TerminalRenderFrame(
+            Revision: 1,
+            Rows: 1,
+            Columns: 1,
+            [new TerminalRenderRow(
+                0,
+                [new TerminalRenderCell(
+                    "x",
+                    TerminalRenderCellWidth.Narrow,
+                    TerminalCellColor.Default,
+                    TerminalCellColor.Default)])],
+            new TerminalRenderCursor(
+                TerminalCursorVisualStyle.Bar,
+                IsVisible: true,
+                IsBlinking: false,
+                IsPasswordInput: false,
+                ViewportRow: 0,
+                ViewportColumn: 0),
+            new TerminalRenderDelta(TerminalRenderDamageKind.Full));
+        var client = new LifecycleClient(renderFrame: renderFrame);
+        var host = CreateHost(client);
+
+        await host.InitializeForTestingAsync();
+
+        Assert.Same(renderFrame, host.Surface.RenderFrame);
+        Assert.True(client.RenderReadCalls >= 1);
+        Assert.True(client.ScreenReadCalls >= 1);
+    }
+
+    [Fact]
     public async Task Every_human_pty_input_reacquires_the_exact_attachment_lease()
     {
         var client = new LifecycleClient();
@@ -101,6 +133,16 @@ public sealed class ManagedTerminalSessionHostTests
         await sink.SendKeyAsync(
             new TerminalKeyStroke(TerminalKey.Enter),
             default);
+        await sink.SendPhysicalKeyAsync(
+            new TerminalPhysicalKeyEvent(
+                TerminalPhysicalKey.A,
+                "A",
+                "a",
+                TerminalKeyModifiers.None,
+                TerminalKeyModifiers.None,
+                TerminalKeyAction.Press,
+                'a'),
+            default);
         await sink.SendMouseAsync(
             new TerminalMouseInput(
                 TerminalMouseButton.Left,
@@ -112,10 +154,10 @@ public sealed class ManagedTerminalSessionHostTests
             new TerminalPasteInput("paste"),
             default);
 
-        Assert.Equal(5, client.InputLeaseAcquireCalls);
+        Assert.Equal(6, client.InputLeaseAcquireCalls);
         Assert.Equal(1, client.AgentLeasePreemptions);
         Assert.Equal(
-            ["text", "key", "mouse", "paste"],
+            ["text", "key", "physical-key", "mouse", "paste"],
             client.PhysicalInputKinds);
         Assert.Equal(
             client.HumanLeaseIds.Skip(1),
@@ -212,7 +254,7 @@ public sealed class ManagedTerminalSessionHostTests
     public async Task ApplicationPrefixReplayUsesTypedInputAndBypassesTheManagedKeymap()
     {
         var client = new LifecycleClient();
-        var presentation = new TerminalPresentationHost(TerminalPresentationKind.Managed)
+        var presentation = new TerminalPresentationHost
         {
             SessionClient = client,
             SessionRequest = client.Request,
@@ -250,7 +292,7 @@ public sealed class ManagedTerminalSessionHostTests
                 idempotencyKey: IdempotencyKey.New()),
             failurePolicy:
                 StartupCommandDeliveryFailurePolicy.StopAfterFirstDeliveryFailure);
-        var presentation = new TerminalPresentationHost(TerminalPresentationKind.Managed)
+        var presentation = new TerminalPresentationHost
         {
             StartupCommandDispatchState = state,
         };
@@ -309,6 +351,7 @@ public sealed class ManagedTerminalSessionHostTests
         private readonly SessionOwner _owner;
         private readonly SessionDescriptor _descriptor;
         private readonly SessionSnapshot _snapshot;
+        private readonly TerminalRenderFrame? _renderFrame;
         private readonly object _inputGate = new();
         private readonly List<InputLeaseId> _humanLeaseIds = [];
         private readonly List<InputLeaseId> _physicalInputLeaseIds = [];
@@ -327,9 +370,11 @@ public sealed class ManagedTerminalSessionHostTests
 
         public LifecycleClient(
             InitializationFailureStage? failureStage = null,
-            TerminalKeymapSnapshot? keymap = null)
+            TerminalKeymapSnapshot? keymap = null,
+            TerminalRenderFrame? renderFrame = null)
         {
             _failureStage = failureStage;
+            _renderFrame = renderFrame;
             ClientId = new ClientId("managed-renderer-test-client");
             SessionId = new SessionId("managed-renderer-test-session");
             _owner = new SessionOwner(
@@ -369,6 +414,8 @@ public sealed class ManagedTerminalSessionHostTests
         public TerminalFindInput? LastFindInput { get; private set; }
 
         public int ScreenReadCalls { get; private set; }
+
+        public int RenderReadCalls { get; private set; }
 
         public int InputLeaseAcquireCalls =>
             Volatile.Read(ref _inputLeaseAcquireCalls);
@@ -561,6 +608,21 @@ public sealed class ManagedTerminalSessionHostTests
                 DateTimeOffset.UnixEpoch));
         }
 
+        public ValueTask<HostResult<TerminalRenderFrame>> ReadTerminalRenderFrameAsync(
+            SessionId sessionId,
+            OperationContext context,
+            CancellationToken cancellationToken)
+        {
+            RenderReadCalls++;
+            return _renderFrame is null
+                ? ValueTask.FromResult(HostResult<TerminalRenderFrame>.Fail(
+                    HostError.Create(
+                        HostErrorCode.CapabilityNotSupported,
+                        "Rich rendering is disabled for this test client."),
+                    0))
+                : Success(_renderFrame);
+        }
+
         public ValueTask<HostResult<Unit>> ClearTerminalScrollbackAsync(
             TerminalClearScrollbackRequest request,
             OperationContext context,
@@ -651,6 +713,25 @@ public sealed class ManagedTerminalSessionHostTests
 
             TerminalInputs.Add(
                 $"key:{request.KeyStroke.Key}:{request.KeyStroke.Modifiers}");
+            return HostResult<Unit>.Succeed(Unit.Value, 1);
+        }
+
+        public async ValueTask<HostResult<Unit>> SendTerminalPhysicalKeyAsync(
+            TerminalPhysicalKeyRequest request,
+            OperationContext context,
+            CancellationToken cancellationToken)
+        {
+            var input = await PhysicalInputAsync(
+                request.LeaseId,
+                "physical-key",
+                cancellationToken);
+            if (input is HostResult<Unit>.Failure)
+            {
+                return input;
+            }
+
+            TerminalInputs.Add(
+                $"physical-key:{request.KeyEvent.PhysicalKey}:{request.KeyEvent.Action}");
             return HostResult<Unit>.Succeed(Unit.Value, 1);
         }
 

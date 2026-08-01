@@ -13,6 +13,7 @@ public interface ITerminalPanelSession :
     ITerminalProcess,
     ITerminalState,
     ITerminalRendererAttachment,
+    ITerminalRenderState,
     ITerminalAutomation
 {
     // These two operations occur in two capability views. Redeclaration keeps

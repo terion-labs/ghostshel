@@ -5,6 +5,10 @@
 - Extends:
   [ADR 0017](0017-native-dotnet-agent-runtime.md),
   [ADR 0018](0018-native-ai-provider-and-chat-boundary.md)
+- Terminal-engine update:
+  [ADR 0040](0040-cross-platform-libghostty-vt-terminal.md) supersedes the
+  platform-split renderer/shim dispatch details in this record. The capability,
+  authorization, lease, commit, and audit decisions remain accepted.
 - Security basis:
   [Agent-to-tool threat model](../security/agent-tool-threat-model.md)
 
@@ -198,9 +202,10 @@ Tools that inject terminal input are advertised only when the selected live
 renderer can uphold the human-preemption invariant.
 The host exposes that proof as the explicit `terminal.agent_input_barrier`
 capability rather than inferring it from a renderer name. Both the managed
-renderer and the macOS libghostty shim implement the barrier; a renderer
-without it receives no agent input tools. Resize is governed independently by
-exact interactive-attachment authority and the serialized resize transaction.
+Avalonia presenter and shared libghostty-vt engine participate in the barrier
+on every desktop; a session without it receives no agent input tools. Resize is
+governed independently by exact interactive-attachment authority and the
+serialized resize transaction.
 
 Send-mouse is one closed terminal-cell event, not generic cursor or desktop
 automation. Its schema permits only a fixed button/event vocabulary, bounded
@@ -225,18 +230,18 @@ terminal exposes both `terminal.paste` and
 `HumanApproval` or already-confirmed run-local `YoloPolicy` source. After
 rechecking both capabilities, the host acquires one one-action input lease and
 passes `ConfirmedUnsafe` to the typed paste port only at that final trusted
-boundary. The portable engine keeps the caller/lease token on each queued
+boundary. The shared terminal engine keeps the caller/lease token on each queued
 mutation through the PTY write, which is its irreversible commit point. A
 normal receipt remains gated by flush, but post-commit cancellation or flush
 failure completes that committed receipt before failing the session; this
 prevents an already-written command from being presented as safely retryable.
 Queued cancellation, writer failure, and shutdown still settle every
-uncommitted acknowledgement. The macOS
-shim performs the equivalent current-epoch check on the AppKit thread, and its
-native smoke covers both current-epoch guarded paste and stale-epoch rejection
-after physical input advances authority. A successful paste returns only a
-receipt. Engine confirmation refusal, invalid results, audit uncertainty, or
-cancellation never causes a second paste dispatch.
+uncommitted acknowledgement. The shared path performs the same adjacent
+human-authority check on every desktop, and engine tests cover both
+current-authority guarded paste and stale-authority rejection after physical
+input advances authority. A successful paste returns only a receipt. Engine
+confirmation refusal, invalid results, audit uncertainty, or cancellation
+never causes a second paste dispatch.
 
 Resize is a closed mutation rather than a provider-selected renderer action.
 Its schema contains exact integer `columns` from 2 to 1,000 and `rows` from 1
@@ -252,8 +257,8 @@ dispatch, then serializes renderer, human, and governed resizes through one
 per-session gate that covers both the terminal-engine call and attachment
 metadata commit. An unrelated revision or late caller cancellation after a
 successful engine return cannot split those states; changed attachment
-authority still fails closed. The macOS shim applies and verifies the exact
-Ghostty cell grid. Absence, ambiguity, replacement, revocation, or native
+authority still fails closed. libghostty-vt state and Porta.Pty apply and
+verify the exact cell grid. Absence, ambiguity, replacement, revocation, or
 exact-grid failure never causes inference, substitution, or a second resize.
 
 The desktop renders the pinned ordered scope in an expandable context

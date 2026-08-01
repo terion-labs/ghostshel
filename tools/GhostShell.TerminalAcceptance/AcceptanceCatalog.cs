@@ -13,7 +13,7 @@ internal static class AcceptanceCatalog
         new(
             "packaged-real-pty-backend",
             "Exact packaged build, managed renderer, and real PTY",
-            "Open a local terminal in the package started by this runner. Confirm its status reports XTerm.NET with a portable PTY, live input works, and the shell is attached to a real pseudo-terminal. Record the status text and command outcome, never the shell history or user path.",
+            "Open a local terminal in the package started by this runner. Confirm its status reports libghostty-vt with an Avalonia renderer and portable PTY, live input works, and the shell is attached to a real pseudo-terminal. Record the status text and command outcome, never the shell history or user path.",
             "Run `mode con` in cmd.exe or an equivalent ConPTY-sensitive probe and record only whether it succeeded.",
             "Run `test -t 0 && tty`; record only the TTY result and `/dev/pts/<redacted>` rather than the device number."),
         new(

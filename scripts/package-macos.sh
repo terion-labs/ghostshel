@@ -9,10 +9,11 @@ version=""
 build_version=""
 output=""
 component_catalog="${repository_dir}/licenses/managed-components.json"
-native_component_catalog="${repository_dir}/licenses/native-macos-components.json"
-native_build_receipt="${repository_dir}/native/artifacts/osx-arm64/native-macos-build-receipt.json"
-native_build_evidence="${repository_dir}/native/ghostty/provenance/macos-arm64-build-evidence.json"
-native_resource_evidence="${repository_dir}/native/ghostty/provenance/macos-arm64-resource-evidence.json"
+native_component_catalog="${repository_dir}/licenses/native-terminal-components.json"
+native_build_receipt="${repository_dir}/native/artifacts/osx-arm64/native-terminal-build-receipt.json"
+font_assets_catalog="${repository_dir}/licenses/terminal-font-assets.json"
+font_assets_directory="${repository_dir}/native/artifacts/common/fonts/JetBrainsMono"
+font_assets_build_receipt="${repository_dir}/native/artifacts/common/terminal-font-assets-build-receipt.json"
 declare_macos_sdk="${repository_dir}/scripts/declare-macos-sdk26.sh"
 nuget_packages="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
 
@@ -103,19 +104,23 @@ if [[ -e "${output}" ]]; then
 fi
 
 required_native=(
-    "${repository_dir}/native/artifacts/osx-arm64/libghostshell-ghostty.dylib"
-    "${repository_dir}/native/artifacts/osx-arm64/libghostty.dylib"
+    "${repository_dir}/native/artifacts/osx-arm64/libghostty-vt.dylib"
     "${repository_dir}/native/artifacts/osx-arm64/GHOSTTY-LICENSE"
-    "${repository_dir}/native/artifacts/osx-arm64/ghostty"
-    "${repository_dir}/native/artifacts/osx-arm64/terminfo"
+    "${repository_dir}/native/artifacts/osx-arm64/ghostty-vt-required-exports.txt"
     "${native_component_catalog}"
     "${native_build_receipt}"
-    "${native_build_evidence}"
-    "${native_resource_evidence}"
+    "${font_assets_catalog}"
+    "${font_assets_build_receipt}"
+    "${font_assets_directory}/JetBrainsMono-Regular.ttf"
+    "${font_assets_directory}/JetBrainsMono-Bold.ttf"
+    "${font_assets_directory}/JetBrainsMono-Italic.ttf"
+    "${font_assets_directory}/JetBrainsMono-BoldItalic.ttf"
+    "${font_assets_directory}/OFL.txt"
+    "${font_assets_directory}/MANIFEST.sha256"
 )
 for required in "${required_native[@]}"; do
     if [[ ! -e "${required}" ]]; then
-        echo "The pinned Ghostty payload is incomplete; missing $(basename "${required}")." >&2
+        echo "The pinned libghostty-vt payload is incomplete; missing $(basename "${required}")." >&2
         exit 1
     fi
 done
@@ -143,22 +148,56 @@ publish_dir="${working_dir}/publish"
     -p:DebugType=None \
     -p:DebugSymbols=false
 
+# Keep the runtime assets as a deterministic, independently receipted closure.
+# Avalonia also embeds these faces for font discovery, but package provenance
+# must remain inspectable without parsing a managed resource container.
+publish_font_directory="${publish_dir}/fonts/JetBrainsMono"
+mkdir -p "${publish_font_directory}"
+for asset in \
+    JetBrainsMono-Regular.ttf \
+    JetBrainsMono-Bold.ttf \
+    JetBrainsMono-Italic.ttf \
+    JetBrainsMono-BoldItalic.ttf \
+    OFL.txt \
+    MANIFEST.sha256; do
+    cp "${font_assets_directory}/${asset}" \
+        "${publish_font_directory}/${asset}"
+done
+cp "${font_assets_catalog}" \
+    "${publish_dir}/terminal-font-assets.json"
+cp "${font_assets_build_receipt}" \
+    "${publish_dir}/terminal-font-assets-build-receipt.json"
+cp "${font_assets_directory}/OFL.txt" \
+    "${publish_dir}/JETBRAINS-MONO-OFL.txt"
+
 required_publish=(
     "${publish_dir}/GhostShell"
     "${publish_dir}/GhostShell.deps.json"
     "${publish_dir}/GhostShell.runtimeconfig.json"
-    "${publish_dir}/libghostshell-ghostty.dylib"
-    "${publish_dir}/libghostty.dylib"
+    "${publish_dir}/libghostty-vt.dylib"
     "${publish_dir}/GHOSTTY-LICENSE"
+    "${publish_dir}/ghostty-vt-required-exports.txt"
     "${publish_dir}/THIRD-PARTY-NOTICES.md"
     "${publish_dir}/DOTNET-LICENSE.txt"
     "${publish_dir}/DOTNET-THIRD-PARTY-NOTICES.txt"
-    "${publish_dir}/native-macos-components.json"
-    "${publish_dir}/native-macos-build-receipt.json"
-    "${publish_dir}/macos-arm64-build-evidence.json"
-    "${publish_dir}/macos-arm64-resource-evidence.json"
-    "${publish_dir}/ghostty"
-    "${publish_dir}/terminfo"
+    "${publish_dir}/native-terminal-components.json"
+    "${publish_dir}/native-terminal-build-receipt.json"
+    "${publish_dir}/terminal-font-assets.json"
+    "${publish_dir}/terminal-font-assets-build-receipt.json"
+    "${publish_dir}/JETBRAINS-MONO-OFL.txt"
+    "${publish_font_directory}/JetBrainsMono-Regular.ttf"
+    "${publish_font_directory}/JetBrainsMono-Bold.ttf"
+    "${publish_font_directory}/JetBrainsMono-Italic.ttf"
+    "${publish_font_directory}/JetBrainsMono-BoldItalic.ttf"
+    "${publish_font_directory}/OFL.txt"
+    "${publish_font_directory}/MANIFEST.sha256"
+    "${publish_dir}/ghostty/shell-integration/MANIFEST.sha256"
+    "${publish_dir}/ghostty/shell-integration/bash/ghostty.bash"
+    "${publish_dir}/ghostty/shell-integration/bash/bash-preexec.sh"
+    "${publish_dir}/ghostty/shell-integration/fish/vendor_conf.d/ghostty-shell-integration.fish"
+    "${publish_dir}/ghostty/shell-integration/zsh/.zshenv"
+    "${publish_dir}/ghostty/shell-integration/zsh/ghostty-integration"
+    "${publish_dir}/ghostty/shell-integration/SHELL-INTEGRATION-NOTICE.md"
 )
 for required in "${required_publish[@]}"; do
     if [[ ! -e "${required}" ]]; then
@@ -218,23 +257,36 @@ if ! /usr/bin/file "${publish_dir}/GhostShell" \
     exit 1
 fi
 
-for library in libghostshell-ghostty.dylib libghostty.dylib; do
-    if ! /usr/bin/file "${publish_dir}/${library}" \
-            | grep -Eq 'Mach-O 64-bit dynamically linked shared library arm64'; then
-        echo "${library} is not a macOS arm64 dynamic library." >&2
-        exit 1
-    fi
-done
-
-if ! /usr/bin/otool -L "${publish_dir}/libghostshell-ghostty.dylib" \
-        | grep -Fq '@rpath/libghostty.dylib'; then
-    echo "The GhostSHELL shim is not linked to the colocated libghostty runtime." >&2
+if ! /usr/bin/file "${publish_dir}/libghostty-vt.dylib" \
+        | grep -Eq 'Mach-O 64-bit dynamically linked shared library arm64'; then
+    echo "libghostty-vt.dylib is not a macOS arm64 dynamic library." >&2
     exit 1
 fi
-if ! /usr/bin/otool -l "${publish_dir}/libghostshell-ghostty.dylib" \
-        | grep -A2 'LC_RPATH' \
-        | grep -Fq '@loader_path'; then
-    echo "The GhostSHELL shim does not resolve libghostty beside itself." >&2
+if ! /usr/bin/otool -D "${publish_dir}/libghostty-vt.dylib" \
+        | grep -Fxq '@rpath/libghostty-vt.dylib'; then
+    echo "libghostty-vt.dylib has an unexpected install name." >&2
+    exit 1
+fi
+unexpected_dependencies="$(
+    /usr/bin/otool -L "${publish_dir}/libghostty-vt.dylib" \
+        | tail -n +2 \
+        | awk '{print $1}' \
+        | grep -Fvx '@rpath/libghostty-vt.dylib' \
+        | grep -Fvx '/usr/lib/libSystem.B.dylib' \
+        || true
+)"
+if [[ -n "${unexpected_dependencies}" ]]; then
+    echo "libghostty-vt.dylib has an unexpected dynamic dependency." >&2
+    exit 1
+fi
+unexpected_exports="$(
+    /usr/bin/nm -gU "${publish_dir}/libghostty-vt.dylib" \
+        | awk '$2 != "U" {print $3}' \
+        | grep -Ev '^_ghostty_' \
+        || true
+)"
+if [[ -n "${unexpected_exports}" ]]; then
+    echo "libghostty-vt.dylib exports symbols outside the Ghostty C ABI." >&2
     exit 1
 fi
 
@@ -250,6 +302,8 @@ fi
     --component-catalog "${component_catalog}" \
     --native-component-catalog "${native_component_catalog}" \
     --native-build-receipt "${native_build_receipt}" \
+    --font-assets-catalog "${font_assets_catalog}" \
+    --font-assets-build-receipt "${font_assets_build_receipt}" \
     --nuget-packages "${nuget_packages}"
 
 /usr/bin/plutil -lint "${candidate}/Contents/Info.plist"

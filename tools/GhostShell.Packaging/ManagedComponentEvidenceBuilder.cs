@@ -67,10 +67,9 @@ internal static class ManagedComponentEvidenceBuilder
         "GhostShell.Terminal.dll",
     ];
 
-    private static readonly string[] RequiredNativeFiles =
+    private static readonly string[] TerminalNativeFiles =
     [
-        "libghostshell-ghostty.dylib",
-        "libghostty.dylib",
+        "libghostty-vt.dylib",
     ];
 
     private static readonly string[] RequiredNoticePackageIds =
@@ -425,11 +424,6 @@ internal static class ManagedComponentEvidenceBuilder
         RequireEqual(component.Kind, "native", component.Identity, "kind");
         ValidateSimpleFileName(component.File, component.Identity);
         ValidateLicenseValue(component.LicenseDeclared, "licenseDeclared");
-        RequireEqual(
-            component.LicenseDeclared,
-            NoAssertion,
-            component.Identity,
-            "licenseDeclared");
         ValidateText(component.Comment, $"{component.Identity} comment", 1_000);
         if (component.DownloadLocation != NoAssertion
             && (!Uri.TryCreate(
@@ -461,6 +455,11 @@ internal static class ManagedComponentEvidenceBuilder
                 throw CatalogError(
                     $"component {component.Identity} license evidence is not required to be nontrivial");
             }
+        }
+        else if (component.LicenseDeclared != NoAssertion)
+        {
+            throw CatalogError(
+                $"component {component.Identity} declares a license without evidence");
         }
         else if (component.LicenseEvidenceMinimumBytes is not null)
         {
@@ -1667,11 +1666,11 @@ internal static class ManagedComponentEvidenceBuilder
         var files = components
             .Select(component => component.File)
             .ToHashSet(StringComparer.Ordinal);
-        if (components.Count != RequiredNativeFiles.Length
-            || !files.SetEquals(RequiredNativeFiles))
+        if (components.Count != TerminalNativeFiles.Length
+            || !files.SetEquals(TerminalNativeFiles))
         {
             throw CatalogError(
-                "additionalComponents must model both published Ghostty dylibs");
+                "additionalComponents must model the published libghostty-vt payload");
         }
     }
 
@@ -1773,7 +1772,7 @@ internal static class ManagedComponentEvidenceBuilder
                 "comment",
                 "Evidence scope: the exact managed dependency closure from "
                 + "GhostShell.deps.json, the exact .NET runtime package, the fifteen "
-                + "GhostSHELL project assemblies, and both published Ghostty dylibs. "
+                + "GhostSHELL project assemblies, and the published libghostty-vt dylib. "
                 + "This is not legal clearance or a complete native dependency SBOM. "
                 + "Release blockers: "
                 + string.Join(" | ", catalog.ReleaseBlockers));

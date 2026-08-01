@@ -21,27 +21,31 @@ internal static class RemoteTerminalIdleClassifier
 
     public static bool IsAtShellPrompt(
         string screen,
-        GhosttyTerminalScreenState state)
+        int cursorRow,
+        int cursorColumn,
+        bool isAlternateScreen,
+        bool isBracketedPasteEnabled,
+        bool isMouseTrackingEnabled)
     {
         ArgumentNullException.ThrowIfNull(screen);
-        if (state.IsAlternateScreen
-            || state.IsBracketedPasteEnabled
-            || state.IsMouseTrackingEnabled
-            || state.CursorColumn <= 0)
+        if (isAlternateScreen
+            || isBracketedPasteEnabled
+            || isMouseTrackingEnabled
+            || cursorColumn <= 0)
         {
             return false;
         }
 
         var lines = screen.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var line = state.CursorRow < lines.Length
-            ? lines[state.CursorRow]
+        var line = cursorRow >= 0 && cursorRow < lines.Length
+            ? lines[cursorRow]
             : lines.LastOrDefault(candidate => candidate.Length > 0);
         if (string.IsNullOrEmpty(line))
         {
             return false;
         }
 
-        var cursorText = line[..Math.Min(state.CursorColumn, line.Length)].TrimEnd();
+        var cursorText = line[..Math.Min(cursorColumn, line.Length)].TrimEnd();
         if (cursorText.Length == 0)
         {
             return false;

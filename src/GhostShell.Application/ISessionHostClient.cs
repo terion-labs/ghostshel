@@ -137,6 +137,12 @@ public interface ISessionHostClient
         OperationContext context,
         CancellationToken cancellationToken);
 
+    ValueTask<HostResult<Unit>> BlurTerminalAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<Unit>("Terminal focus-loss reporting is not implemented by this client.");
+
     ValueTask<HostResult<Unit>> ResizeTerminalAsync(
         TerminalResizeRequest request,
         OperationContext context,
@@ -151,6 +157,12 @@ public interface ISessionHostClient
         TerminalKeyRequest request,
         OperationContext context,
         CancellationToken cancellationToken);
+
+    ValueTask<HostResult<Unit>> SendTerminalPhysicalKeyAsync(
+        TerminalPhysicalKeyRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<Unit>("Physical terminal keyboard events are not implemented by this client.");
 
     ValueTask<HostResult<Unit>> EnterTerminalAsync(
         TerminalEnterRequest request,
@@ -205,6 +217,17 @@ public interface ISessionHostClient
         SessionId sessionId,
         OperationContext context,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads the renderer-only terminal frame. This remains a separate port
+    /// from the bounded text snapshot used by agents and recovery.
+    /// </summary>
+    ValueTask<HostResult<TerminalRenderFrame>> ReadTerminalRenderFrameAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<TerminalRenderFrame>(
+            "Managed terminal render frames are not implemented by this client.");
 
     ValueTask<HostResult<TerminalWaitOutcome>> WaitForTerminalTextAsync(
         TerminalWaitForTextRequest request,

@@ -621,7 +621,7 @@ public sealed partial class RepositoryConventionTests
             "private void OnRuntimeTabDragPointerPressed(",
             StringComparison.Ordinal);
         var pointerMovedStart = mainWindowCodeBehind.IndexOf(
-            "private async void OnRuntimeTabDragPointerMoved(",
+            "private void OnRuntimeTabDragPointerMoved(",
             StringComparison.Ordinal);
         Assert.True(pointerPressedStart >= 0);
         Assert.True(pointerMovedStart > pointerPressedStart);
@@ -676,15 +676,19 @@ public sealed partial class RepositoryConventionTests
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
-            "DataFormat.CreateStringApplicationFormat(",
+            "new RuntimeTabActiveDrag(",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
-            "dragItem.Set(RuntimeTabDragFormat, candidate.Payload);",
+            "ShowDragGhost(",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
-            "dragItem.Set(RuntimeTabDragNativeMarkerFormat, \"runtime-tab\");",
+            "ResolveRuntimeTabDrop(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "DragDrop.DoDragDropAsync(",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(

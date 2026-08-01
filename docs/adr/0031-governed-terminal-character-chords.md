@@ -5,6 +5,10 @@
 - Extends:
   [ADR 0013](0013-windows-linux-terminal-state-and-pty.md),
   [ADR 0019](0019-one-action-agent-capability-broker.md)
+- Terminal-engine update:
+  [ADR 0040](0040-cross-platform-libghostty-vt-terminal.md) supersedes the
+  platform-split encoding and renderer details in this record. The closed
+  chord, authorization, commit, and audit decisions remain accepted.
 - Security basis:
   [Agent-to-tool threat model](../security/agent-tool-threat-model.md)
 
@@ -18,10 +22,9 @@ are the wrong abstractions for terminal control characters, while accepting
 arbitrary bytes, escape sequences, key codes, or modifier arrays would give
 model data a much broader and platform-dependent input surface.
 
-The portable renderer and the macOS libghostty renderer must preserve the same
-human-preemption and irreversible-input semantics. Adding a Node/Pi sidecar
-would duplicate terminal ownership and is outside the native desktop
-architecture.
+The same terminal engine on every desktop must preserve human-preemption and
+irreversible-input semantics. Adding a Node/Pi sidecar would duplicate terminal
+ownership and is outside the in-process desktop architecture.
 
 ## Decision
 
@@ -70,8 +73,9 @@ session-host chord method.
 
 ### Engine encoding and commit boundary
 
-The portable renderer delegates terminal-mode encoding to XTerm.NET. The
-initial contract has these canonical results:
+The shared libghostty-vt engine validates the closed letter/modifier pair and
+performs terminal-mode encoding from its live keyboard state. In legacy
+keyboard mode, the initial contract has these canonical results:
 
 | Chord | PTY bytes |
 |---|---|
@@ -81,30 +85,20 @@ initial contract has these canonical results:
 | `Ctrl+L` | `0C` |
 | `Alt+X` | `1B 78` |
 
-An empty generated sequence fails before PTY input. The existing queued-input
-contract remains authoritative: caller or lease cancellation before the
-successful PTY write commits no bytes; successful `WriteAsync` is the
-irreversible boundary. Later cancellation or flush failure preserves the
-committed receipt while failing the session separately, so an already-written
-chord is never presented as safely retryable. Shutdown settles every
-uncommitted acknowledgement.
+An empty generated sequence fails before PTY input. Managed code captures the
+current physical-input authority before encoding and rechecks it immediately
+before the ordered PTY write. A stale authority commits nothing. Caller or
+lease cancellation before the successful PTY write commits no bytes;
+successful `WriteAsync` is the irreversible boundary. Later cancellation or
+flush failure preserves the committed receipt while failing the session
+separately, so an already-written chord is never presented as safely retryable.
+Shutdown settles every uncommitted acknowledgement.
 
-The macOS shim adds only a versioned guarded chord entry point. Managed code
-captures the current physical-input epoch, and the shim validates the lowercase
-letter, exact singular Control/Option modifier, and epoch synchronously on the
-AppKit main thread before dispatching a semantic key down/up pair through
-libghostty. A stale epoch returns no commit. A true receipt wins late
-cancellation. The entry point is a required native export so an older shim
-cannot falsely advertise the capability.
-
-For the chord-only branch, the shim supplies lowercase ASCII text and
-unshifted codepoint, the reviewed physical keycode, the exact modifier, and no
-consumed modifiers in `ghostty_input_key_s`. This avoids AppKit IME and active
-keyboard-layout reinterpretation while leaving legacy and Kitty keyboard-mode
-encoding to libghostty. The hosted surface explicitly enables libghostty's
-Option-as-Alt policy. Programmatic chords neither invoke the human gate nor
-advance its epoch. No unguarded native chord export or text/byte injection
-fallback exists.
+Programmatic chords bypass Avalonia text composition and active keyboard-layout
+translation while leaving legacy and Kitty keyboard-mode encoding to
+libghostty-vt. They neither invoke the human-input path nor advance its
+authority. No raw-byte, platform key-synthesis, or text-injection fallback
+exists.
 
 ### Outcome and audit
 
@@ -113,19 +107,18 @@ audit uncertainty retries only the same immutable audit event, never the chord.
 Provider continuation remains blocked until the one action has a confirmed
 outcome.
 
-Portable integration tests use a raw, no-echo terminal reader so Control+D and
-Control+Z are observed as bytes rather than interpreted as EOF or job control.
-Native smoke proves current-epoch mappings, stale-epoch refusal, invalid-input
-rejection, physical-input separation, the legacy `03 1B 61` result for
-`Ctrl+C` then `Alt+A`, and a Kitty disambiguate-mode result whose Alt codepoint
-remains ASCII `97` under the active non-Latin keyboard layout.
+Integration tests use a raw, no-echo terminal reader so Control+D and Control+Z
+are observed as bytes rather than interpreted as EOF or job control. Engine
+tests prove current-authority mappings, stale-authority refusal, invalid-input
+rejection, physical-input separation, legacy encoding, and Kitty
+disambiguate-mode encoding without host-layout reinterpretation.
 
 ## Consequences
 
 - The agent can operate common interactive shell and TUI control chords without
   arbitrary terminal-byte authority.
-- Portable and libghostty renderers own their mode- and platform-specific
-  encoding while sharing one application authorization contract.
+- libghostty-vt owns mode-specific encoding on every desktop while the
+  application retains one authorization and commit contract.
 - The contract is independent of Avalonia and desktop chrome, so a future
   authenticated headless or ACP surface can reuse it without being implemented
   in this slice.
@@ -140,5 +133,5 @@ remains ASCII `97` under the active non-Latin keyboard layout.
   chord risk and approval material.
 - Accepting arbitrary bytes or escape sequences would let model data bypass
   terminal-mode encoding and greatly widen authority.
-- Launching a Node/Pi process would duplicate the existing native terminal
+- Launching a Node/Pi process would duplicate the existing terminal
   session and input-arbitration boundary.

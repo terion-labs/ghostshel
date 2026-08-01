@@ -36,6 +36,11 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         AvaloniaProperty.Register<ManagedTerminalSessionHost, TerminalRenderProfileSnapshot?>(
             nameof(RenderProfile));
 
+    public static readonly StyledProperty<double> BackgroundOpacityProperty =
+        AvaloniaProperty.Register<ManagedTerminalSessionHost, double>(
+            nameof(BackgroundOpacity),
+            1);
+
     public static readonly StyledProperty<EnsureTerminalSessionRequest?> SessionRequestProperty =
         AvaloniaProperty.Register<ManagedTerminalSessionHost, EnsureTerminalSessionRequest?>(
             nameof(SessionRequest));
@@ -102,6 +107,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
     private long _initializationGeneration;
     private int _pollTicks;
     private bool _pollInProgress;
+    private bool? _renderFramesSupported;
     private bool _isAttachedToVisualTree;
     private bool _focusRequested;
     private SessionLifecycle? _lastNotifiedLifecycle;
@@ -125,6 +131,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         };
         _surface.ViewportChanged += OnSurfaceViewportChanged;
         _surface.GotFocus += OnSurfaceGotFocus;
+        _surface.LostFocus += OnSurfaceLostFocus;
         _surface.FocusRequested += OnSurfaceFocusRequested;
         _surface.SetInputReady(false);
         Content = _surface;
@@ -157,6 +164,12 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
     {
         get => GetValue(RenderProfileProperty);
         set => SetValue(RenderProfileProperty, value);
+    }
+
+    public double BackgroundOpacity
+    {
+        get => GetValue(BackgroundOpacityProperty);
+        set => SetValue(BackgroundOpacityProperty, value);
     }
 
     public EnsureTerminalSessionRequest? SessionRequest
@@ -322,6 +335,10 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             // for a font change.
             _surface.Profile = RenderProfile ?? SessionRequest?.Launch.RenderProfile;
         }
+        else if (change.Property == BackgroundOpacityProperty)
+        {
+            _surface.BackgroundOpacity = BackgroundOpacity;
+        }
         else if (change.Property == SessionClientProperty
             || change.Property == SessionRequestProperty
             || change.Property == ClientIdProperty)
@@ -384,6 +401,22 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
                     authority.SessionId,
                     authority.LeaseId,
                     keyStroke),
+                authority.Context,
+                token),
+            cancellationToken);
+    }
+
+    async ValueTask IManagedTerminalInputSink.SendPhysicalKeyAsync(
+        TerminalPhysicalKeyEvent keyEvent,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(keyEvent);
+        _ = await DeliverHumanPtyInputAsync(
+            (authority, token) => authority.Client.SendTerminalPhysicalKeyAsync(
+                new TerminalPhysicalKeyRequest(
+                    authority.SessionId,
+                    authority.LeaseId,
+                    keyEvent),
                 authority.Context,
                 token),
             cancellationToken);
@@ -630,7 +663,9 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         _attachmentLifetime?.Cancel();
         _attachmentLifetime?.Dispose();
         _attachmentLifetime = null;
+        _renderFramesSupported = null;
         _surface.SetInputReady(false);
+        _surface.ClearRenderFrame();
         DetachRenderer();
     }
 
@@ -707,6 +742,12 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
                 _screenReadGate.Release();
             }
 
+            var renderFrame = await TryReadRenderFrameAsync(
+                client,
+                request.SessionId,
+                context,
+                cancellationToken);
+
             if (generation != _initializationGeneration)
             {
                 return;
@@ -721,6 +762,11 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             pendingAttachmentId = null;
             ApplySnapshot(snapshot);
             _surface.UpdateSnapshot(screen);
+            if (renderFrame is not null)
+            {
+                _surface.UpdateRenderFrame(renderFrame);
+            }
+
             _surface.SetInputReady(true);
             _pollTimer.Start();
             RestoreRequestedFocus();
@@ -820,7 +866,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         var generation = _initializationGeneration;
         try
         {
-            await ReadAndApplyScreenAsync(generation, lifetime.Token);
+            await ReadAndApplyTerminalStateAsync(generation, lifetime.Token);
             if (generation != _initializationGeneration)
             {
                 return;
@@ -829,6 +875,14 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             _pollTicks++;
             if (_pollTicks % StatePollInterval == 0)
             {
+                if (_renderFramesSupported == true)
+                {
+                    // The rich frame deliberately excludes interaction metadata
+                    // such as alternate-screen and mouse-reporting modes. Keep a
+                    // low-frequency bounded snapshot for input routing only.
+                    await ReadAndApplyScreenAsync(generation, lifetime.Token);
+                }
+
                 var snapshot = RequireSuccess(await SessionClient.GetSnapshotAsync(
                     SessionRequest.SessionId,
                     NewContext(),
@@ -892,6 +946,62 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
     }
 
+    private async Task ReadAndApplyTerminalStateAsync(
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        if (_renderFramesSupported != false)
+        {
+            var client = RequireClient();
+            var frame = await TryReadRenderFrameAsync(
+                client,
+                RequireSessionRequest().SessionId,
+                NewContext(),
+                cancellationToken);
+            if (generation != _initializationGeneration)
+            {
+                return;
+            }
+
+            if (frame is not null)
+            {
+                _surface.UpdateRenderFrame(frame);
+                return;
+            }
+        }
+
+        await ReadAndApplyScreenAsync(generation, cancellationToken);
+    }
+
+    private async ValueTask<TerminalRenderFrame?> TryReadRenderFrameAsync(
+        ISessionHostClient client,
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        var result = await client.ReadTerminalRenderFrameAsync(
+            sessionId,
+            context,
+            cancellationToken);
+        if (result is HostResult<TerminalRenderFrame>.Success success)
+        {
+            _renderFramesSupported = true;
+            return success.Value;
+        }
+
+        if (result is HostResult<TerminalRenderFrame>.Failure
+            {
+                Error.Code: HostErrorCode.CapabilityNotSupported,
+            })
+        {
+            _renderFramesSupported = false;
+            return null;
+        }
+
+        _ = RequireSuccess(result);
+        throw new UnreachableException();
+    }
+
     private async Task FocusTerminalAsync()
     {
         if (!_surface.IsInputReady
@@ -915,6 +1025,31 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         catch (Exception exception)
         {
             Trace.TraceError("Unable to focus the managed terminal session: {0}", exception);
+        }
+    }
+
+    private async Task BlurTerminalAsync()
+    {
+        if (_inputLeaseId is null
+            || SessionClient is null
+            || SessionRequest is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = RequireSuccess(await SessionClient.BlurTerminalAsync(
+                SessionRequest.SessionId,
+                NewContext(),
+                _attachmentLifetime?.Token ?? CancellationToken.None));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceError("Unable to blur the managed terminal session: {0}", exception);
         }
     }
 
@@ -1229,6 +1364,14 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         {
             _ = FocusTerminalAsync();
         }
+    }
+
+    private void OnSurfaceLostFocus(object? sender, FocusChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        _focusRequested = false;
+        _ = BlurTerminalAsync();
     }
 
     private void OnSurfaceFocusRequested(object? sender, EventArgs e)

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "format": "ghostshell-native-terminal-component-catalog-v1",
+  "catalogId": "ghostshell-libghostty-vt-20260801",
+  "releaseReadiness": "BLOCKED",
+  "legalClearance": false,
+  "releaseBlockers": [
+    "The exact transitive source and license closure linked into this development snapshot has not completed independent release review."
+  ],
+  "component": {
+    "identity": "libghostty-vt/0.1.0-dev",
+    "sourceRepository": "https://github.com/ghostty-org/ghostty.git",
+    "sourceCommit": "08f039fbb3dea9c6b1cdb5ff4550666598122346",
+    "licenseDeclared": "MIT",
+    "licenseEvidenceFile": "GHOSTTY-LICENSE"
+  },
+  "shellIntegration": {
+    "identity": "ghostty-shell-integration/08f039fbb3dea9c6b1cdb5ff4550666598122346",
+    "stagedShells": ["bash", "fish", "zsh"],
+    "licenseDeclared": "MIT AND GPL-3.0-or-later",
+    "licenseEvidenceFile": "ghostty/shell-integration/SHELL-INTEGRATION-NOTICE.md",
+    "sourceNoticesRetained": true
+  }
+}
