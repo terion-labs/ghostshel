@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-07-22
+- Terminal-view update: [ADR 0040](0040-cross-platform-libghostty-vt-terminal.md)
+  supersedes the former native-renderer wording; Quick Terminal uses the same
+  Avalonia-managed terminal presentation as the main workspace.
 
 ## Context
 
@@ -11,9 +14,9 @@ Global shortcut registration can also fail independently of persistence because 
 
 ## Decision
 
-`QuickTerminalSettings` is a schema-versioned durable definition stored by the common SQLite definition repository and closed `KnownDefinitionRegistry`. The catalog seeds one named default profile with Command + grave, the display containing the main GhostSHELL window, 55% height, 82% opacity, compositor blur requested at 24 px, slide animation, session reuse, and focus-loss dismissal.
+`QuickTerminalSettings` is a schema-versioned durable definition stored by the common SQLite definition repository and closed `KnownDefinitionRegistry`. The catalog seeds one named default profile with Command + grave, the display containing the main GhostSHELL window, 55% height, 82% background opacity, compositor blur requested at 24 px, slide animation, session reuse, and focus-loss dismissal. Background opacity applies only to the default terminal background and Quick Terminal chrome; glyphs, cursor, selection, inverse video, and explicit ANSI backgrounds stay opaque.
 
-The desktop controller observes catalog changes and applies them on the Avalonia UI thread. Height is resolved from the selected monitor's working area, so the payload is independent of scale and pixel dimensions. Explicit reduced motion disables slide animation. Focus-loss and reuse choices are enforced by the window/controller: when reuse is disabled, hiding detaches the native renderer, closes the session through the session host, and creates a fresh session on the next opening.
+The desktop controller observes catalog changes and applies them on the Avalonia UI thread. Height is resolved from the selected monitor's working area, so the payload is independent of scale and pixel dimensions. Explicit reduced motion disables slide animation. Focus-loss and reuse choices are enforced by the window/controller: when reuse is disabled, hiding detaches the renderer attachment, closes the session through the session host, and creates a fresh session on the next opening.
 
 Shortcut registration is diagnostic state, not inferred from the saved value. The UI shows the configured gesture and the actual registration result. If a non-default configured gesture fails, the controller attempts Command + grave as an explicit fallback and reports which gesture, if any, remains active. Unsupported desktops continue to report a typed unavailable state.
 
@@ -25,15 +28,19 @@ portal implementation is claimed until its registration and activation lifecycle
 the supported compositors. Escape uses a separate transient registration only while Quick Terminal
 is active; its callback follows the same pending-paste cancellation path as a window Escape key.
 
-Blur radius is durable intent. Avalonia currently exposes compositor blur as a capability hint on some backends rather than a portable numeric radius, so the controller requests blur when the radius is nonzero and the settings screen explains that the compositor may apply the nearest supported treatment.
+Blur radius is durable intent. Avalonia exposes compositor blur as a capability hint rather than a portable numeric radius. macOS applies the stored radius through the native window compositor when that API is available; other backends request `AcrylicBlur`, then `Blur`, and finally transparent rendering as ordered fallbacks. Reduced-transparency mode disables blur and forces an opaque background.
+
+The native Quick Terminal window is placed once at its final rectangle inside the selected monitor's working area. `MainWindow` follows the display containing GhostSHELL's main window, `Primary` uses the operating system's designated primary display, and `ActiveWindow` resolves the foreground application's window before Quick Terminal is shown or activated. The desktop adapter reads only global window bounds; when the host cannot expose foreign-window geometry, placement falls back to the GhostSHELL window and then the primary display. It is never animated through global desktop coordinates. A clipped reveal viewport masks an inner panel whose composition translation moves between `-height` and zero. The controller owns the explicit hidden/showing/visible/hiding lifecycle and one cancellable completion deadline, while the compositor owns interpolation. Reversing a transition continues from its current normalized reveal progress. This prevents a lower display's hidden position from appearing on a vertically adjacent display and avoids per-frame native window movement.
 
 ## Consequences
 
 - Quick Terminal behavior survives application restart and participates in guarded definition export/import.
-- Settings changes update registration, placement, sizing, opacity, blur intent, motion, focus loss, and hidden-session reuse without restarting GhostSHELL.
+- Settings changes update registration, placement, sizing, background opacity, blur intent, motion, focus loss, and hidden-session reuse without restarting GhostSHELL.
+- Terminal content stays fully legible over translucent backgrounds, and explicit terminal colors preserve their canonical opaque semantics.
+- Slide motion is clipped to the selected display's fixed native window and remains reversible while in flight.
 - Meta/Command + grave remains the safe platform-mapped fallback when a custom gesture is invalid or conflicts and the default remains available.
 - Windows and real X11 desktops expose typed shortcut conflicts; Wayland and headless Linux sessions expose typed unsupported diagnostics.
-- Current monitor choices are `MainWindow` and `Primary`; cursor-following placement and native virtual-space policy require dedicated platform adapters.
+- Monitor placement supports the main GhostSHELL window, the operating system's primary display, and the foreground window of any application. macOS, Windows, and X11 provide native bounds adapters; Wayland falls back because it has no portable foreign-window geometry protocol.
 - Session reuse is implemented across hide/show cycles. Restoring a Quick Terminal process after an application crash remains part of the broader runtime-snapshot recovery work.
 - System-wide reduced-motion detection is not yet exposed by Avalonia as a cross-platform application port; the explicit reduced-motion setting always wins today and can later be ORed with host accessibility state.
 

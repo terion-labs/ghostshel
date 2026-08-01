@@ -17,6 +17,7 @@ public sealed class QuickTerminalController : IDisposable
     private readonly IDefinitionCatalog _catalog;
     private readonly IConnectionRuntime _connectionRuntime;
     private readonly IHostAccessibilityPreferencesSource _hostAccessibilityPreferences;
+    private readonly IActiveWindowBoundsSource _activeWindowBounds;
     private readonly QuickTerminalDefinitionTracker _definitionTracker;
     private QuickTerminalViewModel _viewModel;
     private QuickTerminalSettings _settings = QuickTerminalSettings.Default;
@@ -24,18 +25,14 @@ public sealed class QuickTerminalController : IDisposable
         HostAccessibilityPreferences.Default;
     private MainWindow? _mainWindow;
     private QuickTerminalWindow? _quickWindow;
-    private DispatcherTimer? _animationTimer;
-    private EventHandler? _animationTick;
-    private QuickTerminalWindow? _animationWindow;
-    private PixelPoint _animationDestination;
-    private Action? _animationCompleted;
+    private IDisposable? _animationCompletion;
+    private readonly QuickTerminalTransitionTimeline _transition = new();
     private KeyStroke? _configuredGesture;
     private KeyStroke? _activeGesture;
     private GlobalHotkeyRegistrationResult? _registrationResult;
-    private PixelPoint _shownPosition;
-    private int _hiddenOffsetPixels;
     private long _settingsRevision = -1;
     private bool _initialized;
+    private bool _isShuttingDown;
     private bool _disposed;
 
     public QuickTerminalController(
@@ -43,7 +40,8 @@ public sealed class QuickTerminalController : IDisposable
         MainWindowViewModel mainWindowViewModel,
         IDefinitionCatalog catalog,
         IConnectionRuntime connectionRuntime,
-        IHostAccessibilityPreferencesSource hostAccessibilityPreferences)
+        IHostAccessibilityPreferencesSource hostAccessibilityPreferences,
+        IActiveWindowBoundsSource activeWindowBounds)
     {
         _globalHotkey = globalHotkey ?? throw new ArgumentNullException(nameof(globalHotkey));
         _mainWindowViewModel = mainWindowViewModel
@@ -53,13 +51,16 @@ public sealed class QuickTerminalController : IDisposable
             ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _hostAccessibilityPreferences = hostAccessibilityPreferences
             ?? throw new ArgumentNullException(nameof(hostAccessibilityPreferences));
+        _activeWindowBounds = activeWindowBounds
+            ?? throw new ArgumentNullException(nameof(activeWindowBounds));
         _definitionTracker = new QuickTerminalDefinitionTracker(_catalog.Snapshot);
         _viewModel = CreateViewModel();
     }
 
     public QuickTerminalViewModel ViewModel => _viewModel;
 
-    public bool IsVisible => _quickWindow?.IsVisible == true;
+    public bool IsVisible => _transition.State != QuickTerminalVisibilityState.Hidden
+        && _quickWindow?.IsVisible == true;
 
     public void Initialize(MainWindow mainWindow)
     {
@@ -72,6 +73,7 @@ public sealed class QuickTerminalController : IDisposable
 
         _initialized = true;
         _mainWindow = mainWindow;
+        _mainWindow.Closing += OnMainWindowClosing;
         _mainWindow.Closed += OnMainWindowClosed;
         _globalHotkey.Pressed += OnGlobalHotkeyPressed;
         _globalHotkey.EscapePressed += OnEscapePressed;
@@ -84,50 +86,54 @@ public sealed class QuickTerminalController : IDisposable
     public void Toggle()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
         if (!_initialized)
         {
             throw new InvalidOperationException("The Quick Terminal controller has not been initialized.");
         }
 
-        if (IsVisible)
+        if (_transition.State is QuickTerminalVisibilityState.Visible
+            or QuickTerminalVisibilityState.Showing)
         {
             Hide();
             return;
         }
 
         var window = GetOrCreateWindow();
-        StopAnimation();
-        _shownPosition = PositionAtTopOfWorkingArea(window);
-        window.ApplySettings(_settings, _hostPreferences);
+        var progress = PauseTransition(window);
+        if (_transition.State == QuickTerminalVisibilityState.Hidden)
+        {
+            progress = 0;
+        }
+
+        PositionAtTopOfWorkingArea(window);
         _viewModel.ApplyEscapeCapture(_globalHotkey.BeginEscapeCapture());
         try
         {
-            if (MotionEnabled)
+            if (!window.IsVisible)
             {
-                var hiddenPosition = AboveWorkingArea(_shownPosition);
-                window.Position = hiddenPosition;
+                window.PrepareReveal(progress);
                 window.Show();
-                window.Activate();
-                window.FocusTerminal();
-                AnimatePosition(
-                    window,
-                    hiddenPosition,
-                    _shownPosition,
-                    _settings.AnimationDurationMilliseconds,
-                    window.FocusTerminal);
             }
             else
             {
-                window.Position = _shownPosition;
-                window.Show();
-                window.Activate();
-                window.FocusTerminal();
+                window.SetRevealProgress(progress);
             }
+
+            window.ApplyBackdrop();
+            window.Activate();
+            window.FocusTerminal();
+            StartTransition(window, progress, 1);
         }
         catch
         {
             _globalHotkey.EndEscapeCapture();
-            StopAnimation();
+            PauseTransition(window);
+            _transition.Reset();
             if (window.IsVisible)
             {
                 window.Hide();
@@ -140,25 +146,16 @@ public sealed class QuickTerminalController : IDisposable
     public void Hide()
     {
         _globalHotkey.EndEscapeCapture();
-        if (_quickWindow?.IsVisible != true)
+        if (_quickWindow?.IsVisible != true
+            || _transition.State is QuickTerminalVisibilityState.Hidden
+                or QuickTerminalVisibilityState.Hiding)
         {
             return;
         }
 
         var window = _quickWindow;
-        StopAnimation();
-        if (!MotionEnabled)
-        {
-            CompleteHide(window);
-            return;
-        }
-
-        AnimatePosition(
-            window,
-            window.Position,
-            AboveWorkingArea(_shownPosition),
-            _settings.AnimationDurationMilliseconds,
-            () => CompleteHide(window));
+        var progress = PauseTransition(window);
+        StartTransition(window, progress, 0);
     }
 
     public void Dispose()
@@ -169,7 +166,7 @@ public sealed class QuickTerminalController : IDisposable
         }
 
         _disposed = true;
-        StopAnimation();
+        CancelTransition();
         _catalog.Changed -= OnCatalogChanged;
         _hostAccessibilityPreferences.Changed -= OnHostAccessibilityPreferencesChanged;
         _globalHotkey.Pressed -= OnGlobalHotkeyPressed;
@@ -179,6 +176,7 @@ public sealed class QuickTerminalController : IDisposable
         _viewModel.Dispose();
         if (_mainWindow is not null)
         {
+            _mainWindow.Closing -= OnMainWindowClosing;
             _mainWindow.Closed -= OnMainWindowClosed;
         }
 
@@ -188,6 +186,7 @@ public sealed class QuickTerminalController : IDisposable
             _quickWindow.SettingsRequested -= OnSettingsRequested;
             _quickWindow.Activated -= OnQuickWindowActivated;
             _quickWindow.Deactivated -= OnQuickWindowDeactivated;
+            _quickWindow.Closed -= OnQuickWindowClosed;
             _quickWindow.ClosePermanently();
             _quickWindow = null;
         }
@@ -220,18 +219,27 @@ public sealed class QuickTerminalController : IDisposable
         _quickWindow.SettingsRequested += OnSettingsRequested;
         _quickWindow.Activated += OnQuickWindowActivated;
         _quickWindow.Deactivated += OnQuickWindowDeactivated;
+        _quickWindow.Closed += OnQuickWindowClosed;
         return _quickWindow;
     }
 
-    private PixelPoint PositionAtTopOfWorkingArea(QuickTerminalWindow window)
+    private void PositionAtTopOfWorkingArea(QuickTerminalWindow window)
     {
         var mainWindow = _mainWindow
             ?? throw new InvalidOperationException("The GhostSHELL main window is unavailable.");
-        var screen = _settings.MonitorPolicy switch
-        {
-            QuickTerminalMonitorPolicy.Primary => mainWindow.Screens.Primary,
-            _ => mainWindow.Screens.ScreenFromWindow(mainWindow),
-        } ?? mainWindow.Screens.Primary
+        var mainWindowScreen = mainWindow.Screens.ScreenFromWindow(mainWindow);
+        var activeWindowBounds = _settings.MonitorPolicy ==
+            QuickTerminalMonitorPolicy.ActiveWindow
+                ? _activeWindowBounds.TryGetBounds()
+                : null;
+        var activeWindowScreen = activeWindowBounds is { } bounds
+            ? mainWindow.Screens.ScreenFromBounds(bounds)
+            : null;
+        var screen = QuickTerminalScreenResolver.Resolve(
+            mainWindowScreen,
+            mainWindow.Screens.Primary,
+            activeWindowScreen,
+            _settings.MonitorPolicy)
           ?? throw new InvalidOperationException("No desktop screen is available for Quick Terminal.");
         var workingArea = screen.WorkingArea;
         var scale = screen.Scaling;
@@ -240,13 +248,8 @@ public sealed class QuickTerminalController : IDisposable
         window.Height = Math.Min(
             availableHeight,
             Math.Max(window.MinHeight, Math.Round(availableHeight * _settings.HeightFraction)));
-        _hiddenOffsetPixels = checked((int)Math.Ceiling(window.Height * scale));
         window.Position = workingArea.Position;
-        return workingArea.Position;
     }
-
-    private PixelPoint AboveWorkingArea(PixelPoint shownPosition) =>
-        new(shownPosition.X, shownPosition.Y - _hiddenOffsetPixels);
 
     private void ApplySettingsFromCatalog()
     {
@@ -290,9 +293,20 @@ public sealed class QuickTerminalController : IDisposable
             window.ApplySettings(_settings, _hostPreferences);
             if (window.IsVisible)
             {
-                StopAnimation();
-                _shownPosition = PositionAtTopOfWorkingArea(window);
-                window.Position = _shownPosition;
+                var target = _transition.State == QuickTerminalVisibilityState.Hiding
+                    ? 0
+                    : 1;
+                var wasTransitioning = _transition.State is
+                    QuickTerminalVisibilityState.Showing
+                    or QuickTerminalVisibilityState.Hiding;
+                var progress = PauseTransition(window);
+                PositionAtTopOfWorkingArea(window);
+                window.ApplyBackdrop();
+                window.SetRevealProgress(progress);
+                if (wasTransitioning)
+                {
+                    StartTransition(window, progress, target);
+                }
             }
         }
 
@@ -344,13 +358,12 @@ public sealed class QuickTerminalController : IDisposable
 
     private void CompleteHide(QuickTerminalWindow window)
     {
-        StopAnimation();
         if (window.IsVisible)
         {
             window.Hide();
         }
 
-        window.Position = _shownPosition;
+        window.PrepareReveal(0);
         if (QuickTerminalRuntimeRules.ShouldResetAfterHide(_settings.RestoreLastSession))
         {
             ResetSession();
@@ -359,6 +372,7 @@ public sealed class QuickTerminalController : IDisposable
 
     private void ResetSession()
     {
+        ResetTransition();
         var previousViewModel = _viewModel;
         var previousRequest = previousViewModel.TerminalRequest;
         if (_quickWindow is { } window)
@@ -367,6 +381,7 @@ public sealed class QuickTerminalController : IDisposable
             window.SettingsRequested -= OnSettingsRequested;
             window.Activated -= OnQuickWindowActivated;
             window.Deactivated -= OnQuickWindowDeactivated;
+            window.Closed -= OnQuickWindowClosed;
             window.ClosePermanently();
             _quickWindow = null;
         }
@@ -403,84 +418,94 @@ public sealed class QuickTerminalController : IDisposable
         }
     }
 
-    private void AnimatePosition(
+    private void StartTransition(
         QuickTerminalWindow window,
-        PixelPoint from,
-        PixelPoint to,
-        int durationMilliseconds,
-        Action completed)
+        double from,
+        double to)
     {
-        StopAnimation();
-        if (durationMilliseconds <= 0)
+        from = Math.Clamp(from, 0, 1);
+        to = Math.Clamp(to, 0, 1);
+        CancelCompletionTimer();
+        var generation = _transition.Begin(
+            from,
+            to,
+            MotionEnabled ? _settings.AnimationDurationMilliseconds : 0,
+            Environment.TickCount64);
+        if (_transition.DurationMilliseconds <= 0)
         {
-            window.Position = to;
-            completed();
+            CompleteTransition(generation);
             return;
         }
 
-        var started = Environment.TickCount64;
-        var timer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(16),
-        };
-        EventHandler tick = (_, _) =>
-        {
-            var elapsed = Environment.TickCount64 - started;
-            var progress = Math.Clamp(elapsed / (double)durationMilliseconds, 0, 1);
-            var eased = 1 - Math.Pow(1 - progress, 3);
-            window.Position = new PixelPoint(
-                Interpolate(from.X, to.X, eased),
-                Interpolate(from.Y, to.Y, eased));
-            if (progress < 1)
-            {
-                return;
-            }
-
-            CompleteAnimationImmediately();
-        };
-        _animationTimer = timer;
-        _animationTick = tick;
-        _animationWindow = window;
-        _animationDestination = to;
-        _animationCompleted = completed;
-        timer.Tick += tick;
-        timer.Start();
+        var duration = TimeSpan.FromMilliseconds(_transition.DurationMilliseconds);
+        window.AnimateReveal(from, to, duration);
+        _animationCompletion = DispatcherTimer.RunOnce(
+            () => CompleteTransition(generation),
+            duration,
+            DispatcherPriority.Render);
     }
 
-    private void StopAnimation()
+    private double PauseTransition(QuickTerminalWindow? window)
     {
-        if (_animationTimer is { } timer)
-        {
-            timer.Stop();
-            if (_animationTick is not null)
-            {
-                timer.Tick -= _animationTick;
-            }
-        }
-
-        _animationTimer = null;
-        _animationTick = null;
-        _animationWindow = null;
-        _animationCompleted = null;
+        var progress = _transition.Pause(Environment.TickCount64);
+        CancelCompletionTimer();
+        window?.SetRevealProgress(progress);
+        return progress;
     }
 
-    private void CompleteAnimationImmediately()
+    private void CancelTransition()
     {
-        var window = _animationWindow;
-        var destination = _animationDestination;
-        var completed = _animationCompleted;
-        StopAnimation();
-        if (window is null || completed is null)
+        CancelCompletionTimer();
+        _transition.Cancel();
+    }
+
+    private void ResetTransition()
+    {
+        CancelCompletionTimer();
+        _transition.Reset();
+    }
+
+    private void CancelCompletionTimer()
+    {
+        _animationCompletion?.Dispose();
+        _animationCompletion = null;
+    }
+
+    private void CompleteTransition(long generation)
+    {
+        if (!_transition.TryComplete(generation))
         {
             return;
         }
 
-        window.Position = destination;
-        completed();
+        CancelCompletionTimer();
+        var window = _quickWindow;
+        var destination = _transition.Progress;
+        window?.SetRevealProgress(destination);
+        if (window is null)
+        {
+            _transition.Reset();
+            return;
+        }
+
+        if (_transition.State == QuickTerminalVisibilityState.Visible)
+        {
+            window.FocusTerminal();
+            return;
+        }
+
+        CompleteHide(window);
     }
 
-    private static int Interpolate(int from, int to, double progress) =>
-        checked((int)Math.Round(from + ((to - from) * progress)));
+    private void CompleteTransitionImmediately()
+    {
+        if (_animationCompletion is null)
+        {
+            return;
+        }
+
+        CompleteTransition(_transition.Generation);
+    }
 
     private void OnCatalogChanged(object? sender, EventArgs e)
     {
@@ -513,10 +538,17 @@ public sealed class QuickTerminalController : IDisposable
         _hostPreferences = next;
         if (mustFinishAnimation)
         {
-            CompleteAnimationImmediately();
+            CompleteTransitionImmediately();
         }
 
-        _quickWindow?.ApplySettings(_settings, _hostPreferences);
+        if (_quickWindow is { } window)
+        {
+            window.ApplySettings(_settings, _hostPreferences);
+            if (window.IsVisible)
+            {
+                window.ApplyBackdrop();
+            }
+        }
     }
 
     private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
@@ -525,7 +557,7 @@ public sealed class QuickTerminalController : IDisposable
         _ = e;
         Dispatcher.UIThread.Post(() =>
         {
-            if (!_disposed)
+            if (!_disposed && !_isShuttingDown)
             {
                 Toggle();
             }
@@ -575,6 +607,29 @@ public sealed class QuickTerminalController : IDisposable
         _globalHotkey.EndEscapeCapture();
     }
 
+    private void OnQuickWindowClosed(object? sender, EventArgs e)
+    {
+        _ = e;
+        if (!ReferenceEquals(sender, _quickWindow))
+        {
+            return;
+        }
+
+        if (sender is not QuickTerminalWindow window)
+        {
+            return;
+        }
+
+        window.DismissRequested -= OnDismissRequested;
+        window.SettingsRequested -= OnSettingsRequested;
+        window.Activated -= OnQuickWindowActivated;
+        window.Deactivated -= OnQuickWindowDeactivated;
+        window.Closed -= OnQuickWindowClosed;
+        ResetTransition();
+        _quickWindow = null;
+        _globalHotkey.EndEscapeCapture();
+    }
+
     private void OnEscapePressed(object? sender, EventArgs e)
     {
         _ = sender;
@@ -601,5 +656,15 @@ public sealed class QuickTerminalController : IDisposable
         _ = sender;
         _ = e;
         Dispose();
+    }
+
+    private void OnMainWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        _isShuttingDown = true;
+        CancelTransition();
+        _globalHotkey.EndEscapeCapture();
+        _globalHotkey.Unregister();
     }
 }
