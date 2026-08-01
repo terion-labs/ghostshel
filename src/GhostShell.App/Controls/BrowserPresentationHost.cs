@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -12,6 +13,14 @@ namespace GhostShell.App.Controls;
 
 public sealed class BrowserPresentationHost : ContentControl
 {
+    private sealed class PresentationOwner
+    {
+        internal WeakReference<BrowserPresentationHost>? Host { get; set; }
+    }
+
+    private static readonly ConditionalWeakTable<BrowserRendererView, PresentationOwner>
+        PresentationOwners = new();
+
     private static readonly IBrush WaitingBrush = Brush.Parse("#8B8B91");
     private static readonly IBrush ReadyBrush = Brush.Parse("#3FB950");
     private static readonly IBrush LoadingBrush = Brush.Parse("#D79B57");
@@ -94,6 +103,7 @@ public sealed class BrowserPresentationHost : ContentControl
     private SessionId? _attachedSessionId;
     private AttachmentId? _attachmentId;
     private IBrowserRenderer? _subscribedRenderer;
+    private BrowserRendererView? _presentedRendererView;
     private long _initializationGeneration;
     private bool _isAttachedToVisualTree;
     private string _addressText = string.Empty;
@@ -274,7 +284,7 @@ public sealed class BrowserPresentationHost : ContentControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _isAttachedToVisualTree = false;
-        StopSession();
+        ReleaseRendererPresentation();
         SetWaitingState("Browser renderer detached.");
         base.OnDetachedFromVisualTree(e);
     }
@@ -298,7 +308,8 @@ public sealed class BrowserPresentationHost : ContentControl
         {
             if (change.Property == RendererViewProperty)
             {
-                Content = RendererView?.View;
+                ReleaseRendererPresentation(
+                    change.OldValue as BrowserRendererView);
             }
 
             if (_isAttachedToVisualTree)
@@ -311,7 +322,6 @@ public sealed class BrowserPresentationHost : ContentControl
     private void RestartSession()
     {
         StopSession();
-        Content = RendererView?.View;
         if (SessionClient is null
             || SessionRequest is null
             || ClientId is null
@@ -321,10 +331,113 @@ public sealed class BrowserPresentationHost : ContentControl
             return;
         }
 
+        ClaimRendererPresentation(RendererView);
+
         SetWaitingState("Starting the native browser…", "STARTING");
         var generation = ++_initializationGeneration;
         _attachmentLifetime = new CancellationTokenSource();
         _ = InitializeSessionAsync(generation, _attachmentLifetime.Token);
+    }
+
+    /// <summary>
+    /// Hands the single native browser control from an outgoing Dock presenter
+    /// to the incoming one. Dock deliberately overlaps those presenters while
+    /// floating or restoring a document; Avalonia controls, however, may have
+    /// only one visual parent.
+    /// </summary>
+    internal void ClaimRendererPresentation(BrowserRendererView rendererView)
+    {
+        ArgumentNullException.ThrowIfNull(rendererView);
+        var ownership = PresentationOwners.GetValue(
+            rendererView,
+            static _ => new PresentationOwner());
+        BrowserPresentationHost? previousHost = null;
+        lock (ownership)
+        {
+            if (ownership.Host?.TryGetTarget(out var currentHost) == true)
+            {
+                if (ReferenceEquals(currentHost, this))
+                {
+                    _presentedRendererView = rendererView;
+                    MountRendererView(rendererView);
+                    return;
+                }
+
+                previousHost = currentHost;
+            }
+
+            ownership.Host = new WeakReference<BrowserPresentationHost>(this);
+        }
+
+        previousHost?.RelinquishRendererPresentation(rendererView);
+        _presentedRendererView = rendererView;
+        MountRendererView(rendererView);
+    }
+
+    internal void ReleaseRendererPresentation() =>
+        ReleaseRendererPresentation(_presentedRendererView);
+
+    private void ReleaseRendererPresentation(BrowserRendererView? rendererView)
+    {
+        if (rendererView is null
+            || !ReferenceEquals(_presentedRendererView, rendererView))
+        {
+            return;
+        }
+
+        StopSession();
+        UnmountRendererView(rendererView);
+        _presentedRendererView = null;
+
+        var ownership = PresentationOwners.GetValue(
+            rendererView,
+            static _ => new PresentationOwner());
+        lock (ownership)
+        {
+            if (ownership.Host?.TryGetTarget(out var currentHost) == true
+                && ReferenceEquals(currentHost, this))
+            {
+                ownership.Host = null;
+            }
+        }
+    }
+
+    private void RelinquishRendererPresentation(BrowserRendererView rendererView)
+    {
+        if (!ReferenceEquals(_presentedRendererView, rendererView))
+        {
+            return;
+        }
+
+        StopSession();
+        UnmountRendererView(rendererView);
+        _presentedRendererView = null;
+        SetWaitingState("Browser renderer moved to another window.");
+    }
+
+    private void MountRendererView(BrowserRendererView rendererView)
+    {
+        if (ReferenceEquals(Content, rendererView.View))
+        {
+            return;
+        }
+
+        Content = rendererView.View;
+        Presenter?.UpdateChild();
+    }
+
+    private void UnmountRendererView(BrowserRendererView rendererView)
+    {
+        if (!ReferenceEquals(Content, rendererView.View))
+        {
+            return;
+        }
+
+        Content = null;
+        // ContentPresenter normally applies this during the next layout pass.
+        // A Dock move can measure the replacement presenter first, so detach the
+        // native control synchronously before that presenter claims it.
+        Presenter?.UpdateChild();
     }
 
     private void StopSession()

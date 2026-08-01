@@ -19,6 +19,31 @@ public sealed class BrowserRuntimePanelViewModelTests
     }
 
     [Fact]
+    public void Native_browser_view_moves_between_overlapping_dock_presenters()
+    {
+        var view = new Border();
+        var rendererView = new BrowserRendererView(
+            view,
+            new RecordingBrowserRenderer());
+        var docked = new BrowserPresentationHost();
+        var floating = new BrowserPresentationHost();
+
+        docked.ClaimRendererPresentation(rendererView);
+        floating.ClaimRendererPresentation(rendererView);
+
+        Assert.Null(docked.Content);
+        Assert.Same(view, floating.Content);
+
+        // A late detach from the outgoing Dock presenter must not take the
+        // native view back from (or release it out from under) the new owner.
+        docked.ReleaseRendererPresentation();
+        Assert.Same(view, floating.Content);
+
+        floating.ReleaseRendererPresentation();
+        Assert.Null(floating.Content);
+    }
+
+    [Fact]
     public void BrowserStateFlowsIntoRecoveryAndRendererLifetimeIsReleasedOnce()
     {
         var lifetime = new RecordingLifetime();
