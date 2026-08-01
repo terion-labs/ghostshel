@@ -115,7 +115,7 @@
     <ControlTheme x:Key="{x:Type controls:StatusChip}" TargetType="controls:StatusChip">
       <Setter Property="Padding" Value="{DynamicResource ShellPillPadding}" />
       <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
-      <Setter Property="FontSize" Value="{DynamicResource ShellFontSize8}" />
+      <Setter Property="FontSize" Value="{DynamicResource ShellPillFontSize}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="HorizontalAlignment" Value="Left" />

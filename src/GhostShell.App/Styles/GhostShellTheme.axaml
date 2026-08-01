@@ -344,18 +344,32 @@
   <Style Selector="Button.NavButton">
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
-    <Setter Property="Padding" Value="11,9" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="Padding" Value="10,0" />
     <Setter Property="AutomationProperties.ItemStatus" Value="" />
   </Style>
 
   <Style Selector="Button.NavButton.active">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Background" Value="{DynamicResource ShellSidebarSelectionBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="FontWeight" Value="Medium" />
     <Setter Property="AutomationProperties.ItemStatus" Value="Current page" />
+  </Style>
+
+  <Style Selector="Button.NavButton:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSidebarSelectionBrush}" />
+  </Style>
+
+  <Style Selector="Button.NavButton.active /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSidebarSelectionBrush}" />
+  </Style>
+
+  <Style Selector="Button.NavButton.active TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
 
   <!-- The current route's icon carries the accent, as in the reference nav. -->
@@ -581,10 +595,10 @@
   -->
   <Style Selector="Border.FloatingSidebar">
     <Setter Property="Margin" Value="{DynamicResource ShellInsetSm}" />
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellSidebarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellSidebarBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellSidebarCornerRadius}" />
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
 
@@ -630,6 +644,7 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="VerticalContentAlignment" Value="Top" />
   </Style>
@@ -1055,7 +1070,7 @@
     <Setter Property="MinHeight" Value="24" />
     <Setter Property="Padding" Value="8,3" />
     <Setter Property="HorizontalAlignment" Value="Left" />
-    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize9}" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellPillFontSize}" />
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />

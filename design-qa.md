@@ -4,6 +4,30 @@ This is the living visual-verification record for the desktop implementation. Th
 
 The HTML source confirms the shared baseline used by the build: a 1440 × 900 shell, 44 px top chrome, 244 px launcher/settings sidebar, 526 px Quick Terminal panel, predominantly 8 px control/card radii, SF Pro-style application chrome, JetBrains Mono terminal/data surfaces, `#111111`/`#18181B`/`#2E2E2E` neutral layers, `#B8B9B6` muted text, and `#FF8400` as the supplied example accent. Platform adaptation and host-accent following remain intentional product requirements.
 
+## Launcher hover and pill typography pass — updated 2026-08-02
+
+- Source comparisons: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-6f7fe06c-b222-4230-896e-b24786c3f127.png`, `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-40f8a96f-0942-44c6-9ad2-54d497262b7d.png`, and `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-db71a18f-c6fa-4558-8c05-513d64f16c5d.png`.
+- Deterministic implementation captures: `artifacts/design-qa/pill-hover-2026-08-02/launcher-connections-hover.png`, `workspace.png`, and `design-system.png`.
+- The source hover exposed that the launch-card button measured only to its content while the outer `SurfaceCard` continued across the remaining width. `Button.CardSurface` now stretches as a layout child as well as stretching its content, so the pointer-over presenter paints the complete card rectangle.
+- Status, count, source-kind, and outlined connection-state pills now share a dedicated 10-point semantic token. The token scales with the user's application text scale but deliberately stays below the platform body size; interactive `Button.Chip` and `ComboBox.Chip` controls use the same typography.
+- The supplied references and the three rebuilt states were inspected together. The synthetic hover fills the first connection card edge to edge, while the launcher tags, design-system chip variants, and workspace `NOT CONNECTED` status all retain their padding and shape with visibly smaller text.
+- Regression evidence: both new launcher style contracts pass, both appearance-resource scale cases pass, and the deterministic capture route can reproduce the hover state without pointer automation.
+
+final result: passed
+
+## Native macOS sidebar pass — updated 2026-08-02
+
+- Source comparison: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-ec89258d-7ef6-4ba2-a7e8-38cd5f05b35e.png` (1008 × 890), containing the previous GhostSHELL sidebar and the Finder sidebar reference in one image.
+- Deterministic implementation captures: `artifacts/design-qa/sidebar-native/launcher-home.png`, `settings-appearance.png`, and `workspace.png` (1440 × 900 each), plus `appearance-corners-tight.png` and `appearance-corners-round.png` for the saved corner override extremes.
+- Focused comparison state: dark macOS treatment, selected sidebar route, system UI typeface, and the same floating sidebar component used by Home, Settings, the workspace rail, and side-tab rail.
+- The sidebar now has a dedicated material-fallback palette instead of borrowing the generic card surface: `#18181B` in dark mode and `#F2F2F7` in light mode, with restrained platform border and selection overlays.
+- macOS uses a 14 DIP sidebar radius in the classic profile and 16 DIP in the Liquid Glass profile. User corner overrides preserve the sidebar's intended extra roundness relative to ordinary cards.
+- Sidebar rows use the native 13-point semantic text token, inherit Avalonia's platform-default UI face, align to a 32 DIP row, and use medium weight for the selected route. The active icon and label both carry the host accent; the selection fill is a quiet translucent neutral rather than the previous raised gray slab.
+- The source and generated launcher capture were inspected together, followed by the Settings and workspace captures. No clipping, competing card chrome, unintended monospace type, or route-specific divergence was observed. Tight and round saved-corner captures confirmed that the sidebar participates in the existing appearance control without collapsing to the ordinary card radius.
+- Regression evidence: the desktop project builds with zero warnings; the 14 targeted shared-sidebar architecture contracts and 29 host-appearance mapper tests pass, including the selected-row accent contrast pair in both high-contrast modes.
+
+final result: passed
+
 ## File Viewer ForkLift-style pass — updated 2026-07-30
 
 - Source visual truth: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-4bc0ab7f-9180-48c2-9614-17109c0a426b.png` (2864 × 1808).
@@ -34,6 +58,47 @@ The HTML source confirms the shared baseline used by the build: a 1440 × 900 sh
 - Iteration 9 evidence: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-037ec807-ec43-497d-8858-532f56b08295.png` showed that equal raw toolbar padding compounded the existing optical clearance above the controls and made the visible top gap larger than the bottom gap.
 - Iteration 9 fix: the toolbar keeps the larger bottom inset while restoring the smaller top inset, balancing the visible clearance without changing the consolidated surface.
 - Remaining P2 verification: capture the rebuilt loaded local and SFTP states at the same window size and check favourite strokes, the consolidated path/count toolbar, symmetric toolbar spacing, local upload visibility, inset preview selection, header continuity, preview resizing, and table-column resizing visually.
+
+final result: blocked
+
+## Neutral macOS workspace surfaces — updated 2026-08-02
+
+### Comparison setup
+
+The reported workspace tint and the Finder-derived macOS reference were inspected
+together with deterministic captures from the same build:
+
+- `artifacts/design-qa/sidebar-neutral-2026-08-02/workspace.png`
+- `artifacts/design-qa/sidebar-neutral-2026-08-02/launcher-home.png`
+- `artifacts/design-qa/sidebar-neutral-2026-08-02/settings-appearance.png`
+
+### Visual and token checks
+
+- [x] The macOS dark sidebar/workspace surface now uses neutral `#181818` rather
+  than the blue-biased `#18181B` value.
+- [x] The matching macOS sidebar border is neutral `#343434`; fallback dark
+  resources use neutral `#181818` and `#383838` values as well.
+- [x] Workspace rail, launcher sidebar, and settings sidebar consume the same
+  semantic surface token, so they no longer drift between views.
+- [x] The comparison captures retain the intended floating-panel separation,
+  corner treatment, and text contrast without a residual blue cast.
+- [x] Focused appearance tests and deterministic design captures pass.
+
+final result: passed
+
+## Protocol-neutral transfer affordances — updated 2026-07-31
+
+- Reported transfer state: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-dd192fee-2e75-4703-9a72-33f7aa290da9.png`.
+- Requested compact status treatment: `/var/folders/vd/mq6r33rs1h30tgd81x06zt7w0000gp/T/codex-clipboard-ccc8476e-3331-417d-a8d9-b03aaec4c0f1.png`.
+- Rebuilt deterministic state: `/tmp/ghostshell-transfer-qa.Qw6e6U/workspace-transfers.png`.
+- Same-state comparison: `/tmp/ghostshell-transfer-qa.Qw6e6U/transfer-manager-comparison.png`.
+- The transfer card now lives in the workspace visual tree rather than a platform popup. At the 1440 × 900 capture size its complete border, actions, progress, and shadow remain inside the window, above the status bar.
+- The status informer uses the compact semantic text token and Fluent's `ArrowSort`, the product icon-library match for the requested Lucide `arrow-up-down` shape.
+- A valid provider-neutral file drag now paints a dashed accent outline around the receiving file panel. A hovered directory gets its own accent selection state, and the queued destination is that directory rather than the panel's current location.
+- Destination-folder routing is guarded at the view-model boundary: a drop folder must belong to the selected provider and authority. The same request path continues to serve local, SFTP, and other file-capable transports.
+- The deterministic harness now has a dedicated `workspace-transfers` state so future status-card regressions can be captured without touching user storage or live connections.
+- Regression evidence: the complete desktop solution builds with zero warnings, all 821 app tests pass, and all 190 architecture tests pass.
+- Remaining visual check: the capture harness does not synthesize an operating-system drag session, so the dashed panel outline and per-folder hover treatment still need one live pointer pass after restart. Their compiled XAML presence and folder-routing semantics are automated, but that is not relabeled as visual evidence.
 
 final result: blocked
 

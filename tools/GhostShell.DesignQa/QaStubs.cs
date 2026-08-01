@@ -141,14 +141,58 @@ internal sealed class MemoryOnlySecretVault : ISecretVault
 
 internal sealed class EmptyFileClients : IFilePanelClient, IFileTransferQueueClient
 {
+    private readonly List<FilePanelTransferSnapshot> _transfers = [];
+
     public IReadOnlyList<FileProviderProfileDescriptor> Profiles => [];
 
-    public IReadOnlyList<FilePanelTransferSnapshot> Transfers => [];
+    public IReadOnlyList<FilePanelTransferSnapshot> Transfers => _transfers;
 
-    public event EventHandler? TransfersChanged
+    public event EventHandler? TransfersChanged;
+
+    public void PublishSampleTransfer()
     {
-        add { }
-        remove { }
+        var sourceRoot = new FilePanelLocation(
+            "qa.files.source",
+            "source",
+            new FilePanelAddress.Hierarchical(FilePanelPath.Root));
+        var destinationRoot = new FilePanelLocation(
+            "qa.files.destination",
+            "destination",
+            new FilePanelAddress.Hierarchical(FilePanelPath.Root));
+        var source = sourceRoot
+            .Child(new FilePanelPathSegment("Archive.zip"));
+        var destination = destinationRoot
+            .Child(new FilePanelPathSegment("Archive.zip"));
+        var request = new FilePanelTransferRequest(
+            source,
+            destination,
+            FilePanelTransferOperation.Copy,
+            FilePanelConflictPolicy.KeepBoth);
+        _transfers.Add(new FilePanelTransferSnapshot(
+            new FilePanelTransferId(
+                Guid.Parse("e3c4b9cc-96f1-4eb4-8220-cb760c970ae3")),
+            request,
+            destination,
+            FilePanelTransferState.Running,
+            "Writing destination",
+            700_000_000,
+            5_000_000_000,
+            null,
+            new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 31, 12, 0, 1, TimeSpan.Zero),
+            null));
+        TransfersChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Reset()
+    {
+        if (_transfers.Count == 0)
+        {
+            return;
+        }
+
+        _transfers.Clear();
+        TransfersChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public ValueTask<FilePanelResult<FilePanelPage>> ListAsync(

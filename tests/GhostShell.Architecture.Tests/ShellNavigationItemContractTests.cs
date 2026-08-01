@@ -45,6 +45,21 @@ public sealed class ShellNavigationItemContractTests
         Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Navigation_label_uses_the_native_sidebar_text_scale_and_inherited_typeface()
+    {
+        var component = LoadComponent();
+        var label = Assert.Single(
+            component.Descendants(),
+            element => element.Name.LocalName == "TextBlock");
+
+        Assert.Equal(
+            "{DynamicResource ShellFontSize13}",
+            AttributeValue(label, "FontSize"));
+        Assert.Null(AttributeValue(label, "FontFamily"));
+        Assert.Null(AttributeValue(label, "FontWeight"));
+    }
+
     private static int CountItems(string view)
     {
         var document = XDocument.Load(Path.Combine(
