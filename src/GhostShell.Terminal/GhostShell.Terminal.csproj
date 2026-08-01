@@ -7,13 +7,13 @@
 
   <ItemGroup>
     <PackageReference Include="Porta.Pty" Version="1.0.7" />
-    <PackageReference Include="XTerm.NET" Version="1.0.15" />
   </ItemGroup>
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
 </Project>

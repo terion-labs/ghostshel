@@ -6,6 +6,17 @@ namespace GhostShell.App.Tests;
 public sealed class TerminalProfileEditorViewModelTests
 {
     [Fact]
+    public void Bundled_terminal_family_is_always_available_in_the_editor()
+    {
+        var editor = new TerminalProfileEditorViewModel(
+            DefaultProfile("Unavailable custom family"),
+            expectedRevision: 1);
+
+        Assert.Contains("JetBrains Mono", editor.FontFamilies);
+        Assert.Contains("Unavailable custom family", editor.FontFamilies);
+    }
+
+    [Fact]
     public void SaveRequestBuildsCompleteRendererProfileAndPreservesIdentity()
     {
         var original = DefaultProfile();
@@ -123,10 +134,10 @@ public sealed class TerminalProfileEditorViewModelTests
         Assert.Equal(DefaultProfile().KeymapId, editor.CreateSaveRequest().Profile.KeymapId);
     }
 
-    private static TerminalProfile DefaultProfile() => new(
+    private static TerminalProfile DefaultProfile(string fontFamily = "JetBrains Mono") => new(
         new TerminalProfileId("terminal-editor-test"),
         "Terminal editor test",
-        "JetBrains Mono",
+        fontFamily,
         14,
         1.4,
         TerminalCursorStyle.Block,

@@ -63,6 +63,107 @@ public sealed class ManagedTerminalSurfaceTests
     }
 
     [Fact]
+    public async Task Physical_key_events_preserve_layout_text_actions_and_consumed_modifiers()
+    {
+        var sink = new RecordingInputSink();
+        var surface = new ManagedTerminalSurface
+        {
+            InputSink = sink,
+            Profile = Profile(),
+        };
+
+        Assert.True(await surface.SubmitPhysicalKeyAsync(
+            Key.A,
+            PhysicalKey.A,
+            AvaloniaKeyModifiers.Shift,
+            "A",
+            TerminalKeyAction.Press));
+        Assert.True(await surface.SubmitPhysicalKeyAsync(
+            Key.A,
+            PhysicalKey.A,
+            AvaloniaKeyModifiers.Shift,
+            "A",
+            TerminalKeyAction.Repeat));
+        Assert.True(await surface.SubmitPhysicalKeyAsync(
+            Key.A,
+            PhysicalKey.A,
+            AvaloniaKeyModifiers.None,
+            keySymbol: null,
+            action: TerminalKeyAction.Release));
+
+        Assert.Equal(
+            [TerminalKeyAction.Press, TerminalKeyAction.Repeat, TerminalKeyAction.Release],
+            sink.PhysicalKeys.Select(keyEvent => keyEvent.Action));
+        var press = sink.PhysicalKeys[0];
+        Assert.Equal(TerminalPhysicalKey.A, press.PhysicalKey);
+        Assert.Equal("A", press.LogicalKey);
+        Assert.Equal("A", press.Text);
+        Assert.Equal((uint)'a', press.UnshiftedCodepoint);
+        Assert.Equal(TerminalKeyModifiers.Shift, press.Modifiers);
+        Assert.Equal(TerminalKeyModifiers.Shift, press.ConsumedModifiers);
+        Assert.Equal(string.Empty, sink.PhysicalKeys[^1].Text);
+    }
+
+    [Fact]
+    public void Physical_key_translation_matches_terminal_text_semantics()
+    {
+        var shiftedPunctuation = ManagedTerminalInput.CreatePhysicalKeyEvent(
+            Key.OemPlus,
+            PhysicalKey.Equal,
+            AvaloniaKeyModifiers.Shift,
+            "+",
+            TerminalKeyAction.Press,
+            isComposing: false);
+        var optionText = ManagedTerminalInput.CreatePhysicalKeyEvent(
+            Key.A,
+            PhysicalKey.A,
+            AvaloniaKeyModifiers.Alt,
+            "å",
+            TerminalKeyAction.Press,
+            isComposing: false);
+        var plainAlt = ManagedTerminalInput.CreatePhysicalKeyEvent(
+            Key.A,
+            PhysicalKey.A,
+            AvaloniaKeyModifiers.Alt,
+            "a",
+            TerminalKeyAction.Press,
+            isComposing: false);
+        var controlText = ManagedTerminalInput.CreatePhysicalKeyEvent(
+            Key.A,
+            PhysicalKey.A,
+            AvaloniaKeyModifiers.Control,
+            "\u0001",
+            TerminalKeyAction.Press,
+            isComposing: false);
+        var altGr = ManagedTerminalInput.CreatePhysicalKeyEvent(
+            Key.Q,
+            PhysicalKey.Q,
+            AvaloniaKeyModifiers.Control | AvaloniaKeyModifiers.Alt,
+            "@",
+            TerminalKeyAction.Press,
+            isComposing: false);
+        var shiftedCyrillic = ManagedTerminalInput.CreatePhysicalKeyEvent(
+            Key.Z,
+            PhysicalKey.Z,
+            AvaloniaKeyModifiers.Shift,
+            "Я",
+            TerminalKeyAction.Press,
+            isComposing: false);
+
+        Assert.Equal((uint)'=', shiftedPunctuation.UnshiftedCodepoint);
+        Assert.Equal(TerminalKeyModifiers.Shift, shiftedPunctuation.ConsumedModifiers);
+        Assert.Equal(TerminalKeyModifiers.Alt, optionText.ConsumedModifiers);
+        Assert.Equal(TerminalKeyModifiers.None, plainAlt.ConsumedModifiers);
+        Assert.Equal("a", controlText.Text);
+        Assert.Equal(TerminalKeyModifiers.None, controlText.ConsumedModifiers);
+        Assert.Equal(
+            TerminalKeyModifiers.Control | TerminalKeyModifiers.Alt,
+            altGr.ConsumedModifiers);
+        Assert.Equal((uint)'я', shiftedCyrillic.UnshiftedCodepoint);
+        Assert.Equal(TerminalKeyModifiers.Shift, shiftedCyrillic.ConsumedModifiers);
+    }
+
+    [Fact]
     public async Task SelectedKeymapControlsCopyAndPasteInsteadOfPlatformHardCoding()
     {
         var sink = new RecordingInputSink
@@ -630,6 +731,9 @@ public sealed class ManagedTerminalSurfaceTests
                 palette.Background.Blue),
             frame.Cells[1].Background);
         Assert.True(frame.Cells[0].IsSelected);
+        Assert.False(frame.Cells[0].UsesDefaultBackground);
+        Assert.True(frame.Cells[1].UsesDefaultBackground);
+        Assert.False(frame.Cells[2].UsesDefaultBackground);
         Assert.Equal("https://example.test", frame.Cells[0].Hyperlink);
         Assert.Equal(
             Avalonia.Media.Color.FromRgb(
@@ -643,6 +747,147 @@ public sealed class ManagedTerminalSurfaceTests
                 palette.Foreground.Green,
                 palette.Foreground.Blue),
             frame.Cells[0].Foreground);
+    }
+
+    [Fact]
+    public void Rich_layout_preserves_terminal_cursor_underlines_and_kitty_layers()
+    {
+        var palette = TerminalPalette.GhostShellDark;
+        var underlineColor = new TerminalCellColor(TerminalColorMode.Rgb, 0x12AB34);
+        var imageKey = new TerminalKittyImageKey(7, 11);
+        var image = new TerminalKittyImageContent(
+            imageKey,
+            ImageNumber: 4,
+            PixelWidth: 1,
+            PixelHeight: 1,
+            TerminalKittyImagePixelFormat.Rgba,
+            new byte[] { 1, 2, 3, 255 });
+        var placement = new TerminalKittyPlacement(
+            imageKey,
+            PlacementId: 9,
+            IsVirtual: false,
+            ZIndex: -1,
+            PixelOffsetX: 0,
+            PixelOffsetY: 0,
+            new TerminalKittySourceRectangle(0, 0, 1, 1),
+            new TerminalKittyPlacementGeometry(0, 0, 1, 1, 1, 1));
+        var cells = new TerminalRenderCell[]
+        {
+            new(
+                "A",
+                TerminalRenderCellWidth.Narrow,
+                TerminalCellColor.Default,
+                TerminalCellColor.Default,
+                TerminalRenderCellStyle.Bold | TerminalRenderCellStyle.Italic,
+                TerminalUnderlineKind.Curly,
+                underlineColor,
+                Hyperlink: "https://example.test"),
+            new(
+                "界",
+                TerminalRenderCellWidth.Wide,
+                new TerminalCellColor(TerminalColorMode.Rgb, 0x112233),
+                TerminalCellColor.Default),
+            new(
+                string.Empty,
+                TerminalRenderCellWidth.SpacerTail,
+                TerminalCellColor.Default,
+                TerminalCellColor.Default),
+            new(
+                "B",
+                TerminalRenderCellWidth.Narrow,
+                TerminalCellColor.Default,
+                TerminalCellColor.Default),
+        };
+        var source = new TerminalRenderFrame(
+            Revision: 5,
+            Rows: 1,
+            Columns: 4,
+            [new TerminalRenderRow(0, cells)],
+            new TerminalRenderCursor(
+                TerminalCursorVisualStyle.Underline,
+                IsVisible: true,
+                IsBlinking: true,
+                IsPasswordInput: false,
+                ViewportRow: 0,
+                ViewportColumn: 2,
+                IsWideCharacterTail: true,
+                Color: new TerminalCellColor(TerminalColorMode.Rgb, 0x445566)),
+            new TerminalRenderDelta(TerminalRenderDamageKind.Full),
+            new TerminalKittyGraphicsFrame(3, [placement], [image]));
+        var metrics = TerminalCellMetrics.Measure(new Size(200, 80), Profile());
+
+        var frame = TerminalRenderLayout.Create(source, Profile(), metrics);
+
+        Assert.Equal(4, frame.Cells.Count);
+        Assert.Equal(2, frame.Cells[1].Width);
+        Assert.Empty(frame.Cells[2].Text);
+        Assert.Equal(TerminalUnderlineKind.Curly, frame.Cells[0].Underline);
+        Assert.Equal(Avalonia.Media.Color.FromRgb(0x12, 0xAB, 0x34), frame.Cells[0].UnderlineColor);
+        Assert.True(frame.Cells[0].Style.HasFlag(TerminalRenderCellStyle.Bold));
+        Assert.True(frame.Cells[0].Style.HasFlag(TerminalRenderCellStyle.Italic));
+        Assert.True(frame.Cells[0].UsesDefaultBackground);
+        Assert.True(frame.Cells[1].UsesDefaultBackground);
+        Assert.Equal((0, 1, 2), (frame.Cursor.Row, frame.Cursor.Column, frame.Cursor.Width));
+        Assert.Equal(TerminalCursorVisualStyle.Underline, frame.Cursor.VisualStyle);
+        Assert.True(frame.Cursor.IsBlinking);
+        Assert.Equal(Avalonia.Media.Color.FromRgb(0x44, 0x55, 0x66), frame.Cursor.Color);
+        Assert.Same(source.KittyGraphics, frame.KittyGraphics);
+        Assert.Equal(TerminalKittyPlacementLayer.BelowText, placement.Layer);
+        Assert.Equal(
+            Avalonia.Media.Color.FromRgb(
+                palette.Background.Red,
+                palette.Background.Green,
+                palette.Background.Blue),
+            frame.Cells[1].Background);
+    }
+
+    [Fact]
+    public void Background_transparency_is_limited_to_unmodified_default_cells()
+    {
+        var cells = new TerminalRenderCell[]
+        {
+            new(
+                "D",
+                TerminalRenderCellWidth.Narrow,
+                TerminalCellColor.Default,
+                TerminalCellColor.Default),
+            new(
+                "A",
+                TerminalRenderCellWidth.Narrow,
+                TerminalCellColor.Default,
+                new TerminalCellColor(TerminalColorMode.Rgb, 0x112233)),
+            new(
+                "I",
+                TerminalRenderCellWidth.Narrow,
+                TerminalCellColor.Default,
+                TerminalCellColor.Default,
+                TerminalRenderCellStyle.Inverse),
+            new(
+                "S",
+                TerminalRenderCellWidth.Narrow,
+                TerminalCellColor.Default,
+                TerminalCellColor.Default,
+                IsSelected: true),
+        };
+        var source = new TerminalRenderFrame(
+            Revision: 1,
+            Rows: 1,
+            Columns: cells.Length,
+            [new TerminalRenderRow(0, cells)],
+            new TerminalRenderCursor(
+                TerminalCursorVisualStyle.Block,
+                IsVisible: false,
+                IsBlinking: false,
+                IsPasswordInput: false),
+            new TerminalRenderDelta(TerminalRenderDamageKind.Full),
+            TerminalKittyGraphicsFrame.Empty);
+        var metrics = TerminalCellMetrics.Measure(new Size(240, 80), Profile());
+
+        var frame = TerminalRenderLayout.Create(source, Profile(), metrics);
+
+        Assert.Equal(
+            [true, false, false, false],
+            frame.Cells.Select(cell => cell.UsesDefaultBackground));
     }
 
     [Fact]
@@ -692,6 +937,38 @@ public sealed class ManagedTerminalSurfaceTests
             new Point(20, 20),
             AvaloniaKeyModifiers.None));
         Assert.Single(sink.Mouse);
+    }
+
+    [Fact]
+    public async Task Plain_pointer_click_clears_selection_without_creating_a_selected_cell()
+    {
+        var sink = new RecordingInputSink();
+        var surface = CreateSelectionSurface(sink);
+        var click = surface.Metrics.CellBounds(2, 4).Center;
+
+        surface.BeginLocalSelectionGesture(click);
+        Assert.False(await surface.UpdateLocalSelectionGestureAsync(click));
+        Assert.True(await surface.CompleteLocalSelectionGestureAsync(click));
+
+        var selection = Assert.Single(sink.Selections);
+        Assert.Equal(TerminalSelectionPhase.Clear, selection.Phase);
+    }
+
+    [Fact]
+    public async Task Pointer_drag_starts_updates_and_ends_a_selection()
+    {
+        var sink = new RecordingInputSink();
+        var surface = CreateSelectionSurface(sink);
+        var start = surface.Metrics.CellBounds(2, 4).Center;
+        var end = surface.Metrics.CellBounds(4, 12).Center;
+
+        surface.BeginLocalSelectionGesture(start);
+        Assert.True(await surface.UpdateLocalSelectionGestureAsync(end));
+        Assert.True(await surface.CompleteLocalSelectionGestureAsync(end));
+
+        Assert.Equal(
+            [TerminalSelectionPhase.Start, TerminalSelectionPhase.Update, TerminalSelectionPhase.End],
+            sink.Selections.Select(selection => selection.Phase));
     }
 
     [Fact]
@@ -787,25 +1064,17 @@ public sealed class ManagedTerminalSurfaceTests
     }
 
     [Fact]
-    public void Selects_the_matching_platform_renderer()
+    public void Presentation_is_always_the_managed_application_renderer()
     {
-        Assert.Equal(
-            TerminalPresentationKind.Native,
-            TerminalPresentationSelector.Select(DesktopTerminalPlatform.MacOs));
-        Assert.Equal(
-            TerminalPresentationKind.Managed,
-            TerminalPresentationSelector.Select(DesktopTerminalPlatform.Windows));
-        Assert.Equal(
-            TerminalPresentationKind.Managed,
-            TerminalPresentationSelector.Select(DesktopTerminalPlatform.Linux));
+        var host = new TerminalPresentationHost();
+
+        Assert.IsType<ManagedTerminalSessionHost>(host.Presentation);
     }
 
     [Fact]
     public async Task Managed_presentation_contains_only_the_application_renderer()
     {
-        var host = new TerminalPresentationHost(TerminalPresentationKind.Managed);
-
-        Assert.Equal(TerminalPresentationKind.Managed, host.PresentationKind);
+        var host = new TerminalPresentationHost();
         var managed = Assert.IsType<ManagedTerminalSessionHost>(host.Presentation);
         var sink = new RecordingInputSink
         {
@@ -842,6 +1111,19 @@ public sealed class ManagedTerminalSurfaceTests
             writeAccess,
             TerminalPasteSafetyPolicy.ProtectUnsafeIncludingBracketed),
         linkPolicy: linkPolicy);
+
+    private static ManagedTerminalSurface CreateSelectionSurface(RecordingInputSink sink)
+    {
+        var surface = new ManagedTerminalSurface
+        {
+            InputSink = sink,
+            Profile = Profile(fontSize: 10),
+        };
+        surface.Measure(new Size(400, 160));
+        surface.Arrange(new Rect(0, 0, 400, 160));
+        surface.UpdateSnapshot(Snapshot(mouseTracking: false, columns: 60, rows: 10));
+        return surface;
+    }
 
     private static KeymapProfile Keymap(params CommandBinding[] bindings) => new(
         new KeymapProfileId("terminal.custom"),
@@ -907,6 +1189,8 @@ public sealed class ManagedTerminalSurfaceTests
 
         public List<TerminalViewportScrollInput> Scrolls { get; } = [];
 
+        public List<TerminalPhysicalKeyEvent> PhysicalKeys { get; } = [];
+
         public List<TerminalSelectionInput> Selections { get; } = [];
 
         public List<TerminalPasteInput> Pastes { get; } = [];
@@ -939,6 +1223,15 @@ public sealed class ManagedTerminalSurfaceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Keys.Add(keyStroke);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask SendPhysicalKeyAsync(
+            TerminalPhysicalKeyEvent keyEvent,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            PhysicalKeys.Add(keyEvent);
             return ValueTask.CompletedTask;
         }
 

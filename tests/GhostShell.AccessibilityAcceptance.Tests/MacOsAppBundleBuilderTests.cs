@@ -87,6 +87,33 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.True(File.Exists(Path.Combine(
             output,
             "Contents",
+            "Resources",
+            "Licenses",
+            "JetBrainsMono-OFL.txt")));
+        Assert.True(File.Exists(Path.Combine(
+            output,
+            "Contents",
+            "Resources",
+            "Licenses",
+            "Native",
+            "terminal-font-assets.json")));
+        Assert.True(File.Exists(Path.Combine(
+            output,
+            "Contents",
+            "Resources",
+            "Licenses",
+            "Native",
+            "terminal-font-assets-build-receipt.json")));
+        Assert.True(File.Exists(Path.Combine(
+            output,
+            "Contents",
+            "MacOS",
+            "fonts",
+            "JetBrainsMono",
+            "JetBrainsMono-BoldItalic.ttf")));
+        Assert.True(File.Exists(Path.Combine(
+            output,
+            "Contents",
             "MacOS",
             "GhostShell.Agent.dll")));
         Assert.True(File.Exists(Path.Combine(
@@ -125,9 +152,6 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             _evidenceInputs[publish].NuGetPackageRoot,
             spdxText,
             StringComparison.Ordinal);
-        Assert.Contains("libintl", spdxText, StringComparison.Ordinal);
-        Assert.Contains("GPL", spdxText, StringComparison.Ordinal);
-        Assert.Contains("OFL", spdxText, StringComparison.Ordinal);
         using (var document = JsonDocument.Parse(spdxText))
         {
             Assert.Equal(
@@ -142,7 +166,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 .GetProperty("packages")
                 .EnumerateArray()
                 .ToArray();
-            Assert.Equal(20, packages.Length);
+            Assert.Equal(19, packages.Length);
             AssertProjectPackage(
                 packages,
                 "GhostShell.Agent",
@@ -163,13 +187,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 packages,
                 "GhostShell.Mcp",
                 "GhostShell.Mcp.dll");
-            Assert.Equal(
-                2,
-                packages.Count(package =>
-                    package.GetProperty("name").GetString()
-                        is "Ghostty" or "GhostSHELL Ghostty shim"
-                    && package.GetProperty("licenseDeclared").GetString()
-                        == "NOASSERTION"));
+            Assert.Single(packages, package =>
+                package.GetProperty("name").GetString() == "libghostty-vt"
+                && package.GetProperty("licenseDeclared").GetString() == "MIT");
             Assert.Equal(
                 "NOASSERTION",
                 packages.Single(package =>
@@ -185,7 +205,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 relationship.GetProperty("relationshipType").GetString()
                 == "DESCRIBES");
             Assert.Equal(
-                19,
+                18,
                 relationships.Count(relationship =>
                     relationship.GetProperty("relationshipType").GetString()
                     == "DEPENDS_ON"));
@@ -744,8 +764,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
     }
 
     [Theory]
-    [InlineData("libghostshell-ghostty.dylib")]
-    [InlineData("libghostty.dylib")]
+    [InlineData("libghostty-vt.dylib")]
     [InlineData("GHOSTTY-LICENSE")]
     [InlineData("THIRD-PARTY-NOTICES.md")]
     [InlineData("DOTNET-LICENSE.txt")]
@@ -766,12 +785,11 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.False(Directory.Exists(output));
     }
 
-    [Theory]
-    [InlineData("ghostty")]
-    [InlineData("terminfo")]
-    public void Builder_fails_closed_when_native_resources_are_empty(string directory)
+    [Fact]
+    public void Builder_fails_closed_when_shell_integration_resources_are_empty()
     {
         var publish = CreatePublishPayload();
+        const string directory = "ghostty";
         Directory.Delete(Path.Combine(publish, directory), recursive: true);
         Directory.CreateDirectory(Path.Combine(publish, directory));
         var output = OutputPath();
@@ -780,7 +798,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             new MacOsAppBundleBuilder().Build(
                 Request(publish, output)));
 
-        Assert.Contains(directory, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("shell-integration", exception.Message, StringComparison.Ordinal);
         Assert.False(Directory.Exists(output));
     }
 
@@ -1024,8 +1042,10 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "--version", "1.2.3",
             "--build-version", "42",
             "--component-catalog", "/repo/licenses/managed-components.json",
-            "--native-component-catalog", "/repo/licenses/native-macos-components.json",
-            "--native-build-receipt", "/repo/native/native-macos-build-receipt.json",
+            "--native-component-catalog", "/repo/licenses/native-terminal-components.json",
+            "--native-build-receipt", "/repo/native/native-terminal-build-receipt.json",
+            "--font-assets-catalog", "/repo/licenses/terminal-font-assets.json",
+            "--font-assets-build-receipt", "/repo/native/terminal-font-assets-build-receipt.json",
             "--nuget-packages", "/packages",
         ]);
 
@@ -1034,11 +1054,17 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "/repo/licenses/managed-components.json",
             command.ComponentCatalogPath);
         Assert.Equal(
-            "/repo/licenses/native-macos-components.json",
+            "/repo/licenses/native-terminal-components.json",
             command.NativeComponentCatalogPath);
         Assert.Equal(
-            "/repo/native/native-macos-build-receipt.json",
+            "/repo/native/native-terminal-build-receipt.json",
             command.NativeBuildReceiptPath);
+        Assert.Equal(
+            "/repo/licenses/terminal-font-assets.json",
+            command.FontAssetsCatalogPath);
+        Assert.Equal(
+            "/repo/native/terminal-font-assets-build-receipt.json",
+            command.FontAssetsBuildReceiptPath);
         Assert.Equal("/packages", command.NuGetPackageRoot);
         Assert.Throws<PackagingUsageException>(() => MacOsPackagingCommand.Parse(
         [
@@ -1047,8 +1073,8 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "--version", "1.2.3",
             "--build-version", "42",
             "--component-catalog", "/repo/licenses/managed-components.json",
-            "--native-component-catalog", "/repo/licenses/native-macos-components.json",
-            "--native-build-receipt", "/repo/native/native-macos-build-receipt.json",
+            "--native-component-catalog", "/repo/licenses/native-terminal-components.json",
+            "--native-build-receipt", "/repo/native/native-terminal-build-receipt.json",
             "--nuget-packages", "/packages",
         ]));
     }
@@ -1233,15 +1259,11 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Directory.CreateDirectory(directory);
         WriteFile(directory, "GhostShell", "executable");
         WriteFile(directory, "GhostShell.runtimeconfig.json", "{}");
-        WriteFile(directory, "libghostshell-ghostty.dylib", "shim");
-        WriteFile(directory, "libghostty.dylib", "ghostty");
         WriteFile(directory, "GHOSTTY-LICENSE", new string('L', 2_048));
         WriteFile(directory, "THIRD-PARTY-NOTICES.md", "notices");
         WriteFile(directory, "DOTNET-LICENSE.txt", "dotnet license");
         WriteFile(directory, "DOTNET-THIRD-PARTY-NOTICES.txt", "dotnet notices");
         WriteFile(directory, "sentinel.txt", "publish sentinel");
-        WriteFile(directory, Path.Combine("ghostty", "themes", "default"), "theme");
-        WriteFile(directory, Path.Combine("terminfo", "78", "xterm-ghostty"), "terminfo");
         foreach (var assemblyName in ProjectAssemblyNames)
         {
             WriteFile(
@@ -1282,6 +1304,8 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             evidence.CatalogPath,
             evidence.NativeCatalogPath,
             evidence.NativeReceiptPath,
+            evidence.FontCatalogPath,
+            evidence.FontReceiptPath,
             evidence.NuGetPackageRoot);
     }
 
@@ -1473,9 +1497,6 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                     ["releaseBlockers"] = new[]
                     {
                         "SMBLibrary release evidence remains unresolved.",
-                        "Ghostty libintl release evidence remains unresolved.",
-                        "Ghostty GPL resource evidence remains unresolved.",
-                        "Embedded font OFL evidence remains unresolved.",
                         "The complete native dependency graph remains unresolved.",
                     },
                     ["dependencies"] = catalogDependencies
@@ -1487,24 +1508,14 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                     {
                         new Dictionary<string, object?>
                         {
-                            ["identity"] = "GhostSHELL Ghostty shim/1.2.3",
+                            ["identity"] = "libghostty-vt/0.1.0-dev",
                             ["kind"] = "native",
-                            ["file"] = "libghostshell-ghostty.dylib",
-                            ["licenseDeclared"] = "NOASSERTION",
-                            ["downloadLocation"] = "NOASSERTION",
-                            ["comment"] =
-                                "Test shim with no aggregate license conclusion.",
-                        },
-                        new Dictionary<string, object?>
-                        {
-                            ["identity"] = "Ghostty/1.3.1",
-                            ["kind"] = "native",
-                            ["file"] = "libghostty.dylib",
-                            ["licenseDeclared"] = "NOASSERTION",
+                            ["file"] = "libghostty-vt.dylib",
+                            ["licenseDeclared"] = "MIT",
                             ["downloadLocation"] =
                                 "https://github.com/ghostty-org/ghostty/tree/test",
                             ["comment"] =
-                                "Test Ghostty payload with unresolved native provenance.",
+                                "Test libghostty-vt payload with unresolved transitive provenance.",
                             ["licenseEvidenceFile"] = "GHOSTTY-LICENSE",
                             ["licenseEvidenceSha256"] = Convert.ToHexString(
                                     SHA256.HashData(ghosttyLicense))
@@ -1515,7 +1526,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 },
                 new JsonSerializerOptions { WriteIndented = true }),
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        var nativeEvidence = NativeMacOsTestProvenance.AddToPublish(
+        var nativeEvidence = NativeTerminalTestProvenance.AddToPublish(
             publishDirectory,
             fixtureDirectory);
         _evidenceInputs.Add(
@@ -1524,7 +1535,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 catalogPath,
                 packageRoot,
                 nativeEvidence.CatalogPath,
-                nativeEvidence.ReceiptPath));
+                nativeEvidence.ReceiptPath,
+                nativeEvidence.FontCatalogPath,
+                nativeEvidence.FontReceiptPath));
     }
 
     private static Dictionary<string, object?> CatalogPackage(
@@ -1687,7 +1700,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         string CatalogPath,
         string NuGetPackageRoot,
         string NativeCatalogPath,
-        string NativeReceiptPath);
+        string NativeReceiptPath,
+        string FontCatalogPath,
+        string FontReceiptPath);
 
     private sealed record NuGetPackageFixture(
         string Id,

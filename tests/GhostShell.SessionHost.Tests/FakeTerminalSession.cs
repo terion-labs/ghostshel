@@ -79,6 +79,12 @@ internal sealed class FakeTerminalSession(
 
     public TerminalKeyStroke? LastKeyStroke { get; private set; }
 
+    public TerminalPhysicalKeyEvent? LastPhysicalKeyEvent { get; private set; }
+
+    public int FocusCount { get; private set; }
+
+    public int BlurCount { get; private set; }
+
     public TerminalCharacterChord? LastChord { get; private set; }
 
     public int ChordCount { get; private set; }
@@ -173,6 +179,14 @@ internal sealed class FakeTerminalSession(
     public ValueTask FocusAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        FocusCount++;
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask BlurAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        BlurCount++;
         return ValueTask.CompletedTask;
     }
 
@@ -215,6 +229,16 @@ internal sealed class FakeTerminalSession(
     {
         LastKeyStroke = keyStroke;
         cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask SendPhysicalKeyAsync(
+        TerminalPhysicalKeyEvent keyEvent,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(keyEvent);
+        cancellationToken.ThrowIfCancellationRequested();
+        LastPhysicalKeyEvent = keyEvent;
         return ValueTask.CompletedTask;
     }
 

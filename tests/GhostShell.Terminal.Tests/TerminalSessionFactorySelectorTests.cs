@@ -3,18 +3,13 @@ namespace GhostShell.Terminal.Tests;
 public sealed class TerminalSessionFactorySelectorTests
 {
     [Fact]
-    public void Macos_selects_ghostty()
+    public void Every_supported_desktop_selects_the_cross_platform_ghostty_vt_engine()
     {
-        Assert.IsType<GhosttyTerminalSessionFactory>(
+        Assert.IsType<GhosttyVtTerminalSessionFactory>(
             TerminalSessionFactorySelector.Create(TerminalRuntimePlatform.MacOs));
-    }
-
-    [Fact]
-    public void Windows_and_linux_select_the_portable_backend()
-    {
-        Assert.IsType<PortableTerminalSessionFactory>(
+        Assert.IsType<GhosttyVtTerminalSessionFactory>(
             TerminalSessionFactorySelector.Create(TerminalRuntimePlatform.Windows));
-        Assert.IsType<PortableTerminalSessionFactory>(
+        Assert.IsType<GhosttyVtTerminalSessionFactory>(
             TerminalSessionFactorySelector.Create(TerminalRuntimePlatform.Linux));
     }
 

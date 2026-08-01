@@ -41,6 +41,7 @@ public sealed class TerminalSessionPortContractsTests
         Assert.Equal(
             [
                 "AttachRendererAsync",
+                "BlurAsync",
                 "DetachRendererAsync",
                 "FocusAsync",
                 "UpdateRenderProfileAsync",
@@ -55,6 +56,7 @@ public sealed class TerminalSessionPortContractsTests
                 "SendChordAsync",
                 "SendKeyAsync",
                 "SendMouseAsync",
+                "SendPhysicalKeyAsync",
                 "WaitForChangeAsync",
                 "WaitForStableAsync",
                 "WaitForTextAsync",

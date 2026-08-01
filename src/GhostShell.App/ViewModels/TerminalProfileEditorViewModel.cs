@@ -1,4 +1,5 @@
 using Avalonia.Media;
+using GhostShell.App.Controls;
 using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
@@ -121,15 +122,16 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
         ["Black", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "White"];
 
     /// <summary>
-    /// Font families installed on this host, with the profile's own family kept
-    /// in the list even when it is not installed, so selecting nothing silently
-    /// is impossible and the stored value stays visible.
+    /// Fixed-pitch families available to the renderer, with the bundled family
+    /// always present and the profile's current value retained for review even
+    /// when it is unavailable on this host.
     /// </summary>
     public IReadOnlyList<string> FontFamilies { get; }
 
     private static IReadOnlyList<string> BuildFontFamilies(string current)
     {
         var installed = InstalledFontFamilies();
+        installed.Add(GhostShellTerminalFontCollection.FamilyName);
         if (!string.IsNullOrWhiteSpace(current))
         {
             installed.Add(current);
@@ -144,13 +146,28 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
     /// <summary>
     /// The editor is also constructed where no UI platform is running — tests and
     /// tooling — and the font manager only exists once one is. Without a host to
-    /// ask, the stored family is the only one that can be offered.
+    /// ask, the bundled and stored families are the only ones that can be offered.
     /// </summary>
     private static List<string> InstalledFontFamilies()
     {
         try
         {
-            return FontManager.Current.SystemFonts
+            var fontManager = FontManager.Current;
+            return fontManager.SystemFonts
+                .Where(family =>
+                {
+                    try
+                    {
+                        return fontManager.TryGetGlyphTypeface(
+                                new Typeface(family),
+                                out var glyphTypeface)
+                            && glyphTypeface.Metrics.IsFixedPitch;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        return false;
+                    }
+                })
                 .Select(family => family.Name)
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .ToList();

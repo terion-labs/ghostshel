@@ -12,7 +12,7 @@ public sealed class RemoteTerminalIdleClassifierTests
     {
         var state = State(cursorColumn);
 
-        Assert.True(RemoteTerminalIdleClassifier.IsAtShellPrompt(line, state));
+        Assert.True(IsAtShellPrompt(line, state));
     }
 
     [Theory]
@@ -26,7 +26,7 @@ public sealed class RemoteTerminalIdleClassifierTests
     {
         var state = State(cursorColumn);
 
-        Assert.False(RemoteTerminalIdleClassifier.IsAtShellPrompt(screen, state));
+        Assert.False(IsAtShellPrompt(screen, state));
     }
 
     [Fact]
@@ -37,18 +37,30 @@ public sealed class RemoteTerminalIdleClassifierTests
             IsAlternateScreen = true,
         };
 
-        Assert.False(RemoteTerminalIdleClassifier.IsAtShellPrompt(
-            "root@ubuntu:~# ",
-            state));
+        Assert.False(IsAtShellPrompt("root@ubuntu:~# ", state));
     }
 
-    private static GhosttyTerminalScreenState State(int cursorColumn) =>
+    private static bool IsAtShellPrompt(string screen, ScreenState state) =>
+        RemoteTerminalIdleClassifier.IsAtShellPrompt(
+            screen,
+            state.CursorRow,
+            state.CursorColumn,
+            state.IsAlternateScreen,
+            state.IsBracketedPasteEnabled,
+            state.IsMouseTrackingEnabled);
+
+    private static ScreenState State(int cursorColumn) =>
         new(
-            Rows: 24,
-            Columns: 80,
             CursorRow: 0,
             CursorColumn: cursorColumn,
             IsAlternateScreen: false,
             IsBracketedPasteEnabled: false,
             IsMouseTrackingEnabled: false);
+
+    private readonly record struct ScreenState(
+        int CursorRow,
+        int CursorColumn,
+        bool IsAlternateScreen,
+        bool IsBracketedPasteEnabled,
+        bool IsMouseTrackingEnabled);
 }

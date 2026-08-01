@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.Input;
 using Avalonia.Media;
 using GhostShell.Application;
@@ -10,8 +9,9 @@ using GhostShell.Core;
 namespace GhostShell.App.Controls;
 
 /// <summary>
-/// Selects the platform terminal presentation while preserving one XAML-facing control
-/// contract. Durable definitions and view models never branch on the operating system.
+/// Presents every terminal through the Avalonia renderer while preserving one
+/// XAML-facing control contract. The operating system no longer changes the view
+/// hierarchy: platform differences stop at the session and input-adapter boundary.
 /// </summary>
 public sealed class TerminalPresentationHost : ContentControl
 {
@@ -33,9 +33,10 @@ public sealed class TerminalPresentationHost : ContentControl
         AvaloniaProperty.Register<TerminalPresentationHost, TerminalRenderProfileSnapshot?>(
             nameof(RenderProfile));
 
-    /// <summary>The rounded radius of the panel card hosting this terminal.</summary>
-    public static readonly StyledProperty<CornerRadius> HostCornerRadiusProperty =
-        AvaloniaProperty.Register<TerminalPresentationHost, CornerRadius>(nameof(HostCornerRadius));
+    public static readonly StyledProperty<double> BackgroundOpacityProperty =
+        AvaloniaProperty.Register<TerminalPresentationHost, double>(
+            nameof(BackgroundOpacity),
+            1);
 
     public static readonly StyledProperty<ClientId?> ClientIdProperty =
         AvaloniaProperty.Register<TerminalPresentationHost, ClientId?>(nameof(ClientId));
@@ -81,9 +82,7 @@ public sealed class TerminalPresentationHost : ContentControl
             nameof(StatusMessage),
             control => control.StatusMessage);
 
-    private readonly Control _presentation;
-    private readonly TerminalSessionHost? _nativeHost;
-    private readonly ManagedTerminalSessionHost? _managedHost;
+    private readonly ManagedTerminalSessionHost _presentation;
     private bool _isLive;
     private string? _initializationError;
     private string _statusText = "STARTING";
@@ -92,13 +91,7 @@ public sealed class TerminalPresentationHost : ContentControl
     private string _statusMessage = string.Empty;
 
     public TerminalPresentationHost()
-        : this(TerminalPresentationSelector.SelectCurrent())
     {
-    }
-
-    internal TerminalPresentationHost(TerminalPresentationKind presentationKind)
-    {
-        PresentationKind = presentationKind;
         Focusable = true;
         AutomationProperties.SetName(this, "Interactive terminal");
         AutomationProperties.SetHelpText(
@@ -107,24 +100,10 @@ public sealed class TerminalPresentationHost : ContentControl
         AutomationProperties.SetLiveSetting(this, AutomationLiveSetting.Polite);
         HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
         VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
-        if (presentationKind == TerminalPresentationKind.Native)
-        {
-            _nativeHost = new TerminalSessionHost();
-            _presentation = _nativeHost;
-            _nativeHost.NativeFocusGained += OnNativeFocusGained;
-            _nativeHost.SessionSnapshotChanged += OnSessionSnapshotChanged;
-            _nativeHost.SessionInitializationFailed += OnSessionInitializationFailed;
-            _nativeHost.StartupCommandDispatchCompleted += OnStartupCommandDispatchCompleted;
-            _nativeHost.ApplicationKeyPressed += OnApplicationKeyPressed;
-        }
-        else
-        {
-            _managedHost = new ManagedTerminalSessionHost();
-            _presentation = _managedHost;
-            _managedHost.SessionSnapshotChanged += OnSessionSnapshotChanged;
-            _managedHost.SessionInitializationFailed += OnSessionInitializationFailed;
-            _managedHost.StartupCommandDispatchCompleted += OnStartupCommandDispatchCompleted;
-        }
+        _presentation = new ManagedTerminalSessionHost();
+        _presentation.SessionSnapshotChanged += OnSessionSnapshotChanged;
+        _presentation.SessionInitializationFailed += OnSessionInitializationFailed;
+        _presentation.StartupCommandDispatchCompleted += OnStartupCommandDispatchCompleted;
 
         _presentation.PropertyChanged += OnPresentationPropertyChanged;
         Content = _presentation;
@@ -138,8 +117,6 @@ public sealed class TerminalPresentationHost : ContentControl
 
     public event EventHandler<TerminalStartupCommandDispatchEventArgs>?
         StartupCommandDispatchCompleted;
-
-    public event EventHandler<NativeRendererKeyInputEventArgs>? ApplicationKeyPressed;
 
     public ISessionHostClient? SessionClient
     {
@@ -159,10 +136,14 @@ public sealed class TerminalPresentationHost : ContentControl
         set => SetValue(RenderProfileProperty, value);
     }
 
-    public CornerRadius HostCornerRadius
+    /// <summary>
+    /// Alpha for the default terminal background only. This lets presentation
+    /// surfaces opt into translucency without fading terminal content.
+    /// </summary>
+    public double BackgroundOpacity
     {
-        get => GetValue(HostCornerRadiusProperty);
-        set => SetValue(HostCornerRadiusProperty, value);
+        get => GetValue(BackgroundOpacityProperty);
+        set => SetValue(BackgroundOpacityProperty, value);
     }
 
     public ClientId? ClientId
@@ -219,15 +200,12 @@ public sealed class TerminalPresentationHost : ContentControl
         private set => SetAndRaise(StatusMessageProperty, ref _statusMessage, value);
     }
 
-    internal TerminalPresentationKind PresentationKind { get; }
-
     internal Control Presentation => _presentation;
 
     public ValueTask SendTextAsync(
         string text,
-        CancellationToken cancellationToken = default) => _nativeHost is not null
-        ? _nativeHost.SendTextAsync(text, cancellationToken)
-        : _managedHost!.SendTextAsync(text, cancellationToken);
+        CancellationToken cancellationToken = default) =>
+        _presentation.SendTextAsync(text, cancellationToken);
 
     /// <summary>
     /// Replays application-prefix input directly to the PTY. This deliberately bypasses the
@@ -260,16 +238,9 @@ public sealed class TerminalPresentationHost : ContentControl
         {
             if (input.KeyStroke is { } keyStroke)
             {
-                if (_nativeHost is not null)
-                {
-                    await _nativeHost.SendKeyAsync(keyStroke, cancellationToken);
-                }
-                else
-                {
-                    await ((IManagedTerminalInputSink)_managedHost!).SendKeyAsync(
-                        keyStroke,
-                        cancellationToken);
-                }
+                await ((IManagedTerminalInputSink)_presentation).SendKeyAsync(
+                    keyStroke,
+                    cancellationToken);
             }
             else
             {
@@ -281,40 +252,15 @@ public sealed class TerminalPresentationHost : ContentControl
     }
 
     public ValueTask<string> ReadScreenAsync(CancellationToken cancellationToken = default) =>
-        _nativeHost is not null
-            ? _nativeHost.ReadScreenAsync(cancellationToken)
-            : _managedHost!.ReadScreenAsync(cancellationToken);
+        _presentation.ReadScreenAsync(cancellationToken);
 
     public bool TryCancelPendingPaste() =>
-        _managedHost?.TryCancelPendingPaste() == true;
+        _presentation.TryCancelPendingPaste();
 
     public bool TryCancelPendingInteraction() =>
-        _managedHost?.TryCancelPendingInteraction() == true;
+        _presentation.TryCancelPendingInteraction();
 
-    /// <summary>
-    /// Moves keyboard input to the renderer that owns the terminal input contract.
-    /// Focusing this wrapper is not sufficient after a native modal window closes:
-    /// Avalonia can retain the wrapper in the focus scope while its renderer no longer
-    /// receives keyboard events.
-    /// </summary>
-    /// <summary>
-    /// Raised when focus moves into the terminal itself. The shell marks the
-    /// owning panel active from this: a click on a native view never reaches
-    /// Avalonia's focus system, so the panel could previously only be activated
-    /// from its title bar.
-    /// </summary>
-    public event EventHandler<RoutedEventArgs>? TerminalFocusGained;
-
-    private void OnNativeFocusGained(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        TerminalFocusGained?.Invoke(this, new RoutedEventArgs());
-    }
-
-    internal bool RequestInputFocus() => _nativeHost is not null
-        ? _nativeHost.RequestInputFocus()
-        : _managedHost!.RequestInputFocus();
+    internal bool RequestInputFocus() => _presentation.RequestInputFocus();
 
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
@@ -334,7 +280,7 @@ public sealed class TerminalPresentationHost : ContentControl
             || change.Property == StartupCommandDispatcherProperty
             || change.Property == StartupCommandDispatchStateProperty
             || change.Property == RenderProfileProperty
-            || change.Property == HostCornerRadiusProperty)
+            || change.Property == BackgroundOpacityProperty)
         {
             SynchronizeChildProperties();
         }
@@ -342,28 +288,13 @@ public sealed class TerminalPresentationHost : ContentControl
 
     private void SynchronizeChildProperties()
     {
-        if (_nativeHost is not null)
-        {
-            // Presentation before the session request. Setting the request starts
-            // the attach, which captures the corner radius as it stands — assigned
-            // afterwards it would always arrive one attach too late.
-            _nativeHost.HostCornerRadius = HostCornerRadius;
-            _nativeHost.RenderProfile = RenderProfile;
-            _nativeHost.StartupCommandDispatchState = StartupCommandDispatchState;
-            _nativeHost.SessionClient = SessionClient;
-            _nativeHost.SessionRequest = SessionRequest;
-            _nativeHost.ClientId = ClientId;
-            _nativeHost.StartupCommandDispatcher = StartupCommandDispatcher;
-        }
-        else
-        {
-            _managedHost!.StartupCommandDispatchState = StartupCommandDispatchState;
-            _managedHost!.SessionClient = SessionClient;
-            _managedHost.SessionRequest = SessionRequest;
-            _managedHost.RenderProfile = RenderProfile;
-            _managedHost.ClientId = ClientId;
-            _managedHost.StartupCommandDispatcher = StartupCommandDispatcher;
-        }
+        _presentation.StartupCommandDispatchState = StartupCommandDispatchState;
+        _presentation.SessionClient = SessionClient;
+        _presentation.SessionRequest = SessionRequest;
+        _presentation.RenderProfile = RenderProfile;
+        _presentation.BackgroundOpacity = BackgroundOpacity;
+        _presentation.ClientId = ClientId;
+        _presentation.StartupCommandDispatcher = StartupCommandDispatcher;
     }
 
     private void OnPresentationPropertyChanged(
@@ -384,24 +315,12 @@ public sealed class TerminalPresentationHost : ContentControl
 
     private void SynchronizeState()
     {
-        if (_nativeHost is not null)
-        {
-            IsLive = _nativeHost.IsLive;
-            InitializationError = _nativeHost.InitializationError;
-            StatusText = _nativeHost.StatusText;
-            StatusBrush = _nativeHost.StatusBrush;
-            ShowFallback = _nativeHost.ShowFallback;
-            StatusMessage = _nativeHost.StatusMessage;
-        }
-        else
-        {
-            IsLive = _managedHost!.IsLive;
-            InitializationError = _managedHost.InitializationError;
-            StatusText = _managedHost.StatusText;
-            StatusBrush = _managedHost.StatusBrush;
-            ShowFallback = _managedHost.ShowFallback;
-            StatusMessage = _managedHost.StatusMessage;
-        }
+        IsLive = _presentation.IsLive;
+        InitializationError = _presentation.InitializationError;
+        StatusText = _presentation.StatusText;
+        StatusBrush = _presentation.StatusBrush;
+        ShowFallback = _presentation.ShowFallback;
+        StatusMessage = _presentation.StatusMessage;
 
         AutomationProperties.SetItemStatus(
             this,
@@ -432,13 +351,5 @@ public sealed class TerminalPresentationHost : ContentControl
     {
         _ = sender;
         StartupCommandDispatchCompleted?.Invoke(this, e);
-    }
-
-    private void OnApplicationKeyPressed(
-        object? sender,
-        NativeRendererKeyInputEventArgs e)
-    {
-        _ = sender;
-        ApplicationKeyPressed?.Invoke(this, e);
     }
 }

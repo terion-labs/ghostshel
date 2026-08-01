@@ -2,7 +2,7 @@
 
 **Status:** Proposed source of truth  
 **Audience:** maintainers and implementation agents  
-**Last updated:** 2026-07-28
+**Last updated:** 2026-08-01
 **Applies to:** desktop v1 and the architectural path to server and headless modes
 
 This document defines the intended product, target architecture, delivery milestones, and acceptance criteria. It is intentionally more complete than the mockups: a production application needs loading, empty, failure, permission, recovery, and accessibility states that are not drawn.
@@ -246,43 +246,108 @@ Type-specific ports add meaningful operations such as terminal input or browser 
 
 The terminal subsystem separates:
 
-1. `ITerminalProcess`: PTY lifecycle, resize, raw input, exit, environment, and connection identity;
-2. `ITerminalState`: canonical cells, cursor, modes, title, working directory, selection, scrollback, and incremental changes;
-3. `ITerminalRendererAttachment`: platform rendering/input surface attached to a terminal session;
-4. `ITerminalAutomation`: screen snapshots, exact text/key input, waits, and shell-integration events.
+1. `ITerminalProcess`: PTY lifecycle, resize, ordered input, exit, environment,
+   and connection identity;
+2. `ITerminalState`: bounded terminal state operations such as viewport,
+   selection, modes, title, working directory, and scrollback;
+3. `ITerminalRenderState`: immutable renderer-facing viewport frames with
+   revisions, row damage, live cursor state, complete cell styling, and Kitty
+   graphics content/placements;
+4. renderer attachment: the session-host lifetime and input-lease link used by
+   the Avalonia presenter, not a native child-view ownership contract;
+5. `ITerminalAutomation`: bounded screen snapshots, exact text/key input,
+   waits, and durable shell-integration events.
 
 An adapter MAY combine these internally, but the application observes the separated contract.
 
-### 6.2 libghostty strategy
+Renderer frames and automation snapshots are deliberately different. The
+renderer needs exact physical cells, image placement, cursor styling, and
+damage; agents need a bounded text/structured projection that cannot allocate
+an unbounded image or viewport payload. Neither projection exposes a Ghostty or
+PTY package type.
+
+### 6.2 libghostty-vt strategy
 
 Desktop terminal surfaces and their PTYs follow the lifetime of their owning panel session. Closing that panel/session uses the engine's graceful-close path and, when required, a standard running-process confirmation before force termination.
 
-Use full libghostty behind a small GhostSHELL native shim where it provides a suitable platform renderer. The public GhostSHELL ABI MUST remain smaller and more stable than libghostty's evolving C ABI. Windows and Linux MUST implement the same GhostSHELL terminal contract; platform code must not leak into workspaces, screens, agents, or persistence.
+All supported desktop systems use one pipeline. Porta.Pty owns the local PTY
+process and raw byte transport. libghostty-vt owns canonical terminal state,
+VT parsing, terminal protocol replies, mode-aware key/mouse/paste encoding,
+selection, and render damage. PTY output enters libghostty-vt as raw bytes;
+managed UTF-16 decoding is not an intermediate terminal state. User input and
+terminal-generated replies share one bounded ordered PTY writer.
 
-Terminal-profile propagation, additive ABI compatibility, and the exact native-versus-policy enforcement boundary are recorded in [ADR 0001](adr/0001-terminal-session-and-shim-boundary.md).
+An ordinary Avalonia control renders Application-owned frames and translates
+keyboard, pointer, focus, clipboard, and IME interaction into typed
+session-host operations on macOS, Windows, and Linux. The terminal path does
+not host Ghostty's `NSView`, use Avalonia `NativeControlHost`, hand off an
+IOSurface, or ask Ghostty to own a Metal/OpenGL surface. Avalonia therefore owns
+terminal z-order, clipping, docking overlays, focus, and floating-window
+composition.
 
-#### 6.2.1 Platform input adapters
+`TerminalRenderFrame` contains a full current viewport and explicit
+`None`/`Partial`/`Full` damage with ordered dirty rows. Cells retain
+wide/spacer roles, selection, hyperlink and semantic metadata, all supported
+styles, single/double/curly/dotted/dashed underlines, and a distinct underline
+color. The live cursor retains terminal-controlled block/bar/underline/hollow
+shape, visibility, blink, password state, wide-character-tail placement, and
+explicit color instead of being reduced to the profile fallback.
 
-Desktop input is a platform subsystem, not renderer-view glue. Each supported
-desktop backend owns a concrete adapter that translates its native event and
-text-composition APIs into libghostty input while enforcing GhostSHELL's
-physical-input authority and host-key interception.
+Kitty graphics are generation-qualified and carry decoded image content,
+source rectangles, viewport geometry, and z-order. The renderer caches content
+by image generation, draws below background/below text/above text, and retires
+stale images when the Ghostty storage generation advances. Unicode virtual
+placements use Ghostty's own placement iterator and render-placement
+calculation rather than a copied managed algorithm.
 
-The macOS adapter owns `NSEvent` translation, `NSTextInputClient` preedit and
-commit state, modifier events, intercepted-key lifetime, and the human-input
-authority epoch. The native terminal view remains AppKit's first responder and
-forwards callbacks to that adapter. Windows will derive its adapter from
-`WM_KEY*` plus TSF, and Linux from the selected Wayland/X11 keyboard and input
-method APIs.
+GhostSHELL pins Ghostty commit
+`08f039fbb3dea9c6b1cdb5ff4550666598122346`. The native build applies the
+small reviewed overlay under `native/ghostty-vt/patches` to a disposable
+checkout. It adds a size-checked OSC 133 lifecycle callback, exposes canonical
+virtual Kitty geometry and full-scrollback `ScreenSearch`, enables Ghostty's
+existing Wuffs PNG decoder for libghostty-vt, and publishes an exact extension
+ABI checked together with the complete managed import set. The C ABI and
+safe-handle lifetime remain private to
+`GhostShell.Terminal`. Updating the pin requires clean patch application,
+upstream Zig/lib-vt tests, C header validation, managed interop tests, and
+desktop conformance.
 
-Adapters MUST preserve the semantic distinction between physical keys, text
-preedit, and committed text. They MUST take ownership of committed text before
-mutating platform composition buffers. Shared cross-platform interfaces are
-extracted only after a second concrete adapter demonstrates common behavior;
-platform-specific composition semantics MUST NOT be hidden behind flags in a
-speculative universal keyboard abstraction.
+The same build stages Ghostty's reviewed Bash, Fish, and Zsh integration files
+byte-for-byte. The launch adapter changes only the child-process launch plan;
+the original launch remains the durable connection/recovery identity. OSC 133
+prompt, input, executed, and finished events are retained as typed bounded
+live-session automation events, including an optional exit code. Visible
+command boundaries are resolved from Ghostty-tracked grid references so reflow
+and scrollback do not turn screen-row inference into the semantic source of
+truth.
 
-Future server mode requires a PTY/state backend that is independent of a desktop native view. That backend may use libghostty/libghostty-vt or another library-backed implementation and is selected by an M6 ADR and feasibility spike; desktop v1 does not need to keep a terminal alive after its user-visible owner is closed.
+The superseding decision, patch boundary, and rejected native-surface options
+are recorded in [ADR 0040](adr/0040-cross-platform-libghostty-vt-terminal.md).
+
+#### 6.2.1 Managed input and composition
+
+Terminal input belongs to the same Avalonia control on every desktop. Avalonia
+key, text, pointer, wheel, focus, clipboard, and text-input-method events are
+translated into typed operations; libghostty-vt performs the terminal-mode
+encoding. The presenter preserves the semantic distinction between physical
+keys, text preedit, committed text, paste, and pointer events. It reports a
+bounds-clamped IME caret, draws preedit state, and routes committed text through
+the same input lease and human-preemption boundary as ordinary text.
+
+Application shortcuts are resolved before terminal input. A physical human
+event reacquires the exact interactive attachment lease and preempts queued
+agent work according to host policy. Programmatic text, key, chord, paste, and
+mouse operations remain typed and epoch/lease guarded; they do not synthesize
+native platform events or bypass terminal mode encoding.
+
+Host-specific differences remain at Avalonia's platform services and the
+native library/PTY distribution boundary. They must not create a second terminal
+state or a platform-only input path.
+
+Future headless/server mode can reuse the libghostty-vt state and automation
+ports without constructing an Avalonia renderer. Server ownership and retention
+still require their own lifecycle ADR, but no desktop native-view extraction is
+needed first.
 
 ### 6.3 Agent control of interactive TUIs
 
@@ -1189,7 +1254,7 @@ Ship three terminal-editing presets:
 - Windows Native;
 - Linux Native.
 
-The detected host preset is the default. Presets cover copy/paste, selection, word movement/deletion, line movement, find, font size, clear, and common shell-control expectations. Platform text-editing/hotkey information is consulted when available. Users may clone a preset and override any binding. Terminal bindings contain exactly one stroke so native and managed renderers resolve the same selected shortcuts; multi-stroke sequences and their timing/failure policy belong to the Application layer.
+The detected host preset is the default. Presets cover copy/paste, selection, word movement/deletion, line movement, find, font size, clear, and common shell-control expectations. Platform text-editing/hotkey information is consulted when available. Users may clone a preset and override any binding. Terminal bindings contain exactly one stroke so the shared libghostty-vt/Avalonia terminal path resolves selected shortcuts consistently on every desktop; multi-stroke sequences and their timing/failure policy belong to the Application layer.
 
 ### 12.3 Application keymap
 
@@ -1312,7 +1377,7 @@ All controls require accessible names, logical keyboard order, visible focus, sc
 
 ### M0 — Application and session boundaries
 
-**Implementation status: complete (2026-07-23).** The desktop composition root, typed application client, versioned protocol envelopes, in-process host, bounded event/revision model, attachments, input leases, engine-neutral terminal presenter, scope-aware close flow, dependency tests, and required ADRs are implemented. The real macOS libghostty surface and hosted File Viewer panels run through this boundary; transfer ownership and panel/tab/window close route through the same session-host lifecycle. The host owns an immutable, ID-addressed workspace/tab/panel graph per desktop window. Opening registers before presentation, tab/panel activation and structural proposals use expected revisions, UI state commits only after a validated host receipt, replacement is atomic by window, and explicit unregister/window close/client disconnect remove stale targets. Terminal and hosted-file creation validate typed graph ownership and link the live session into its panel; registration reconciles creation races from hosted state and discards client-supplied links; reconnect, exact-identity close, closed-session rejection, and authoritative-null preservation prevent stale sessions from replacing or erasing the current target. Each actual link/unlink advances the ordered graph stream. The desktop follows that stream from its accepted cursor, resumes after resynchronization, and refreshes once before retrying a mutation on a genuinely newer revision. Quick Terminal uses an independent window ownership boundary, and no graph operation is agent-authorized before M3. The decision and concurrency limitation are recorded in [ADR 0016](adr/0016-host-owned-runtime-workspace-graph.md). Deterministic tests distinguish detach, graceful close, cancellation, confirmation/force termination, engine failure, server disconnect, revision conflict, idempotent replay, stream resynchronization, creation/registration/close races, reconnect overlap, and disposal during creation.
+**Implementation status: complete (updated 2026-08-01).** The desktop composition root, typed application client, versioned protocol envelopes, in-process host, bounded event/revision model, attachments, input leases, engine-neutral terminal presenter, scope-aware close flow, dependency tests, and required ADRs are implemented. The cross-platform libghostty-vt/Avalonia terminal and hosted File Viewer panels run through this boundary; transfer ownership and panel/tab/window close route through the same session-host lifecycle. The host owns an immutable, ID-addressed workspace/tab/panel graph per desktop window. Opening registers before presentation, tab/panel activation and structural proposals use expected revisions, UI state commits only after a validated host receipt, replacement is atomic by window, and explicit unregister/window close/client disconnect remove stale targets. Terminal and hosted-file creation validate typed graph ownership and link the live session into its panel; registration reconciles creation races from hosted state and discards client-supplied links; reconnect, exact-identity close, closed-session rejection, and authoritative-null preservation prevent stale sessions from replacing or erasing the current target. Each actual link/unlink advances the ordered graph stream. The desktop follows that stream from its accepted cursor, resumes after resynchronization, and refreshes once before retrying a mutation on a genuinely newer revision. Quick Terminal uses an independent window ownership boundary, and no graph operation is agent-authorized before M3. The decision and concurrency limitation are recorded in [ADR 0016](adr/0016-host-owned-runtime-workspace-graph.md). Deterministic tests distinguish detach, graceful close, cancellation, confirmation/force termination, engine failure, server disconnect, revision conflict, idempotent replay, stream resynchronization, creation/registration/close races, reconnect overlap, and disposal during creation.
 
 The application-facing terminal contract now preserves the four explicit
 capability ports in section 6: process/lifecycle, canonical state,
@@ -1344,6 +1409,13 @@ Exit criteria:
 ### M1 — Durable desktop shell
 
 **Implementation status: in progress (2026-07-23).** The durable-shell product surface is implemented: versioned SQLite definitions, transactional graph validation, secret-free definition import/export, recovery, platform vault adapters, secret-safe audit, immutable durable models, and first-run definitions are composed into the desktop app. The Avalonia launcher, workspaces/tabs/panel canvas, settings, command palette, editable layout designer, workspace and saved-screen editors, application and terminal keybinding editor, app-reachable definition bundle workflow, platform-profile/live appearance, diagnostics export, recovery, local libghostty sessions, and live local Statistics and Process Monitor panels are reachable without sample state. Monitoring uses a package-free cross-platform engine behind typed session-host capabilities. It polls without overlap, preserves a last-good sample across recoverable failures, bounds process enumeration and returned rows, starts only after graph registration, and excludes command lines, users, environments, open files, and terminal content. Monitor recovery stores only panel kind, title, and layout metadata; it never stores samples, process names, or PIDs. Selected M1 surfaces have current same-viewport visual QA. The layout designer now matches the exported 1000 × 648 composition and supports pointer-captured paint and edge-resize gestures in addition to its complete keyboard surface. Paint commits one validated snapped rectangle; resize commits exact replacement bounds only when captured geometry is still current; Escape, capture loss, unrelated pointers, and stale keyboard edits cannot partially or accidentally commit a gesture. Native menus, exact-modifier gestures, overlays, and the command registry share one focus-restoring action path, including confirmation before leaving dirty/modal editors and explicit renderer focus restoration after a close is cancelled. Host accessibility preferences are event driven and update the running UI: Windows uses `UISettings`, macOS uses `NSWorkspace`, and Linux uses the XDG Settings portal with a GNOME text-scale fallback; Quick Terminal also disables motion and translucency when the host requests it. Every explicit application text size consumes a live semantic font resource derived from the effective text scale, a repository convention rejects literal visible-text sizes, icon-only buttons require explicit accessible names, in-window overlays must trap keyboard focus, text-bearing search/chooser controls can grow past their design minima, and native/managed terminal hosts expose named polite status. Appearance now persists an optional application-wide text-scale override, follows the host by default, applies the saved value live to every open window through the existing catalog/resource pipeline, preserves schema-one payload compatibility, and gives macOS a legitimate `200%`/`250%` production path for named-host high-text-scale observation. The command palette is also the unified launcher search: it projects distinct command invocations with their exact arguments, create-panel types, connections, saved screens, workspaces, and the complete retained-session set into typed targets; ranks exact, prefix, substring, and secondary-term matches deterministically; keeps stale or unavailable targets visible but non-actionable; disables unavailable native list containers and skips them during keyboard navigation; and reuses the authoritative command/open paths so activation revalidates current state and restores focus consistently. The Launcher History surface now supplies bounded full-history search, exact metadata detail, reviewable stale rows, current-definition/platform-aware reopen, explicit loading/retry/empty/error/busy states, and scalable controls. Its local revisioned retention preference is not exported with portable definitions; expected-revision updates prune atomically, lifecycle timestamps are captured before queued persistence, selective clear retains post-confirmation completions, and a separately confirmed reset can purge malformed hidden rows. Metadata-only export uses a deterministic versioned allowlist, preserves an existing destination on failure, rejects duplicate activation, supports cancellation, publishes atomically, and reports cleanup uncertainty. Released SQLite migration checksums are frozen as fixture receipts; every historical schema upgrades through the real definition catalog while preserving the interrupted-run recovery decision, and induced migration failures prove full transactional rollback plus same-instance retry. Destructive migrations write to a unique same-directory temporary database, validate integrity and foreign keys, publish atomically, remove or surface uncertain temporary cleanup, and have a backup that reopens through the prior production migration catalog. Startup now validates the previous lifecycle row, including its SQLite storage types, before any mutation; malformed state fails closed. Per-profile single-instance ownership and its current-user-only activation endpoint are established before dependency injection and SQLite, secondary launches wait for a ready post-initialization UI handler, and activation failures use a sanitized visible fallback. Shutdown stops new activation, quiesces presentation/history producers, cancels graph watches waiting on UI dispatch, stops the session host, seals and drains recovery, and only then marks the run clean; the first accepted history or recovery failure remains sticky across later successful writes. Automated coordinator coverage includes stale endpoints, handler failure, startup delay, shutdown races, and profile-path aliases. A dedicated bounded test host now launches two distinct OS processes against the production coordinator and verifies that the secondary receives success only after the activation callback writes the primary process ID; timeout cleanup terminates both owned processes, and RID-qualified builds receive the exact host path from MSBuild. This is real coordinator process-boundary evidence, not a packaged-desktop/UI-activation receipt, which remains outstanding release evidence. At this snapshot, the repository gate discovers 1,427 cases: 1,426 pass, and the native-vault case is reported as skipped unless explicitly enabled; this includes 85 Core, 90 Application, 380 App, 13 Monitoring, 68 SessionHost, 259 Infrastructure, 85 architecture-convention, and 134 accessibility-and-package-acceptance cases. The separate opt-in vault runner passed the exact advertised Keychain lifecycle on macOS 26.5.2 arm64, confirmed cleanup, and emitted a validated sanitized receipt. The schema-v1 accessibility runner now binds its fixed VoiceOver/Narrator/Orca matrix to an exact full-package manifest and screen-reader identity, rejects substituted host/display boundaries and special package entries, continuously retains stable descendant identities, fails closed on lifecycle/cleanup uncertainty, and validates its JSON, Markdown, and digest as one sanitized receipt. The native macOS terminal build/smoke passes, and the current repository Release build succeeds with zero warnings. A bounded schema-v3 macOS accessibility probe validates packaged identity before any AX call and refuses unrelated application trees; the current local receipt is honestly `BLOCKED / SCREEN_LOCKED`. M1 remains open: automated keyboard coverage and a ready runner are not substitutes for complete physical keyboard-only acceptance; named-host VoiceOver, Narrator, and Orca verification of focus order, high text scales, clipping, and live announcements is incomplete; live accessibility-preference behavior still needs named-host acceptance on Windows and Linux; and native Windows DPAPI and Linux Secret Service round-trips remain outstanding. Existing automation names, live regions, and unexecuted acceptance instructions are implementation evidence, not completed accessibility acceptance. The isolated opt-in procedures are recorded in [platform vault acceptance](platform-vault-acceptance.md) and [platform accessibility acceptance](platform-accessibility-acceptance.md).
+
+**Terminal architecture update (2026-08-01):** The terminal-specific
+references in the dated snapshot above to local full-libghostty sessions,
+native/managed presenter variants, and native macOS smoke describe the retired
+implementation. The current terminal is the single libghostty-vt/Porta.Pty/
+Avalonia path in [ADR 0040](adr/0040-cross-platform-libghostty-vt-terminal.md).
+The named-host accessibility gate remains open.
 
 Open runtime tabs can now be reordered within their current window and
 workspace by pointer drag or the Move tab left/right commands. Each real move
@@ -1455,7 +1527,7 @@ Exit criteria:
 
 ### M2 — Terminal, connection, and file product
 
-**Implementation status: in progress (2026-07-23).** The M2 product surface is implemented with automated coverage: local, SSH, Docker, and WSL planning/adapters; terminal renderers and typed waits/input; connection security and reconnect flows; Quick Terminal; saved-screen startup; recent-session metadata and reopening; required File Viewer providers, profiles, browsing, previews, operations, product states, and cancellable transfers; and the universal hosted file-session lifecycle. The managed Windows/Linux terminal path exposes typed Clear Scrollback and bounded full-buffer Find through the application and session-host contracts, including wrapped-line and wide/combining-Unicode match navigation without remote input. The macOS libghostty path receives the selected per-session terminal keymap, supplies an embedded native Find UI, and invokes a versioned synchronous host-key interceptor before libghostty sees physical input. That bridge lets application bindings work while the native view owns focus, suppresses owned repeats/releases, preserves configurable discard/pass-through semantics, and deliberately lets programmatic agent input bypass human shortcut interception. A separate host-owned physical-input gate covers key down/up, modifier, IME, paste, and mouse paths before libghostty delivery. It reacquires the exact human attachment lease synchronously, advances a native epoch, and makes queued programmatic text/key/paste/mouse sends recheck that epoch on the AppKit main thread, so later human input cancels rather than loses a race with an agent action. Missing, stale, future-version, or throwing gates fail closed. Both reverse P/Invoke bridges use process-lifetime static thunks plus weak opaque registrations, so an abandoned managed session cannot leave a collectible delegate behind while asynchronous native teardown is pending. A live macOS run created a second real terminal tab with `Ctrl+B`, `c` while libghostty was first responder. At this snapshot, the repository gate has 1,427 cases (1,426 passed and one explicit native-vault skip), including 71 Terminal, 380 App, 68 SessionHost, 13 Monitoring, and 42 named-host terminal-acceptance cases. The expanded native macOS smoke passes every physical-input category, denial and epoch advancement, repeat observation, physical paste, programmatic bypass, queued stale-agent cancellation, selected keymaps, embedded search, alternate-screen input, terminfo, and exit checks. The schema-v3 named-host runner fingerprints the package and backend before and after the fixed observation matrix, rejects CI/container/virtual/remote-display substitutions, requires runner-confirmed parent exit for lifecycle acceptance, sanitizes notes, and validates its JSON, Markdown, and digest as one receipt. The supplementary Docker Linux arm64/Xvfb/Openbox run proves ten bounded packaged behaviors, including a real PTY, Unicode byte round-trip, resize, interactive `less`, SGR mouse reporting, guarded paste, active-work cancellation with shell-identity preservation, and a cross-client Quick Terminal grab. Its latest receipt at `artifacts/platform-acceptance/20260723-renderer-focus-linux-arm64-xvfb` remains deliberately `NOT_PASSING`: ten checks pass, seven physical/visual observations are not proven, and the synthetic window manager does not deliver the final lifecycle command after the modal/Quick Terminal focus sequence, although the application exits cleanly with no captured descendants. It cannot substitute for named physical/self-hosted Windows 11 and Linux X11 acceptance. Those hosts remain the major M2 release gate for interactive TUI behavior, IME, glyph/cell fidelity, resize, mouse, clipboard, alternate screen, sleep/wake, and native PTY lifecycle; no physical Windows evidence is present.
+**Implementation status: in progress (2026-08-01).** The M2 product surface includes local, SSH, Docker, and WSL planning/adapters; connection security and reconnect flows; Quick Terminal; saved-screen startup; recent-session metadata and reopening; required File Viewer providers, browsing, previews, operations, product states, and cancellable transfers; and the universal hosted file-session lifecycle. Terminal runtime selection is now unified: macOS, Windows, and Linux use Porta.Pty raw-byte transport, canonical libghostty-vt state/input encoding, and the ordinary Avalonia-managed presenter described in [ADR 0040](adr/0040-cross-platform-libghostty-vt-terminal.md). Renderer frames preserve row damage, live terminal-controlled cursor shape/color/blink state, underline styles and colors, and generation-qualified Kitty content and placement lifecycle. A narrow patch over the pinned Ghostty source supplies normalized OSC 133 lifecycle callbacks, canonical Unicode virtual-placement geometry, and Wuffs PNG decoding; Bash, Fish, and Zsh integration assets are staged from the same pin and applied only to the process launch snapshot. Deterministic tests exercise raw split UTF-8, a real PTY, render damage acknowledgement, cursor and styled-cell projection, semantic lifecycle events, input flush, and forced shutdown. This is implementation evidence, not platform release acceptance. Named-host packaged rendering, interactive TUIs, physical keyboard behavior, IME, glyph/cell fidelity, clipboard, mouse, resize, alternate screen, sleep/wake, PTY lifecycle, and VoiceOver/Narrator/Orca behavior remain open release gates on the supported OS/backend matrix.
 
 Deliver:
 
@@ -1651,15 +1723,15 @@ input. The composer binds the exact session and canonical
 `Ctrl+X`/`Alt+X` display into approval and digest. It is advertised only with
 both `terminal.send_chord` and `terminal.agent_input_barrier`; `Auto` escalates,
 and SessionHost accepts only exact human approval or a confirmed run-local
-YOLO permit before one leased typed dispatch. The portable renderer delegates
-mode encoding to XTerm.NET and treats the successful PTY write as commit. The
-macOS shim uses only a versioned epoch-guarded entry point that validates the
-chord and synchronously gives libghostty a semantic ASCII key press/release on
-the AppKit thread. It bypasses AppKit IME and active-layout translation without
-falling back to raw bytes or text injection; native smoke covers both legacy
-and Kitty keyboard modes under the current non-Latin layout. These choices are
-recorded in
-[ADR 0031](adr/0031-governed-terminal-character-chords.md).
+YOLO permit before one leased typed dispatch. The shared libghostty-vt engine
+validates the chord and performs terminal-mode encoding without falling back to
+raw bytes, text injection, native key synthesis, IME, or active keyboard-layout
+translation. The encoded event uses the same bounded ordered PTY writer as all
+other terminal input, and the successful write is the commit point. The
+authorization contract is recorded in
+[ADR 0031](adr/0031-governed-terminal-character-chords.md); its retired
+platform-engine dispatch details are superseded by
+[ADR 0040](adr/0040-cross-platform-libghostty-vt-terminal.md).
 
 Paste is provider-supplied text, never an ambient clipboard read. It accepts
 non-empty valid Unicode of at most 2,048 UTF-8 bytes and
@@ -1671,14 +1743,12 @@ before authorization. Paste is advertised only with both `terminal.paste` and
 human approval or an already-confirmed run-local YOLO policy. The host rejects
 `AutoPolicy`, rechecks both capabilities, acquires one one-action input lease,
 and only then invokes the typed terminal paste port with unsafe multiline
-content confirmed. The portable engine carries that lease cancellation with
+content confirmed. The shared terminal engine carries that lease cancellation with
 the queued mutation through the PTY write, which is its irreversible commit
 point. A normal receipt still waits for flush, but post-commit cancellation or
 flush failure preserves the committed receipt while failing the session, so an
 already-written command cannot appear safely retryable; shutdown and writer
-failure still settle every uncommitted acknowledgement. The native macOS path
-performs the equivalent final epoch check on the AppKit thread, with smoke
-coverage for current-epoch paste success and stale-epoch rejection. The host
+failure still settle every uncommitted acknowledgement. The host
 returns only a receipt and never retries dispatch when completion audit is
 uncertain. Resize accepts exact integer columns from 2 to 1,000 and rows
 from 1 to 1,000, plus the same closed `panel_id` choice in a broad scope. The provider
@@ -1694,7 +1764,7 @@ human, and governed resize as one per-session engine-plus-metadata transaction.
 After a successful engine return, attachment metadata is committed under the
 captured attachment authority even if an unrelated session revision or late
 caller cancellation occurred; a changed attachment authority still fails
-closed. The native macOS shim applies and verifies the exact Ghostty cell grid
+closed. libghostty-vt state and Porta.Pty receive and verify the exact cell grid
 instead of claiming success from a pixel-only resize. Resize is a mutation
 under the terminal command policy and dispatches once through the typed
 terminal-process port. Output is bounded, secret-shaped material is redacted, parallel
@@ -1951,23 +2021,23 @@ explicit; a failed or stopped run must be cleared before reuse. The scope
 selector is locked once a run starts, while broad-scope approvals still display
 the exact panel action target rather than only the enclosing tab or workspace.
 
-Managed-renderer physical text, key, mouse, and paste input reacquires the exact
-human attachment lease adjacent to dispatch and preempts agent input. The
-macOS libghostty shim now provides the equivalent host-owned synchronous gate
-for every physical keyboard, modifier, IME, paste, and mouse path. It advances a
-monotonic input epoch before delivery, and every queued programmatic input,
-including a character chord, rechecks that epoch on the AppKit main thread.
+The shared Avalonia renderer's physical text, key, mouse, focus, and paste input
+reacquires the exact human attachment lease adjacent to dispatch and preempts
+agent input on every desktop OS. Each accepted physical event advances the
+human-input authority before delivery, and queued programmatic input, including
+a character chord, rechecks its captured lease/authority immediately before the
+bounded PTY write.
 Governed tools that inject
 terminal input require the explicit `terminal.agent_input_barrier` capability,
-so only conforming managed and native sessions receive those input mutations.
+so only conforming terminal sessions receive those input mutations.
 Resize uses its separate exact-attachment authority and serialized-resize
 contract and does not imply keyboard or mouse authority. A deterministic end-to-end
 harness drives a stateful alternate-screen menu through native provider
 continuation, the real broker, the real in-process session host, exact
 Down/Enter input, one-action approvals, screen reads, structured results, and
 terminal audit. A companion case proves that human lease preemption cancels an
-in-flight key without changing the TUI. Native smoke additionally proves
-current/stale-epoch chord behavior and that queued stale-epoch agent input is
+in-flight key without changing the TUI. Engine tests additionally prove
+current/stale-authority chord behavior and that queued stale agent input is
 cancelled after physical input.
 
 Adversarial terminal prompt-injection fixtures now drive malicious screen
@@ -2090,59 +2160,32 @@ browser interactions beyond exact-object click/fill/check, cross-platform browse
 automation conformance, non-stdio MCP, persistent MCP health/reconnect, or
 unattended MCP decision routing.
 The macOS package includes the exact osx-arm64 .NET runtime license/notices, the
-pinned Ghostty root license, deterministic SPDX 2.3 evidence for the complete
-managed/runtime dependency manifest, the published GhostSHELL assembly closure,
-and both published Ghostty dylibs. Packaging verifies the reviewed catalog
-against the exact .NET 10 osx-arm64 target pair and fallback chain,
-component-set closure, resolved dependency edges, reachability and cycles,
-bounded asset shapes, canonical dependency paths, NuGet content hashes, raw
-archive SHA-512 receipts, strict nuspec root/namespace/metadata, and copied
-SkiaSharp/HarfBuzzSharp license evidence. Evidence file, entry, depth, and byte
-budgets are enforced incrementally before notice allocation, and SPDX output is
-bounded by the remaining package budget. Unknown, missing, ambiguous, malformed,
-or tampered evidence fails closed. The SPDX creation record names the versioned
-packaging tool and binds that identity into the namespace digest. The document
-contains no local cache paths and keeps the .NET runtime and both aggregate
-native libraries at `NOASSERTION`. The release license gate remains open for
-complete offline license/source/relinking evidence and an exact statically
-linked native/resource software bill of materials, including bundled
-GPL/LGPL/OFL material.
-The repository now has an isolated native build and deterministic unsigned
-Apple-silicon `GhostShell.app` candidate pipeline. A native build uses a fresh
-private tree, captures a validated 476-file artifact receipt plus normalized
-build/resource evidence, and atomically exchanges the published native tree
-only after every catalog-bound manifest passes. Two independent fresh local
-builds produced the same shipped `libghostty.dylib` SHA-256
-`214412686c9de99efbde90b3df59e8a6ac3904c14f0beacb9e1889feebecb01b`
-and byte-identical normalized evidence SHA-256
-`79b782c2ea48a2db536664c6fee4eeaae763b2fedf63101e2ea99fe9922456b7`.
-Cross-host reproducibility and byte-exact contribution from every selected
-intermediate static archive are not claimed.
-The application packager requires that receipt and evidence, rejects symbolic
-links, special files, physical path aliases, oversized payloads, pre-existing
-destinations, first-party PDBs, and first-party assemblies containing the
-physical build-host repository path. It validates the complete package
-fingerprint and publishes with an OS-level exclusive rename in the same
-process. A fresh local unsigned verification candidate on 2026-07-25 contains
-752 regular files and passes the current bundle-fingerprint, SPDX,
-fifteen-assembly first-party closure, and accessibility package-inspection paths.
-Its executable SHA-256 is
-`ebc98258bf63addd84de748a90de67fd2d7234de194c9d79c80c5633c6567c38`,
-its package-manifest SHA-256 is
-`3e39d4257ef6a90c7d3851af4b1e9cf7092905df1d7c3be83efba26c06cc1f02`,
-and its SPDX SHA-256 is
-`4a4f9252c126b05f8c317506246774a013df1cfaccf824d06fc5c8af0fbd8ef2`.
-Its 65-package SPDX document includes the native MCP project and exact official
-SDK dependency closure. The candidate remains temporary verification evidence
-rather than a named release artifact; older candidates under `artifacts/`
-predate other agent assemblies. The repository gate
-includes an explicit opt-in native-vault case that remains skipped in the
-default run. This is structural unsigned-package and provenance evidence, not
-legal clearance or a distributable release. Complete native/resource license
-mapping and
+pinned Ghostty root license, deterministic managed dependency evidence, the
+published GhostSHELL assembly closure, and exactly one terminal native library:
+`libghostty-vt.dylib`. It also carries a native-terminal component catalog,
+build receipt, patch-set identity, and a manifest for the staged Bash, Fish,
+and Zsh integration resources. Packaging verifies those files against the
+pinned source/toolchain receipt and rejects either retired GhostSHELL AppKit
+shim or full-libghostty renderer payload.
+
+The isolated native build uses a disposable pinned Ghostty checkout, applies
+the ordered patch overlay, and publishes only after the library, license,
+receipt, component catalog, and shell-resource manifest agree. The application
+packager rejects symbolic links, special files, physical path aliases,
+oversized payloads, pre-existing destinations, first-party PDBs, and
+first-party assemblies containing the physical build-host repository path. It
+validates the complete package fingerprint and publishes with an OS-level
+exclusive rename in the same process. Exact candidate hashes are evidence
+artifacts, not evergreen architecture claims.
+
+This is structural unsigned-package and provenance evidence, not legal
+clearance or a distributable release. The native component catalog remains
+release-blocked until independent review confirms the exact linked
+libghostty-vt and staged shell-integration source/license closure. Complete
 source/relinking delivery, security/prompt-injection and soak suites, agreed
 performance measurements, icons/installers, signing, notarization, and
-named-host package launch and accessibility evidence remain open.
+named-host package launch, terminal rendering/IME, and accessibility evidence
+remain open.
 
 Deliver:
 
@@ -2164,7 +2207,15 @@ Exit criteria:
 
 ### M5 — Command-block terminal R&D
 
-Run a gated prototype for block layout, shell-event indexing, reflow, selection, TUI transitions, and accessibility. Prefer an overlay or supported library hook. A libghostty fork requires an ADR covering upstream strategy, patch size, rebasing cost, security ownership, CI matrix, and a reversible fallback. Do not put this work on the critical path to agent automation.
+Run a gated prototype for block layout, shell-event indexing, reflow, selection,
+TUI transitions, and accessibility. Use the typed OSC 133 lifecycle and
+viewport-resolved command boundaries from the libghostty-vt pipeline; visible
+row decoration is not the semantic source of truth. If Ghostty lacks another
+required event, extend the narrow pinned overlay only after updating ADR 0040
+with upstream strategy, patch size, rebasing cost, security ownership, and CI
+coverage. Reuse Ghostty's implementation behind the C ABI where possible
+rather than copying terminal algorithms into C#. Do not put this work on the
+critical path to agent automation.
 
 ### M6 — Server mode and web/WASM client
 

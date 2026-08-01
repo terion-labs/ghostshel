@@ -10,6 +10,8 @@ public sealed record MacOsAppBundleRequest(
     string ComponentCatalogPath,
     string NativeComponentCatalogPath,
     string NativeBuildReceiptPath,
+    string FontAssetsCatalogPath,
+    string FontAssetsBuildReceiptPath,
     string NuGetPackageRoot);
 
 public sealed record MacOsAppBundleResult(
@@ -30,20 +32,33 @@ public sealed class MacOsAppBundleBuilder
     private const string ProductVersionPlaceholder = "__GHOSTSHELL_VERSION__";
     private const string BuildVersionPlaceholder = "__GHOSTSHELL_BUILD_VERSION__";
     private const int NativeEvidenceDirectoryCount = 1;
+    private const string NativeTerminalCatalogFileName =
+        "native-terminal-components.json";
+    private const string NativeTerminalReceiptFileName =
+        "native-terminal-build-receipt.json";
+    private const string TerminalFontCatalogFileName =
+        "terminal-font-assets.json";
+    private const string TerminalFontReceiptFileName =
+        "terminal-font-assets-build-receipt.json";
+    private const string TerminalFontLicenseFileName =
+        "JETBRAINS-MONO-OFL.txt";
 
     private static readonly string[] RequiredRootFiles =
     [
         "GhostShell",
         "GhostShell.deps.json",
         "GhostShell.runtimeconfig.json",
-        "libghostshell-ghostty.dylib",
-        "libghostty.dylib",
+        "libghostty-vt.dylib",
         "GHOSTTY-LICENSE",
+        "ghostty-vt-required-exports.txt",
         "THIRD-PARTY-NOTICES.md",
         "DOTNET-LICENSE.txt",
         "DOTNET-THIRD-PARTY-NOTICES.txt",
-        "native-macos-components.json",
-        "native-macos-build-receipt.json",
+        NativeTerminalCatalogFileName,
+        NativeTerminalReceiptFileName,
+        TerminalFontCatalogFileName,
+        TerminalFontReceiptFileName,
+        TerminalFontLicenseFileName,
     ];
 
     private static readonly IReadOnlyDictionary<string, string>
@@ -54,22 +69,15 @@ public sealed class MacOsAppBundleBuilder
             ["DOTNET-LICENSE.txt"] = "DOTNET-LICENSE.txt",
             ["DOTNET-THIRD-PARTY-NOTICES.txt"] =
                 "DOTNET-THIRD-PARTY-NOTICES.txt",
-            [NativeMacOsProvenanceSchema.CatalogFileName] =
-                Path.Combine(
-                    "Native",
-                    NativeMacOsProvenanceSchema.CatalogFileName),
-            [NativeMacOsProvenanceSchema.ReceiptFileName] =
-                Path.Combine(
-                    "Native",
-                    NativeMacOsProvenanceSchema.ReceiptFileName),
-            [NativeMacOsProvenanceSchema.BuildEvidenceFileName] =
-                Path.Combine(
-                    "Native",
-                    NativeMacOsProvenanceSchema.BuildEvidenceFileName),
-            [NativeMacOsProvenanceSchema.ResourceEvidenceFileName] =
-                Path.Combine(
-                    "Native",
-                    NativeMacOsProvenanceSchema.ResourceEvidenceFileName),
+            [NativeTerminalCatalogFileName] =
+                Path.Combine("Native", NativeTerminalCatalogFileName),
+            [NativeTerminalReceiptFileName] =
+                Path.Combine("Native", NativeTerminalReceiptFileName),
+            [TerminalFontCatalogFileName] =
+                Path.Combine("Native", TerminalFontCatalogFileName),
+            [TerminalFontReceiptFileName] =
+                Path.Combine("Native", TerminalFontReceiptFileName),
+            [TerminalFontLicenseFileName] = "JetBrainsMono-OFL.txt",
         };
 
     public MacOsAppBundleResult Build(MacOsAppBundleRequest request)
@@ -89,9 +97,7 @@ public sealed class MacOsAppBundleBuilder
         var sourceEntries = InspectPublishDirectory(
             publishDirectory,
             infoPlistBytes);
-        var nativeCatalog = NativeMacOsProvenanceReader.ReadCatalog(
-            request.NativeComponentCatalogPath);
-        ValidateRequiredPayload(sourceEntries, nativeCatalog.Catalog);
+        ValidateRequiredPayload(sourceEntries);
         var evidenceLimits = CreateManagedEvidenceLimits(
             sourceEntries,
             infoPlistBytes);
@@ -117,11 +123,7 @@ public sealed class MacOsAppBundleBuilder
                 executableDirectory,
                 licenseDirectory,
                 sourceEntries);
-            _ = NativeMacOsProvenanceValidator.Validate(
-                executableDirectory,
-                licenseDirectory,
-                request.NativeComponentCatalogPath,
-                request.NativeBuildReceiptPath);
+            ValidateNativeProvenance();
             var managedEvidence = ManagedComponentEvidenceBuilder.Build(
                 executableDirectory,
                 licenseDirectory,
@@ -140,11 +142,7 @@ public sealed class MacOsAppBundleBuilder
                 Path.Combine(contentsDirectory, "Info.plist"),
                 infoPlist,
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            _ = NativeMacOsProvenanceValidator.Validate(
-                executableDirectory,
-                licenseDirectory,
-                request.NativeComponentCatalogPath,
-                request.NativeBuildReceiptPath);
+            ValidateNativeProvenance();
 
             ExclusiveDirectoryMover.Move(stagingPath, destinationPath);
             published = true;
@@ -155,6 +153,20 @@ public sealed class MacOsAppBundleBuilder
                 sourceEntries.Count(entry => !entry.IsDirectory)
                 + managedEvidence.Files.Count
                 + 1);
+
+            void ValidateNativeProvenance()
+            {
+                NativeTerminalPackageProvenance.Validate(
+                    executableDirectory,
+                    licenseDirectory,
+                    request.NativeComponentCatalogPath,
+                    request.NativeBuildReceiptPath);
+                TerminalFontPackageProvenance.Validate(
+                    executableDirectory,
+                    licenseDirectory,
+                    request.FontAssetsCatalogPath,
+                    request.FontAssetsBuildReceiptPath);
+            }
         }
         finally
         {
@@ -324,9 +336,7 @@ public sealed class MacOsAppBundleBuilder
         return entries;
     }
 
-    private static void ValidateRequiredPayload(
-        IReadOnlyList<SourceEntry> entries,
-        NativeMacOsCatalog nativeCatalog)
+    private static void ValidateRequiredPayload(IReadOnlyList<SourceEntry> entries)
     {
         var rootFiles = entries
             .Where(entry =>
@@ -343,16 +353,6 @@ public sealed class MacOsAppBundleBuilder
                     $"The publish payload is missing required file {requiredFile}.");
             }
         }
-        RequireObservedEvidenceFile(
-            "observed-ghostty-build-evidence",
-            NativeMacOsProvenanceSchema.BuildEvidenceFileName);
-        RequireObservedEvidenceFile(
-            "observed-ghostty-resource-evidence",
-            NativeMacOsProvenanceSchema.ResourceEvidenceFileName);
-
-        RequireNonEmptyDirectory(entries, "ghostty");
-        RequireNonEmptyDirectory(entries, "terminfo");
-
         if (!OperatingSystem.IsWindows())
         {
             const UnixFileMode executeBits =
@@ -364,30 +364,6 @@ public sealed class MacOsAppBundleBuilder
                 throw new InvalidDataException(
                     "The published GhostShell executable lacks an execute bit.");
             }
-        }
-
-        void RequireObservedEvidenceFile(string inputKind, string fileName)
-        {
-            if (nativeCatalog.Inputs.Any(input => input.Kind == inputKind)
-                && !rootFiles.ContainsKey(fileName))
-            {
-                throw new InvalidDataException(
-                    $"The publish payload is missing required file {fileName}.");
-            }
-        }
-    }
-
-    private static void RequireNonEmptyDirectory(
-        IReadOnlyList<SourceEntry> entries,
-        string directoryName)
-    {
-        var prefix = $"{directoryName}{Path.DirectorySeparatorChar}";
-        if (!entries.Any(entry =>
-                !entry.IsDirectory
-                && entry.RelativePath.StartsWith(prefix, StringComparison.Ordinal)))
-        {
-            throw new InvalidDataException(
-                $"The publish payload is missing required {directoryName} resources.");
         }
     }
 

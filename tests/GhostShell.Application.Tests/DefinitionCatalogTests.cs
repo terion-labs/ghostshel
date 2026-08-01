@@ -66,6 +66,64 @@ public sealed class DefinitionCatalogTests
     }
 
     [Fact]
+    public async Task Initialize_updates_the_legacy_default_terminal_background_once()
+    {
+        var fixture = new CatalogFixture();
+        var legacyProfile = CreateCustomizedLegacyDefaultTerminalProfile();
+        fixture.TerminalProfiles.Add(
+            legacyProfile,
+            revision: 7);
+
+        var first = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+        var attemptsAfterFirstInitialization = fixture.TerminalProfiles.SaveAttempts;
+        var restartedCatalog = fixture.CreateCatalog();
+        var second = await restartedCatalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(first.IsSuccess, first.Error?.Message);
+        Assert.True(second.IsSuccess, second.Error?.Message);
+        var stored = Assert.Single(second.Value!.TerminalProfiles);
+        var expected = ReplacePalette(legacyProfile, TerminalPalette.GhostShellDark);
+        Assert.True(stored.Value.RepresentsSameAs(expected));
+        Assert.Equal(8, stored.Revision);
+        Assert.Equal(1, attemptsAfterFirstInitialization);
+        Assert.Equal(attemptsAfterFirstInitialization, fixture.TerminalProfiles.SaveAttempts);
+    }
+
+    [Fact]
+    public async Task Initialize_preserves_custom_and_non_default_terminal_palettes()
+    {
+        var fixture = new CatalogFixture();
+        var customized = new TerminalPalette(
+            "Custom",
+            TerminalPalette.GhostShellDark.Foreground,
+            RgbColor.Parse("#101010"),
+            TerminalPalette.GhostShellDark.Cursor,
+            TerminalPalette.GhostShellDark.SelectionBackground,
+            TerminalPalette.GhostShellDark.AnsiColors);
+        fixture.TerminalProfiles.Add(
+            CreateTerminalProfile("builtin.terminal.default", customized),
+            revision: 4);
+        fixture.TerminalProfiles.Add(
+            CreateTerminalProfile("operator", LegacyGhostShellDark()),
+            revision: 9);
+
+        var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(0, fixture.TerminalProfiles.SaveAttempts);
+        var defaultProfile = Assert.Single(
+            result.Value!.TerminalProfiles,
+            stored => stored.Value.Id.Value == "builtin.terminal.default");
+        Assert.Equal(customized.Background, defaultProfile.Value.Palette.Background);
+        Assert.Equal(4, defaultProfile.Revision);
+        var operatorProfile = Assert.Single(
+            result.Value.TerminalProfiles,
+            stored => stored.Value.Id.Value == "operator");
+        Assert.Equal(RgbColor.Parse("#12100E"), operatorProfile.Value.Palette.Background);
+        Assert.Equal(9, operatorProfile.Revision);
+    }
+
+    [Fact]
     public async Task Reload_publishes_definitions_written_outside_the_catalog_and_notifies()
     {
         var fixture = new CatalogFixture();
@@ -753,6 +811,87 @@ public sealed class DefinitionCatalogTests
             ConnectionKeepAlive.Disabled,
             SshHostKeyPolicy.NotApplicable);
 
+    private static TerminalProfile CreateTerminalProfile(string id, TerminalPalette palette) =>
+        new(
+            new TerminalProfileId(id),
+            id,
+            "JetBrains Mono",
+            14,
+            1.4,
+            TerminalCursorStyle.Block,
+            cursorBlink: true,
+            100_000,
+            palette,
+            BuiltInKeymaps.MacOsTerminalId);
+
+    private static TerminalProfile CreateCustomizedLegacyDefaultTerminalProfile() =>
+        new(
+            new TerminalProfileId("builtin.terminal.default"),
+            "Customized built-in terminal",
+            "Iosevka Fixed",
+            17.5,
+            1.75,
+            TerminalCursorStyle.Underline,
+            cursorBlink: false,
+            43_210,
+            LegacyGhostShellDark(),
+            BuiltInKeymaps.LinuxTerminalId,
+            new TerminalClipboardPolicy(
+                TerminalClipboardAccess.Deny,
+                TerminalClipboardAccess.Ask,
+                TerminalPasteSafetyPolicy.AllowUnsafe),
+            TerminalLinkPolicy.Disabled,
+            imeEnabled: false,
+            TerminalShellIntegrationMode.Zsh,
+            TerminalBellMode.SystemAndVisual,
+            TerminalCompatibilityProfile.Legacy);
+
+    private static TerminalProfile ReplacePalette(
+        TerminalProfile profile,
+        TerminalPalette palette) =>
+        new(
+            profile.Id,
+            profile.Name,
+            profile.FontFamily,
+            profile.FontSize,
+            profile.LineHeight,
+            profile.CursorStyle,
+            profile.CursorBlink,
+            profile.ScrollbackLines,
+            palette,
+            profile.KeymapId,
+            profile.ClipboardPolicy,
+            profile.LinkPolicy,
+            profile.ImeEnabled,
+            profile.ShellIntegration,
+            profile.BellMode,
+            profile.Compatibility);
+
+    private static TerminalPalette LegacyGhostShellDark() => new(
+        "GhostSHELL Dark",
+        RgbColor.Parse("#E8E4DE"),
+        RgbColor.Parse("#12100E"),
+        RgbColor.Parse("#D9944D"),
+        RgbColor.Parse("#4A3828"),
+        [
+            RgbColor.Parse("#1F1C19"),
+            RgbColor.Parse("#D26060"),
+            RgbColor.Parse("#72B57B"),
+            RgbColor.Parse("#D1A85A"),
+            RgbColor.Parse("#6B9BD2"),
+            RgbColor.Parse("#B17AC5"),
+            RgbColor.Parse("#66B8B2"),
+            RgbColor.Parse("#D8D2C8"),
+            RgbColor.Parse("#69625B"),
+            RgbColor.Parse("#EE7B72"),
+            RgbColor.Parse("#91D39A"),
+            RgbColor.Parse("#EBC574"),
+            RgbColor.Parse("#86B6EA"),
+            RgbColor.Parse("#CD98DF"),
+            RgbColor.Parse("#83D5CF"),
+            RgbColor.Parse("#FFF9F0"),
+        ]);
+
     private static AiProviderProfile CreateAiProvider(
         string id,
         string name,
@@ -836,7 +975,11 @@ public sealed class DefinitionCatalogTests
     {
         public CatalogFixture()
         {
-            Catalog = new DefinitionCatalog(
+            Catalog = CreateCatalog();
+        }
+
+        public DefinitionCatalog CreateCatalog() =>
+            new(
                 Connections,
                 Layouts,
                 Screens,
@@ -848,7 +991,6 @@ public sealed class DefinitionCatalogTests
                 AiProviderProfiles,
                 McpServerProfiles,
                 QuickTerminalSettings);
-        }
 
         public InMemoryDefinitionRepository<ConnectionProfile> Connections { get; } = new();
 

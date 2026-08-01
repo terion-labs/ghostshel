@@ -8,17 +8,20 @@ internal sealed record MacOsPackagingCommand(
     string ComponentCatalogPath,
     string NativeComponentCatalogPath,
     string NativeBuildReceiptPath,
+    string FontAssetsCatalogPath,
+    string FontAssetsBuildReceiptPath,
     string NuGetPackageRoot)
 {
     public static MacOsPackagingCommand Parse(IReadOnlyList<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        if (arguments.Count != 16)
+        if (arguments.Count != 20)
         {
             throw new PackagingUsageException(
                 "macos requires --publish, --output, --version, --build-version, "
                 + "--component-catalog, --native-component-catalog, "
-                + "--native-build-receipt, and --nuget-packages.");
+                + "--native-build-receipt, --font-assets-catalog, "
+                + "--font-assets-build-receipt, and --nuget-packages.");
         }
 
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -33,6 +36,8 @@ internal sealed record MacOsPackagingCommand(
                     or "--component-catalog"
                     or "--native-component-catalog"
                     or "--native-build-receipt"
+                    or "--font-assets-catalog"
+                    or "--font-assets-build-receipt"
                     or "--nuget-packages"))
             {
                 throw new PackagingUsageException($"Unknown option {name}.");
@@ -52,6 +57,8 @@ internal sealed record MacOsPackagingCommand(
             Required(values, "--component-catalog"),
             Required(values, "--native-component-catalog"),
             Required(values, "--native-build-receipt"),
+            Required(values, "--font-assets-catalog"),
+            Required(values, "--font-assets-build-receipt"),
             Required(values, "--nuget-packages"));
     }
 
@@ -63,6 +70,8 @@ internal sealed record MacOsPackagingCommand(
         ComponentCatalogPath,
         NativeComponentCatalogPath,
         NativeBuildReceiptPath,
+        FontAssetsCatalogPath,
+        FontAssetsBuildReceiptPath,
         NuGetPackageRoot);
 
     private static string Required(

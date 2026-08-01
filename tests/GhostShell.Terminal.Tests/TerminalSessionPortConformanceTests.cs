@@ -3,15 +3,14 @@ using GhostShell.Core;
 
 namespace GhostShell.Terminal.Tests;
 
+[Collection(GhosttyVtTestCollection.Name)]
 public sealed class TerminalSessionPortConformanceTests
 {
-    [Theory]
-    [InlineData("GhostShell.Terminal.GhosttyTerminalSession")]
-    [InlineData("GhostShell.Terminal.PortableTerminalSession")]
-    public void Built_in_terminal_engines_implement_every_application_port(string typeName)
+    [Fact]
+    public void Cross_platform_terminal_engine_implements_every_application_port()
     {
         var implementation = typeof(TerminalSessionFactorySelector).Assembly
-            .GetType(typeName, throwOnError: true);
+            .GetType("GhostShell.Terminal.GhosttyVtTerminalSession", throwOnError: true);
 
         Assert.NotNull(implementation);
         Assert.True(typeof(ITerminalPanelSession).IsAssignableFrom(implementation));
@@ -30,7 +29,8 @@ public sealed class TerminalSessionPortConformanceTests
             "/bin/sh",
             environment: new Dictionary<string, string> { ["LANG"] = "C" },
             connectionId: connectionId);
-        var factory = new GhosttyTerminalSessionFactory();
+        _ = GhosttyVtTestRuntime.RequireStagedRuntime();
+        var factory = new GhosttyVtTerminalSessionFactory(new FakePortablePtyFactory());
 
         await using var session = await factory.CreateAsync(
             SessionId.New(),

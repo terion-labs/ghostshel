@@ -14,6 +14,7 @@ public sealed class PackageFingerprintTests : IDisposable
         File.WriteAllText(executable, "executable-v1");
         File.WriteAllText(Path.Combine(_temporaryDirectory, "support.dll"), "support-v1");
         WriteDependencyManifest();
+        WriteNativeTerminalPackage(TargetPlatform.LinuxX11);
 
         var first = PackageFingerprint.Inspect(
             _temporaryDirectory,
@@ -21,9 +22,10 @@ public sealed class PackageFingerprintTests : IDisposable
             "rc-20260723-1");
 
         Assert.Equal("GhostShell", first.Build.PackageExecutable);
-        Assert.Equal(3, first.Build.PackageFileCount);
+        Assert.Equal(5, first.Build.PackageFileCount);
         Assert.Equal(64, first.Build.ExecutableSha256.Length);
-        Assert.Contains("XTerm.NET 1.0.15", first.Backend.Renderer, StringComparison.Ordinal);
+        Assert.Contains("libghostty-vt 0.1.0-dev", first.Backend.Renderer, StringComparison.Ordinal);
+        Assert.Contains("Avalonia managed renderer", first.Backend.Renderer, StringComparison.Ordinal);
         Assert.Contains("Porta.Pty 1.0.7", first.Backend.PtyAdapter, StringComparison.Ordinal);
         Assert.Contains("Linux Unix PTY", first.Backend.PtySubstrate, StringComparison.Ordinal);
 
@@ -51,7 +53,21 @@ public sealed class PackageFingerprintTests : IDisposable
             "rc-20260723-1"));
 
         Assert.Contains("Porta.Pty", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("XTerm.NET", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Fingerprint_fails_when_native_terminal_provenance_cannot_be_proven()
+    {
+        File.WriteAllText(Path.Combine(_temporaryDirectory, "GhostShell"), "executable");
+        WriteDependencyManifest();
+        File.WriteAllText(Path.Combine(_temporaryDirectory, "libghostty-vt.so"), "native");
+
+        var exception = Assert.Throws<FileNotFoundException>(() => PackageFingerprint.Inspect(
+            _temporaryDirectory,
+            TargetPlatform.LinuxX11,
+            "rc-20260723-1"));
+
+        Assert.Contains("native-terminal-components.json", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -60,7 +76,8 @@ public sealed class PackageFingerprintTests : IDisposable
         File.WriteAllText(Path.Combine(_temporaryDirectory, "GhostShell"), "executable");
         File.WriteAllText(
             Path.Combine(_temporaryDirectory, "GhostShell.deps.json"),
-            "{\"libraries\":{\"Porta.Pty/1.0.7\":{},\"Porta.Pty/2.0.0\":{},\"XTerm.NET/1.0.15\":{}}}\n");
+            "{\"libraries\":{\"Porta.Pty/1.0.7\":{},\"Porta.Pty/2.0.0\":{}}}\n");
+        WriteNativeTerminalPackage(TargetPlatform.LinuxX11);
 
         var exception = Assert.Throws<InvalidDataException>(() => PackageFingerprint.Inspect(
             _temporaryDirectory,
@@ -80,11 +97,27 @@ public sealed class PackageFingerprintTests : IDisposable
             {
                 ["GhostShell/1.0.0"] = new { },
                 ["Porta.Pty/1.0.7"] = new { },
-                ["XTerm.NET/1.0.15"] = new { },
             },
         };
         File.WriteAllText(
             Path.Combine(_temporaryDirectory, "GhostShell.deps.json"),
             JsonSerializer.Serialize(manifest));
+    }
+
+    private void WriteNativeTerminalPackage(TargetPlatform platform)
+    {
+        var libraryName = platform == TargetPlatform.Windows
+            ? "ghostty-vt.dll"
+            : "libghostty-vt.so";
+        File.WriteAllText(Path.Combine(_temporaryDirectory, libraryName), "native");
+        File.WriteAllText(
+            Path.Combine(_temporaryDirectory, "native-terminal-components.json"),
+            JsonSerializer.Serialize(new
+            {
+                component = new
+                {
+                    identity = "libghostty-vt/0.1.0-dev",
+                },
+            }));
     }
 }

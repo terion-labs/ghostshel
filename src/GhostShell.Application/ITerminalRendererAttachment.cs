@@ -14,6 +14,13 @@ public interface ITerminalRendererAttachment
     ValueTask FocusAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Reports that the renderer no longer owns keyboard focus so terminals
+    /// using DECSET 1004 receive the corresponding focus-out sequence.
+    /// </summary>
+    ValueTask BlurAsync(CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    /// <summary>
     /// Applies typography and palette to the running terminal.
     ///
     /// Returns false where the engine cannot reconfigure a live surface, so the

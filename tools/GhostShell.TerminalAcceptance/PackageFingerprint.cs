@@ -14,9 +14,10 @@ internal sealed record PackageInspection(
 internal static class PackageFingerprint
 {
     private const string PortaPtyLibraryPrefix = "Porta.Pty/";
-    private const string XTermLibraryPrefix = "XTerm.NET/";
+    private const string NativeTerminalCatalogFileName = "native-terminal-components.json";
+    private const string GhosttyVtIdentityPrefix = "libghostty-vt/";
     internal const string IdentitySourceDescription =
-        "Package dependency manifest plus target platform; live PTY behavior requires the packaged-real-pty-backend observation.";
+        "Package dependency and native-terminal manifests plus target platform; live PTY behavior requires the packaged-real-pty-backend observation.";
 
     public static PackageInspection Inspect(
         string packagePath,
@@ -37,7 +38,8 @@ internal static class PackageFingerprint
                 dependenciesPath);
         }
 
-        var dependencyVersions = ReadTerminalDependencyVersions(dependenciesPath);
+        var portaPtyVersion = ReadPortaPtyVersion(dependenciesPath);
+        var ghosttyVtVersion = ReadGhosttyVtVersion(packageDirectory, platform);
         var executableInfo = new FileInfo(executablePath);
         var executableSha256 = HashFile(executablePath);
         var (packageFileCount, packageManifestSha256) = HashPackage(packageDirectory);
@@ -54,8 +56,8 @@ internal static class PackageFingerprint
             packageFileCount,
             packageManifestSha256);
         var backend = new BackendIdentity(
-            $"XTerm.NET {dependencyVersions.XTermVersion} managed renderer",
-            $"Porta.Pty {dependencyVersions.PortaPtyVersion}",
+            $"libghostty-vt {ghosttyVtVersion} state engine with Avalonia managed renderer",
+            $"Porta.Pty {portaPtyVersion}",
             PtySubstrateFor(platform),
             IdentitySourceDescription);
 
@@ -97,8 +99,7 @@ internal static class PackageFingerprint
         return executablePath;
     }
 
-    private static (string PortaPtyVersion, string XTermVersion) ReadTerminalDependencyVersions(
-        string dependenciesPath)
+    private static string ReadPortaPtyVersion(string dependenciesPath)
     {
         using var document = JsonDocument.Parse(
             File.ReadAllBytes(dependenciesPath),
@@ -117,7 +118,6 @@ internal static class PackageFingerprint
         }
 
         string? portaPtyVersion = null;
-        string? xTermVersion = null;
         foreach (var library in libraries.EnumerateObject())
         {
             if (library.Name.StartsWith(PortaPtyLibraryPrefix, StringComparison.Ordinal))
@@ -127,30 +127,60 @@ internal static class PackageFingerprint
                     throw new InvalidDataException(
                         "GhostShell.deps.json identifies more than one Porta.Pty version.");
                 }
-
                 portaPtyVersion = library.Name[PortaPtyLibraryPrefix.Length..];
             }
-            else if (library.Name.StartsWith(XTermLibraryPrefix, StringComparison.Ordinal))
-            {
-                if (xTermVersion is not null)
-                {
-                    throw new InvalidDataException(
-                        "GhostShell.deps.json identifies more than one XTerm.NET version.");
-                }
-
-                xTermVersion = library.Name[XTermLibraryPrefix.Length..];
-            }
         }
 
-        if (string.IsNullOrWhiteSpace(portaPtyVersion) || string.IsNullOrWhiteSpace(xTermVersion))
+        if (string.IsNullOrWhiteSpace(portaPtyVersion))
         {
             throw new InvalidDataException(
-                "GhostShell.deps.json does not identify both Porta.Pty and XTerm.NET.");
+                "GhostShell.deps.json does not identify Porta.Pty.");
         }
 
-        return (
-            ParseDependencyVersion(portaPtyVersion, "Porta.Pty"),
-            ParseDependencyVersion(xTermVersion, "XTerm.NET"));
+        return ParseDependencyVersion(portaPtyVersion, "Porta.Pty");
+    }
+
+    private static string ReadGhosttyVtVersion(
+        string packageDirectory,
+        TargetPlatform platform)
+    {
+        var libraryPath = Path.Combine(packageDirectory, GhosttyVtLibraryNameFor(platform));
+        if (!File.Exists(libraryPath))
+        {
+            throw new FileNotFoundException(
+                "The package does not contain its platform libghostty-vt runtime.",
+                libraryPath);
+        }
+
+        var catalogPath = Path.Combine(packageDirectory, NativeTerminalCatalogFileName);
+        if (!File.Exists(catalogPath))
+        {
+            throw new FileNotFoundException(
+                "The package does not contain native-terminal-components.json, so libghostty-vt cannot be identified.",
+                catalogPath);
+        }
+
+        using var document = JsonDocument.Parse(File.ReadAllBytes(catalogPath));
+        if (!document.RootElement.TryGetProperty("component", out var component)
+            || component.ValueKind != JsonValueKind.Object
+            || !component.TryGetProperty("identity", out var identityElement)
+            || identityElement.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidDataException(
+                "native-terminal-components.json does not identify libghostty-vt.");
+        }
+
+        var identity = identityElement.GetString();
+        if (identity is null
+            || !identity.StartsWith(GhosttyVtIdentityPrefix, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "native-terminal-components.json has an unexpected terminal component identity.");
+        }
+
+        return ParseDependencyVersion(
+            identity[GhosttyVtIdentityPrefix.Length..],
+            "libghostty-vt");
     }
 
     private static string ParseDependencyVersion(string value, string libraryName)
@@ -205,6 +235,13 @@ internal static class PackageFingerprint
     {
         TargetPlatform.Windows => "Windows ConPTY through Porta.Pty",
         TargetPlatform.LinuxX11 => "Linux Unix PTY through Porta.Pty",
+        _ => throw new ArgumentOutOfRangeException(nameof(platform), platform, null),
+    };
+
+    private static string GhosttyVtLibraryNameFor(TargetPlatform platform) => platform switch
+    {
+        TargetPlatform.Windows => "ghostty-vt.dll",
+        TargetPlatform.LinuxX11 => "libghostty-vt.so",
         _ => throw new ArgumentOutOfRangeException(nameof(platform), platform, null),
     };
 }

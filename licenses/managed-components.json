@@ -5,10 +5,8 @@
   "namespaceBase": "https://ghostshell.app/spdx/managed-components/0.1.0",
   "releaseBlockers": [
     "SMBLibrary 1.5.7.1 is declared LGPL-3.0-or-later; release obligations and distribution posture remain unresolved.",
-    "The pinned Ghostty build statically includes GNU gettext/libintl 0.24 declared LGPL-2.1; source and relinking obligations remain unresolved.",
-    "The bundled Ghostty shell resources include GPL-covered bash and zsh material; the complete resource license graph and distribution obligations remain unresolved.",
     "Embedded Inter font assets require complete OFL license and reserved-font-name notice verification.",
-    "The complete Ghostty native dependency graph, exact source provenance, patches, build flags, and license artifacts are not yet captured by this managed-component inventory."
+    "The exact transitive source and license closure linked into the libghostty-vt development snapshot has not completed independent release review."
   ],
   "dependencies": [
     {
@@ -651,17 +649,6 @@
       "nuspecLicense": "MIT"
     },
     {
-      "identity": "XTerm.NET/1.0.15",
-      "kind": "nuget",
-      "depsType": "package",
-      "licenseDeclared": "MIT",
-      "nuGetId": "XTerm.NET",
-      "contentHash": "hauWTnFFXs0wF3x5SufXzwwprt5AUvywbdHwEYfN09M0/sTfhCJxNpJdGzvtwNK1+tkrhKC82Bt3/0ugFFhHMg==",
-      "nupkgSha512": "VwBx9bYgcUsoG16ywgiIt5v+EbZroT0BKGG1hNaVeNsDvxGFjaA1oHkP7s/nb83SDkhHKhVaVgmM1i7hZAGVLA==",
-      "nuspecLicenseType": "expression",
-      "nuspecLicense": "MIT"
-    },
-    {
       "identity": "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10",
       "kind": "runtime",
       "depsType": "runtimepack",
@@ -675,20 +662,12 @@
   ],
   "additionalComponents": [
     {
-      "identity": "GhostSHELL Ghostty shim/0.1.0",
+      "identity": "libghostty-vt/0.1.0-dev",
       "kind": "native",
-      "file": "libghostshell-ghostty.dylib",
-      "licenseDeclared": "NOASSERTION",
-      "downloadLocation": "NOASSERTION",
-      "comment": "GhostSHELL-owned native shim; no aggregate license conclusion is asserted by this evidence document."
-    },
-    {
-      "identity": "Ghostty/1.3.1",
-      "kind": "native",
-      "file": "libghostty.dylib",
-      "licenseDeclared": "NOASSERTION",
-      "downloadLocation": "https://github.com/ghostty-org/ghostty/tree/332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-      "comment": "Pinned Ghostty library; bundled resources and static native dependencies have unresolved mixed-license provenance recorded in the document release blockers.",
+      "file": "libghostty-vt.dylib",
+      "licenseDeclared": "MIT",
+      "downloadLocation": "https://github.com/ghostty-org/ghostty/tree/08f039fbb3dea9c6b1cdb5ff4550666598122346",
+      "comment": "Pinned Ghostty VT state engine; the aggregate transitive native license conclusion remains blocked pending independent review.",
       "licenseEvidenceFile": "GHOSTTY-LICENSE",
       "licenseEvidenceSha256": "386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1",
       "licenseEvidenceMinimumBytes": 1024

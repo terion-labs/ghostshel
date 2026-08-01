@@ -652,9 +652,30 @@ public sealed partial class InMemorySessionHostClient :
             invalid ?? session.ReleaseLease(request.LeaseId, context.Actor));
     }
 
-    public async ValueTask<HostResult<Unit>> FocusTerminalAsync(
+    public ValueTask<HostResult<Unit>> FocusTerminalAsync(
         SessionId sessionId,
         OperationContext context,
+        CancellationToken cancellationToken) =>
+        UpdateTerminalFocusAsync(
+            sessionId,
+            context,
+            focused: true,
+            cancellationToken);
+
+    public ValueTask<HostResult<Unit>> BlurTerminalAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        UpdateTerminalFocusAsync(
+            sessionId,
+            context,
+            focused: false,
+            cancellationToken);
+
+    private async ValueTask<HostResult<Unit>> UpdateTerminalFocusAsync(
+        SessionId sessionId,
+        OperationContext context,
+        bool focused,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -676,7 +697,15 @@ public sealed partial class InMemorySessionHostClient :
 
         try
         {
-            await terminal.FocusAsync(cancellationToken).ConfigureAwait(false);
+            if (focused)
+            {
+                await terminal.FocusAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await terminal.BlurAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             return HostResult<Unit>.Succeed(Unit.Value, revision);
         }
         catch (OperationCanceledException)
@@ -873,6 +902,51 @@ public sealed partial class InMemorySessionHostClient :
         try
         {
             await terminal.SendKeyAsync(request.KeyStroke, cancellationToken).ConfigureAwait(false);
+            return HostResult<Unit>.Succeed(Unit.Value, revision);
+        }
+        catch (OperationCanceledException)
+        {
+            return Cancelled<Unit>(revision);
+        }
+        catch (Exception exception)
+        {
+            return EngineFailure<Unit>(exception, revision);
+        }
+    }
+
+    public async ValueTask<HostResult<Unit>> SendTerminalPhysicalKeyAsync(
+        TerminalPhysicalKeyRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
+        if (!TryGetTerminalPort<Unit, ITerminalAutomation>(
+                request.SessionId,
+                out var session,
+                out var terminal,
+                out var failure))
+        {
+            return failure;
+        }
+
+        var revision = session.Snapshot().Descriptor.Revision;
+        var invalid = ValidateContext<Unit>(context, cancellationToken, revision);
+        if (invalid is not null)
+        {
+            return invalid;
+        }
+
+        if (!session.HoldsLease(request.LeaseId, context.Actor.Id))
+        {
+            return LeaseDenied<Unit>(revision);
+        }
+
+        try
+        {
+            await terminal.SendPhysicalKeyAsync(
+                request.KeyEvent,
+                cancellationToken).ConfigureAwait(false);
             return HostResult<Unit>.Succeed(Unit.Value, revision);
         }
         catch (OperationCanceledException)
@@ -1324,6 +1398,45 @@ public sealed partial class InMemorySessionHostClient :
         catch (Exception exception)
         {
             return EngineFailure<TerminalScreenSnapshot>(exception, revision);
+        }
+    }
+
+    public async ValueTask<HostResult<TerminalRenderFrame>> ReadTerminalRenderFrameAsync(
+        SessionId sessionId,
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (!TryGetTerminalPort<TerminalRenderFrame, ITerminalRenderState>(
+                sessionId,
+                out var session,
+                out var terminal,
+                out var failure))
+        {
+            return failure;
+        }
+
+        var revision = session.Snapshot().Descriptor.Revision;
+        var invalid = ValidateContext<TerminalRenderFrame>(context, cancellationToken, revision);
+        if (invalid is not null)
+        {
+            return invalid;
+        }
+
+        try
+        {
+            var frame = await terminal
+                .ReadRenderFrameAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return HostResult<TerminalRenderFrame>.Succeed(frame, revision);
+        }
+        catch (OperationCanceledException)
+        {
+            return Cancelled<TerminalRenderFrame>(revision);
+        }
+        catch (Exception exception)
+        {
+            return EngineFailure<TerminalRenderFrame>(exception, revision);
         }
     }
 

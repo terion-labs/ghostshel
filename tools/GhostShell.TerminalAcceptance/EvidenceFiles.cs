@@ -455,8 +455,10 @@ internal static class EvidenceValidator
         {
             errors.Add("Terminal backend identity contains unsanitized text.");
         }
-        else if (!evidence.Backend.Renderer.StartsWith("XTerm.NET ", StringComparison.Ordinal)
-            || !evidence.Backend.Renderer.EndsWith(" managed renderer", StringComparison.Ordinal)
+        else if (!evidence.Backend.Renderer.StartsWith("libghostty-vt ", StringComparison.Ordinal)
+            || !evidence.Backend.Renderer.EndsWith(
+                " state engine with Avalonia managed renderer",
+                StringComparison.Ordinal)
             || !evidence.Backend.PtyAdapter.StartsWith("Porta.Pty ", StringComparison.Ordinal)
             || !string.Equals(
                 evidence.Backend.PtySubstrate,

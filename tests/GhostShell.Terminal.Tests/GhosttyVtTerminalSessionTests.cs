@@ -1,0 +1,651 @@
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using GhostShell.Application;
+using GhostShell.Core;
+using GhostShell.Terminal.GhosttyVt;
+
+namespace GhostShell.Terminal.Tests;
+
+[Collection(GhosttyVtTestCollection.Name)]
+public sealed class GhosttyVtTerminalSessionTests
+{
+    [Fact]
+    public void Staged_runtime_exposes_the_pinned_rendering_features()
+    {
+        var availability = GhosttyVtTestRuntime.RequireStagedRuntime();
+
+        Assert.NotEmpty(availability.Version!);
+        Assert.Equal(1u, availability.ExtensionAbi);
+        Assert.True(availability.SupportsKittyGraphics);
+        Assert.NotNull(availability.LibraryPath);
+    }
+
+    [Fact]
+    public void Runtime_probe_requires_every_declared_native_import()
+    {
+        var importedEntryPoints = typeof(GhosttyVtNative)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .Select(method => method.GetCustomAttribute<LibraryImportAttribute>(inherit: false))
+            .Where(attribute => attribute is not null)
+            .Select(attribute => attribute!.EntryPoint)
+            .Where(entryPoint => !string.IsNullOrWhiteSpace(entryPoint))
+            .Select(entryPoint => entryPoint!)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(importedEntryPoints, GhosttyVtRuntimeProbe.RequiredExportsForTesting);
+        Assert.Contains("ghostty_ghostshell_extension_abi", importedEntryPoints);
+        Assert.Contains("ghostty_terminal_search", importedEntryPoints);
+    }
+
+    [Fact]
+    public void Managed_extension_layouts_match_the_pinned_64_bit_abi()
+    {
+        Assert.True(
+            GhosttyVtAbi.TryValidateManagedLayouts(out var detail),
+            detail);
+        Assert.Equal(24, Marshal.SizeOf<GhosttyVtSemanticPromptEvent>());
+        Assert.Equal(40, Marshal.SizeOf<GhosttyVtTerminalSearchOptions>());
+        Assert.Equal(32, Marshal.SizeOf<GhosttyVtTerminalSearchResult>());
+        Assert.Equal(64, Marshal.SizeOf<GhosttyVtKittyVirtualPlacementRenderInfo>());
+    }
+
+    [Fact]
+    public async Task Split_utf8_bytes_reach_one_canonical_render_state_without_replacement_text()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var bytes = Encoding.UTF8.GetBytes("界");
+
+        await harness.Pty.WriteOutputBytesAsync(bytes.AsMemory(0, 1));
+        await harness.Pty.WriteOutputBytesAsync(bytes.AsMemory(1));
+
+        var frame = await WaitForFrameAsync(
+            session,
+            current => current.ViewportRows.SelectMany(row => row.Cells)
+                .Any(cell => cell.Text == "界"));
+        var cell = Assert.Single(
+            frame.ViewportRows.SelectMany(row => row.Cells),
+            candidate => candidate.Text == "界");
+        Assert.Equal(TerminalRenderCellWidth.Wide, cell.Width);
+        Assert.DoesNotContain(
+            "�",
+            string.Concat(frame.ViewportRows.SelectMany(row => row.Cells).Select(candidate => candidate.Text)),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Soft_wrapped_rows_remain_one_logical_line_for_screen_reads_and_waits()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(40, 64, 1, Columns: 4, Rows: 4)),
+            default);
+
+        await harness.Pty.WriteOutputAsync("abcdEFGH");
+
+        var snapshot = await WaitForScreenAsync(
+            session,
+            current => current.PlainText.Contains("abcdEFGH", StringComparison.Ordinal));
+        Assert.True(snapshot.StructuredRows[0].IsWrapped);
+        Assert.DoesNotContain("abcd\nEFGH", snapshot.PlainText, StringComparison.Ordinal);
+
+        var wait = await session.WaitForTextAsync(
+            new TerminalWaitForTextInput("cdEF", TimeSpan.FromSeconds(1)),
+            default);
+        Assert.Equal(TerminalWaitOutcomeKind.Matched, wait.Kind);
+    }
+
+    [Fact]
+    public async Task Find_uses_ghostty_scrollback_wrapping_selection_and_navigation()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(64, 48, 1, Columns: 8, Rows: 3)),
+            default);
+        await harness.Pty.WriteOutputAsync(
+            "old wrapped-needle\r\n" +
+            "middle\r\n" +
+            "wrapped-needle new\r\n" +
+            "wrapped-needle latest\r\n" +
+            "SEARCH_READY");
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains("SEARCH_READY", StringComparison.Ordinal));
+
+        var middle = await session.FindAsync(new TerminalFindInput("wrapped-needle", 1), default);
+
+        Assert.Equal(new TerminalFindResult(3, 1, false), middle);
+        Assert.Equal(
+            new TerminalSelectionText("wrapped-needle", true, false),
+            await session.ReadSelectionAsync(default));
+
+        var oldest = await session.FindAsync(new TerminalFindInput("wrapped-needle", -1), default);
+        Assert.Equal(new TerminalFindResult(3, 2, false), oldest);
+        var scrolled = await session.ReadScreenAsync(default);
+        Assert.True(scrolled.ScrollbackLinesBelow > 0);
+
+        Assert.Equal(
+            TerminalFindResult.Empty,
+            await session.FindAsync(new TerminalFindInput(string.Empty), default));
+        Assert.Equal(
+            new TerminalSelectionText(string.Empty, false, false),
+            await session.ReadSelectionAsync(default));
+    }
+
+    [Fact]
+    public async Task Find_bounds_history_scans_at_4096_results()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var output = string.Concat(Enumerable.Repeat("bounded-hit\r\n", 4_100))
+            + "BOUNDED_SEARCH_READY";
+        await harness.Pty.WriteOutputAsync(output);
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains("BOUNDED_SEARCH_READY", StringComparison.Ordinal));
+
+        var result = await session.FindAsync(new TerminalFindInput("bounded-hit"), default);
+
+        Assert.Equal(4_096, result.MatchCount);
+        Assert.Equal(0, result.SelectedMatchIndex);
+        Assert.True(result.IsScanTruncated);
+    }
+
+    [Fact]
+    public async Task Render_frame_preserves_terminal_cursor_underline_color_and_damage()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var initial = await session.ReadRenderFrameAsync(default);
+        var clean = await session.ReadRenderFrameAsync(default);
+
+        Assert.Equal(initial.Revision, clean.Revision);
+        Assert.Equal(TerminalRenderDamageKind.None, clean.Delta.Kind);
+
+        await harness.Pty.WriteOutputAsync(
+            "\u001b[6 q\u001b[4:3;58:2::12:34:56mU\u001b[0m");
+
+        var changed = await WaitForFrameAsync(
+            session,
+            frame => frame.Revision > initial.Revision
+                && frame.ViewportRows[0].Cells[0].Text == "U");
+        var underlined = changed.ViewportRows[0].Cells[0];
+
+        Assert.Equal(TerminalCursorVisualStyle.Bar, changed.Cursor.VisualStyle);
+        Assert.False(changed.Cursor.IsBlinking);
+        Assert.Equal(TerminalUnderlineKind.Curly, underlined.Underline);
+        Assert.Equal(
+            new TerminalCellColor(TerminalColorMode.Rgb, 0x0C2238),
+            underlined.UnderlineColor);
+        Assert.Equal(TerminalRenderDamageKind.Partial, changed.Delta.Kind);
+        Assert.Contains(0, changed.Delta.DirtyRows);
+
+        var acknowledged = await session.ReadRenderFrameAsync(default);
+        Assert.Equal(changed.Revision, acknowledged.Revision);
+        Assert.Equal(TerminalRenderDamageKind.None, acknowledged.Delta.Kind);
+    }
+
+    [Fact]
+    public async Task Render_frame_distinguishes_default_backgrounds_from_explicit_sgr_colors()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+
+        await harness.Pty.WriteOutputAsync("\u001b[48;2;17;34;51mX\u001b[0mY");
+
+        var frame = await WaitForFrameAsync(
+            session,
+            current => current.ViewportRows[0].Cells[0].Text == "X"
+                && current.ViewportRows[0].Cells[1].Text == "Y");
+        var explicitBackground = frame.ViewportRows[0].Cells[0];
+        var defaultBackground = frame.ViewportRows[0].Cells[1];
+        var blankBackground = frame.ViewportRows[0].Cells[2];
+
+        Assert.Equal(
+            new TerminalCellColor(TerminalColorMode.Rgb, 0x112233),
+            explicitBackground.Background);
+        Assert.Equal(TerminalColorMode.Default, defaultBackground.Background.Mode);
+        Assert.Equal(TerminalColorMode.Default, blankBackground.Background.Mode);
+    }
+
+    [Fact]
+    public async Task Osc133_emits_durable_semantic_command_lifecycle_events()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+
+        await harness.Pty.WriteOutputAsync(
+            "\u001b]133;A\u0007$ " +
+            "\u001b]133;B\u0007echo ok" +
+            "\u001b]133;C\u0007\r\nok\r\n" +
+            "\u001b]133;D;7\u0007");
+
+        var snapshot = await WaitForScreenAsync(
+            session,
+            current => current.ShellIntegrationEvents.Count == 4);
+
+        Assert.Equal(
+            [
+                TerminalCommandBoundaryKind.PromptStarted,
+                TerminalCommandBoundaryKind.CommandInputStarted,
+                TerminalCommandBoundaryKind.CommandExecuted,
+                TerminalCommandBoundaryKind.CommandFinished,
+            ],
+            snapshot.ShellIntegrationEvents.Select(shellEvent => shellEvent.Kind));
+        Assert.Equal([1L, 2L, 3L, 4L],
+            snapshot.ShellIntegrationEvents.Select(shellEvent => shellEvent.Sequence));
+        Assert.Equal(7, snapshot.ShellIntegrationEvents[^1].ExitCode);
+
+        await harness.Pty.WriteOutputAsync("after-event");
+        var later = await WaitForScreenAsync(
+            session,
+            current => current.PlainText.Contains("after-event", StringComparison.Ordinal));
+        Assert.Equal(4, later.ShellIntegrationEvents.Count);
+    }
+
+    [Fact]
+    public async Task Graceful_close_uses_shell_lifecycle_instead_of_treating_every_shell_as_busy()
+    {
+        var idleHarness = await CreateAsync();
+        await using (var idle = idleHarness.Session)
+        {
+            await idleHarness.Pty.WriteOutputAsync("\u001b]133;A\u0007$ \u001b]133;B\u0007");
+            _ = await WaitForScreenAsync(
+                idle,
+                current => current.ShellIntegrationEvents.Count == 2);
+
+            var idleSnapshot = await idle.SnapshotAsync(default);
+            Assert.False(idleSnapshot.HasActiveWork);
+            Assert.Equal(
+                PanelCloseOutcome.GracefullyClosed,
+                await idle.CloseAsync(PanelCloseMode.Graceful, default));
+            Assert.Equal(0, idleHarness.Pty.KillCount);
+        }
+
+        var runningHarness = await CreateAsync();
+        await using (var running = runningHarness.Session)
+        {
+            await runningHarness.Pty.WriteOutputAsync(
+                "\u001b]133;A\u0007$ \u001b]133;B\u0007sleep 10\u001b]133;C\u0007");
+            _ = await WaitForScreenAsync(
+                running,
+                current => current.ShellIntegrationEvents.Count == 3);
+
+            var runningSnapshot = await running.SnapshotAsync(default);
+            Assert.True(runningSnapshot.HasActiveWork);
+            Assert.Equal(
+                PanelCloseOutcome.ConfirmationRequired,
+                await running.CloseAsync(PanelCloseMode.Graceful, default));
+
+            await runningHarness.Pty.WriteOutputAsync(
+                "\u001b]133;D;0\u0007\u001b]133;A\u0007$ \u001b]133;B\u0007");
+            _ = await WaitForScreenAsync(
+                running,
+                current => current.ShellIntegrationEvents.Count == 6);
+
+            var returnedToPrompt = await running.SnapshotAsync(default);
+            Assert.False(returnedToPrompt.HasActiveWork);
+            Assert.Equal(
+                PanelCloseOutcome.GracefullyClosed,
+                await running.CloseAsync(PanelCloseMode.Graceful, default));
+        }
+    }
+
+    [Fact]
+    public async Task Kitty_image_content_and_placement_follow_the_terminal_storage_lifecycle()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var redPixel = Convert.ToBase64String([255, 0, 0, 255]);
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(800, 384, 1.5, Columns: 80, Rows: 24)),
+            default);
+
+        await harness.Pty.WriteOutputAsync(
+            $"\u001b_Ga=T,f=32,s=1,v=1,i=7,p=9,X=1,Y=2;{redPixel}\u001b\\");
+
+        var displayed = await WaitForFrameAsync(
+            session,
+            frame => frame.KittyGraphics.Placements.Count == 1);
+        var placement = Assert.Single(displayed.KittyGraphics.Placements);
+        var image = Assert.Single(displayed.KittyGraphics.Images.Values);
+
+        Assert.Equal((uint)7, image.Key.ImageId);
+        Assert.Equal((uint)9, placement.PlacementId);
+        Assert.Equal(TerminalKittyImagePixelFormat.Rgba, image.PixelFormat);
+        Assert.Equal([255, 0, 0, 255], image.Pixels.ToArray());
+        Assert.Equal(image.Key, placement.Image);
+        Assert.NotNull(placement.Geometry);
+        Assert.Equal(2d / 3d, placement.PixelOffsetX, precision: 5);
+        Assert.Equal(4d / 3d, placement.PixelOffsetY, precision: 5);
+
+        await harness.Pty.WriteOutputAsync(string.Concat(Enumerable.Repeat("\r\n", 30)));
+        var scrolledOffscreen = await WaitForFrameAsync(
+            session,
+            frame => frame.Revision > displayed.Revision
+                && frame.KittyGraphics.Placements.Count == 0);
+        Assert.Empty(scrolledOffscreen.KittyGraphics.Images);
+
+        await harness.Pty.WriteOutputAsync("\u001b_Ga=d,d=I,i=7\u001b\\");
+        var deleted = await WaitForFrameAsync(
+            session,
+            frame => frame.Revision > scrolledOffscreen.Revision
+                && frame.KittyGraphics.Placements.Count == 0);
+
+        Assert.Empty(deleted.KittyGraphics.Images);
+    }
+
+    [Fact]
+    public async Task Kitty_unicode_placeholder_resolves_to_virtual_placement_geometry()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(800, 384, 2, Columns: 80, Rows: 24)),
+            default);
+        var redPixel = Convert.ToBase64String([255, 0, 0, 255]);
+
+        await harness.Pty.WriteOutputAsync(
+            $"\u001b_Ga=t,f=32,s=1,v=1,i=8;{redPixel}\u001b\\" +
+            "\u001b_Ga=p,i=8,U=1,c=1,r=1\u001b\\" +
+            "\u001b[38;5;8m\U0010EEEE\u0305\u0305\u001b[39m");
+
+        var frame = await WaitForFrameAsync(
+            session,
+            current => current.KittyGraphics.Placements.Any(placement => placement.IsVirtual));
+        var placement = Assert.Single(
+            frame.KittyGraphics.Placements,
+            candidate => candidate.IsVirtual);
+
+        Assert.Equal((uint)8, placement.Image.ImageId);
+        Assert.NotNull(placement.Geometry);
+        Assert.Equal(0, placement.Geometry.Value.ViewportColumn);
+        Assert.Equal(0, placement.Geometry.Value.ViewportRow);
+        Assert.Equal(10, placement.Geometry.Value.PixelWidth);
+        Assert.Equal(10, placement.Geometry.Value.PixelHeight);
+        Assert.Equal(TerminalKittyPlacementLayer.BelowText, placement.Layer);
+        Assert.True(frame.ViewportRows[0].ContainsKittyVirtualPlaceholder);
+    }
+
+    [Fact]
+    public async Task Input_bytes_are_acknowledged_only_after_the_portable_pty_flushes()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        harness.Pty.PauseInputFlushes();
+
+        var write = session.WriteAsync("λ-input", default).AsTask();
+        try
+        {
+            await harness.Pty.WaitForInputFlushAttemptAsync();
+
+            Assert.Equal("λ-input", harness.Pty.WrittenText);
+            Assert.False(write.IsCompleted);
+        }
+        finally
+        {
+            harness.Pty.ResumeInputFlushes();
+        }
+
+        await write;
+    }
+
+    [Fact]
+    public async Task Kitty_keyboard_protocol_receives_press_repeat_and_release_actions()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var beforeModeChange = await session.ReadRenderFrameAsync(default);
+        await harness.Pty.WriteOutputAsync("\u001b[>31u");
+        _ = await WaitForFrameAsync(
+            session,
+            frame => frame.Revision > beforeModeChange.Revision);
+
+        await session.SendPhysicalKeyAsync(
+            PhysicalKey(TerminalKeyAction.Press),
+            default);
+        await session.SendPhysicalKeyAsync(
+            PhysicalKey(TerminalKeyAction.Repeat),
+            default);
+        await session.SendPhysicalKeyAsync(
+            PhysicalKey(TerminalKeyAction.Release, text: string.Empty),
+            default);
+
+        Assert.Equal(
+            "\u001b[97;;97u\u001b[97;1:2;97u\u001b[97;1:3u",
+            harness.Pty.WrittenText);
+    }
+
+    [Fact]
+    public async Task Kitty_keyboard_protocol_preserves_modifiers_and_consumed_modifiers()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var beforeModeChange = await session.ReadRenderFrameAsync(default);
+        await harness.Pty.WriteOutputAsync("\u001b[>31u");
+        _ = await WaitForFrameAsync(
+            session,
+            frame => frame.Revision > beforeModeChange.Revision);
+
+        await session.SendPhysicalKeyAsync(
+            new TerminalPhysicalKeyEvent(
+                TerminalPhysicalKey.A,
+                "A",
+                "A",
+                TerminalKeyModifiers.Shift | TerminalKeyModifiers.Control,
+                TerminalKeyModifiers.None,
+                TerminalKeyAction.Press,
+                'a'),
+            default);
+        await session.SendPhysicalKeyAsync(
+            new TerminalPhysicalKeyEvent(
+                TerminalPhysicalKey.A,
+                "A",
+                "A",
+                TerminalKeyModifiers.Shift | TerminalKeyModifiers.Control,
+                TerminalKeyModifiers.Shift,
+                TerminalKeyAction.Press,
+                'a'),
+            default);
+
+        Assert.Equal("\u001b[97:65;6u\u001b[97:65;6u", harness.Pty.WrittenText);
+    }
+
+    [Fact]
+    public async Task Consumed_layout_modifiers_are_not_reencoded_as_terminal_modifiers()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+
+        await session.SendPhysicalKeyAsync(
+            new TerminalPhysicalKeyEvent(
+                TerminalPhysicalKey.Digit8,
+                "D8",
+                "[",
+                TerminalKeyModifiers.Alt,
+                TerminalKeyModifiers.Alt,
+                TerminalKeyAction.Press,
+                '8'),
+            default);
+
+        Assert.Equal("[", harness.Pty.WrittenText);
+    }
+
+    [Fact]
+    public async Task Focus_reporting_emits_both_gain_and_loss_sequences()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var beforeModeChange = await session.ReadRenderFrameAsync(default);
+        await harness.Pty.WriteOutputAsync("\u001b[?1004h");
+        _ = await WaitForFrameAsync(
+            session,
+            frame => frame.Revision > beforeModeChange.Revision);
+
+        await session.FocusAsync(default);
+        await session.BlurAsync(default);
+
+        Assert.Equal("\u001b[I\u001b[O", harness.Pty.WrittenText);
+    }
+
+    [Fact]
+    public async Task Force_shutdown_cancels_in_flight_input_and_kills_the_process_once()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        harness.Pty.PauseInputWrites();
+        var write = session.WriteAsync("blocked", default).AsTask();
+        await harness.Pty.WaitForInputWriteAttemptAsync();
+
+        var outcome = await session.CloseAsync(PanelCloseMode.Force, default);
+
+        Assert.Equal(PanelCloseOutcome.ForceTerminated, outcome);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => write.WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.Equal(1, harness.Pty.KillCount);
+        Assert.Equal(SessionLifecycle.Closed, (await session.SnapshotAsync(default)).Lifecycle);
+    }
+
+    [Fact]
+    public async Task Shutdown_failure_still_releases_native_state_and_remains_observable()
+    {
+        var harness = await CreateAsync();
+        var session = harness.Session;
+        harness.Pty.DisposeFailure = new IOException("injected PTY dispose failure");
+
+        var failure = await Assert.ThrowsAsync<IOException>(
+            () => session.CloseAsync(PanelCloseMode.Force, default).AsTask());
+
+        Assert.Equal("injected PTY dispose failure", failure.Message);
+        Assert.True(ReadPrivateField<SafeHandle>(session, "_terminal").IsClosed);
+        Assert.False(ReadPrivateField<GCHandle>(session, "_selfHandle").IsAllocated);
+
+        var repeated = await Assert.ThrowsAsync<IOException>(
+            () => session.DisposeAsync().AsTask());
+        Assert.Equal(failure.Message, repeated.Message);
+    }
+
+    [Fact]
+    public async Task Real_portable_pty_and_staged_vt_library_run_a_bounded_command()
+    {
+        _ = GhosttyVtTestRuntime.RequireStagedRuntime();
+        var isWindows = OperatingSystem.IsWindows();
+        var executable = isWindows
+            ? Environment.GetEnvironmentVariable("COMSPEC")
+                ?? Path.Combine(Environment.SystemDirectory, "cmd.exe")
+            : "/bin/sh";
+        var arguments = isWindows
+            ? new[] { "/d", "/c", "echo GHOSTTY_VT_SMOKE" }
+            : new[] { "-c", "printf 'GHOSTTY_VT_SMOKE\\n'" };
+        var factory = new GhosttyVtTerminalSessionFactory();
+        await using var session = await factory.CreateAsync(
+            SessionId.New(),
+            new TerminalLaunchRequest(Environment.CurrentDirectory, executable, arguments),
+            default);
+
+        var screen = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains("GHOSTTY_VT_SMOKE", StringComparison.Ordinal));
+
+        Assert.Contains("GHOSTTY_VT_SMOKE", screen.PlainText, StringComparison.Ordinal);
+        await WaitUntilAsync(async () =>
+            (await session.SnapshotAsync(default)).Lifecycle == SessionLifecycle.Closed);
+    }
+
+    private static async Task<GhosttyVtHarness> CreateAsync()
+    {
+        _ = GhosttyVtTestRuntime.RequireStagedRuntime();
+        var ptyFactory = new FakePortablePtyFactory();
+        var factory = new GhosttyVtTerminalSessionFactory(ptyFactory);
+        var session = await factory.CreateAsync(
+            SessionId.New(),
+            new TerminalLaunchRequest(Environment.CurrentDirectory),
+            default);
+        return new GhosttyVtHarness(
+            Assert.IsType<GhosttyVtTerminalSession>(session),
+            ptyFactory.Connection);
+    }
+
+    private static TerminalPhysicalKeyEvent PhysicalKey(
+        TerminalKeyAction action,
+        string text = "a") =>
+        new(
+            TerminalPhysicalKey.A,
+            "A",
+            text,
+            TerminalKeyModifiers.None,
+            TerminalKeyModifiers.None,
+            action,
+            'a');
+
+    private static T ReadPrivateField<T>(object instance, string name)
+    {
+        var field = instance.GetType().GetField(
+            name,
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Missing test field {name}.");
+        return Assert.IsAssignableFrom<T>(field.GetValue(instance));
+    }
+
+    private static async Task<TerminalRenderFrame> WaitForFrameAsync(
+        GhosttyVtTerminalSession session,
+        Func<TerminalRenderFrame, bool> condition)
+    {
+        TerminalRenderFrame? last = null;
+        await WaitUntilAsync(async () =>
+        {
+            last = await session.ReadRenderFrameAsync(default);
+            return condition(last);
+        });
+        return last!;
+    }
+
+    private static async Task<TerminalScreenSnapshot> WaitForScreenAsync(
+        ITerminalPanelSession session,
+        Func<TerminalScreenSnapshot, bool> condition)
+    {
+        TerminalScreenSnapshot? last = null;
+        await WaitUntilAsync(async () =>
+        {
+            last = await session.ReadScreenAsync(default);
+            return condition(last);
+        });
+        return last!;
+    }
+
+    private static async Task WaitUntilAsync(Func<Task<bool>> condition)
+    {
+        var timeout = Stopwatch.StartNew();
+        while (!await condition())
+        {
+            if (timeout.Elapsed > TimeSpan.FromSeconds(3))
+            {
+                throw new TimeoutException("The libghostty-vt terminal did not reach the expected state.");
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
+    private sealed record GhosttyVtHarness(
+        GhosttyVtTerminalSession Session,
+        FakePortablePtyConnection Pty);
+}

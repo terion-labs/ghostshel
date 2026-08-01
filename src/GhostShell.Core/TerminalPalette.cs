@@ -51,7 +51,7 @@ public sealed record TerminalPalette
     public static TerminalPalette GhostShellDark { get; } = new(
         "GhostSHELL Dark",
         RgbColor.Parse("#E8E4DE"),
-        RgbColor.Parse("#12100E"),
+        RgbColor.Parse("#111111"),
         RgbColor.Parse("#D9944D"),
         RgbColor.Parse("#4A3828"),
         [

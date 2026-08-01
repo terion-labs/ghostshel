@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "format": "ghostshell-terminal-font-assets-catalog-v1",
+  "catalogId": "ghostshell-jetbrains-mono-2.304-20260801",
+  "source": {
+    "repository": "https://github.com/ghostty-org/ghostty.git",
+    "commit": "08f039fbb3dea9c6b1cdb5ff4550666598122346"
+  },
+  "dependency": {
+    "name": "JetBrains Mono",
+    "version": "2.304",
+    "url": "https://deps.files.ghostty.org/JetBrainsMono-2.304.tar.gz",
+    "zigPackageHash": "N-V-__8AAIC5lwAVPJJzxnCAahSvZTIlG-HhtOvnM1uh-66x",
+    "license": "OFL-1.1"
+  },
+  "assets": [
+    {
+      "file": "JetBrainsMono-Bold.ttf",
+      "sourcePath": "fonts/ttf/JetBrainsMono-Bold.ttf",
+      "style": "normal",
+      "weight": 700,
+      "bytes": 277828,
+      "sha256": "5590990c82e097397517f275f430af4546e1c45cff408bde4255dad142479dcb"
+    },
+    {
+      "file": "JetBrainsMono-BoldItalic.ttf",
+      "sourcePath": "fonts/ttf/JetBrainsMono-BoldItalic.ttf",
+      "style": "italic",
+      "weight": 700,
+      "bytes": 279832,
+      "sha256": "4039d5ce0ed225bf9c8b2c8c6436290ae2f356b7e90d70fa666227238324aa3b"
+    },
+    {
+      "file": "JetBrainsMono-Italic.ttf",
+      "sourcePath": "fonts/ttf/JetBrainsMono-Italic.ttf",
+      "style": "italic",
+      "weight": 400,
+      "bytes": 276840,
+      "sha256": "9d0a1f7a708e6af183f1193b7e81d40da294f5c67682c085d8401c60aac8ded4"
+    },
+    {
+      "file": "JetBrainsMono-Regular.ttf",
+      "sourcePath": "fonts/ttf/JetBrainsMono-Regular.ttf",
+      "style": "normal",
+      "weight": 400,
+      "bytes": 273900,
+      "sha256": "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f"
+    }
+  ],
+  "license": {
+    "file": "OFL.txt",
+    "sourcePath": "OFL.txt",
+    "bytes": 4399,
+    "sha256": "30f0c136e3c88e422d0791acd97238870f9054a9729bc34cf2ff0d4ed8cac4ad"
+  }
+}

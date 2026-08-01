@@ -56,6 +56,8 @@ internal sealed class FakePortablePtyConnection : IPortablePtyConnection
 
     public int KillCount { get; private set; }
 
+    public Exception? DisposeFailure { get; set; }
+
     public string WrittenText => _input.Text;
 
     public void PauseInputWrites() => _input.PauseWrites();
@@ -119,6 +121,12 @@ internal sealed class FakePortablePtyConnection : IPortablePtyConnection
         _outputReader.Dispose();
         _outputWriter.Dispose();
         _input.Dispose();
+        var failure = DisposeFailure;
+        DisposeFailure = null;
+        if (failure is not null)
+        {
+            throw failure;
+        }
     }
 }
 

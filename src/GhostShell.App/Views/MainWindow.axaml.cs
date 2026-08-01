@@ -1632,34 +1632,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnTerminalApplicationKeyPressed(
-        object? sender,
-        NativeRendererKeyInputEventArgs e)
-    {
-        if (!ViewModel.IsWorkspaceVisible || ViewModel.HasOverlay)
-        {
-            _applicationKeys.Reset();
-            ClearApplicationKeySequenceHint();
-            return;
-        }
-
-        SynchronizeApplicationKeymap();
-        var resolution = _applicationKeys.Resolve(
-            e.Input.Stroke,
-            ViewModel.ActiveCommandContexts,
-            DateTimeOffset.UtcNow);
-        e.Handled = resolution.ShouldHandle;
-        if (resolution.Kind != ApplicationKeyResolutionKind.NotHandled)
-        {
-            // The native shim is waiting for a synchronous consume/pass-through
-            // decision. Run any resulting shell command after unwinding its key stack.
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                _ = ApplyApplicationKeyResolutionAsync(
-                    resolution,
-                    sender as TerminalPresentationHost ?? FindActiveTerminalHost()));
-        }
-    }
-
     private async Task ApplyApplicationKeyResolutionAsync(
         ApplicationKeyResolution resolution,
         TerminalPresentationHost? replayTarget)

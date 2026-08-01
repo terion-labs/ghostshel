@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -7,6 +8,8 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Input.TextInput;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -35,6 +38,11 @@ public sealed class ManagedTerminalSurface : Control
     public static readonly StyledProperty<TerminalRenderProfileSnapshot?> ProfileProperty =
         AvaloniaProperty.Register<ManagedTerminalSurface, TerminalRenderProfileSnapshot?>(
             nameof(Profile));
+
+    public static readonly StyledProperty<double> BackgroundOpacityProperty =
+        AvaloniaProperty.Register<ManagedTerminalSurface, double>(
+            nameof(BackgroundOpacity),
+            1);
 
     public static readonly StyledProperty<TerminalKeymapSnapshot?> KeymapProperty =
         AvaloniaProperty.Register<ManagedTerminalSurface, TerminalKeymapSnapshot?>(
@@ -73,7 +81,10 @@ public sealed class ManagedTerminalSurface : Control
     private readonly DispatcherTimer _cursorTimer;
     private readonly DispatcherTimer _keySequenceTimer;
     private readonly TerminalTextInputMethodClient _imeClient;
+    private readonly Dictionary<TerminalKittyImageKey, WriteableBitmap> _kittyBitmaps = [];
+    private readonly HashSet<PhysicalKey> _pressedPhysicalKeys = [];
     private TerminalScreenSnapshot? _snapshot;
+    private TerminalRenderFrame? _renderFrame;
     private IManagedTerminalInputSink? _inputSink;
     private IManagedTerminalClipboard _clipboard;
     private IManagedTerminalLinkOpener _linkOpener;
@@ -89,6 +100,9 @@ public sealed class ManagedTerminalSurface : Control
     private bool _isAttached;
     private (int Column, int Row)? _lastPointerCell;
     private bool _isSelecting;
+    private Point? _selectionAnchorPoint;
+    private (int Column, int Row)? _selectionAnchorCell;
+    private bool _selectionDragStarted;
     private string _preeditText = string.Empty;
     private int? _preeditCursor;
     private ManagedTerminalKeymapResolver _keymapResolver;
@@ -101,6 +115,13 @@ public sealed class ManagedTerminalSurface : Control
     private TerminalFindResult? _findResult;
     private bool _isFindInFlight;
     private long _findGeneration;
+    private string? _encodedKeyTextAwaitingTextInput;
+    private long _encodedKeyTextGeneration;
+
+    static ManagedTerminalSurface()
+    {
+        AffectsRender<ManagedTerminalSurface>(ProfileProperty, BackgroundOpacityProperty);
+    }
 
     public ManagedTerminalSurface()
     {
@@ -139,6 +160,16 @@ public sealed class ManagedTerminalSurface : Control
     {
         get => GetValue(ProfileProperty);
         set => SetValue(ProfileProperty, value);
+    }
+
+    /// <summary>
+    /// Controls only the terminal's default background plane. Glyphs, cursor,
+    /// selections, inverse video, and explicit ANSI backgrounds remain opaque.
+    /// </summary>
+    public double BackgroundOpacity
+    {
+        get => GetValue(BackgroundOpacityProperty);
+        set => SetValue(BackgroundOpacityProperty, value);
     }
 
     public TerminalKeymapSnapshot? Keymap
@@ -215,6 +246,8 @@ public sealed class ManagedTerminalSurface : Control
 
     internal TerminalScreenSnapshot? Snapshot => _snapshot;
 
+    internal TerminalRenderFrame? RenderFrame => _renderFrame;
+
     internal string PreeditText => _preeditText;
 
     internal bool IsInputReady => _isInputReady;
@@ -261,6 +294,44 @@ public sealed class ManagedTerminalSurface : Control
         _snapshot = snapshot;
         UpdateAutomationStatus();
         _imeClient.NotifyCursorRectangleChanged();
+        UpdateCursorTimer();
+        if (_renderFrame is null)
+        {
+            InvalidateVisual();
+        }
+    }
+
+    public void UpdateRenderFrame(TerminalRenderFrame frame)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        if (_isAttached && !Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => UpdateRenderFrame(frame));
+            return;
+        }
+
+        if (_renderFrame?.Revision == frame.Revision
+            && _renderFrame.Cursor == frame.Cursor
+            && _renderFrame.KittyGraphics.Generation == frame.KittyGraphics.Generation
+            && frame.Delta.Kind == TerminalRenderDamageKind.None)
+        {
+            _renderFrame = frame;
+            return;
+        }
+
+        _renderFrame = frame;
+        RemoveUnusedKittyBitmaps(frame.KittyGraphics.Images.Keys);
+        UpdateAutomationStatus();
+        _imeClient.NotifyCursorRectangleChanged();
+        UpdateCursorTimer();
+        InvalidateVisual();
+    }
+
+    internal void ClearRenderFrame()
+    {
+        _renderFrame = null;
+        DisposeKittyBitmaps();
+        UpdateAutomationStatus();
         UpdateCursorTimer();
         InvalidateVisual();
     }
@@ -391,6 +462,67 @@ public sealed class ManagedTerminalSurface : Control
         return true;
     }
 
+    internal void BeginLocalSelectionGesture(Point point)
+    {
+        _isSelecting = true;
+        _selectionAnchorPoint = point;
+        _selectionAnchorCell = Metrics.CellAt(point);
+        _selectionDragStarted = false;
+    }
+
+    internal async ValueTask<bool> UpdateLocalSelectionGestureAsync(
+        Point point,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_isSelecting
+            || _selectionAnchorPoint is not { } anchorPoint
+            || _selectionAnchorCell is not { } anchorCell)
+        {
+            return false;
+        }
+
+        if (!_selectionDragStarted)
+        {
+            if (Metrics.CellAt(point) == anchorCell)
+            {
+                return false;
+            }
+
+            _selectionDragStarted = true;
+            if (!await SubmitSelectionAsync(
+                    TerminalSelectionPhase.Start,
+                    anchorPoint,
+                    cancellationToken)
+                .ConfigureAwait(true))
+            {
+                ResetLocalSelectionGesture();
+                return false;
+            }
+        }
+
+        return await SubmitSelectionAsync(
+                TerminalSelectionPhase.Update,
+                point,
+                cancellationToken)
+            .ConfigureAwait(true);
+    }
+
+    internal ValueTask<bool> CompleteLocalSelectionGestureAsync(
+        Point point,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_isSelecting)
+        {
+            return ValueTask.FromResult(false);
+        }
+
+        var completionPhase = _selectionDragStarted
+            ? TerminalSelectionPhase.End
+            : TerminalSelectionPhase.Clear;
+        ResetLocalSelectionGesture();
+        return SubmitSelectionAsync(completionPhase, point, cancellationToken);
+    }
+
     internal async ValueTask<bool> CopySelectionAsync(
         CancellationToken cancellationToken = default)
     {
@@ -491,11 +623,28 @@ public sealed class ManagedTerminalSurface : Control
             TerminalCellColor.Default,
             palette,
             foreground: false);
-        context.DrawRectangle(new SolidColorBrush(background), null, Bounds.WithX(0).WithY(0));
+        background = WithOpacity(background, BackgroundOpacity);
+        var backgroundBrush = new SolidColorBrush(background);
 
-        if (_snapshot is { } snapshot)
+        if (_renderFrame is { } renderFrame)
         {
-            DrawFrame(context, TerminalRenderLayout.Create(snapshot, profile, Metrics), palette);
+            DrawFrame(
+                context,
+                TerminalRenderLayout.Create(renderFrame, profile, Metrics),
+                palette,
+                backgroundBrush);
+        }
+        else if (_snapshot is { } snapshot)
+        {
+            DrawFrame(
+                context,
+                TerminalRenderLayout.Create(snapshot, profile, Metrics),
+                palette,
+                backgroundBrush);
+        }
+        else
+        {
+            context.DrawRectangle(backgroundBrush, null, Bounds.WithX(0).WithY(0));
         }
 
         DrawPreedit(context, palette);
@@ -579,6 +728,37 @@ public sealed class ManagedTerminalSurface : Control
         }
 
         return ValueTask.FromResult(false);
+    }
+
+    internal ValueTask<bool> SubmitPhysicalKeyAsync(
+        Key logicalKey,
+        PhysicalKey physicalKey,
+        AvaloniaKeyModifiers modifiers,
+        string? keySymbol,
+        TerminalKeyAction action,
+        bool isComposing = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_isInputReady || IsInteractionModalVisible)
+        {
+            return ValueTask.FromResult(false);
+        }
+
+        var keyEvent = ManagedTerminalInput.CreatePhysicalKeyEvent(
+            logicalKey,
+            physicalKey,
+            modifiers,
+            keySymbol,
+            action,
+            isComposing);
+        if (keyEvent.PhysicalKey == TerminalPhysicalKey.Unidentified
+            && keyEvent.Text.Length == 0)
+        {
+            return ValueTask.FromResult(false);
+        }
+
+        ClearCommandStatus();
+        return SendPhysicalKeyAsync(keyEvent, cancellationToken);
     }
 
     internal ValueTask<TerminalCommandDispatchResult> DispatchKeymapShortcutAsync(
@@ -696,8 +876,12 @@ public sealed class ManagedTerminalSurface : Control
         _cursorTimer.Stop();
         _keySequenceTimer.Stop();
         _keymapResolver.Reset();
+        _pressedPhysicalKeys.Clear();
+        _encodedKeyTextAwaitingTextInput = null;
         ResetFind();
         ClearCommandStatus();
+        ResetLocalSelectionGesture();
+        DisposeKittyBitmaps();
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -716,11 +900,25 @@ public sealed class ManagedTerminalSurface : Control
         }
 
         e.Handled = true;
+        if (string.Equals(
+                _encodedKeyTextAwaitingTextInput,
+                e.Text,
+                StringComparison.Ordinal))
+        {
+            _encodedKeyTextAwaitingTextInput = null;
+            return;
+        }
+
+        // TextInput is reserved for committed IME/composition text. Ordinary
+        // physical keyboard text is delivered from OnKeyDown with the full
+        // physical-key event and suppresses its paired TextInput above.
         ObserveInputAsync(SubmitTextInputAsync(e.Text));
     }
 
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
+        _pressedPhysicalKeys.Clear();
+        _encodedKeyTextAwaitingTextInput = null;
         UpdatePreedit(null, null);
         base.OnLostFocus(e);
     }
@@ -805,7 +1003,49 @@ public sealed class ManagedTerminalSurface : Control
             return;
         }
 
-        var send = SubmitKeyAsync(e.Key, e.KeyModifiers, e.KeySymbol);
+        var action = e.PhysicalKey != PhysicalKey.None
+            && !_pressedPhysicalKeys.Add(e.PhysicalKey)
+                ? TerminalKeyAction.Repeat
+                : TerminalKeyAction.Press;
+        if (!string.IsNullOrEmpty(e.KeySymbol) && _preeditText.Length == 0)
+        {
+            SuppressPairedTextInput(e.KeySymbol);
+        }
+
+        var send = SubmitPhysicalKeyAsync(
+            e.Key,
+            e.PhysicalKey,
+            e.KeyModifiers,
+            e.KeySymbol,
+            action,
+            isComposing: _preeditText.Length > 0);
+        if (!send.IsCompletedSuccessfully)
+        {
+            e.Handled = true;
+            ObserveInputAsync(send.AsValueTask());
+            return;
+        }
+
+        e.Handled = send.Result;
+    }
+
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (!_isInputReady
+            || e.PhysicalKey == PhysicalKey.None
+            || !_pressedPhysicalKeys.Remove(e.PhysicalKey))
+        {
+            return;
+        }
+
+        var send = SubmitPhysicalKeyAsync(
+            e.Key,
+            e.PhysicalKey,
+            e.KeyModifiers,
+            keySymbol: null,
+            action: TerminalKeyAction.Release,
+            isComposing: _preeditText.Length > 0);
         if (!send.IsCompletedSuccessfully)
         {
             e.Handled = true;
@@ -856,10 +1096,7 @@ public sealed class ManagedTerminalSurface : Control
                 || e.KeyModifiers.HasFlag(AvaloniaKeyModifiers.Shift));
         if (useLocalSelection)
         {
-            _isSelecting = true;
-            ObserveInputAsync(SubmitSelectionAsync(
-                TerminalSelectionPhase.Start,
-                point.Position).AsValueTask());
+            BeginLocalSelectionGesture(point.Position);
             return;
         }
 
@@ -889,8 +1126,7 @@ public sealed class ManagedTerminalSurface : Control
         if (_isSelecting)
         {
             e.Handled = true;
-            ObserveInputAsync(SubmitSelectionAsync(
-                TerminalSelectionPhase.Update,
+            ObserveInputAsync(UpdateLocalSelectionGestureAsync(
                 e.GetPosition(this)).AsValueTask());
             return;
         }
@@ -925,17 +1161,15 @@ public sealed class ManagedTerminalSurface : Control
         if (!_isInputReady || IsInteractionModalVisible)
         {
             e.Handled = true;
-            _isSelecting = false;
+            ResetLocalSelectionGesture();
             e.Pointer.Capture(null);
             return;
         }
 
         if (_isSelecting)
         {
-            _isSelecting = false;
             e.Handled = true;
-            ObserveInputAsync(SubmitSelectionAsync(
-                TerminalSelectionPhase.End,
+            ObserveInputAsync(CompleteLocalSelectionGestureAsync(
                 e.GetPosition(this)).AsValueTask());
             e.Pointer.Capture(null);
             return;
@@ -959,6 +1193,21 @@ public sealed class ManagedTerminalSurface : Control
         }
 
         e.Pointer.Capture(null);
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        if (!_isSelecting)
+        {
+            return;
+        }
+
+        var clearAt = _selectionAnchorPoint ?? new Point();
+        ResetLocalSelectionGesture();
+        ObserveInputAsync(SubmitSelectionAsync(
+            TerminalSelectionPhase.Clear,
+            clearAt).AsValueTask());
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -1043,6 +1292,31 @@ public sealed class ManagedTerminalSurface : Control
     {
         await RequireInputSink().SendKeyAsync(keyStroke, cancellationToken).ConfigureAwait(true);
         return true;
+    }
+
+    private async ValueTask<bool> SendPhysicalKeyAsync(
+        TerminalPhysicalKeyEvent keyEvent,
+        CancellationToken cancellationToken)
+    {
+        await RequireInputSink().SendPhysicalKeyAsync(
+            keyEvent,
+            cancellationToken).ConfigureAwait(true);
+        return true;
+    }
+
+    private void SuppressPairedTextInput(string text)
+    {
+        _encodedKeyTextAwaitingTextInput = text;
+        var generation = ++_encodedKeyTextGeneration;
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (_encodedKeyTextGeneration == generation)
+                {
+                    _encodedKeyTextAwaitingTextInput = null;
+                }
+            },
+            DispatcherPriority.Background);
     }
 
     private async ValueTask<bool> SendMappedTextAsync(
@@ -1445,7 +1719,9 @@ public sealed class ManagedTerminalSurface : Control
 
     private async ValueTask<bool> SelectVisibleTerminalAsync(CancellationToken cancellationToken)
     {
-        if (_snapshot is not { } snapshot)
+        var columns = _renderFrame?.Columns ?? _snapshot?.Columns ?? 0;
+        var rows = _renderFrame?.Rows ?? _snapshot?.Rows ?? 0;
+        if (columns == 0 || rows == 0)
         {
             return false;
         }
@@ -1457,8 +1733,8 @@ public sealed class ManagedTerminalSurface : Control
         await sink.UpdateSelectionAsync(
             new TerminalSelectionInput(
                 TerminalSelectionPhase.End,
-                Math.Max(0, snapshot.Columns - 1),
-                Math.Max(0, snapshot.Rows - 1)),
+                columns - 1,
+                rows - 1),
             cancellationToken);
         return true;
     }
@@ -1501,7 +1777,7 @@ public sealed class ManagedTerminalSurface : Control
             CommandStatusMessage,
             CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight,
-            new Typeface(Profile?.FontFamily ?? "JetBrains Mono, Menlo, Consolas, monospace"),
+            TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
             Math.Max(10, (Profile?.FontSize ?? 13) - 2),
             ConfirmationText);
         var box = new Rect(
@@ -1565,103 +1841,238 @@ public sealed class ManagedTerminalSurface : Control
 
     private void DrawFrame(
         DrawingContext context,
-        TerminalRenderFrame frame,
-        TerminalPalette palette)
+        TerminalDrawFrame frame,
+        TerminalPalette palette,
+        IBrush defaultBackground)
     {
         var metrics = Metrics;
         var brushes = new Dictionary<Color, SolidColorBrush>();
+        DrawKittyLayer(
+            context,
+            frame.KittyGraphics,
+            TerminalKittyPlacementLayer.BelowBackground,
+            metrics);
+        context.DrawRectangle(defaultBackground, null, Bounds.WithX(0).WithY(0));
+
         foreach (var cell in frame.Cells)
         {
-            var bounds = metrics.CellBounds(cell.Row, cell.Column, cell.Width);
-            var background = BrushFor(cell.Background, brushes);
-            context.DrawRectangle(background, null, bounds);
-            if (cell.Text.Length == 0
-                || cell.Style.HasFlag(TerminalCellStyle.Invisible))
+            if (cell.UsesDefaultBackground)
             {
                 continue;
             }
 
-            if (cell.Style.HasFlag(TerminalCellStyle.Blink) && !_blinkVisible)
+            var bounds = metrics.CellBounds(cell.Row, cell.Column, cell.Width);
+            var background = BrushFor(cell.Background, brushes);
+            context.DrawRectangle(background, null, bounds);
+        }
+
+        DrawKittyLayer(
+            context,
+            frame.KittyGraphics,
+            TerminalKittyPlacementLayer.BelowText,
+            metrics);
+
+        foreach (var cell in frame.Cells)
+        {
+            var bounds = metrics.CellBounds(cell.Row, cell.Column, cell.Width);
+            if (cell.Style.HasFlag(TerminalRenderCellStyle.Invisible))
+            {
+                continue;
+            }
+
+            if (cell.Style.HasFlag(TerminalRenderCellStyle.Blink) && !_blinkVisible)
             {
                 continue;
             }
 
             var foreground = BrushFor(cell.Foreground, brushes);
-            var typeface = new Typeface(
-                Profile?.FontFamily ?? "JetBrains Mono, Menlo, Consolas, monospace",
-                cell.Style.HasFlag(TerminalCellStyle.Italic) ? FontStyle.Italic : FontStyle.Normal,
-                cell.Style.HasFlag(TerminalCellStyle.Bold) ? FontWeight.Bold : FontWeight.Normal);
-            var text = new FormattedText(
-                cell.Text,
-                CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight,
-                typeface,
-                Profile?.FontSize ?? 13,
-                foreground);
-            var origin = new Point(bounds.X, bounds.Y + Math.Max(0, (bounds.Height - text.Height) / 2));
-            context.DrawText(text, origin);
-            DrawDecorations(context, cell, bounds, foreground);
+            DrawCellForeground(context, cell, bounds, foreground);
         }
 
-        if (_cursorVisible && frame.IsCursorVisible)
+        DrawKittyLayer(
+            context,
+            frame.KittyGraphics,
+            TerminalKittyPlacementLayer.AboveText,
+            metrics);
+        DrawCursor(context, frame, palette, metrics);
+    }
+
+    private static Color WithOpacity(Color color, double opacity) => Color.FromArgb(
+        checked((byte)Math.Round(Math.Clamp(opacity, 0, 1) * byte.MaxValue)),
+        color.R,
+        color.G,
+        color.B);
+
+    private void DrawCellForeground(
+        DrawingContext context,
+        TerminalDrawCell cell,
+        Rect bounds,
+        IBrush foreground,
+        bool useCellUnderlineColor = true)
+    {
+        // The canonical terminal renderer draws decoration sprites before glyphs. This matters for
+        // colored underlines intersecting descenders, and blank styled cells
+        // must still retain their underline/strike/overline decoration.
+        DrawDecorations(context, cell, bounds, foreground, useCellUnderlineColor);
+        if (cell.Text.Length == 0)
         {
-            DrawCursor(context, frame, palette, metrics);
+            return;
         }
+
+        var typeface = TerminalTypefaceResolver.Resolve(
+            Profile?.FontFamily,
+            cell.Style.HasFlag(TerminalRenderCellStyle.Italic) ? FontStyle.Italic : FontStyle.Normal,
+            cell.Style.HasFlag(TerminalRenderCellStyle.Bold) ? FontWeight.Bold : FontWeight.Normal);
+        var text = new FormattedText(
+            cell.Text,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            Profile?.FontSize ?? 13,
+            foreground);
+        var origin = new Point(bounds.X, bounds.Y + Math.Max(0, (bounds.Height - text.Height) / 2));
+        context.DrawText(text, origin);
     }
 
     private void DrawCursor(
         DrawingContext context,
-        TerminalRenderFrame frame,
+        TerminalDrawFrame frame,
         TerminalPalette palette,
         TerminalCellMetrics metrics)
     {
-        var bounds = metrics.CellBounds(frame.CursorRow, frame.CursorColumn);
-        var cursorColor = TerminalCellColors.Resolve(
+        var cursor = frame.Cursor;
+        if (!cursor.IsInViewport)
+        {
+            return;
+        }
+
+        var preedit = _preeditText.Length != 0;
+        if (!cursor.IsVisible && !cursor.IsPasswordInput && !preedit)
+        {
+            return;
+        }
+
+        var visualStyle = preedit
+            ? TerminalCursorVisualStyle.Block
+            : cursor.IsPasswordInput
+                ? TerminalCursorVisualStyle.Block
+                : !IsKeyboardFocusWithin
+                    ? TerminalCursorVisualStyle.HollowBlock
+                    : cursor.VisualStyle;
+        if (!cursor.IsPasswordInput
+            && !preedit
+            && cursor.IsBlinking
+            && IsKeyboardFocusWithin
+            && !_cursorVisible)
+        {
+            return;
+        }
+
+        var bounds = metrics.CellBounds(cursor.Row, cursor.Column, cursor.Width);
+        var cursorColor = cursor.Color ?? TerminalCellColors.Resolve(
             new TerminalCellColor(
                 TerminalColorMode.Rgb,
                 palette.Cursor.Red << 16 | palette.Cursor.Green << 8 | palette.Cursor.Blue),
             palette,
             foreground: true);
         var brush = new SolidColorBrush(Color.FromArgb(
-            190,
+            byte.MaxValue,
             cursorColor.R,
             cursorColor.G,
             cursorColor.B));
-        switch (Profile?.CursorStyle ?? TerminalCursorStyle.Block)
+        if (cursor.IsPasswordInput && !preedit)
         {
-            case TerminalCursorStyle.Block:
+            DrawPasswordCursor(context, bounds, brush);
+            return;
+        }
+
+        switch (visualStyle)
+        {
+            case TerminalCursorVisualStyle.Block:
                 context.DrawRectangle(brush, null, bounds);
+                var cursorCell = frame.Cells.FirstOrDefault(cell =>
+                    cell.Row == cursor.Row
+                    && cell.Column == cursor.Column);
+                if (cursorCell is not null
+                    && !cursorCell.Style.HasFlag(TerminalRenderCellStyle.Invisible)
+                    && (!cursorCell.Style.HasFlag(TerminalRenderCellStyle.Blink) || _blinkVisible))
+                {
+                    // The default cursor-text color is the terminal's
+                    // global background, regardless of an explicit cell bg.
+                    var cursorText = new SolidColorBrush(Color.FromRgb(
+                        palette.Background.Red,
+                        palette.Background.Green,
+                        palette.Background.Blue));
+                    DrawCellForeground(
+                        context,
+                        cursorCell,
+                        bounds,
+                        cursorText,
+                        useCellUnderlineColor: false);
+                }
+
                 break;
-            case TerminalCursorStyle.Bar:
+            case TerminalCursorVisualStyle.HollowBlock:
+                var inset = Math.Max(0.5, Math.Min(bounds.Width, bounds.Height) * 0.08);
+                context.DrawRectangle(
+                    null,
+                    new Pen(brush, Math.Max(1, inset)),
+                    new Rect(
+                        bounds.X + inset / 2,
+                        bounds.Y + inset / 2,
+                        Math.Max(0, bounds.Width - inset),
+                        Math.Max(0, bounds.Height - inset)));
+                break;
+            case TerminalCursorVisualStyle.Bar:
                 context.DrawRectangle(brush, null, bounds.WithWidth(Math.Max(1.5, bounds.Width * 0.12)));
                 break;
-            case TerminalCursorStyle.Underline:
+            case TerminalCursorVisualStyle.Underline:
                 context.DrawRectangle(
                     brush,
                     null,
                     new Rect(bounds.X, bounds.Bottom - 2, bounds.Width, 2));
                 break;
             default:
-                throw new ArgumentOutOfRangeException(nameof(Profile), Profile?.CursorStyle, null);
+                throw new ArgumentOutOfRangeException(nameof(cursor), cursor.VisualStyle, null);
         }
+    }
+
+    private static void DrawPasswordCursor(
+        DrawingContext context,
+        Rect bounds,
+        IBrush brush)
+    {
+        var size = Math.Min(bounds.Width, bounds.Height);
+        var width = Math.Max(5, size * 0.62);
+        var height = Math.Max(4, size * 0.42);
+        var left = bounds.Center.X - width / 2;
+        var top = bounds.Center.Y - height * 0.05;
+        var pen = new Pen(brush, Math.Max(1, size * 0.09));
+        context.DrawEllipse(
+            null,
+            pen,
+            new Rect(left + width * 0.2, top - height * 0.65, width * 0.6, height));
+        context.DrawRectangle(
+            brush,
+            null,
+            new Rect(left, top, width, height),
+            Math.Max(1, size * 0.08));
     }
 
     private static void DrawDecorations(
         DrawingContext context,
-        TerminalRenderCell cell,
+        TerminalDrawCell cell,
         Rect bounds,
-        IBrush foreground)
+        IBrush foreground,
+        bool useCellUnderlineColor)
     {
-        var pen = new Pen(foreground, 1);
-        if (cell.Style.HasFlag(TerminalCellStyle.Underline))
-        {
-            context.DrawLine(
-                pen,
-                new Point(bounds.Left, bounds.Bottom - 1.5),
-                new Point(bounds.Right, bounds.Bottom - 1.5));
-        }
+        var decorationBrush = useCellUnderlineColor && cell.UnderlineColor is { } underlineColor
+            ? new SolidColorBrush(underlineColor)
+            : foreground;
+        DrawUnderline(context, bounds, decorationBrush, cell.Underline);
 
-        if (cell.Style.HasFlag(TerminalCellStyle.Strikethrough))
+        var pen = new Pen(foreground, 1);
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Strikethrough))
         {
             context.DrawLine(
                 pen,
@@ -1669,13 +2080,267 @@ public sealed class ManagedTerminalSurface : Control
                 new Point(bounds.Right, bounds.Center.Y));
         }
 
-        if (cell.Style.HasFlag(TerminalCellStyle.Overline))
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Overline))
         {
             context.DrawLine(
                 pen,
                 new Point(bounds.Left, bounds.Top + 1),
                 new Point(bounds.Right, bounds.Top + 1));
         }
+    }
+
+    private static void DrawUnderline(
+        DrawingContext context,
+        Rect bounds,
+        IBrush brush,
+        TerminalUnderlineKind underline)
+    {
+        // Keep the per-cell geometry aligned with the pinned terminal engine's
+        // font/sprite/draw/special.zig implementation. Avalonia owns the
+        // drawing surface, but terminal decoration semantics stay upstream-led.
+        var y = bounds.Bottom - 1.5;
+        var pen = new Pen(brush, 1);
+        switch (underline)
+        {
+            case TerminalUnderlineKind.None:
+                return;
+            case TerminalUnderlineKind.Single:
+                context.DrawLine(pen, new Point(bounds.Left, y), new Point(bounds.Right, y));
+                return;
+            case TerminalUnderlineKind.Double:
+                context.DrawLine(pen, new Point(bounds.Left, y - 2), new Point(bounds.Right, y - 2));
+                context.DrawLine(pen, new Point(bounds.Left, y), new Point(bounds.Right, y));
+                return;
+            case TerminalUnderlineKind.Dotted:
+                var radius = Math.Sqrt(0.5);
+                var dotCount = Math.Max(
+                    1,
+                    (int)Math.Min(
+                        Math.Ceiling(bounds.Width / (4 * radius)),
+                        Math.Min(
+                            Math.Floor(bounds.Width / (3 * radius)),
+                            Math.Floor(bounds.Width / (2 * radius + 1)))));
+                var step = bounds.Width / dotCount;
+                for (var index = 0; index < dotCount; index++)
+                {
+                    context.DrawEllipse(
+                        brush,
+                        null,
+                        new Point(bounds.Left + step * (index + 0.5), y),
+                        radius,
+                        radius);
+                }
+
+                return;
+            case TerminalUnderlineKind.Dashed:
+                var dashWidth = Math.Floor(bounds.Width / 3) + 1;
+                var dashCount = (int)Math.Floor(bounds.Width / dashWidth) + 1;
+                for (var index = 0; index < dashCount; index += 2)
+                {
+                    var x = bounds.Left + index * dashWidth;
+                    context.DrawLine(
+                        pen,
+                        new Point(x, y),
+                        new Point(Math.Min(bounds.Right, x + dashWidth), y));
+                }
+
+                return;
+            case TerminalUnderlineKind.Curly:
+                DrawCurlyUnderline(context, bounds, pen);
+                return;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(underline), underline, null);
+        }
+    }
+
+    private static void DrawCurlyUnderline(
+        DrawingContext context,
+        Rect bounds,
+        Pen pen)
+    {
+        var amplitude = Math.Min(bounds.Height * 0.25, bounds.Width / Math.PI);
+        var bottom = bounds.Bottom - 1;
+        var top = bottom - amplitude;
+        var center = bounds.Center.X;
+        var halfWidth = bounds.Width / 2;
+        const double curvature = 0.4;
+        var geometry = new StreamGeometry();
+        using (var path = geometry.Open())
+        {
+            path.BeginFigure(new Point(bounds.Left, bottom), isFilled: false);
+            path.CubicBezierTo(
+                new Point(bounds.Left + halfWidth * curvature, bottom),
+                new Point(center - halfWidth * curvature, top),
+                new Point(center, top));
+            path.CubicBezierTo(
+                new Point(center + halfWidth * curvature, top),
+                new Point(bounds.Right - halfWidth * curvature, bottom),
+                new Point(bounds.Right, bottom));
+            path.EndFigure(isClosed: false);
+        }
+
+        context.DrawGeometry(null, pen, geometry);
+    }
+
+    private void DrawKittyLayer(
+        DrawingContext context,
+        TerminalKittyGraphicsFrame graphics,
+        TerminalKittyPlacementLayer layer,
+        TerminalCellMetrics metrics)
+    {
+        if (graphics.Placements.Count == 0)
+        {
+            return;
+        }
+
+        using var clip = context.PushClip(new Rect(
+            metrics.Padding.Left,
+            metrics.Padding.Top,
+            Math.Max(0, Bounds.Width - metrics.Padding.Left - metrics.Padding.Right),
+            Math.Max(0, Bounds.Height - metrics.Padding.Top - metrics.Padding.Bottom)));
+        foreach (var placement in graphics.Placements
+                     .Where(candidate => candidate.Layer == layer)
+                     .OrderBy(candidate => candidate.ZIndex))
+        {
+            if (placement.Geometry is not { } geometry
+                || !graphics.Images.TryGetValue(placement.Image, out var image))
+            {
+                // Virtual placements are supplied by libghostty-vt as placeholder
+                // cells and need resolved viewport geometry before Avalonia can draw them.
+                continue;
+            }
+
+            var bitmap = GetOrCreateKittyBitmap(image);
+            var source = ClampKittySource(placement.Source, image);
+            if (source.Width <= 0 || source.Height <= 0)
+            {
+                continue;
+            }
+
+            var destination = new Rect(
+                metrics.Padding.Left
+                    + geometry.ViewportColumn * metrics.CellWidth
+                    + placement.PixelOffsetX,
+                metrics.Padding.Top
+                    + geometry.ViewportRow * metrics.CellHeight
+                    + placement.PixelOffsetY,
+                geometry.PixelWidth,
+                geometry.PixelHeight);
+            context.DrawImage(bitmap, source, destination);
+        }
+    }
+
+    private WriteableBitmap GetOrCreateKittyBitmap(TerminalKittyImageContent image)
+    {
+        if (_kittyBitmaps.TryGetValue(image.Key, out var bitmap))
+        {
+            return bitmap;
+        }
+
+        byte[] rgba;
+        ArraySegment<byte> source;
+        if (image.PixelFormat == TerminalKittyImagePixelFormat.Rgba
+            && MemoryMarshal.TryGetArray(image.Pixels, out source)
+            && source.Array is not null)
+        {
+            rgba = source.Array;
+        }
+        else
+        {
+            rgba = ConvertKittyPixelsToRgba(image);
+            source = new ArraySegment<byte>(rgba);
+        }
+
+        var pinned = GCHandle.Alloc(rgba, GCHandleType.Pinned);
+        try
+        {
+            bitmap = new WriteableBitmap(
+                PixelFormats.Rgba8888,
+                AlphaFormat.Unpremul,
+                IntPtr.Add(pinned.AddrOfPinnedObject(), source.Offset),
+                new PixelSize(image.PixelWidth, image.PixelHeight),
+                new Vector(96, 96),
+                checked(image.PixelWidth * 4));
+        }
+        finally
+        {
+            pinned.Free();
+        }
+
+        _kittyBitmaps.Add(image.Key, bitmap);
+        return bitmap;
+    }
+
+    private static byte[] ConvertKittyPixelsToRgba(TerminalKittyImageContent image)
+    {
+        var source = image.Pixels.Span;
+        var rgba = new byte[checked(image.PixelWidth * image.PixelHeight * 4)];
+        var sourceIndex = 0;
+        for (var targetIndex = 0; targetIndex < rgba.Length; targetIndex += 4)
+        {
+            switch (image.PixelFormat)
+            {
+                case TerminalKittyImagePixelFormat.Rgb:
+                    rgba[targetIndex] = source[sourceIndex++];
+                    rgba[targetIndex + 1] = source[sourceIndex++];
+                    rgba[targetIndex + 2] = source[sourceIndex++];
+                    rgba[targetIndex + 3] = byte.MaxValue;
+                    break;
+                case TerminalKittyImagePixelFormat.GrayAlpha:
+                    var gray = source[sourceIndex++];
+                    rgba[targetIndex] = gray;
+                    rgba[targetIndex + 1] = gray;
+                    rgba[targetIndex + 2] = gray;
+                    rgba[targetIndex + 3] = source[sourceIndex++];
+                    break;
+                case TerminalKittyImagePixelFormat.Gray:
+                    var value = source[sourceIndex++];
+                    rgba[targetIndex] = value;
+                    rgba[targetIndex + 1] = value;
+                    rgba[targetIndex + 2] = value;
+                    rgba[targetIndex + 3] = byte.MaxValue;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(image),
+                        image.PixelFormat,
+                        "Unknown Kitty image pixel format.");
+            }
+        }
+
+        return rgba;
+    }
+
+    private static Rect ClampKittySource(
+        TerminalKittySourceRectangle source,
+        TerminalKittyImageContent image)
+    {
+        var x = Math.Min(source.X, image.PixelWidth);
+        var y = Math.Min(source.Y, image.PixelHeight);
+        var width = Math.Min(source.Width, image.PixelWidth - x);
+        var height = Math.Min(source.Height, image.PixelHeight - y);
+        return new Rect(x, y, Math.Max(0, width), Math.Max(0, height));
+    }
+
+    private void RemoveUnusedKittyBitmaps(
+        IEnumerable<TerminalKittyImageKey> activeImages)
+    {
+        var active = activeImages.ToHashSet();
+        foreach (var key in _kittyBitmaps.Keys.Where(key => !active.Contains(key)).ToArray())
+        {
+            _kittyBitmaps.Remove(key, out var bitmap);
+            bitmap?.Dispose();
+        }
+    }
+
+    private void DisposeKittyBitmaps()
+    {
+        foreach (var bitmap in _kittyBitmaps.Values)
+        {
+            bitmap.Dispose();
+        }
+
+        _kittyBitmaps.Clear();
     }
 
     private void DrawPasteConfirmation(DrawingContext context)
@@ -1711,7 +2376,7 @@ public sealed class ManagedTerminalSurface : Control
                 hint,
                 CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
-                new Typeface("JetBrains Mono, Menlo, Consolas, monospace"),
+                TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
                 9,
                 ConfirmationAccent),
             new Point(box.X + 14, box.Y + 35));
@@ -1750,7 +2415,7 @@ public sealed class ManagedTerminalSurface : Control
                 "Enter to open  ·  Esc to cancel",
                 CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
-                new Typeface("JetBrains Mono, Menlo, Consolas, monospace"),
+                TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
                 9,
                 ConfirmationAccent),
             new Point(box.X + 14, box.Y + 35));
@@ -1778,7 +2443,7 @@ public sealed class ManagedTerminalSurface : Control
                 prompt,
                 CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
-                new Typeface("JetBrains Mono, Menlo, Consolas, monospace"),
+                TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
                 11,
                 ConfirmationText),
             new Point(box.X + 14, box.Y + 10));
@@ -1804,12 +2469,21 @@ public sealed class ManagedTerminalSurface : Control
     private bool TryGetHyperlinkAt(Point point, out Uri? uri)
     {
         uri = null;
+        var (targetColumn, targetRow) = Metrics.CellAt(point);
+        if (_renderFrame is { } renderFrame
+            && targetRow < renderFrame.ViewportRows.Count
+            && targetColumn < renderFrame.Columns)
+        {
+            return ManagedTerminalLinks.TryCreateAllowedUri(
+                renderFrame.ViewportRows[targetRow].Cells[targetColumn].Hyperlink,
+                out uri);
+        }
+
         if (_snapshot is not { } snapshot)
         {
             return false;
         }
 
-        var (targetColumn, targetRow) = Metrics.CellAt(point);
         if (targetRow >= snapshot.StructuredRows.Count)
         {
             return false;
@@ -1857,15 +2531,15 @@ public sealed class ManagedTerminalSurface : Control
             _preeditText,
             CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight,
-            new Typeface(Profile?.FontFamily ?? "JetBrains Mono, Menlo, Consolas, monospace"),
+            TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
             Profile?.FontSize ?? 13,
             foreground);
-        var snapshot = _snapshot;
         var metrics = Metrics;
         var cellCount = Math.Max(1, (int)Math.Ceiling(text.Width / metrics.CellWidth));
+        var currentCursor = CurrentCursorPosition();
         var bounds = metrics.CellBounds(
-            snapshot?.CursorRow ?? 0,
-            snapshot?.CursorColumn ?? 0,
+            currentCursor.Row,
+            currentCursor.Column,
             cellCount);
         context.DrawRectangle(background, null, bounds);
         context.DrawText(
@@ -1882,7 +2556,7 @@ public sealed class ManagedTerminalSurface : Control
                 _preeditText[..Math.Min(cursor, _preeditText.Length)],
                 CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
-                new Typeface(Profile?.FontFamily ?? "JetBrains Mono, Menlo, Consolas, monospace"),
+                TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
                 Profile?.FontSize ?? 13,
                 foreground);
             var cursorX = bounds.X + prefix.Width;
@@ -1921,10 +2595,18 @@ public sealed class ManagedTerminalSurface : Control
             ResetPendingPaste();
             ResetPendingLink();
             ResetFind();
-            _isSelecting = false;
+            ResetLocalSelectionGesture();
             UpdatePreedit(null, null);
             ClearCommandStatus();
         }
+    }
+
+    private void ResetLocalSelectionGesture()
+    {
+        _isSelecting = false;
+        _selectionAnchorPoint = null;
+        _selectionAnchorCell = null;
+        _selectionDragStarted = false;
     }
 
     private void UpdateAutomationStatus()
@@ -1938,7 +2620,12 @@ public sealed class ManagedTerminalSurface : Control
             : string.Empty;
         if (_snapshot is not { } snapshot)
         {
-            AutomationProperties.SetItemStatus(this, state + commandStatus + findStatus);
+            var frameStatus = _renderFrame is { } frame
+                ? $"{frame.Rows} rows by {frame.Columns} columns, "
+                : string.Empty;
+            AutomationProperties.SetItemStatus(
+                this,
+                frameStatus + state + commandStatus + findStatus);
             return;
         }
 
@@ -1951,9 +2638,9 @@ public sealed class ManagedTerminalSurface : Control
     internal Rect GetImeCursorRectangle()
     {
         var metrics = Metrics;
-        var snapshot = _snapshot;
-        var row = Math.Clamp(snapshot?.CursorRow ?? 0, 0, metrics.Rows - 1);
-        var column = Math.Clamp(snapshot?.CursorColumn ?? 0, 0, metrics.Columns - 1);
+        var cursor = CurrentCursorPosition();
+        var row = Math.Clamp(cursor.Row, 0, metrics.Rows - 1);
+        var column = Math.Clamp(cursor.Column, 0, metrics.Columns - 1);
         var cell = metrics.CellBounds(row, column);
         var caretOffset = 0d;
         if (_preeditCursor is { } preeditCursor && _preeditText.Length > 0)
@@ -1965,7 +2652,7 @@ public sealed class ManagedTerminalSurface : Control
                     prefix,
                     CultureInfo.CurrentUICulture,
                     FlowDirection.LeftToRight,
-                    new Typeface(Profile?.FontFamily ?? "JetBrains Mono, Menlo, Consolas, monospace"),
+                    TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
                     Profile?.FontSize ?? 13,
                     Brushes.White).Width;
             }
@@ -2006,9 +2693,15 @@ public sealed class ManagedTerminalSurface : Control
 
     private void UpdateCursorTimer()
     {
-        var hasBlinkingCells = _snapshot?.StructuredRows.Any(row =>
-            row.Cells.Any(cell => cell.Style.HasFlag(TerminalCellStyle.Blink))) == true;
-        if (_isAttached && (Profile?.CursorBlink == true || hasBlinkingCells))
+        var hasBlinkingCells = _renderFrame?.ViewportRows.Any(row =>
+                row.Cells.Any(cell => cell.Style.HasFlag(TerminalRenderCellStyle.Blink)))
+            ?? _snapshot?.StructuredRows.Any(row =>
+                row.Cells.Any(cell => cell.Style.HasFlag(TerminalCellStyle.Blink)))
+            ?? false;
+        var cursorBlinks = _renderFrame?.Cursor.IsBlinking
+            ?? Profile?.CursorBlink
+            ?? false;
+        if (_isAttached && (cursorBlinks || hasBlinkingCells))
         {
             _cursorTimer.Start();
         }
@@ -2025,10 +2718,26 @@ public sealed class ManagedTerminalSurface : Control
         _ = sender;
         _ = e;
         _blinkVisible = !_blinkVisible;
-        _cursorVisible = Profile?.CursorBlink == true
+        _cursorVisible = (_renderFrame?.Cursor.IsBlinking ?? Profile?.CursorBlink) == true
             ? !_cursorVisible
             : true;
         InvalidateVisual();
+    }
+
+    private (int Row, int Column) CurrentCursorPosition()
+    {
+        if (_renderFrame?.Cursor is { IsInViewport: true } cursor)
+        {
+            var column = cursor.ViewportColumn!.Value;
+            if (cursor.IsWideCharacterTail && column > 0)
+            {
+                column--;
+            }
+
+            return (cursor.ViewportRow!.Value, column);
+        }
+
+        return (_snapshot?.CursorRow ?? 0, _snapshot?.CursorColumn ?? 0);
     }
 
     private void ArmKeySequenceTimer()

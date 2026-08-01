@@ -14,8 +14,6 @@ public sealed partial class TerminalRuntimePanelView : UserControl
         InitializeComponent();
     }
 
-    public event EventHandler<NativeRendererKeyInputEventArgs>? ApplicationKeyPressed;
-
     public event EventHandler<RoutedEventArgs>? CancelReconnectRequested;
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;
@@ -37,28 +35,6 @@ public sealed partial class TerminalRuntimePanelView : UserControl
     public event EventHandler<TerminalSessionSnapshotEventArgs>? SessionSnapshotChanged;
 
     public event EventHandler<RoutedEventArgs>? TrustHostKeyRequested;
-
-    /// <summary>
-    /// Focus reached the terminal surface itself. Avalonia cannot see focus move
-    /// into a native child view, so the shell activates this panel from here
-    /// instead of from a focus change it never receives.
-    /// </summary>
-    public event EventHandler<RoutedEventArgs>? TerminalFocusGained;
-
-    /// <summary>
-    /// Focus reached the terminal itself, so the panel it belongs to becomes the
-    /// active one — the same activation a click on the title bar performs.
-    /// </summary>
-    private void OnTerminalFocusGained(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        TerminalFocusGained?.Invoke(this, e);
-    }
-
-    private void OnApplicationKeyPressed(
-        object? sender,
-        NativeRendererKeyInputEventArgs e) =>
-        ApplicationKeyPressed?.Invoke(sender, e);
 
     private void OnCancelReconnectClick(object? sender, RoutedEventArgs e) =>
         CancelReconnectRequested?.Invoke(sender, e);

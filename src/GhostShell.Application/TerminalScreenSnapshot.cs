@@ -8,6 +8,8 @@ public sealed record TerminalScreenSnapshot
         Array.AsReadOnly(Array.Empty<TerminalScreenRow>());
     private static readonly IReadOnlyList<TerminalCommandBoundary> EmptyBoundaries =
         Array.AsReadOnly(Array.Empty<TerminalCommandBoundary>());
+    private static readonly IReadOnlyList<TerminalShellIntegrationEvent> EmptyShellEvents =
+        Array.AsReadOnly(Array.Empty<TerminalShellIntegrationEvent>());
 
     public TerminalScreenSnapshot(
         string PlainText,
@@ -27,7 +29,8 @@ public sealed record TerminalScreenSnapshot
         bool IsCursorVisible = true,
         int ScrollbackLinesAbove = 0,
         int ScrollbackLinesBelow = 0,
-        IReadOnlyList<TerminalCommandBoundary>? CommandBoundaries = null)
+        IReadOnlyList<TerminalCommandBoundary>? CommandBoundaries = null,
+        IReadOnlyList<TerminalShellIntegrationEvent>? ShellIntegrationEvents = null)
     {
         ArgumentNullException.ThrowIfNull(PlainText);
         if (Rows < 0)
@@ -83,6 +86,7 @@ public sealed record TerminalScreenSnapshot
         this.ScrollbackLinesAbove = ScrollbackLinesAbove;
         this.ScrollbackLinesBelow = ScrollbackLinesBelow;
         this.CommandBoundaries = SnapshotBoundaries(CommandBoundaries, Rows, Columns);
+        this.ShellIntegrationEvents = SnapshotShellEvents(ShellIntegrationEvents);
     }
 
     public string PlainText { get; }
@@ -122,6 +126,8 @@ public sealed record TerminalScreenSnapshot
     public bool IsViewportAtBottom => ScrollbackLinesBelow == 0;
 
     public IReadOnlyList<TerminalCommandBoundary> CommandBoundaries { get; }
+
+    public IReadOnlyList<TerminalShellIntegrationEvent> ShellIntegrationEvents { get; }
 
     private static IReadOnlyList<TerminalScreenRow> SnapshotRows(
         IReadOnlyList<TerminalScreenRow>? rows,
@@ -191,5 +197,42 @@ public sealed record TerminalScreenSnapshot
         }
 
         return new ReadOnlyCollection<TerminalCommandBoundary>(snapshot);
+    }
+
+    private static IReadOnlyList<TerminalShellIntegrationEvent> SnapshotShellEvents(
+        IReadOnlyList<TerminalShellIntegrationEvent>? events)
+    {
+        if (events is null || events.Count == 0)
+        {
+            return EmptyShellEvents;
+        }
+
+        if (events.Count > 4_096)
+        {
+            throw new ArgumentException(
+                "A terminal snapshot cannot contain more than 4,096 shell-integration events.",
+                nameof(events));
+        }
+
+        var snapshot = new TerminalShellIntegrationEvent[events.Count];
+        long previousSequence = 0;
+        for (var index = 0; index < events.Count; index++)
+        {
+            var shellEvent = events[index]
+                ?? throw new ArgumentException(
+                    "Shell-integration events cannot contain null values.",
+                    nameof(events));
+            if (shellEvent.Sequence <= previousSequence)
+            {
+                throw new ArgumentException(
+                    "Shell-integration events must be ordered by unique sequence.",
+                    nameof(events));
+            }
+
+            snapshot[index] = shellEvent;
+            previousSequence = shellEvent.Sequence;
+        }
+
+        return new ReadOnlyCollection<TerminalShellIntegrationEvent>(snapshot);
     }
 }

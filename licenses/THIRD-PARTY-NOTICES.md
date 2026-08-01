@@ -9,8 +9,12 @@ The application bundle also includes:
 
 - `DOTNET-LICENSE.txt` and `DOTNET-THIRD-PARTY-NOTICES.txt` for the
   self-contained .NET runtime;
-- `GHOSTTY-LICENSE` for the pinned Ghostty runtime (`v1.3.1`, commit
-  `332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28`);
+- `GHOSTTY-LICENSE` for the pinned libghostty-vt source snapshot (commit
+  `08f039fbb3dea9c6b1cdb5ff4550666598122346`);
+- `JetBrainsMono-OFL.txt` for the embedded JetBrains Mono 2.304 regular,
+  bold, italic, and bold-italic terminal faces;
+- Lucide `panel-left-close`, `panel-right-close`, `panel-bottom-close`,
+  `panel-top-close`, and `fullscreen` vector geometry under the ISC license;
 - package-specific copyright and repository metadata in the corresponding
   NuGet packages.
 
@@ -21,11 +25,12 @@ corresponding complete license texts, copyright notices, source offer/link, and
 the statically linked native dependency inventory are generated and verified
 for the exact package payload.
 
-The gate also remains open for `SMBLibrary` (`LGPL-3.0-or-later`), the pinned
-Ghostty build's statically linked GNU gettext/libintl 0.24 (`LGPL-2.1`), and
-the complete OFL license/reserved-font-name evidence for embedded Inter font
-assets. The managed-component SBOM records these as unresolved evidence
-blockers; it is not legal clearance and does not substitute for the complete
+The gate also remains open for `SMBLibrary` (`LGPL-3.0-or-later`) and the
+complete OFL license/reserved-font-name evidence for embedded Inter font
+assets. JetBrains Mono is tracked separately by an exact source catalog,
+per-face hashes, build receipt, package manifest, and retained OFL text. The
+managed-component SBOM records the remaining blockers as unresolved evidence;
+it is not legal clearance and does not substitute for the complete
 native dependency graph, exact source provenance, patches, build flags, license
 texts, notices, source delivery, or relinking review.
 
@@ -94,7 +99,26 @@ software-bill-of-materials and license review.
 | `Vanara.PInvoke.Kernel32` | `4.2.1` | MIT |
 | `Vanara.PInvoke.Shared` | `4.2.1` | MIT |
 | `Wcwidth` | `3.0.0` | MIT |
-| `XTerm.NET` | `1.0.15` | MIT |
+
+## Lucide icon geometry
+
+The Dock drop-target vectors are adapted from Lucide Icons.
+
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
 
 This notice is informational and is not legal advice. It must not be used as
 evidence that the M4 release license gate is complete.
