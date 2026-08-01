@@ -64,6 +64,9 @@
       <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#111111" />
+          <SolidColorBrush x:Key="ShellSidebarBrush" Color="#181818" />
+          <SolidColorBrush x:Key="ShellSidebarBorderBrush" Color="#383838" />
+          <SolidColorBrush x:Key="ShellSidebarSelectionBrush" Color="#0DFFFFFF" />
           <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#18181B" />
           <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#1A1A1A" />
           <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#2E2E2E" />
@@ -87,6 +90,9 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
           <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F2F3F0" />
+          <SolidColorBrush x:Key="ShellSidebarBrush" Color="#E7E8E5" />
+          <SolidColorBrush x:Key="ShellSidebarBorderBrush" Color="#B8BAB6" />
+          <SolidColorBrush x:Key="ShellSidebarSelectionBrush" Color="#10000000" />
           <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#E7E8E5" />
           <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#FFFFFF" />
           <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#CBCCC9" />
@@ -119,7 +125,10 @@
       -->
       <CornerRadius x:Key="ShellControlCornerRadius">7</CornerRadius>
       <CornerRadius x:Key="ShellCardCornerRadius">9</CornerRadius>
+      <CornerRadius x:Key="ShellSidebarCornerRadius">9</CornerRadius>
+      <x:Double x:Key="ShellCardRadius">9</x:Double>
       <CornerRadius x:Key="ShellPillCornerRadius">999</CornerRadius>
+      <x:Double x:Key="ShellPillFontSize">10</x:Double>
       <CornerRadius x:Key="ShellPanelBottomCornerRadius">0,0,9,9</CornerRadius>
       <CornerRadius x:Key="ShellInnerCornerRadius">5</CornerRadius>
       <x:Double x:Key="ShellSpaceNone">0</x:Double>

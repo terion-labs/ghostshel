@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Media;
 using Avalonia.Platform;
 using GhostShell.App.Views;
@@ -137,6 +138,121 @@ public sealed class AvaloniaHostAppearanceAdapterTests
         Assert.Equal(FontFamily.Default, resources.FontFamily);
     }
 
+    [Theory]
+    [InlineData(PlatformProfile.MacOsClassic, EffectiveAppearanceMode.Dark, 14)]
+    [InlineData(PlatformProfile.MacOsLiquidGlass, EffectiveAppearanceMode.Dark, 16)]
+    public void Macos_dark_profiles_use_native_window_surface_colors(
+        PlatformProfile profile,
+        EffectiveAppearanceMode appearance,
+        double sidebarCornerRadius)
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            EffectiveThemeFor(profile, appearance));
+
+        Assert.Equal(Color.Parse("#1C1C1C"), resources.Background);
+        Assert.Equal(Color.Parse("#181818"), resources.SidebarSurface);
+        Assert.Equal(Color.Parse("#343434"), resources.SidebarBorder);
+        Assert.Equal(Color.Parse("#0DFFFFFF"), resources.SidebarSelectionSurface);
+        Assert.Equal(Color.Parse("#242424"), resources.Surface);
+        Assert.Equal(Color.Parse("#2C2C2E"), resources.RaisedSurface);
+        Assert.Equal(Color.Parse("#3A3A3C"), resources.HoverSurface);
+        Assert.Equal(Color.Parse("#3A3A3C"), resources.Border);
+        Assert.Equal(Color.Parse("#F5F5F7"), resources.Text);
+        Assert.Equal(Color.Parse("#A1A1A6"), resources.MutedText);
+        Assert.Equal(new CornerRadius(sidebarCornerRadius), resources.SidebarCornerRadius);
+    }
+
+    [Theory]
+    [InlineData(PlatformProfile.MacOsClassic, EffectiveAppearanceMode.Light, 14)]
+    [InlineData(PlatformProfile.MacOsLiquidGlass, EffectiveAppearanceMode.Light, 16)]
+    public void Macos_light_profiles_use_native_window_surface_colors(
+        PlatformProfile profile,
+        EffectiveAppearanceMode appearance,
+        double sidebarCornerRadius)
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            EffectiveThemeFor(profile, appearance));
+
+        Assert.Equal(Color.Parse("#FFFFFF"), resources.Background);
+        Assert.Equal(Color.Parse("#F2F2F7"), resources.SidebarSurface);
+        Assert.Equal(Color.Parse("#D1D1D6"), resources.SidebarBorder);
+        Assert.Equal(Color.Parse("#10000000"), resources.SidebarSelectionSurface);
+        Assert.Equal(Color.Parse("#F5F5F7"), resources.Surface);
+        Assert.Equal(Color.Parse("#FFFFFF"), resources.RaisedSurface);
+        Assert.Equal(Color.Parse("#E5E5EA"), resources.HoverSurface);
+        Assert.Equal(Color.Parse("#D1D1D6"), resources.Border);
+        Assert.Equal(Color.Parse("#1D1D1F"), resources.Text);
+        Assert.Equal(Color.Parse("#6E6E73"), resources.MutedText);
+        Assert.Equal(new CornerRadius(sidebarCornerRadius), resources.SidebarCornerRadius);
+    }
+
+    [Fact]
+    public void Default_preference_on_macos_uses_the_native_window_palette()
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            ThemePreference.Default.Resolve(NativeHost));
+
+        Assert.Equal(Color.Parse("#1C1C1C"), resources.Background);
+        Assert.Equal(Color.Parse("#181818"), resources.SidebarSurface);
+    }
+
+    [Fact]
+    public void Ghostshell_profile_retains_the_product_palette()
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            EffectiveThemeFor(
+                PlatformProfile.GhostShell,
+                EffectiveAppearanceMode.Dark));
+
+        Assert.Equal(Color.Parse("#111111"), resources.Background);
+        Assert.Equal(Color.Parse("#18181B"), resources.SidebarSurface);
+        Assert.Equal(Color.Parse("#18181B"), resources.Surface);
+        Assert.Equal(Color.Parse("#1A1A1A"), resources.RaisedSurface);
+    }
+
+    [Fact]
+    public void High_contrast_overrides_the_macos_window_palette()
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(new EffectiveTheme(
+            EffectiveAppearanceMode.Dark,
+            PlatformProfile.MacOsLiquidGlass,
+            RgbColor.Parse("#FF8400"),
+            AccentSource.Host,
+            HighContrast: true,
+            MotionEnabled: true,
+            AdvancedMaterialsEnabled: true,
+            TextScale: 1));
+
+        Assert.Equal(Colors.Black, resources.Background);
+        Assert.Equal(Colors.Black, resources.SidebarSurface);
+        Assert.Equal(Colors.White, resources.SidebarBorder);
+        Assert.Equal(Color.Parse("#202020"), resources.SidebarSelectionSurface);
+        Assert.Equal(Colors.Black, resources.Surface);
+        Assert.Equal(Colors.White, resources.Border);
+    }
+
+    [Theory]
+    [InlineData(EffectiveAppearanceMode.Dark)]
+    [InlineData(EffectiveAppearanceMode.Light)]
+    public void High_contrast_accent_remains_legible_on_the_selected_sidebar_surface(
+        EffectiveAppearanceMode appearance)
+    {
+        var resources = EffectiveAppearanceResourceMapper.Map(new EffectiveTheme(
+            appearance,
+            PlatformProfile.MacOsLiquidGlass,
+            RgbColor.Parse("#767676"),
+            AccentSource.Custom,
+            HighContrast: true,
+            MotionEnabled: true,
+            AdvancedMaterialsEnabled: true,
+            TextScale: 1));
+
+        Assert.True(
+            EffectiveAppearanceResourceMapper.ContrastRatio(
+                resources.Accent,
+                resources.SidebarSelectionSurface) >= 4.5);
+    }
+
     /// <summary>
     /// GhostSHELL's own profile is deliberately not the host's: it ships a known
     /// typeface so the product looks the same everywhere it runs.
@@ -163,6 +279,18 @@ public sealed class AvaloniaHostAppearanceAdapterTests
         profile,
         AccentPreference.GhostShellBronze);
 
+    private static EffectiveTheme EffectiveThemeFor(
+        PlatformProfile profile,
+        EffectiveAppearanceMode appearance) => new(
+        appearance,
+        profile,
+        RgbColor.Parse("#FF8400"),
+        AccentSource.Host,
+        HighContrast: false,
+        MotionEnabled: true,
+        AdvancedMaterialsEnabled: true,
+        TextScale: 1);
+
     [Fact]
     public void Application_text_scale_override_reaches_Avalonia_metrics()
     {
@@ -184,6 +312,31 @@ public sealed class AvaloniaHostAppearanceAdapterTests
         Assert.Equal(2, resources.TextScale);
         Assert.Equal(26, resources.BaseFontSize);
         Assert.Equal(50, resources.ScaleFontSize(25));
+    }
+
+    [Theory]
+    [InlineData(1, 10, 13)]
+    [InlineData(2, 20, 26)]
+    public void Pill_typography_stays_below_body_text_and_tracks_text_scale(
+        double textScale,
+        double expectedPillFontSize,
+        double expectedBodyFontSize)
+    {
+        var effective = new EffectiveTheme(
+            EffectiveAppearanceMode.Dark,
+            PlatformProfile.GhostShell,
+            RgbColor.Parse("#FF8400"),
+            AccentSource.Host,
+            HighContrast: false,
+            MotionEnabled: true,
+            AdvancedMaterialsEnabled: true,
+            TextScale: textScale);
+
+        var resources = EffectiveAppearanceResourceMapper.Map(effective);
+
+        Assert.Equal(expectedPillFontSize, resources.PillFontSize);
+        Assert.Equal(expectedBodyFontSize, resources.BaseFontSize);
+        Assert.True(resources.PillFontSize < resources.BaseFontSize);
     }
 
     [Fact]

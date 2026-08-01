@@ -150,6 +150,9 @@ internal sealed record EffectiveAppearanceResources(
     string ProfileClass,
     string AppearanceClass,
     Color Background,
+    Color SidebarSurface,
+    Color SidebarBorder,
+    Color SidebarSelectionSurface,
     Color Surface,
     Color RaisedSurface,
     Color HoverSurface,
@@ -173,11 +176,13 @@ internal sealed record EffectiveAppearanceResources(
     FontFamily FontFamily,
     double BaseFontSize,
     double TextScale,
+    double PillFontSize,
     double ControlMinHeight,
     CornerRadius ControlCornerRadius,
     Thickness ControlPadding,
     Thickness ButtonPadding,
     CornerRadius CardCornerRadius,
+    CornerRadius SidebarCornerRadius,
     CornerRadius PillCornerRadius,
     CornerRadius InnerCornerRadius,
     ShellSpacingScale Spacing,
@@ -213,21 +218,81 @@ internal sealed record EffectiveAppearanceResources(
 
 internal static class EffectiveAppearanceResourceMapper
 {
+    private const double PillBaseFontSize = 10;
+
     public static EffectiveAppearanceResources Map(EffectiveTheme theme)
     {
         ArgumentNullException.ThrowIfNull(theme);
         var isLight = theme.Appearance == EffectiveAppearanceMode.Light;
-        var background = Parse(isLight ? "#F2F3F0" : "#111111");
-        var surface = Parse(isLight ? "#E7E8E5" : "#18181B");
-        var raised = Parse(isLight ? "#FFFFFF" : "#1A1A1A");
-        var hover = Parse(isLight ? "#D7D8D5" : "#2E2E2E");
-        var border = Parse(isLight ? "#B8BAB6" : "#38383C");
-        var text = Parse(isLight ? "#111111" : "#FFFFFF");
-        var muted = Parse(isLight ? "#5C5E5A" : "#B8B9B6");
+        var isMacOsProfile = theme.PlatformProfile is
+            PlatformProfile.MacOsClassic or PlatformProfile.MacOsLiquidGlass;
+        // Finder separates its content plane from its sidebar material. Keep that
+        // distinction semantic: using the sidebar tone as the general surface
+        // would also recolor cards, panel headers, and status bars.
+        var palette = (isMacOsProfile, isLight) switch
+        {
+            (true, false) => (
+                Background: "#1C1C1C",
+                Sidebar: "#181818",
+                SidebarBorder: "#343434",
+                SidebarSelection: "#0DFFFFFF",
+                Surface: "#242424",
+                Raised: "#2C2C2E",
+                Hover: "#3A3A3C",
+                Border: "#3A3A3C",
+                Text: "#F5F5F7",
+                Muted: "#A1A1A6"),
+            (true, true) => (
+                Background: "#FFFFFF",
+                Sidebar: "#F2F2F7",
+                SidebarBorder: "#D1D1D6",
+                SidebarSelection: "#10000000",
+                Surface: "#F5F5F7",
+                Raised: "#FFFFFF",
+                Hover: "#E5E5EA",
+                Border: "#D1D1D6",
+                Text: "#1D1D1F",
+                Muted: "#6E6E73"),
+            (false, false) => (
+                Background: "#111111",
+                Sidebar: "#18181B",
+                SidebarBorder: "#38383C",
+                SidebarSelection: "#0DFFFFFF",
+                Surface: "#18181B",
+                Raised: "#1A1A1A",
+                Hover: "#2E2E2E",
+                Border: "#38383C",
+                Text: "#FFFFFF",
+                Muted: "#B8B9B6"),
+            _ => (
+                Background: "#F2F3F0",
+                Sidebar: "#E7E8E5",
+                SidebarBorder: "#B8BAB6",
+                SidebarSelection: "#10000000",
+                Surface: "#E7E8E5",
+                Raised: "#FFFFFF",
+                Hover: "#D7D8D5",
+                Border: "#B8BAB6",
+                Text: "#111111",
+                Muted: "#5C5E5A"),
+        };
+        var background = Parse(palette.Background);
+        var sidebar = Parse(palette.Sidebar);
+        var sidebarBorder = Parse(palette.SidebarBorder);
+        var sidebarSelection = Parse(palette.SidebarSelection);
+        var surface = Parse(palette.Surface);
+        var raised = Parse(palette.Raised);
+        var hover = Parse(palette.Hover);
+        var border = Parse(palette.Border);
+        var text = Parse(palette.Text);
+        var muted = Parse(palette.Muted);
 
         if (theme.HighContrast)
         {
             background = Parse(isLight ? "#FFFFFF" : "#000000");
+            sidebar = Parse(isLight ? "#FFFFFF" : "#000000");
+            sidebarBorder = Parse(isLight ? "#000000" : "#FFFFFF");
+            sidebarSelection = Parse(isLight ? "#E6E6E6" : "#202020");
             surface = Parse(isLight ? "#FFFFFF" : "#000000");
             raised = Parse(isLight ? "#FFFFFF" : "#080808");
             hover = Parse(isLight ? "#E6E6E6" : "#202020");
@@ -242,6 +307,18 @@ internal static class EffectiveAppearanceResourceMapper
             background,
             theme.HighContrast ? 4.5 : 3.0,
             isLight ? Colors.Black : Colors.White);
+        if (theme.HighContrast)
+        {
+            // Selected sidebar labels use the accent directly. The high-contrast
+            // selection plane is intentionally distinct from the window, so an
+            // accent that only clears the window can still fail on that row.
+            accent = EnsureContrast(
+                accent,
+                sidebarSelection,
+                4.5,
+                text);
+        }
+
         // What sits on a filled accent control.
         //
         // Picking whichever of black and white has more contrast is the accessible
@@ -269,6 +346,9 @@ internal static class EffectiveAppearanceResourceMapper
         var cardRadius = theme.CornerRadiusOverride is { } requested
             ? requested + 2
             : metrics.CardCornerRadius;
+        var sidebarRadius = theme.CornerRadiusOverride is { } requestedRadius
+            ? requestedRadius + Math.Max(0, metrics.SidebarCornerRadius - metrics.CardCornerRadius)
+            : metrics.SidebarCornerRadius;
         var source = theme.AccentSource switch
         {
             AccentSource.Custom => "custom accent",
@@ -287,6 +367,9 @@ internal static class EffectiveAppearanceResourceMapper
             ProfileClass(theme.PlatformProfile),
             isLight ? "appearance-light" : "appearance-dark",
             background,
+            sidebar,
+            sidebarBorder,
+            sidebarSelection,
             surface,
             raised,
             hover,
@@ -310,6 +393,7 @@ internal static class EffectiveAppearanceResourceMapper
             ResolveFontFamily(metrics),
             metrics.BaseFontSize * theme.TextScale,
             theme.TextScale,
+            PillBaseFontSize * theme.TextScale,
             metrics.ControlMinHeight * theme.TextScale * densityScale,
             new CornerRadius(controlRadius),
             new Thickness(
@@ -319,6 +403,7 @@ internal static class EffectiveAppearanceResourceMapper
                 metrics.ButtonHorizontalPadding * theme.TextScale * densityScale,
                 metrics.ButtonVerticalPadding * theme.TextScale * densityScale),
             new CornerRadius(cardRadius),
+            new CornerRadius(sidebarRadius),
             // A pill is fully round whatever the radius setting says; a shape
             // nested inside a card is rounder than nothing and tighter than its
             // parent, so it never reads as a second card.
@@ -438,6 +523,7 @@ internal static class EffectiveAppearanceResourceMapper
         double HorizontalPadding,
         double VerticalPadding,
         double CardCornerRadius,
+        double SidebarCornerRadius,
         double SpaceUnit,
         double ButtonHorizontalPadding,
         double ButtonVerticalPadding)
@@ -456,6 +542,7 @@ internal static class EffectiveAppearanceResourceMapper
                 10,
                 6,
                 10,
+                14,
                 8,
                 16,
                 10),
@@ -468,6 +555,7 @@ internal static class EffectiveAppearanceResourceMapper
                 11,
                 6,
                 13,
+                16,
                 8,
                 16,
                 10),
@@ -481,6 +569,7 @@ internal static class EffectiveAppearanceResourceMapper
                 6,
                 8,
                 8,
+                8,
                 16,
                 9),
             PlatformProfile.Gnome => new(
@@ -492,6 +581,7 @@ internal static class EffectiveAppearanceResourceMapper
                 12,
                 7,
                 12,
+                12,
                 6,
                 16,
                 10),
@@ -502,6 +592,7 @@ internal static class EffectiveAppearanceResourceMapper
                 30,
                 4,
                 10,
+                6,
                 6,
                 6,
                 6,
@@ -517,6 +608,7 @@ internal static class EffectiveAppearanceResourceMapper
                 7,
                 10,
                 6,
+                9,
                 9,
                 8,
                 16,

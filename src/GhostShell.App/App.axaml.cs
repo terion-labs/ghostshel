@@ -372,6 +372,9 @@ public sealed partial class App : Avalonia.Application
     private void ApplyApplicationResources(EffectiveAppearanceResources resources)
     {
         Resources["ShellBackgroundBrush"] = Brush(resources.Background);
+        Resources["ShellSidebarBrush"] = Brush(resources.SidebarSurface);
+        Resources["ShellSidebarBorderBrush"] = Brush(resources.SidebarBorder);
+        Resources["ShellSidebarSelectionBrush"] = Brush(resources.SidebarSelectionSurface);
         Resources["ShellSurfaceBrush"] = Brush(resources.Surface);
         Resources["ShellSurfaceRaisedBrush"] = Brush(resources.RaisedSurface);
         Resources["ShellSurfaceHoverBrush"] = Brush(resources.HoverSurface);
@@ -394,6 +397,7 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellNoticeBorderBrush"] = Brush(resources.NoticeBorder);
         Resources["ShellUiFontFamily"] = resources.FontFamily;
         Resources["ShellBaseFontSize"] = resources.BaseFontSize;
+        Resources["ShellPillFontSize"] = resources.PillFontSize;
         foreach (var baseFontSize in ScalableFontSizes)
         {
             Resources[$"ShellFontSize{baseFontSize}"] = resources.ScaleFontSize(baseFontSize);
@@ -408,6 +412,8 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellControlPadding"] = resources.ControlPadding;
         Resources["ShellButtonPadding"] = resources.ButtonPadding;
         Resources["ShellCardCornerRadius"] = resources.CardCornerRadius;
+        Resources["ShellSidebarCornerRadius"] = resources.SidebarCornerRadius;
+        Resources["ShellCardRadius"] = resources.CardCornerRadius.TopLeft;
         Resources["ShellPillCornerRadius"] = resources.PillCornerRadius;
         Resources["ShellInnerCornerRadius"] = resources.InnerCornerRadius;
 

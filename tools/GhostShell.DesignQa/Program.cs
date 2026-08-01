@@ -1,14 +1,19 @@
 using System.Reflection;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
+using GhostShell.App.Controls;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -27,9 +32,19 @@ internal static class Program
 
     public static string[] RequestedRoutes { get; private set; } = [];
 
+    public static bool IsTerminalFontVerification { get; private set; }
+
     [STAThread]
     public static void Main(string[] args)
     {
+        if (args is ["--verify-terminal-font"])
+        {
+            IsTerminalFontVerification = true;
+            BuildAvaloniaApp().SetupWithoutStarting();
+            VerifyTerminalFont();
+            return;
+        }
+
         OutputDirectory = Path.GetFullPath(
             args.FirstOrDefault() ?? Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "design-qa", "current"));
         RequestedRoutes = args.Skip(1).ToArray();
@@ -41,7 +56,52 @@ internal static class Program
         AppBuilder.Configure<QaApplication>()
             .UsePlatformDetect()
             .WithInterFont()
+            .ConfigureFonts(fontManager =>
+                fontManager.AddFontCollection(new GhostShellTerminalFontCollection()))
             .LogToTrace();
+
+    private static void VerifyTerminalFont()
+    {
+        var faces = new[]
+        {
+            (File: "JetBrainsMono-Regular.ttf", Style: FontStyle.Normal, Weight: FontWeight.Normal),
+            (File: "JetBrainsMono-Bold.ttf", Style: FontStyle.Normal, Weight: FontWeight.Bold),
+            (File: "JetBrainsMono-Italic.ttf", Style: FontStyle.Italic, Weight: FontWeight.Normal),
+            (File: "JetBrainsMono-BoldItalic.ttf", Style: FontStyle.Italic, Weight: FontWeight.Bold),
+        };
+
+        foreach (var face in faces)
+        {
+            var assetUri = new Uri(
+                $"avares://GhostShell.App/Assets/Fonts/JetBrainsMono/{face.File}",
+                UriKind.Absolute);
+            using var asset = AssetLoader.Open(assetUri);
+            if (asset.Length == 0)
+            {
+                throw new InvalidOperationException($"Embedded terminal font is empty: {face.File}.");
+            }
+
+            var typeface = new Typeface(
+                GhostShellTerminalFontCollection.Family,
+                face.Style,
+                face.Weight);
+            if (!FontManager.Current.TryGetGlyphTypeface(typeface, out var glyphTypeface)
+                || glyphTypeface.FamilyName != GhostShellTerminalFontCollection.FamilyName
+                || glyphTypeface.Style != face.Style
+                || glyphTypeface.Weight != face.Weight
+                || glyphTypeface.Stretch != FontStretch.Normal
+                || glyphTypeface.FontSimulations != FontSimulations.None
+                || !glyphTypeface.Metrics.IsFixedPitch)
+            {
+                throw new InvalidOperationException(
+                    $"Embedded terminal font did not resolve to its exact fixed-pitch face: {face.File}.");
+            }
+        }
+
+        Console.WriteLine(
+            $"Verified embedded {GhostShellTerminalFontCollection.FamilyName}: "
+            + "regular, bold, italic, and bold italic are fixed-pitch native faces.");
+    }
 }
 
 internal sealed record RouteCapture(
@@ -49,7 +109,9 @@ internal sealed record RouteCapture(
     Action<MainWindowViewModel> Apply,
     string? FocusFirst = null,
     int Height = 900,
-    ThemePreference? Theme = null);
+    ThemePreference? Theme = null,
+    string? ClickFirst = null,
+    Action<MainWindow>? PrepareCapture = null);
 
 internal sealed class QaApplication : Avalonia.Application
 {
@@ -57,10 +119,16 @@ internal sealed class QaApplication : Avalonia.Application
 
     private static readonly QaOfflineAgentRuntime AgentRuntime = new();
 
+    private static readonly EmptyFileClients Files = new();
+
     private static readonly RouteCapture[] Routes =
     [
         new("launcher-home", vm => vm.ShowLauncher()),
         new("launcher-connections", vm => vm.ShowLauncherConnections()),
+        new(
+            "launcher-connections-hover",
+            vm => vm.ShowLauncherConnections(),
+            PrepareCapture: ShowFirstLaunchCardHover),
         new("launcher-screens", vm => vm.ShowLauncherScreens()),
         new("launcher-history", vm => vm.ShowLauncherHistory()),
         new("settings-appearance", vm => vm.ShowSettings(SettingsPage.Appearance)),
@@ -97,6 +165,18 @@ internal sealed class QaApplication : Avalonia.Application
             vm.BeginEditLayout(new LayoutId("grid-four"));
         }),
         new("workspace", vm => vm.ShowWorkspace()),
+        new(
+            "workspace-drag-ghost",
+            vm => vm.ShowWorkspace(),
+            PrepareCapture: ShowSampleDragGhost),
+        new(
+            "workspace-transfers",
+            vm =>
+            {
+                vm.ShowWorkspace();
+                Files.PublishSampleTransfer();
+            },
+            ClickFirst: "Open transfer manager"),
         // The agent panel's conversation layout is otherwise unreviewable: the
         // harness has no provider and reaches no endpoint, so every other route
         // can only render the panel's empty state.
@@ -146,6 +226,50 @@ internal sealed class QaApplication : Avalonia.Application
             AccentPreference.FollowHost,
             cornerRadiusOverride: cornerRadius,
             density: density);
+
+    private static void ShowSampleDragGhost(MainWindow window)
+    {
+        var payloadType = typeof(MainWindow).Assembly.GetType(
+            "GhostShell.App.Views.Components.DragGhostPayload",
+            throwOnError: true)!;
+        var constructor = AssertSingle(payloadType.GetConstructors());
+        var symbolType = constructor.GetParameters()[0].ParameterType;
+        var payload = constructor.Invoke(
+        [
+            Enum.Parse(symbolType, "Document"),
+            "Archive.zip",
+            "Copy from dev.terion.pro",
+        ]);
+        var show = typeof(MainWindow).GetMethod(
+            "ShowDragGhost",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "The main window no longer exposes its internal drag-ghost presentation seam.");
+        _ = show.Invoke(window, [payload, new Point(760, 420)]);
+    }
+
+    private static void ShowFirstLaunchCardHover(MainWindow window)
+    {
+        var cardSurface = window.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => button.Classes.Contains("CardSurface"))
+            ?? throw new InvalidOperationException(
+                "The launcher no longer exposes a CardSurface button for hover QA.");
+        var pseudoClasses = typeof(StyledElement).GetProperty(
+                "PseudoClasses",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.GetValue(cardSurface) as IPseudoClasses
+            ?? throw new InvalidOperationException(
+                "Avalonia no longer exposes the protected pseudo-class collection used by QA.");
+
+        pseudoClasses.Add(":pointerover");
+    }
+
+    private static T AssertSingle<T>(IReadOnlyList<T> values) =>
+        values.Count == 1
+            ? values[0]
+            : throw new InvalidOperationException(
+                $"Expected one value but found {values.Count}.");
 
     /// <summary>
     /// Modal editors and confirmations are their own windows, so they are
@@ -265,6 +389,12 @@ internal sealed class QaApplication : Avalonia.Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        if (Program.IsTerminalFontVerification)
+        {
+            base.OnFrameworkInitializationCompleted();
+            return;
+        }
+
         if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
         {
             throw new InvalidOperationException("A desktop lifetime is required.");
@@ -292,14 +422,13 @@ internal sealed class QaApplication : Avalonia.Application
     private static MainWindowViewModel CreateViewModel()
     {
         var catalog = new QaDefinitionCatalog(QaData.Snapshot);
-        var files = new EmptyFileClients();
         var viewModel = new MainWindowViewModel(
             DispatchProxy.Create<ISessionHostClient, UnusedProxy>(),
             catalog,
             new UnusedConnectionRuntime(),
             new MemoryOnlySecretVault(),
-            files,
-            files,
+            Files,
+            Files,
             new TerminalStartupCommandDispatcher(new MemoryOnlyAuditStore(), TimeProvider.System),
             uiThreadDispatcher: new ImmediateUiDispatcher(),
             recentSessionHistory: new GhostShell.App.RecentSessionHistory(
@@ -429,6 +558,7 @@ internal sealed class QaApplication : Avalonia.Application
                 // agent into whatever is captured after it, whatever the order.
                 AgentProfiles.Reset();
                 AgentRuntime.Reset();
+                Files.Reset();
                 route.Apply(viewModel);
                 await Task.Delay(220);
                 Dispatcher.UIThread.RunJobs();
@@ -447,6 +577,23 @@ internal sealed class QaApplication : Avalonia.Application
                     Dispatcher.UIThread.RunJobs();
                 }
 
+                if (route.ClickFirst is { } clickTarget)
+                {
+                    var button = window.GetVisualDescendants()
+                        .OfType<Button>()
+                        .FirstOrDefault(candidate =>
+                            string.Equals(
+                                AutomationProperties.GetName(candidate),
+                                clickTarget,
+                                StringComparison.Ordinal))
+                        ?? throw new InvalidOperationException(
+                            $"The route wanted to click '{clickTarget}', which is not in the tree.");
+                    button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    await Task.Delay(140);
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                }
+
                 if (window.Height != route.Height)
                 {
                     window.Height = route.Height;
@@ -454,6 +601,14 @@ internal sealed class QaApplication : Avalonia.Application
                     Dispatcher.UIThread.RunJobs();
                     window.UpdateLayout();
                     await Task.Delay(120);
+                }
+
+                if (route.PrepareCapture is { } prepareCapture)
+                {
+                    prepareCapture(window);
+                    await Task.Delay(140);
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
                 }
 
                 var path = Path.Combine(Program.OutputDirectory, $"{route.Name}.png");

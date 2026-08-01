@@ -116,7 +116,7 @@
               </Grid>
             </Border>
             <Border Padding="{controls:Inset Horizontal=Md, Vertical=Sm}" Background="{DynamicResource ShellSurfaceRaisedBrush}" CornerRadius="{DynamicResource ShellPillCornerRadius}">
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding LayoutDesignerEditor.GridHint}" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellPillFontSize}" Text="{Binding LayoutDesignerEditor.GridHint}" />
             </Border>
           </StackPanel>
         </Border>

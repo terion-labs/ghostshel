@@ -309,6 +309,58 @@ public sealed class LauncherViewContractTests
         }
     }
 
+    [Fact]
+    public void Floating_sidebars_use_their_dedicated_surface_token()
+    {
+        var theme = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "GhostShellTheme.axaml"));
+        var sidebarStyle = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Border.FloatingSidebar",
+                    StringComparison.Ordinal));
+
+        AssertStyleSetter(
+            sidebarStyle,
+            "Background",
+            "{DynamicResource ShellSidebarBrush}");
+        AssertStyleSetter(
+            sidebarStyle,
+            "BorderBrush",
+            "{DynamicResource ShellSidebarBorderBrush}");
+        AssertStyleSetter(sidebarStyle, "BorderThickness", "1");
+        AssertStyleSetter(
+            sidebarStyle,
+            "CornerRadius",
+            "{DynamicResource ShellSidebarCornerRadius}");
+
+        var app = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "App.axaml"));
+        foreach (var resource in new[]
+                 {
+                     "ShellSidebarBorderBrush",
+                     "ShellSidebarSelectionBrush",
+                     "ShellSidebarCornerRadius",
+                 })
+        {
+            Assert.Contains(
+                app.Descendants(),
+                element => string.Equals(
+                    AttributeValue(element, "Key"),
+                    resource,
+                    StringComparison.Ordinal));
+        }
+    }
+
     private static void AssertTitleBarDragRegion(XElement root)
     {
         var titleBar = Assert.Single(
@@ -439,6 +491,79 @@ public sealed class LauncherViewContractTests
     }
 
     [Fact]
+    public void Launcher_card_hover_surface_stretches_across_the_full_card()
+    {
+        var theme = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "GhostShellTheme.axaml"));
+        var cardSurfaceStyle = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Button.CardSurface",
+                    StringComparison.Ordinal));
+
+        AssertStyleSetter(cardSurfaceStyle, "HorizontalAlignment", "Stretch");
+        AssertStyleSetter(cardSurfaceStyle, "HorizontalContentAlignment", "Stretch");
+    }
+
+    [Fact]
+    public void Pill_components_share_a_smaller_scalable_font_token()
+    {
+        var designSystem = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "DesignSystem.axaml"));
+        var statusChipTheme = Assert.Single(
+            designSystem.Descendants(),
+            element => element.Name.LocalName == "ControlTheme"
+                && string.Equals(
+                    AttributeValue(element, "TargetType"),
+                    "controls:StatusChip",
+                    StringComparison.Ordinal));
+        AssertStyleSetter(
+            statusChipTheme,
+            "FontSize",
+            "{DynamicResource ShellPillFontSize}");
+
+        var shellTheme = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "GhostShellTheme.axaml"));
+        var interactiveChipStyle = Assert.Single(
+            shellTheme.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Button.Chip, ComboBox.Chip",
+                    StringComparison.Ordinal));
+        AssertStyleSetter(
+            interactiveChipStyle,
+            "FontSize",
+            "{DynamicResource ShellPillFontSize}");
+
+        var app = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "App.axaml"));
+        Assert.Contains(
+            app.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Key"),
+                "ShellPillFontSize",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Navigation_style_stretches_items_and_exposes_selection_state()
     {
         var theme = XDocument.Load(Path.Combine(
@@ -461,7 +586,9 @@ public sealed class LauncherViewContractTests
         AssertStyleSetter(
             navigationStyle,
             "Foreground",
-            "{DynamicResource ShellMutedBrush}");
+            "{DynamicResource ShellTextBrush}");
+        AssertStyleSetter(navigationStyle, "MinHeight", "32");
+        AssertStyleSetter(navigationStyle, "Padding", "10,0");
         AssertStyleSetter(
             navigationStyle,
             "AutomationProperties.ItemStatus",
@@ -476,12 +603,29 @@ public sealed class LauncherViewContractTests
                     StringComparison.Ordinal));
         AssertStyleSetter(
             activeNavigationStyle,
+            "Background",
+            "{DynamicResource ShellSidebarSelectionBrush}");
+        AssertStyleSetter(
+            activeNavigationStyle,
             "Foreground",
-            "{DynamicResource ShellTextBrush}");
+            "{DynamicResource ShellAccentBrush}");
+        AssertStyleSetter(activeNavigationStyle, "FontWeight", "Medium");
         AssertStyleSetter(
             activeNavigationStyle,
             "AutomationProperties.ItemStatus",
             "Current page");
+
+        var activeLabelStyle = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Button.NavButton.active TextBlock",
+                    StringComparison.Ordinal));
+        AssertStyleSetter(
+            activeLabelStyle,
+            "Foreground",
+            "{DynamicResource ShellAccentBrush}");
     }
 
     private static readonly string[] ExtractedControlNames =

@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-07-22
+- Terminal-view update: [ADR 0040](0040-cross-platform-libghostty-vt-terminal.md)
+  supersedes this record's former assumption that the terminal is also a native
+  child view. This record remains accepted for browser adapters.
 
 ## Context
 
@@ -13,7 +16,7 @@ Use `WKWebView` on macOS, WebView2 on Windows, and WPE WebKit on Linux with a We
 
 Unsupported optional operations return `capability_not_supported`; adapters never simulate success. Element references expire on navigation or document revision. Domain policy and the session-host capability broker run before every human or agent browser action, and page content is labeled untrusted.
 
-Browser and terminal native views use rectangular, non-transformed hosts. Workflows that cannot reliably overlay a native child view use a docked sibling, separate top-level, or platform-native sheet.
+Browser native views use rectangular, non-transformed hosts. Workflows that cannot reliably overlay a browser child view use a docked sibling, separate top-level, or platform-native sheet. Terminal panels are ordinary Avalonia controls under ADR 0040 and do not share this native-child constraint.
 
 The first implemented capability slice is intentionally limited to typed state,
 navigation, back, forward, reload, and stop through the official Avalonia native

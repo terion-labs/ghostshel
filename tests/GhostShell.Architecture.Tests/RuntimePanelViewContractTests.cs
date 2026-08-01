@@ -9,6 +9,27 @@ public sealed class RuntimePanelViewContractTests
         ApplicationViewCatalog.Load();
 
     [Theory]
+    [InlineData("TerminalRuntimePanelView")]
+    [InlineData("BrowserRuntimePanelView")]
+    [InlineData("FileRuntimePanelView")]
+    [InlineData("StatisticsRuntimePanelView")]
+    [InlineData("ProcessMonitorRuntimePanelView")]
+    [InlineData("UnavailableRuntimePanelView")]
+    [InlineData("PanelPlaceholderView")]
+    public void Panel_headers_are_the_dock_drag_surface_without_a_second_tab_strip(
+        string viewName)
+    {
+        var view = XDocument.Load(RuntimePanelPath(viewName, ".axaml"));
+        var handle = Assert.Single(
+            view.Descendants(),
+            element => element.Name.LocalName == "PanelDockHandle");
+
+        Assert.Equal(
+            "{Binding $parent[dock:DockableControl].DataContext}",
+            AttributeValue(handle, "DataContext"));
+    }
+
+    [Theory]
     [InlineData(
         "TerminalRuntimePanelViewModel",
         "TerminalRuntimePanelView")]
@@ -202,7 +223,7 @@ public sealed class RuntimePanelViewContractTests
     }
 
     [Fact]
-    public void Terminal_panel_view_preserves_native_host_and_typed_shell_interactions()
+    public void Terminal_panel_view_preserves_managed_host_and_typed_shell_interactions()
     {
         var mainWindow = LoadView("MainWindow");
         var template = Assert.Single(
@@ -214,9 +235,6 @@ public sealed class RuntimePanelViewContractTests
                     StringComparison.Ordinal));
         var component = Assert.Single(template.Elements());
 
-        Assert.Equal(
-            "OnTerminalApplicationKeyPressed",
-            AttributeValue(component, "ApplicationKeyPressed"));
         Assert.Equal(
             "OnCancelConnectionReconnectClick",
             AttributeValue(component, "CancelReconnectRequested"));
@@ -283,9 +301,6 @@ public sealed class RuntimePanelViewContractTests
             "{Binding SessionRequest}",
             AttributeValue(terminal, "SessionRequest"));
         Assert.Equal(
-            "OnApplicationKeyPressed",
-            AttributeValue(terminal, "ApplicationKeyPressed"));
-        Assert.Equal(
             "OnSessionSnapshotChanged",
             AttributeValue(terminal, "SessionSnapshotChanged"));
         Assert.Equal(
@@ -303,10 +318,6 @@ public sealed class RuntimePanelViewContractTests
 
         var codeBehind = File.ReadAllText(
             RuntimePanelPath("TerminalRuntimePanelView", ".axaml.cs"));
-        Assert.Contains(
-            "ApplicationKeyPressed?.Invoke(sender, e);",
-            codeBehind,
-            StringComparison.Ordinal);
         Assert.Contains(
             "SessionInitializationFailed?.Invoke(sender, e);",
             codeBehind,
@@ -543,6 +554,26 @@ public sealed class RuntimePanelViewContractTests
                     AttributeValue(element, "ItemsSource"),
                     "{Binding Entries}",
                     StringComparison.Ordinal)));
+        var fileNameLabels = root.Descendants()
+            .Where(element => element.Name.LocalName == "TextBlock"
+                && string.Equals(
+                    AttributeValue(element, "Text"),
+                    "{Binding Name}",
+                    StringComparison.Ordinal))
+            .ToArray();
+        Assert.Equal(3, fileNameLabels.Length);
+        Assert.All(fileNameLabels, label =>
+        {
+            Assert.Equal("CharacterEllipsis", AttributeValue(label, "TextTrimming"));
+            Assert.Equal("{Binding Name}", AttributeValue(label, "ToolTip.Tip"));
+        });
+        Assert.Contains(
+            fileNameLabels,
+            label => label.Parent?.Name.LocalName == "Grid"
+                && string.Equals(
+                    AttributeValue(label, "Grid.Column"),
+                    "1",
+                    StringComparison.Ordinal));
         var viewOptionsButton = FindUniqueAccessibleElement(
             root,
             "Open file sort and view options");
@@ -629,6 +660,50 @@ public sealed class RuntimePanelViewContractTests
                 AttributeValue(element, "BorderThickness"),
                 "0,1,0,1",
                 StringComparison.Ordinal));
+        var transferDropTarget = FindUniqueAccessibleElement(
+            root,
+            "File transfer drop target");
+        Assert.Equal("Rectangle", transferDropTarget.Name.LocalName);
+        Assert.Equal("False", AttributeValue(transferDropTarget, "IsVisible"));
+        Assert.Equal("4,3", AttributeValue(transferDropTarget, "StrokeDashArray"));
+        Assert.Equal(
+            "{DynamicResource ShellCardRadius}",
+            AttributeValue(transferDropTarget, "RadiusX"));
+        Assert.Equal(
+            "{DynamicResource ShellCardRadius}",
+            AttributeValue(transferDropTarget, "RadiusY"));
+        var folderDropStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "ListBoxItem.transferDropTarget /template/ ContentPresenter",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            folderDropStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && string.Equals(
+                    AttributeValue(element, "Property"),
+                    "Background",
+                    StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            folderDropStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") is
+                    "BorderBrush" or "BorderThickness");
+
+        var application = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "App.axaml"));
+        var scalarCardRadius = Assert.Single(
+            application.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Key"),
+                "ShellCardRadius",
+                StringComparison.Ordinal));
+        Assert.Equal("Double", scalarCardRadius.Name.LocalName);
 
         Assert.Equal(
             "Polite",
@@ -680,10 +755,45 @@ public sealed class RuntimePanelViewContractTests
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
-            "private async void OnFilePointerMoved",
+            "private void OnFilePointerMoved",
             codeBehind,
             StringComparison.Ordinal);
-        Assert.Equal(1, codeBehind.Split("private async ", StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "new ActiveFileDrag(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "window.ShowDragGhost(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.True(
+            codeBehind.IndexOf(
+                "candidate.Pointer.Capture(this);",
+                StringComparison.Ordinal)
+            < codeBehind.IndexOf(
+                "_activeFileDrag = activeDrag;",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            "ResolveInternalFileDropTarget(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "DragDrop.DoDragDropAsync(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "AddHandler(DragDrop.DragLeaveEvent, OnFileDragLeave)",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveFileDropTarget(e.Source, e.DataTransfer)",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DestinationFolder",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("private async ", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);
