@@ -132,6 +132,9 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ReviewOnboardingRequested;
 
+    public event EventHandler<RoutedEventArgs>?
+        RestoreSessionsOnStartChangedRequested;
+
     public event EventHandler<RoutedEventArgs>? AppearanceChangedRequested;
 
     public event EventHandler<RoutedEventArgs>? PickColorRequested;
@@ -406,6 +409,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnReviewOnboardingClick(object? sender, RoutedEventArgs e) =>
         ReviewOnboardingRequested?.Invoke(sender, e);
+
+    private void OnRestoreSessionsOnStartChanged(object? sender, RoutedEventArgs e) =>
+        RestoreSessionsOnStartChangedRequested?.Invoke(sender, e);
 
     private void OnSaveKeybindingsClick(object? sender, RoutedEventArgs e) =>
         SaveKeybindingsRequested?.Invoke(sender, e);

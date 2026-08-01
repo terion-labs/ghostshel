@@ -2,6 +2,8 @@ using System.Collections.Immutable;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Dock.Model.Controls;
+using Dock.Model.Core;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
 using GhostShell.Application;
@@ -823,6 +825,111 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     [Fact]
+    public async Task RecoveryRestoresAnUnconfiguredDockPlaceholder()
+    {
+        var connection = LocalConnection("placeholder-recovery", "Placeholder recovery");
+        var definitions = new DefinitionCatalogSnapshot(
+            [Store(connection)], [], [], [], [], [], [], [], []);
+        using var source = CreateViewModel(definitions, new EmptyFileClients());
+        Assert.True(await source.OpenConnectionAsync(connection.Id));
+        var sourceWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(source.RuntimeWorkspace);
+        var sourceTab = Assert.IsType<RuntimeTabViewModel>(sourceWorkspace.ActiveTab);
+        sourceTab.AddPlaceholder(PanelSide.Right);
+        var snapshot = new RuntimeRecoverySnapshot(
+            "placeholder-interrupted-run",
+            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+            RuntimeWorkspaceRecoveryCodec.Serialize(sourceWorkspace),
+            DateTimeOffset.UtcNow);
+        var startup = InitializeRecoveryRun(
+            "placeholder-recovery-run",
+            "placeholder-interrupted-run",
+            RecoveryChoice.Restore,
+            [snapshot]);
+        using var recovered = CreateViewModel(definitions, new EmptyFileClients());
+
+        Assert.True(await recovered.ApplyStartupRecoveryAsync(startup));
+
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(recovered.RuntimeWorkspace);
+        var tab = Assert.Single(workspace.Tabs);
+        Assert.Collection(
+            tab.Panels,
+            panel => Assert.IsType<TerminalRuntimePanelViewModel>(panel),
+            panel => Assert.IsType<PanelPlaceholderViewModel>(panel));
+    }
+
+    [Fact]
+    public async Task RecoveryPreservesAFloatingWindowFromAnAutomaticRuntimeTab()
+    {
+        var connection = LocalConnection("floating-recovery", "Floating recovery");
+        var definitions = new DefinitionCatalogSnapshot(
+            [Store(connection)], [], [], [], [], [], [], [], []);
+        using var source = CreateViewModel(definitions, new EmptyFileClients());
+        Assert.True(await source.OpenConnectionAsync(connection.Id));
+        var sourceWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(source.RuntimeWorkspace);
+        var sourceTab = Assert.IsType<RuntimeTabViewModel>(sourceWorkspace.ActiveTab);
+        var document = FindDocument(sourceTab.DockLayout);
+        sourceTab.DockFactory.RemoveDockable(document, collapse: true);
+        var window = Assert.IsAssignableFrom<IDockWindow>(
+            sourceTab.DockFactory.CreateWindowFrom(document));
+        window.Id = "floating-recovery-window";
+        window.X = 120;
+        window.Y = 90;
+        window.Width = 900;
+        window.Height = 640;
+        sourceTab.DockLayout.Windows!.Add(window);
+        var snapshot = new RuntimeRecoverySnapshot(
+            "floating-interrupted-run",
+            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+            RuntimeWorkspaceRecoveryCodec.Serialize(sourceWorkspace),
+            DateTimeOffset.UtcNow);
+        var startup = InitializeRecoveryRun(
+            "floating-recovery-run",
+            "floating-interrupted-run",
+            RecoveryChoice.Restore,
+            [snapshot]);
+        using var recovered = CreateViewModel(definitions, new EmptyFileClients());
+
+        Assert.True(await recovered.ApplyStartupRecoveryAsync(startup));
+
+        var recoveredWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            recovered.RuntimeWorkspace);
+        var recoveredTab = Assert.Single(recoveredWorkspace.Tabs);
+        var recoveredWindow = Assert.Single(recoveredTab.DockLayout.Windows!);
+        Assert.Equal("floating-recovery-window", recoveredWindow.Id);
+        Assert.Equal(120, recoveredWindow.X);
+        Assert.Equal(90, recoveredWindow.Y);
+        Assert.Equal(900, recoveredWindow.Width);
+        Assert.Equal(640, recoveredWindow.Height);
+
+        static IDocument FindDocument(IRootDock root)
+        {
+            var pending = new Stack<IDockable>();
+            pending.Push(root);
+            while (pending.TryPop(out var dockable))
+            {
+                if (dockable is IDocument document)
+                {
+                    return document;
+                }
+
+                if (dockable is not IDock { VisibleDockables: { } children })
+                {
+                    continue;
+                }
+
+                foreach (var child in children)
+                {
+                    pending.Push(child);
+                }
+            }
+
+            throw new InvalidOperationException("The runtime tab contains no document.");
+        }
+    }
+
+    [Fact]
     public async Task DefinitionBackedRuntimeTracksSafeRecentMetadataReopenAndClear()
     {
         var connection = new ConnectionProfile(
@@ -1342,12 +1449,11 @@ public sealed class SavedScreenRuntimeIdentityTests
             SchemaVersion = 1,
             PayloadJson = versionOneJson,
         };
-        Assert.True(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
+        Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
             versionOneSnapshot,
-            out var deserializedVersionOnePayload,
-            out var versionOneError), versionOneError);
-        Assert.Null(
-            Assert.Single(deserializedVersionOnePayload!.Workspace!.Tabs).HistorySource);
+            out _,
+            out var versionOneError));
+        Assert.Contains("not supported", versionOneError, StringComparison.OrdinalIgnoreCase);
 
         var partialJson = json.Replace(
             "\"sourceValue\":\"recovery-screen\",",
@@ -1443,12 +1549,11 @@ public sealed class SavedScreenRuntimeIdentityTests
                 RuntimeWorkspaceRecoveryJsonContext.Default
                     .RuntimeWindowRecoveryPayload),
         };
-        Assert.True(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
+        Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
             legacySnapshot,
-            out var legacy,
-            out var legacyError), legacyError);
-        Assert.Null(legacy!.Workspace!.AgentPolicy);
-        Assert.Null(Assert.Single(legacy.Workspace.Tabs).AgentPolicy);
+            out _,
+            out var legacyError));
+        Assert.Contains("not supported", legacyError, StringComparison.OrdinalIgnoreCase);
 
         var mismatchedTabPolicy = tabPolicy with
         {
@@ -1576,7 +1681,7 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     [Fact]
-    public async Task SchemaTwoScreenHistoryUpgradesThroughExplicitLegacyPolicyFallback()
+    public void SchemaTwoScreenHistoryIsRejectedWithoutCompatibility()
     {
         var source = new RuntimeHistorySource(
             new DefinitionKey(DefinitionKind.Screen, "legacy-policy-screen"),
@@ -1630,62 +1735,11 @@ public sealed class SavedScreenRuntimeIdentityTests
                 RuntimeWorkspaceRecoveryJsonContext.Default
                     .RuntimeWindowRecoveryPayload),
         };
-        Assert.True(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
+        Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
             legacySnapshot,
             out _,
-            out var legacyError), legacyError);
-        var startup = InitializeRecoveryRun(
-            "recovery-run",
-            "interrupted-run",
-            RecoveryChoice.Restore,
-            [legacySnapshot]);
-        using var recovered = CreateViewModel(
-            new DefinitionCatalogSnapshot([], [], [], [], [], [], [], [], []),
-            new EmptyFileClients());
-
-        Assert.True(await recovered.ApplyStartupRecoveryAsync(startup));
-        var restoredWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(
-            recovered.RuntimeWorkspace);
-        var restoredTab = Assert.Single(restoredWorkspace.Tabs);
-        Assert.True(restoredWorkspace.AgentPolicy.IsLegacyFallback);
-        Assert.True(restoredTab.AgentPolicy.IsLegacyFallback);
-        Assert.False(restoredWorkspace.AgentPolicy.HasPolicyOverride);
-        Assert.False(restoredTab.AgentPolicy.HasPolicyOverride);
-        Assert.Empty(restoredWorkspace.AgentPolicy.Sources);
-        Assert.Empty(restoredTab.AgentPolicy.Sources);
-        Assert.Equal(source, restoredTab.HistorySource);
-        Assert.Equal(
-            AgentPolicy.Default.Provider,
-            restoredTab.AgentPolicy.EffectivePolicy.Provider);
-        Assert.Equal(
-            AgentPolicy.Default.Model,
-            restoredTab.AgentPolicy.EffectivePolicy.Model);
-        Assert.All(
-            AgentPolicy.Capabilities,
-            capability => Assert.Equal(
-                AgentPolicy.Default.GetPermission(capability),
-                restoredTab.AgentPolicy.EffectivePolicy.GetPermission(capability)));
-
-        var upgradedSnapshot = new RuntimeRecoverySnapshot(
-            "recovery-run",
-            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
-            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
-            RuntimeWorkspaceRecoveryCodec.Serialize(restoredWorkspace),
-            DateTimeOffset.UtcNow);
-        Assert.True(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
-            upgradedSnapshot,
-            out var upgradedPayload,
-            out var upgradedError), upgradedError);
-        var upgradedWorkspacePolicy = Assert.IsType<RuntimeAgentPolicyRecoveryPayload>(
-            upgradedPayload!.Workspace!.AgentPolicy);
-        var upgradedTabPolicy = Assert.IsType<RuntimeAgentPolicyRecoveryPayload>(
-            Assert.Single(upgradedPayload.Workspace.Tabs).AgentPolicy);
-        Assert.True(upgradedWorkspacePolicy.IsLegacyFallback);
-        Assert.True(upgradedTabPolicy.IsLegacyFallback);
-        Assert.False(upgradedWorkspacePolicy.HasPolicyOverride);
-        Assert.False(upgradedTabPolicy.HasPolicyOverride);
-        Assert.Empty(upgradedWorkspacePolicy.Sources);
-        Assert.Empty(upgradedTabPolicy.Sources);
+            out var legacyError));
+        Assert.Contains("not supported", legacyError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1716,7 +1770,7 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     [Fact]
-    public async Task FrozenHistoricalEmptyWorkspaceSnapshotRestoresTheLauncher()
+    public async Task FrozenHistoricalEmptyWorkspaceSnapshotIsRejected()
     {
         const string frozenSnapshotKey = "desktop.main-window";
         const int frozenSchemaVersion = 1;
@@ -1739,10 +1793,11 @@ public sealed class SavedScreenRuntimeIdentityTests
             new DefinitionCatalogSnapshot([], [], [], [], [], [], [], [], []),
             new EmptyFileClients());
 
-        Assert.True(await viewModel.ApplyStartupRecoveryAsync(startup));
+        Assert.False(await viewModel.ApplyStartupRecoveryAsync(startup));
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.Equal(ShellRoute.Launcher, viewModel.Route);
-        Assert.False(viewModel.HasOperationError);
+        Assert.True(viewModel.HasOperationError);
+        Assert.Contains("not supported", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

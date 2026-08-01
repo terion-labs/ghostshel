@@ -3,6 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:dock="using:Dock.Avalonia.Controls"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:views="using:GhostShell.App.Views"
@@ -194,25 +195,52 @@
           ShowAgentSettingsRequested="OnShowAgentSettingsClick"
           SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick" />
 
-      <!-- Half the gutter stays on the canvas and half on every panel. The top
-           row already contributes its half below the centred shortcut controls,
-           so repeating it here would make only the vertical gap oversized. -->
       <Grid
-          Margin="{controls:Inset Left=Xs, Right=Xs, Bottom=Xs}"
+          Margin="{controls:Inset Xs}"
           IsVisible="{Binding IsWorkspaceCanvasVisible}">
-        <ItemsControl
+        <dock:DockControl
+            x:Name="RuntimeDockControl"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            ItemsSource="{Binding RuntimeWorkspace.ActiveTab.Panels}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <controls:RuntimePanelLayoutPanel Tab="{Binding RuntimeWorkspace.ActiveTab}" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.Styles>
-            <Style Selector="ItemsControl > ContentPresenter"><Setter Property="Margin" Value="{DynamicResource ShellInsetXs}" /></Style>
-          </ItemsControl.Styles>
-        </ItemsControl>
+            Layout="{Binding RuntimeWorkspace.ActiveTab.DockLayout}"
+            Factory="{Binding RuntimeWorkspace.ActiveTab.DockFactory}"
+            IsDockingEnabled="True"
+            InitializeFactory="True"
+            InitializeLayout="False">
+          <dock:DockControl.Styles>
+            <!-- Keep the drag ghost compact. Dock's stock preview can render a
+                 second full document surface, which is misleading for the
+                 one-panel-per-leaf workspace model. -->
+            <Style Selector="dock|DragPreviewControl">
+              <Setter Property="Template">
+                <ControlTemplate>
+                  <Border
+                      MinWidth="132"
+                      Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
+                      Background="{DynamicResource ShellSurfaceElevatedBrush}"
+                      BorderBrush="{DynamicResource ShellAccentBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ShellControlCornerRadius}"
+                      BoxShadow="{DynamicResource ShellOverlayShadow}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                      <TextBlock
+                          VerticalAlignment="Center"
+                          FontWeight="SemiBold"
+                          Text="{Binding Title}"
+                          TextTrimming="CharacterEllipsis" />
+                      <TextBlock
+                          Grid.Column="1"
+                          VerticalAlignment="Center"
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
+                          Text="{TemplateBinding Status}" />
+                    </Grid>
+                  </Border>
+                </ControlTemplate>
+              </Setter>
+            </Style>
+          </dock:DockControl.Styles>
+        </dock:DockControl>
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding !HasRuntimeWorkspace}">
           <TextBlock Classes="Muted" Text="Open a workspace from the launcher." />
           <Button Classes="PrimaryButton" Click="OnShowLauncherClick" Content="Open launcher" />
@@ -234,100 +262,125 @@
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="{Binding TabReorderStatus, StringFormat={}Tab order status · {0}}" />
         <Button
+            x:Name="FileTransferManagerButton"
             Grid.Column="3"
             VerticalAlignment="Center"
-            Padding="{controls:Inset Horizontal=Sm}"
-            MinHeight="22"
+            Padding="{controls:Inset Horizontal=Xs}"
+            MinHeight="20"
             Classes="TextButton"
+            Click="OnToggleFileTransferManagerClick"
             IsVisible="{Binding HasFileTransfers}"
             AutomationProperties.Name="Open transfer manager">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
             <icons:SymbolIcon
                 VerticalAlignment="Center"
-                Symbol="ArrowClockwise"
-                FontSize="11"
+                Symbol="ArrowSort"
+                FontSize="10"
                 Foreground="{DynamicResource ShellAccentBrush}" />
             <TextBlock
                 VerticalAlignment="Center"
-                FontSize="{DynamicResource ShellFontSize9}"
-                FontWeight="SemiBold"
+                FontSize="{DynamicResource ShellFontSize8}"
+                FontWeight="Medium"
                 Text="{Binding FileTransferStatusText}"
                 AutomationProperties.LiveSetting="Polite" />
           </StackPanel>
-          <Button.Flyout>
-            <Flyout Placement="Top">
-              <Border
-                  Width="460"
-                  MaxHeight="420"
-                  Padding="{controls:Inset Md}"
-                  Background="{DynamicResource ShellSurfaceBrush}">
-                <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                      <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="File transfers" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Transfers stream through this computer between file providers." />
-                    </StackPanel>
-                    <controls:StatusChip
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        Content="{Binding FileTransferStatusText}" />
-                  </Grid>
-                  <ScrollViewer Grid.Row="1" MaxHeight="330" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding FileTransfers}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <Border
-                              Padding="{controls:Inset Vertical=Sm}"
-                              BorderBrush="{DynamicResource ShellBorderBrush}"
-                              BorderThickness="0,0,0,1">
-                            <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-                                  <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Operation}" />
-                                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Stage}" />
-                                </StackPanel>
-                                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
-                                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-                                  <icons:SymbolIcon Symbol="ArrowRight" FontSize="10" Foreground="{DynamicResource ShellMutedBrush}" />
-                                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Destination}" TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                              </StackPanel>
-                              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-                                <controls:StatusChip Content="{Binding State}" />
-                                <Button Classes="IconButton" Click="OnCancelFileTransferClick" IsVisible="{Binding CanCancel}" ToolTip.Tip="Cancel transfer" AutomationProperties.Name="Cancel file transfer"><icons:SymbolIcon Symbol="Dismiss" FontSize="11" /></Button>
-                                <Button Classes="IconButton" Click="OnRetryFileTransferClick" IsVisible="{Binding CanRetry}" ToolTip.Tip="Retry transfer" AutomationProperties.Name="Retry file transfer"><icons:SymbolIcon Symbol="ArrowClockwise" FontSize="11" /></Button>
-                              </StackPanel>
-                              <ProgressBar
-                                  Grid.Row="1"
-                                  Grid.ColumnSpan="2"
-                                  Height="2"
-                                  Margin="{controls:Inset Top=Sm}"
-                                  Minimum="0"
-                                  Maximum="100"
-                                  Value="{Binding ProgressPercent}"
-                                  IsIndeterminate="{Binding !HasKnownProgress}"
-                                  IsVisible="{Binding IsActive}" />
-                              <TextBlock
-                                  Grid.Row="2"
-                                  Grid.ColumnSpan="2"
-                                  Margin="{controls:Inset Top=Xs}"
-                                  Foreground="{DynamicResource ShellDangerBrush}"
-                                  FontSize="{DynamicResource ShellFontSize9}"
-                                  Text="{Binding Error}"
-                                  TextWrapping="Wrap"
-                                  IsVisible="{Binding HasError}" />
-                            </Grid>
-                          </Border>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                </Grid>
-              </Border>
-            </Flyout>
-          </Button.Flyout>
         </Button>
       </Grid>
     </Border>
+
+    <!-- This is deliberately an in-window overlay, not a Flyout. Platform
+         popups own a separate surface and can extend beyond custom window
+         chrome; transfer progress must remain bounded by the workspace. -->
+    <controls:SurfaceCard
+        x:Name="FileTransferManager"
+        Grid.Row="2"
+        ZIndex="100"
+        Width="440"
+        MaxHeight="400"
+        Margin="{controls:Inset Right=Sm, Bottom=Sm}"
+        Padding="{controls:Inset Md}"
+        HorizontalAlignment="Right"
+        VerticalAlignment="Bottom"
+        Elevation="Overlay"
+        ClipsContent="True"
+        IsVisible="False"
+        KeyboardNavigation.TabNavigation="Cycle"
+        AutomationProperties.Name="File transfer manager">
+      <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel MinWidth="0" Spacing="{DynamicResource ShellSpaceXs}">
+            <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="File transfers" />
+            <TextBlock
+                Classes="Muted"
+                FontSize="{DynamicResource ShellFontSize8}"
+                Text="Transfers stream through this computer between file providers."
+                TextWrapping="Wrap" />
+          </StackPanel>
+          <controls:StatusChip
+              Grid.Column="1"
+              VerticalAlignment="Center"
+              Content="{Binding FileTransferStatusText}" />
+          <Button
+              x:Name="FileTransferManagerCloseButton"
+              Grid.Column="2"
+              Classes="IconButton"
+              Click="OnToggleFileTransferManagerClick"
+              ToolTip.Tip="Close transfer manager"
+              AutomationProperties.Name="Close transfer manager">
+            <icons:SymbolIcon Symbol="Dismiss" FontSize="11" />
+          </Button>
+        </Grid>
+        <ScrollViewer Grid.Row="1" MaxHeight="310" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding FileTransfers}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border
+                    Padding="{controls:Inset Vertical=Sm}"
+                    BorderBrush="{DynamicResource ShellBorderBrush}"
+                    BorderThickness="0,0,0,1">
+                  <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <StackPanel MinWidth="0" Spacing="{DynamicResource ShellSpaceXs}">
+                      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                        <TextBlock FontSize="{DynamicResource ShellFontSize9}" FontWeight="SemiBold" Text="{Binding Operation}" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Stage}" />
+                      </StackPanel>
+                      <TextBlock FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
+                      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                        <icons:SymbolIcon Symbol="ArrowRight" FontSize="9" Foreground="{DynamicResource ShellMutedBrush}" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Destination}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                      <controls:StatusChip Content="{Binding State}" />
+                      <Button Classes="IconButton" Click="OnCancelFileTransferClick" IsVisible="{Binding CanCancel}" ToolTip.Tip="Cancel transfer" AutomationProperties.Name="Cancel file transfer"><icons:SymbolIcon Symbol="Dismiss" FontSize="11" /></Button>
+                      <Button Classes="IconButton" Click="OnRetryFileTransferClick" IsVisible="{Binding CanRetry}" ToolTip.Tip="Retry transfer" AutomationProperties.Name="Retry file transfer"><icons:SymbolIcon Symbol="ArrowClockwise" FontSize="11" /></Button>
+                    </StackPanel>
+                    <ProgressBar
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Height="2"
+                        Margin="{controls:Inset Top=Sm}"
+                        Minimum="0"
+                        Maximum="100"
+                        Value="{Binding ProgressPercent}"
+                        IsIndeterminate="{Binding !HasKnownProgress}"
+                        IsVisible="{Binding IsActive}" />
+                    <TextBlock
+                        Grid.Row="2"
+                        Grid.ColumnSpan="2"
+                        Margin="{controls:Inset Top=Xs}"
+                        Foreground="{DynamicResource ShellDangerBrush}"
+                        FontSize="{DynamicResource ShellFontSize8}"
+                        Text="{Binding Error}"
+                        TextWrapping="Wrap"
+                        IsVisible="{Binding HasError}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </controls:SurfaceCard>
   </Grid>
 </UserControl>

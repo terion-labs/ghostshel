@@ -222,5 +222,20 @@ internal static class SqliteSchema
                     'agent-action',
                     'agent-run-policy-transition');
             """),
+        new(
+            7,
+            "session-restore-preference",
+            """
+            CREATE TABLE session_restore_preference (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                restore_sessions_on_start INTEGER NOT NULL CHECK (
+                    restore_sessions_on_start IN (0, 1))
+            );
+
+            INSERT INTO session_restore_preference(
+                singleton_id,
+                restore_sessions_on_start)
+            VALUES (1, 1);
+            """),
     ];
 }

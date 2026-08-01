@@ -66,6 +66,22 @@ public sealed partial class MainWindow
     private void OnWorkspaceSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Workspaces);
 
+    private async void OnRestoreSessionsOnStartChanged(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not ToggleSwitch toggle
+            || !ViewModel.CanChangeRestoreSessionsOnStart)
+        {
+            return;
+        }
+
+        await ViewModel.SetRestoreSessionsOnStartAsync(
+            toggle.IsChecked == true,
+            CancellationToken.None);
+    }
+
     private void OnKeybindingSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Keybindings);
 

@@ -8,6 +8,7 @@
     <Project Path="src/GhostShell.Browser/GhostShell.Browser.csproj" />
     <Project Path="src/GhostShell.Core/GhostShell.Core.csproj" />
     <Project Path="src/GhostShell.Desktop/GhostShell.Desktop.csproj" />
+    <Project Path="src/GhostShell.Docking/GhostShell.Docking.csproj" />
     <Project Path="src/GhostShell.Files/GhostShell.Files.csproj" />
     <Project Path="src/GhostShell.Infrastructure/GhostShell.Infrastructure.csproj" />
     <Project Path="src/GhostShell.Mcp/GhostShell.Mcp.csproj" />

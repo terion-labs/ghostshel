@@ -9,6 +9,9 @@
   [ADR 0020](0020-native-webview-wrapper-and-first-browser-capability-slice.md)
 - Tracks:
   [UI Foundation and Design Coherence issue 1](https://github.com/terion-name/ghostshel/issues/1)
+- Terminal-view update: [ADR 0040](0040-cross-platform-libghostty-vt-terminal.md)
+  supersedes the native-terminal-child constraint in this record. The staged
+  presentation ownership decision remains accepted.
 
 ## Context
 
@@ -54,7 +57,8 @@ It owns only concerns that require a real top-level:
 - application activation and close lifecycle;
 - top-level dialogs, storage pickers, native menus, clipboard, and
   platform-owned focus bridges;
-- coordination required by native terminal or browser child views.
+- coordination required by native browser child views. Terminal panels are
+  ordinary Avalonia controls and need no native-child coordination.
 
 It does not contain route markup, panel templates, feature dialog branching,
 definition persistence, catalog mutation, runtime graph policy, agent policy,

@@ -1,5 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Dock.Model.Controls;
+using Dock.Model.Core;
+using Dock.Model.Inpc.Controls;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Core;
@@ -216,7 +219,7 @@ public sealed class RuntimePanelLayoutPanelTests
     }
 
     [Fact]
-    public void ClosingOneHalfOfAManualSplitReflowsTheRemainingAdHocPanel()
+    public void ClosingOneHalfOfAManualSplitCollapsesTheRecursiveSplit()
     {
         var tab = new RuntimeTabViewModel(TabInstanceId.New(), "Split", "WORKSPACE TAB");
         var original = new TestRuntimePanel("original");
@@ -224,22 +227,17 @@ public sealed class RuntimePanelLayoutPanelTests
         tab.AddPanel(original);
 
         Assert.True(tab.SplitActivePanel(split, PanelSplitOrientation.LeftRight));
-        Assert.Equal((2, 1), (tab.Columns, tab.Rows));
-        Assert.Equal((0, 1), (original.LayoutColumn, original.LayoutColumnSpan));
-        Assert.Equal((1, 1), (split.LayoutColumn, split.LayoutColumnSpan));
+        Assert.Equal(2, Dockables(tab.DockLayout).OfType<IDocument>().Count());
 
         Assert.True(tab.RemovePanel(split.Id));
 
-        Assert.Equal((1, 1), (tab.Columns, tab.Rows));
-        Assert.Equal((0, 0, 1, 1),
-            (original.LayoutColumn,
-                original.LayoutRow,
-                original.LayoutColumnSpan,
-                original.LayoutRowSpan));
+        var survivor = Assert.Single(Dockables(tab.DockLayout).OfType<IDocument>());
+        Assert.Equal(original.Id.Value, survivor.Id);
+        Assert.Empty(Dockables(tab.DockLayout).OfType<ProportionalDockSplitter>());
     }
 
     [Fact]
-    public void ClosingASplitPaneRestoresSavedLayoutGeometryWithoutChangingItsShape()
+    public void ClosingATemporarySplitRestoresTheSavedRecursiveShape()
     {
         var leftSlot = new LayoutSlotDefinition(
             new LayoutSlotId("left"),
@@ -269,13 +267,15 @@ public sealed class RuntimePanelLayoutPanelTests
         tab.SplitActivePanel(temporary, PanelSplitOrientation.LeftRight);
         tab.RemovePanel(temporary.Id);
 
-        Assert.Equal(4, tab.Columns);
-        Assert.Equal((0, 2), (left.LayoutColumn, left.LayoutColumnSpan));
-        Assert.Equal((2, 2), (right.LayoutColumn, right.LayoutColumnSpan));
+        Assert.Equal(
+            new[] { left.Id.Value, right.Id.Value }.Order(),
+            Dockables(tab.DockLayout).OfType<IDocument>().Select(item => item.Id).Order());
+        var savedSplit = Assert.Single(Dockables(tab.DockLayout).OfType<ProportionalDock>());
+        Assert.Equal(Orientation.Horizontal, savedSplit.Orientation);
     }
 
     [Fact]
-    public void ClosingBesideANestedSplitExpandsTheWholeSiblingSubtreeWithoutOverlap()
+    public void ClosingBesideANestedSplitKeepsTheSiblingSubtree()
     {
         var tab = new RuntimeTabViewModel(TabInstanceId.New(), "Nested", "WORKSPACE TAB");
         var left = new TestRuntimePanel("left");
@@ -287,16 +287,15 @@ public sealed class RuntimePanelLayoutPanelTests
 
         Assert.True(tab.RemovePanel(left.Id));
 
-        Assert.Equal((0, 0, 2, 1),
-            (upperRight.LayoutColumn,
-                upperRight.LayoutRow,
-                upperRight.LayoutColumnSpan,
-                upperRight.LayoutRowSpan));
-        Assert.Equal((0, 1, 2, 1),
-            (lowerRight.LayoutColumn,
-                lowerRight.LayoutRow,
-                lowerRight.LayoutColumnSpan,
-                lowerRight.LayoutRowSpan));
+        Assert.Equal(
+            new[] { upperRight.Id.Value, lowerRight.Id.Value }.Order(),
+            Dockables(tab.DockLayout).OfType<IDocument>().Select(item => item.Id).Order());
+        var survivingSplit = Assert.Single(
+            Dockables(tab.DockLayout).OfType<ProportionalDock>(),
+            dock => dock.Orientation == Orientation.Vertical
+                && dock.VisibleDockables?.Count(
+                    item => item is not ProportionalDockSplitter) == 2);
+        Assert.Equal(Orientation.Vertical, survivingSplit.Orientation);
     }
 
     [Fact]
@@ -364,6 +363,26 @@ public sealed class RuntimePanelLayoutPanelTests
         Assert.Equal("After", tab.Title);
         Assert.False(tab.Rename("   "));
         Assert.Equal("After", tab.Title);
+    }
+
+    private static IEnumerable<IDockable> Dockables(IRootDock root)
+    {
+        var pending = new Stack<IDockable>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            yield return current;
+            if (current is not IDock { VisibleDockables: { } children })
+            {
+                continue;
+            }
+
+            for (var index = children.Count - 1; index >= 0; index--)
+            {
+                pending.Push(children[index]);
+            }
+        }
     }
 
     private sealed class TestRuntimePanel(string title)

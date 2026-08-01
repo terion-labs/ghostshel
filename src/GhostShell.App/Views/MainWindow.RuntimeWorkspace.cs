@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using FluentIcons.Common;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Components;
@@ -20,11 +21,9 @@ public sealed partial class MainWindow
     private static readonly DataFormat<RuntimeTabDragPayload> RuntimeTabDragFormat =
         DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>(
             "app.ghostshell.runtime-tab");
-    private static readonly DataFormat<string> RuntimeTabDragNativeMarkerFormat =
-        DataFormat.CreateStringApplicationFormat(
-            "ghostshell.runtime-tab-drag");
 
     private FilePanelTransferPayload? _fileTransferClipboard;
+    private RuntimeTabActiveDrag? _runtimeTabActiveDrag;
     private RuntimeTabDragCandidate? _runtimeTabDragCandidate;
     private Grid? _runtimeTabDropTarget;
     private bool _runtimeTabDragInProgress;
@@ -351,20 +350,37 @@ public sealed partial class MainWindow
 
         _runtimeTabDragCandidate = new RuntimeTabDragCandidate(
             source,
-            e,
             point.Position,
             e.Pointer,
             new RuntimeTabDragPayload(
                 ViewModel.WindowId,
                 workspace.Id,
-                tab.Id));
+                tab.Id,
+                tab.Title));
         e.Handled = true;
     }
 
-    private async void OnRuntimeTabDragPointerMoved(
+    private void OnRuntimeTabDragPointerMoved(
         object? sender,
         PointerEventArgs e)
     {
+        if (_runtimeTabActiveDrag is { } active
+            && ReferenceEquals(sender, active.Source)
+            && ReferenceEquals(e.Pointer, active.Pointer))
+        {
+            var current = e.GetCurrentPoint(active.Source);
+            if (!current.Properties.IsLeftButtonPressed
+                && e.Pointer.Type != PointerType.Touch)
+            {
+                CancelRuntimeTabDrag(active.Pointer);
+                return;
+            }
+
+            UpdateRuntimeTabDrag(e, active);
+            e.Handled = true;
+            return;
+        }
+
         if (_runtimeTabDragCandidate is not { } candidate
             || !ReferenceEquals(sender, candidate.Source)
             || !ReferenceEquals(e.Pointer, candidate.Pointer))
@@ -390,42 +406,36 @@ public sealed partial class MainWindow
         _runtimeTabDragCandidate = null;
         _runtimeTabDragInProgress = true;
         e.Handled = true;
-        // An in-process format is intentionally absent from the native
-        // pasteboard. AppKit rejects a dragging session when Avalonia supplies
-        // its drag image but no serializable item, so the same logical item also
-        // carries a non-sensitive application marker.
-        var dragItem = new DataTransferItem();
-        dragItem.Set(RuntimeTabDragFormat, candidate.Payload);
-        dragItem.Set(RuntimeTabDragNativeMarkerFormat, "runtime-tab");
-        var transfer = new DataTransfer();
-        transfer.Add(dragItem);
-        try
-        {
-            _ = await DragDrop.DoDragDropAsync(
-                candidate.TriggerEvent,
-                transfer,
-                DragDropEffects.Move);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (InvalidOperationException)
-        {
-            ViewModel.SetError("The tab drag could not start.");
-        }
-        finally
-        {
-            _runtimeTabDragInProgress = false;
-            ClearRuntimeTabDropIndicator();
-        }
+        var activeDrag = new RuntimeTabActiveDrag(
+            candidate.Source,
+            candidate.Pointer,
+            candidate.Payload);
+        // Capture changes can synchronously report loss to the previous owner.
+        // The new drag must not exist until that transition has completed.
+        candidate.Pointer.Capture(candidate.Source);
+        _runtimeTabActiveDrag = activeDrag;
+        ShowDragGhost(
+            new DragGhostPayload(
+                Symbol.WindowConsole,
+                candidate.Payload.Title,
+                "Move tab"),
+            e.GetPosition(this));
+        UpdateRuntimeTabDrag(e, activeDrag);
     }
 
-    private void OnRuntimeTabDragPointerReleased(
+    private async void OnRuntimeTabDragPointerReleased(
         object? sender,
         PointerReleasedEventArgs e)
     {
-        _ = sender;
-        _ = e;
+        if (_runtimeTabActiveDrag is { } active
+            && ReferenceEquals(sender, active.Source)
+            && ReferenceEquals(e.Pointer, active.Pointer))
+        {
+            await CompleteRuntimeTabDragAsync(e, active);
+            e.Handled = true;
+            return;
+        }
+
         _runtimeTabDragCandidate = null;
     }
 
@@ -434,8 +444,112 @@ public sealed partial class MainWindow
         PointerCaptureLostEventArgs e)
     {
         _ = sender;
-        _ = e;
+        if (_runtimeTabActiveDrag is { } active
+            && ReferenceEquals(e.Pointer, active.Pointer))
+        {
+            CancelRuntimeTabDrag(active.Pointer, releaseCapture: false);
+            return;
+        }
+
         _runtimeTabDragCandidate = null;
+    }
+
+    private void UpdateRuntimeTabDrag(
+        PointerEventArgs e,
+        RuntimeTabActiveDrag active)
+    {
+        var position = e.GetPosition(this);
+        MoveDragGhost(position);
+        if (ResolveRuntimeTabDrop(position, active.Payload) is { } target)
+        {
+            ShowRuntimeTabDropIndicator(target.Target, target.Placement);
+        }
+        else
+        {
+            ClearRuntimeTabDropIndicator();
+        }
+    }
+
+    private async Task CompleteRuntimeTabDragAsync(
+        PointerReleasedEventArgs e,
+        RuntimeTabActiveDrag active)
+    {
+        var target = ResolveRuntimeTabDrop(e.GetPosition(this), active.Payload);
+        _runtimeTabActiveDrag = null;
+        _runtimeTabDragCandidate = null;
+        _runtimeTabDragInProgress = false;
+        ClearRuntimeTabDropIndicator();
+        active.Pointer.Capture(null);
+        HideDragGhost();
+        if (target is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await ViewModel.MoveTabAsync(
+                    active.Payload.TabId,
+                    target.AnchorTabId,
+                    target.Placement,
+                    _lifetime.Token))
+            {
+                FocusRuntimeTabButton(active.Payload.TabId);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        {
+            ViewModel.SetError(exception.Message);
+        }
+    }
+
+    private void CancelRuntimeTabDrag(
+        IPointer pointer,
+        bool releaseCapture = true)
+    {
+        _runtimeTabActiveDrag = null;
+        _runtimeTabDragCandidate = null;
+        _runtimeTabDragInProgress = false;
+        ClearRuntimeTabDropIndicator();
+        if (releaseCapture)
+        {
+            pointer.Capture(null);
+        }
+
+        HideDragGhost();
+    }
+
+    private RuntimeTabDropTarget? ResolveRuntimeTabDrop(
+        Point position,
+        RuntimeTabDragPayload payload)
+    {
+        if (this.InputHitTest(position) is not Visual hit)
+        {
+            return null;
+        }
+
+        var target = hit is Grid grid
+            && grid.Classes.Contains("RuntimeTabDropTarget")
+                ? grid
+                : hit.GetVisualAncestors()
+                    .OfType<Grid>()
+                    .FirstOrDefault(control =>
+                        control.Classes.Contains("RuntimeTabDropTarget"));
+        if (target is null
+            || !TryResolveRuntimeTabDrop(
+                target,
+                payload,
+                position - target.TranslatePoint(default, this).GetValueOrDefault(),
+                out var anchorTabId,
+                out var placement))
+        {
+            return null;
+        }
+
+        return new RuntimeTabDropTarget(target, anchorTabId, placement);
     }
 
     private void OnRuntimeTabDragEnter(object? sender, DragEventArgs e) =>
@@ -520,6 +634,30 @@ public sealed partial class MainWindow
                 DataContext: RuntimeTabViewModel targetTab,
             } target
             || e.DataTransfer.TryGetValue(RuntimeTabDragFormat) is not { } candidate
+            || !TryResolveRuntimeTabDrop(
+                target,
+                candidate,
+                e.GetPosition(target),
+                out anchorTabId,
+                out placement))
+        {
+            return false;
+        }
+
+        payload = candidate;
+        return true;
+    }
+
+    private bool TryResolveRuntimeTabDrop(
+        Grid target,
+        RuntimeTabDragPayload candidate,
+        Point targetPosition,
+        out TabInstanceId anchorTabId,
+        out RuntimeTabPlacement placement)
+    {
+        anchorTabId = default;
+        placement = default;
+        if (target.DataContext is not RuntimeTabViewModel targetTab
             || ViewModel.RuntimeWorkspace is not { } workspace
             || candidate.WindowId != ViewModel.WindowId
             || candidate.WorkspaceId != workspace.Id
@@ -529,7 +667,7 @@ public sealed partial class MainWindow
             return false;
         }
 
-        placement = e.GetPosition(target).X < target.Bounds.Width / 2
+        placement = targetPosition.X < target.Bounds.Width / 2
             ? RuntimeTabPlacement.Before
             : RuntimeTabPlacement.After;
         if (!WouldMoveRuntimeTab(
@@ -541,7 +679,6 @@ public sealed partial class MainWindow
             return false;
         }
 
-        payload = candidate;
         anchorTabId = targetTab.Id;
         return true;
     }
@@ -622,16 +759,6 @@ public sealed partial class MainWindow
         await ActivateRuntimePanelAsync(sender);
     }
 
-    /// <summary>
-    /// The terminal surface took focus natively. Avalonia never sees that, so
-    /// this is the only signal that the keyboard has moved into this panel.
-    /// </summary>
-    private async void OnRuntimePanelTerminalFocused(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        await ActivateRuntimePanelAsync(sender);
-    }
-
     private async void OnRuntimePanelGotFocus(object? sender, FocusChangedEventArgs e)
     {
         _ = e;
@@ -642,8 +769,8 @@ public sealed partial class MainWindow
     {
         if (sender is Control { DataContext: RuntimePanelViewModel panel })
         {
-            // Selection follows input focus. Do not move focus here: the native or managed
-            // terminal surface that raised the event must keep keyboard ownership.
+            // Selection follows input focus. Do not move focus here: the terminal
+            // surface that raised the event must keep keyboard ownership.
             try
             {
                 _ = await ViewModel.ActivatePanelAsync(panel.Id, _lifetime.Token);
@@ -1224,6 +1351,7 @@ public sealed partial class MainWindow
             }
 
             _fileTransferClipboard = new FilePanelTransferPayload(
+                panel.Id,
                 e.Entries,
                 e.KeyEvent.Key == Key.X
                     ? FilePanelTransferOperation.Move
@@ -1256,12 +1384,16 @@ public sealed partial class MainWindow
         FilePanelTransferDropEventArgs e)
     {
         _ = sender;
-        _ = await QueueIncomingFileTransferAsync(e.Destination, e.Payload);
+        _ = await QueueIncomingFileTransferAsync(
+            e.Destination,
+            e.Payload,
+            e.DestinationFolder);
     }
 
     private async Task<bool> QueueIncomingFileTransferAsync(
         FileRuntimePanelViewModel destination,
-        FilePanelTransferPayload payload)
+        FilePanelTransferPayload payload,
+        FilePanelLocation? destinationFolder = null)
     {
         var queuedAll = true;
         foreach (var entry in payload.Entries)
@@ -1270,7 +1402,8 @@ public sealed partial class MainWindow
             {
                 var request = destination.CreateIncomingTransferRequest(
                     entry,
-                    payload.Operation);
+                    payload.Operation,
+                    destinationFolder);
                 queuedAll &= await ViewModel.QueueFileTransferAsync(
                     request,
                     _lifetime.Token);
@@ -1567,14 +1700,24 @@ public sealed partial class MainWindow
     private sealed record RuntimeTabDragPayload(
         WindowInstanceId WindowId,
         WorkspaceInstanceId WorkspaceId,
-        TabInstanceId TabId);
+        TabInstanceId TabId,
+        string Title);
+
+    private sealed record RuntimeTabActiveDrag(
+        Control Source,
+        IPointer Pointer,
+        RuntimeTabDragPayload Payload);
 
     private sealed record RuntimeTabDragCandidate(
         Control Source,
-        PointerPressedEventArgs TriggerEvent,
         Point Origin,
         IPointer Pointer,
         RuntimeTabDragPayload Payload);
+
+    private sealed record RuntimeTabDropTarget(
+        Grid Target,
+        TabInstanceId AnchorTabId,
+        RuntimeTabPlacement Placement);
 
     private async Task CloseActivePanelAsync()
     {

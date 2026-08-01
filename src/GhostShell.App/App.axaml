@@ -2,6 +2,7 @@
     x:Class="GhostShell.App.App"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dockThemes="using:Dock.Avalonia.Themes.Fluent"
     Name="GhostSHELL"
     RequestedThemeVariant="Default">
   <NativeMenu.Menu>
@@ -143,14 +144,26 @@
       <Thickness x:Key="ShellSavedConnectionStripPadding">0,2,0,1</Thickness>
       <Thickness x:Key="ShellToolbarSeparatorMargin">0,7</Thickness>
       <BoxShadows x:Key="ShellOverlayShadow">0 18 54 0 #A0000000</BoxShadows>
+      <!-- Each panel exposes its existing title through PanelDockHandle, so Dock's
+           duplicate document strip stays hidden without losing drag or floating. -->
+      <x:Boolean x:Key="DockDocumentControlTabStripVisible">False</x:Boolean>
+      <x:Boolean x:Key="DockDocumentTabStripSeparatorVisible">False</x:Boolean>
+      <!-- GhostShell panels already draw their own focused surface. Dock only
+           contributes recursive geometry; its document frame would duplicate
+           the panel outline around every leaf. -->
+      <Thickness x:Key="DockDocumentContentBorderThickness">0</Thickness>
+      <SolidColorBrush x:Key="DockDocumentContentBorderBrush">Transparent</SolidColorBrush>
+      <SolidColorBrush x:Key="DockSplitterIdleBrush">Transparent</SolidColorBrush>
     </ResourceDictionary>
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
+    <dockThemes:DockFluentTheme DensityStyle="Compact" />
     <!-- The colour picker ships its own theme; without it the swatches render
          at zero size and the palette cards lose their colour wells. -->
     <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/DesignSystem.axaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellTheme.axaml" />
+    <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellDockTheme.axaml" />
   </Application.Styles>
 </Application>

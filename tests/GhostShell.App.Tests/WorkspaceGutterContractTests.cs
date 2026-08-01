@@ -3,10 +3,8 @@ using System.Xml.Linq;
 namespace GhostShell.App.Tests;
 
 /// <summary>
-/// The panel canvas splits its gutter between the container and each panel, so the
-/// gap between two panels is the same as the gap to the edge. The panels used to
-/// carry the whole gutter on their right and bottom only, which made two edges
-/// twice the width of the other two.
+/// Dock owns splitter spacing inside the panel canvas. GhostShell owns only the
+/// canvas inset, so rearranged and nested panes cannot accumulate wrapper margins.
 /// </summary>
 public sealed class WorkspaceGutterContractTests
 {
@@ -20,7 +18,7 @@ public sealed class WorkspaceGutterContractTests
     private static readonly string RepositoryRoot = FindRepositoryRoot();
 
     [Fact]
-    public void The_canvas_and_its_panels_split_the_same_gutter()
+    public void The_canvas_has_one_outer_gutter_and_no_per_panel_margin()
     {
         var root = Workspace().Root!;
 
@@ -29,7 +27,7 @@ public sealed class WorkspaceGutterContractTests
             element => element.Name.LocalName == "Grid"
                 && (string?)element.Attribute("IsVisible")
                     == "{Binding IsWorkspaceCanvasVisible}");
-        var panelMargin = root.Descendants()
+        var panelMargins = root.Descendants()
             .Where(element => element.Name.LocalName == "Style")
             .SelectMany(element => element.Descendants())
             .Where(element => element.Name.LocalName == "Setter"
@@ -39,36 +37,24 @@ public sealed class WorkspaceGutterContractTests
 
         var canvasMargin = (string?)canvas.Attribute("Margin");
 
-        // The shortcut row supplies the first half of the top gutter below its
-        // centred controls. The canvas supplies its half on the other three
-        // edges, while every panel supplies the remaining half everywhere.
-        Assert.Equal(
-            "{controls:Inset Left=Xs, Right=Xs, Bottom=Xs}",
-            canvasMargin);
-        Assert.Contains("{DynamicResource ShellInsetXs}", panelMargin);
-
-        // Uniform on every side: one step, not an edge-specific inset.
-        Assert.DoesNotContain(panelMargin, value => value?.Contains('=') == true);
+        Assert.Equal("{controls:Inset Xs}", canvasMargin);
+        Assert.Empty(panelMargins);
+        Assert.Single(
+            canvas.Descendants(),
+            element => element.Name.LocalName == "DockControl");
     }
 
     /// <summary>
-    /// Half a gutter each side means two panels sit a full gutter apart, and a
-    /// panel sits a full gutter from the edge. Stated as arithmetic so the intent
-    /// survives a change to the number.
+    /// The workspace edge remains one token while Dock recursively owns every
+    /// interior splitter, independent of nesting depth.
     /// </summary>
     [Fact]
     public void Edge_and_interior_gaps_come_out_equal()
     {
         const double canvas = 4;
-        const double panel = 4;
-        const double shortcutRowRemainder = 4;
+        const double dockSplitter = 4;
 
-        var edgeGap = canvas + panel;
-        var topGap = shortcutRowRemainder + panel;
-        var interiorGap = panel + panel;
-
-        Assert.Equal(edgeGap, interiorGap);
-        Assert.Equal(edgeGap, topGap);
+        Assert.Equal(canvas, dockSplitter);
     }
 
     private static string FindRepositoryRoot()

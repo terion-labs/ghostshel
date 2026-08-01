@@ -9,9 +9,9 @@ namespace GhostShell.App.ViewModels;
 internal static class RuntimeWorkspaceRecoveryCodec
 {
     public const string SnapshotKey = "desktop.main-window";
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
-    private const int OldestSupportedSchemaVersion = 1;
+    private const int OldestSupportedSchemaVersion = SchemaVersion;
 
     private const int MaximumTabs = 128;
     private const int MaximumPanelsPerTab = 128;
@@ -75,7 +75,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
             return false;
         }
 
-        if (snapshot.SchemaVersion < 3
+        if (snapshot.SchemaVersion < 4
             && payload?.Workspace is { } olderWorkspace
             && (olderWorkspace.AgentPolicy is not null
                 || olderWorkspace.Tabs?.Any(tab => tab?.AgentPolicy is not null) == true))
@@ -85,14 +85,14 @@ internal static class RuntimeWorkspaceRecoveryCodec
             return false;
         }
 
-        if (snapshot.SchemaVersion == 3
+        if (snapshot.SchemaVersion == 4
             && payload?.Workspace is { } currentWorkspace
             && (currentWorkspace.AgentPolicy is null
                 || currentWorkspace.Tabs is null
                 || currentWorkspace.Tabs.Any(tab => tab?.AgentPolicy is null)))
         {
             payload = null;
-            error = "Runtime recovery schema 3 requires complete agent-policy provenance.";
+            error = "Runtime recovery schema 4 requires complete agent-policy provenance.";
             return false;
         }
 
@@ -100,7 +100,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
         if (payload is null
             || !TryValidate(
                 payload,
-                snapshot.SchemaVersion < 3,
+                snapshot.SchemaVersion < 4,
                 out error))
         {
             payload = null;
@@ -132,6 +132,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
             tab.ActivePanelId?.Value,
             tab.ZoomedPanelId?.Value,
             tab.UsesAutomaticLayout,
+            tab.SerializeDockLayout(),
             tab.Columns,
             tab.Rows,
             tab.HistorySource is { } historySource
@@ -149,6 +150,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
             FileRuntimePanelViewModel => RuntimePanelRecoveryKind.FileViewer,
             StatisticsRuntimePanelViewModel => RuntimePanelRecoveryKind.Statistics,
             ProcessMonitorRuntimePanelViewModel => RuntimePanelRecoveryKind.ProcessMonitor,
+            PanelPlaceholderViewModel => RuntimePanelRecoveryKind.Placeholder,
             _ => RuntimePanelRecoveryKind.Unavailable,
         };
         var terminal = panel as TerminalRuntimePanelViewModel;
@@ -249,6 +251,9 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && !TryValidate(historySource)
             || tab.AgentPolicy is { } tabPolicy
                 && !tabPolicy.TryValidate()
+            || string.IsNullOrWhiteSpace(tab.DockLayoutJson)
+            || tab.DockLayoutJson.Length > 4 * 1024 * 1024
+            || tab.DockLayoutJson.Contains('\0')
             || tab.Columns is < 1 or > MaximumGridDimension
             || tab.Rows is < 1 or > MaximumGridDimension
             || tab.Panels is null
@@ -362,6 +367,14 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 IsDisplayText(panel.KindLabel, 128)
                 && panel.ConnectionId is null
                 && panel.FileLocation is null,
+            RuntimePanelRecoveryKind.Placeholder =>
+                panel.KindLabel is null
+                && panel.ConnectionId is null
+                && panel.StartupLocation is null
+                && panel.FileProviderProfileId is null
+                && panel.FileLocation is null
+                && !panel.ShowHidden
+                && panel.Filter is null,
             RuntimePanelRecoveryKind.Statistics or RuntimePanelRecoveryKind.ProcessMonitor =>
                 panel.KindLabel is null
                 && IsOptionalIdentifier(panel.ConnectionId)
@@ -426,6 +439,7 @@ internal sealed record RuntimeTabRecoveryPayload(
     string? ActivePanelKey,
     string? ZoomedPanelKey,
     bool UsesAutomaticLayout,
+    string DockLayoutJson,
     int Columns,
     int Rows,
     RuntimeHistorySourceRecoveryPayload? HistorySource,
@@ -576,6 +590,7 @@ internal enum RuntimePanelRecoveryKind
     Statistics = 3,
     ProcessMonitor = 4,
     Browser = 5,
+    Placeholder = 6,
 }
 
 internal sealed record RuntimePanelRecoveryPayload(

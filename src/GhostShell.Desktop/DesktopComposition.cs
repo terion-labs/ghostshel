@@ -22,6 +22,8 @@ public static class DesktopComposition
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IHostAccessibilityPreferencesSource>(_ =>
             HostAccessibilityPreferencesSourceSelector.CreateForCurrentPlatform());
+        services.AddSingleton<IActiveWindowBoundsSource>(_ =>
+            ActiveWindowBoundsSourceSelector.CreateForCurrentPlatform());
         services.AddSingleton(_ => SqliteStorageOptions.CreateDefault());
         services.AddSingleton(_ => LocalArtifactPaths.CreateDefault());
         services.AddSingleton<GhostShellDatabase>();
@@ -112,6 +114,8 @@ public static class DesktopComposition
             provider.GetRequiredService<SqliteRuntimeRecoveryStore>());
         services.AddSingleton<ILocalArtifactControl, FileSystemLocalArtifactControl>();
         services.AddSingleton<IOnboardingProgressStore, SqliteOnboardingProgressStore>();
+        services.AddSingleton<ISessionRestorePreferenceStore,
+            SqliteSessionRestorePreferenceStore>();
         services.AddSingleton<SqliteRecentSessionStore>();
         services.AddSingleton<IRecentSessionStore>(provider =>
             provider.GetRequiredService<SqliteRecentSessionStore>());
@@ -126,6 +130,7 @@ public static class DesktopComposition
         services.AddSingleton<RuntimeRecoveryWriter>();
         services.AddSingleton<DesktopRunFinalizer>();
         services.AddSingleton<IRecoveryCoordinator, RecoveryCoordinator>();
+        services.AddSingleton<SessionRestoreCoordinator>();
         services.AddSingleton<ApplicationStartupState>();
         services.AddSingleton<ITerminalSessionFactory>(_ =>
             TerminalSessionFactorySelector.CreateForCurrentPlatform());

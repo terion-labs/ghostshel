@@ -149,6 +149,27 @@
                     Description="Edit persistent launch definitions. Runtime terminal instances remain independent." />
                 <Button Grid.Column="1" Classes="PrimaryButton" Click="OnShowNewItemClick" Content="New definition" />
               </Grid>
+              <controls:SurfaceCard Padding="0">
+                <Grid
+                    Margin="{controls:Inset Horizontal=Lg, Vertical=Md}"
+                    ColumnDefinitions="*,Auto"
+                    ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock FontWeight="SemiBold" Text="Restore sessions on start" />
+                    <TextBlock
+                        Classes="Muted"
+                        Text="Reopen the tabs, panels, connections, and locations from the previous session."
+                        TextWrapping="Wrap" />
+                  </StackPanel>
+                  <ToggleSwitch
+                      Grid.Column="1"
+                      VerticalAlignment="Center"
+                      AutomationProperties.Name="Restore sessions on start"
+                      IsChecked="{Binding RestoreSessionsOnStart, Mode=OneWay}"
+                      IsCheckedChanged="OnRestoreSessionsOnStartChanged"
+                      IsEnabled="{Binding CanChangeRestoreSessionsOnStart}" />
+                </Grid>
+              </controls:SurfaceCard>
               <controls:SurfaceCard Tone="Notice" Padding="0"
                   x:Name="SavedScreenDeleteUndoNotice"
                   IsVisible="{Binding SavedScreenDeleteUndo.HasPending}"

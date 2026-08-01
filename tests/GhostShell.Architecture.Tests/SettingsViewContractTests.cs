@@ -58,6 +58,8 @@ public sealed class SettingsViewContractTests
             ["RetryFileTransferRequested"] = "OnRetryFileTransferClick",
             ["ReviewHistoryPrivacyRequested"] = "OnReviewHistoryPrivacyClick",
             ["ReviewOnboardingRequested"] = "OnReviewOnboardingClick",
+            ["RestoreSessionsOnStartChangedRequested"] =
+                "OnRestoreSessionsOnStartChanged",
             ["AppearanceChangedRequested"] = "OnAppearanceChanged",
             ["PickColorRequested"] = "OnPickColorRequested",
             ["SaveKeybindingsRequested"] = "OnSaveKeybindingsClick",
@@ -106,6 +108,29 @@ public sealed class SettingsViewContractTests
                     extractedName,
                     StringComparison.Ordinal));
         }
+    }
+
+    [Fact]
+    public void Workspace_settings_expose_the_persisted_session_restore_toggle()
+    {
+        var settings = LoadView("SettingsView");
+        var toggle = Assert.Single(
+            settings.Descendants(),
+            element => element.Name.LocalName == "ToggleSwitch"
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "Restore sessions on start",
+                    StringComparison.Ordinal));
+
+        Assert.Equal(
+            "{Binding RestoreSessionsOnStart, Mode=OneWay}",
+            AttributeValue(toggle, "IsChecked"));
+        Assert.Equal(
+            "{Binding CanChangeRestoreSessionsOnStart}",
+            AttributeValue(toggle, "IsEnabled"));
+        Assert.Equal(
+            "OnRestoreSessionsOnStartChanged",
+            AttributeValue(toggle, "IsCheckedChanged"));
     }
 
     [Fact]
@@ -422,6 +447,38 @@ public sealed class SettingsViewContractTests
                     StringComparison.Ordinal));
         }
 
+        var opacity = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "NumericUpDown"
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "Quick Terminal background opacity",
+                    StringComparison.Ordinal));
+        Assert.Equal("0", AttributeValue(opacity, "Minimum"));
+        Assert.Equal("100", AttributeValue(opacity, "Maximum"));
+        Assert.Equal("True", AttributeValue(opacity, "ClipValueToMinMax"));
+
+        var display = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ComboBox"
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "Quick Terminal display",
+                    StringComparison.Ordinal));
+        Assert.Equal(
+            "{Binding QuickTerminalSettingsEditor.MonitorOptions}",
+            AttributeValue(display, "ItemsSource"));
+        Assert.Equal(
+            "{Binding QuickTerminalSettingsEditor.SelectedMonitorOption}",
+            AttributeValue(display, "SelectedItem"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "SettingRow"
+                && string.Equals(
+                    AttributeValue(element, "Description"),
+                    "Active window follows whichever app is in front and falls back to GhostSHELL where unsupported. GhostSHELL window follows this app; Primary always uses the OS primary display.",
+                    StringComparison.Ordinal));
+
         var toggles = root.Descendants()
             .Where(element => element.Name.LocalName == "ToggleSwitch")
             .ToArray();
@@ -608,8 +665,8 @@ public sealed class SettingsViewContractTests
         "Quick Terminal global hotkey",
         "Quick Terminal display",
         "Quick Terminal panel height",
-        "Quick Terminal window opacity",
-        "Quick Terminal background blur",
+        "Quick Terminal background opacity",
+        "Quick Terminal backdrop blur",
         "Animate Quick Terminal",
         "Reduce Quick Terminal motion",
         "Quick Terminal animation duration",

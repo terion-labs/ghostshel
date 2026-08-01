@@ -503,6 +503,14 @@ public sealed class LayoutDesignerViewModel : ObservableObject
                 $"The layout cannot be saved: {FormatIssues(validation.Issues)}");
         }
 
+        definition = new LayoutDefinition(
+            definition.Id,
+            definition.SchemaVersion,
+            definition.Name,
+            definition.Grid,
+            definition.Slots,
+            RuntimeDockLayoutController.SerializeDefinition(definition));
+
         return new(definition, ExpectedRevision);
     }
 

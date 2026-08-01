@@ -3,6 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:dockDocuments="using:Dock.Model.Inpc.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:overlays="using:GhostShell.App.Views.Overlays"
     xmlns:panelViews="using:GhostShell.App.Views.RuntimePanels"
@@ -19,9 +20,14 @@
     WindowStartupLocation="CenterScreen">
 
   <Window.DataTemplates>
+    <DataTemplate DataType="dockDocuments:Document">
+      <ContentControl
+          Content="{Binding Context}"
+          HorizontalContentAlignment="Stretch"
+          VerticalContentAlignment="Stretch" />
+    </DataTemplate>
     <DataTemplate DataType="vm:TerminalRuntimePanelViewModel">
       <panelViews:TerminalRuntimePanelView
-          ApplicationKeyPressed="OnTerminalApplicationKeyPressed"
           CancelReconnectRequested="OnCancelConnectionReconnectClick"
           CloseRequested="OnCloseRuntimePanelClick"
           ConnectionSelected="OnTerminalConnectionSelected"
@@ -249,6 +255,7 @@
         RetryFileTransferRequested="OnRetryFileTransferClick"
         ReviewHistoryPrivacyRequested="OnReviewHistoryPrivacyClick"
         ReviewOnboardingRequested="OnReviewOnboardingClick"
+        RestoreSessionsOnStartChangedRequested="OnRestoreSessionsOnStartChanged"
         AppearanceChangedRequested="OnAppearanceChanged"
         PickColorRequested="OnPickColorRequested"
         SaveKeybindingsRequested="OnSaveKeybindingsClick"

@@ -75,6 +75,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _mcpCredentialSessionInvalidator;
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
     private readonly RuntimeRecoveryWriter? _runtimeRecoveryWriter;
+    private readonly SessionRestoreCoordinator? _sessionRestoreCoordinator;
     private readonly RecentSessionHistory? _recentSessionHistory;
     private readonly IUiThreadDispatcher _uiThreadDispatcher;
     private readonly TimeProvider _timeProvider;
@@ -135,6 +136,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private RecentSessionHistoryItemViewModel? _selectedHistorySession;
     private HistoryExportScope _selectedHistoryExportScope;
     private StoredRecentSessionRetentionPolicy? _storedHistoryRetention;
+    private bool _restoreSessionsOnStart = true;
+    private bool _sessionRestorePreferenceLoaded;
+    private bool _sessionRestorePreferenceSaving;
     private HistoryRetentionOption? _selectedHistoryRetentionOption;
     private bool _isApplyingStoredHistoryRetention;
     private bool _hasPendingHistoryRetentionChange;
@@ -173,7 +177,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
-            mcpCredentialSessionInvalidator = null)
+            mcpCredentialSessionInvalidator = null,
+        SessionRestoreCoordinator? sessionRestoreCoordinator = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -193,6 +198,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             mcpCredentialSessionInvalidator;
         _connectionSecurityRuntime = connectionSecurityRuntime;
         _runtimeRecoveryWriter = runtimeRecoveryWriter;
+        _sessionRestoreCoordinator = sessionRestoreCoordinator;
         _recentSessionHistory = recentSessionHistory;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _uiThreadDispatcher = uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance;
@@ -1145,6 +1151,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool IsAppearanceSettingsVisible => SettingsPage == SettingsPage.Appearance;
 
     public bool IsWorkspaceSettingsVisible => SettingsPage == SettingsPage.Workspaces;
+
+    public bool RestoreSessionsOnStart
+    {
+        get => _restoreSessionsOnStart;
+        private set => SetProperty(ref _restoreSessionsOnStart, value);
+    }
+
+    public bool CanChangeRestoreSessionsOnStart =>
+        _sessionRestoreCoordinator is null
+        || (_sessionRestorePreferenceLoaded && !_sessionRestorePreferenceSaving);
 
     public bool IsKeybindingSettingsVisible => SettingsPage == SettingsPage.Keybindings;
 
@@ -2324,17 +2340,132 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    public async Task<bool> ApplyStartupRecoveryAsync(
+    public async Task<bool> LoadSessionRestorePreferenceAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_sessionRestoreCoordinator is null)
+        {
+            return true;
+        }
+
+        var result = await _sessionRestoreCoordinator.ReadPreferenceAsync(cancellationToken);
+        if (!result.IsSuccess)
+        {
+            SetError("The session restore preference could not be loaded.");
+            return false;
+        }
+
+        RestoreSessionsOnStart = result.Value;
+        _sessionRestorePreferenceLoaded = true;
+        OnPropertyChanged(nameof(CanChangeRestoreSessionsOnStart));
+        return true;
+    }
+
+    public async Task<bool> SetRestoreSessionsOnStartAsync(
+        bool restoreSessionsOnStart,
+        CancellationToken cancellationToken = default)
+    {
+        if (_sessionRestoreCoordinator is null)
+        {
+            RestoreSessionsOnStart = restoreSessionsOnStart;
+            return true;
+        }
+
+        if (!_sessionRestorePreferenceLoaded || _sessionRestorePreferenceSaving)
+        {
+            return false;
+        }
+
+        _sessionRestorePreferenceSaving = true;
+        OnPropertyChanged(nameof(CanChangeRestoreSessionsOnStart));
+        try
+        {
+            var result = await _sessionRestoreCoordinator.WritePreferenceAsync(
+                restoreSessionsOnStart,
+                cancellationToken);
+            if (!result.IsSuccess)
+            {
+                SetError("The session restore preference could not be saved.");
+                OnPropertyChanged(nameof(RestoreSessionsOnStart));
+                return false;
+            }
+
+            RestoreSessionsOnStart = restoreSessionsOnStart;
+            return true;
+        }
+        finally
+        {
+            _sessionRestorePreferenceSaving = false;
+            OnPropertyChanged(nameof(CanChangeRestoreSessionsOnStart));
+        }
+    }
+
+    public async Task<bool> RestoreSessionOnStartupAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_sessionRestoreCoordinator is null)
+        {
+            Console.Error.WriteLine(
+                "[ghostshell:recovery] Startup session restore is unavailable.");
+            return false;
+        }
+
+        if (!await LoadSessionRestorePreferenceAsync(cancellationToken))
+        {
+            Console.Error.WriteLine(
+                "[ghostshell:recovery] Startup session restore preference could not be loaded.");
+            return false;
+        }
+
+        if (!RestoreSessionsOnStart
+            || RuntimeWorkspace is not null
+            || Route != ShellRoute.Launcher
+            || HasOverlay)
+        {
+            return false;
+        }
+
+        var result = await _sessionRestoreCoordinator.LoadLatestSessionAsync(
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            Console.Error.WriteLine(
+                $"[ghostshell:recovery] Previous session lookup failed: "
+                + $"{result.Error!.Code}: {result.Error.Message}");
+            SetError("The previous session could not be loaded.");
+            return false;
+        }
+
+        if (RuntimeWorkspace is not null
+            || Route != ShellRoute.Launcher
+            || HasOverlay)
+        {
+            return false;
+        }
+
+        return await ApplyRuntimeSnapshotsAsync(result.Value!, cancellationToken);
+    }
+
+    public Task<bool> ApplyStartupRecoveryAsync(
         ApplicationStartupState startupState,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(startupState);
         if (!startupState.ShouldRestoreRuntimeState)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
-        var snapshot = startupState.RestoredSnapshots
+        return ApplyRuntimeSnapshotsAsync(
+            startupState.RestoredSnapshots,
+            cancellationToken);
+    }
+
+    private async Task<bool> ApplyRuntimeSnapshotsAsync(
+        IReadOnlyList<RuntimeRecoverySnapshot> snapshots,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = snapshots
             .Where(item => item.Key == RuntimeWorkspaceRecoveryCodec.SnapshotKey)
             .OrderByDescending(item => item.UpdatedAt)
             .FirstOrDefault();
@@ -2348,6 +2479,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 out var payload,
                 out var error))
         {
+            Console.Error.WriteLine(
+                $"[ghostshell:recovery] Previous session payload was rejected: {error}");
             SetError(error ?? "Runtime recovery state could not be read.");
             return false;
         }
@@ -2366,6 +2499,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             runtime = RestoreWorkspace(payload.Workspace);
             if (!await RegisterRuntimeWorkspaceAsync(runtime, cancellationToken))
             {
+                Console.Error.WriteLine(
+                    "[ghostshell:recovery] The restored workspace was rejected by the session host.");
                 return false;
             }
 
@@ -2377,13 +2512,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             QueueRuntimeRecoverySnapshot();
             return true;
         }
-        catch (ArgumentException)
+        catch (ArgumentException exception)
         {
+            Console.Error.WriteLine(
+                $"[ghostshell:recovery] Runtime recovery target was invalid: {exception}");
             SetError("Runtime recovery state contains an invalid target.");
             return false;
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
+            Console.Error.WriteLine(
+                $"[ghostshell:recovery] Runtime recovery could not be applied: {exception}");
             SetError("Runtime recovery state could not be applied.");
             return false;
         }
@@ -3349,12 +3488,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
         }
 
-        var definition = new LayoutDefinition(
+        var geometry = new LayoutDefinition(
             LayoutId.New(),
             LayoutDefinition.CurrentSchemaVersion,
             RequireName(name, "Layout"),
             new LayoutGrid(columns, rows),
             slots);
+        var definition = new LayoutDefinition(
+            geometry.Id,
+            geometry.SchemaVersion,
+            geometry.Name,
+            geometry.Grid,
+            geometry.Slots,
+            RuntimeDockLayoutController.SerializeDefinition(geometry));
         var result = await _catalog.SaveLayoutAsync(definition, null, cancellationToken);
         ApplyError(result.Error);
         return result;
@@ -5470,6 +5616,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             StartTrackingRecovery(panel);
         }
+
+        foreach (var tab in workspace.Tabs)
+        {
+            tab.PropertyChanged -= OnRecoveryRelevantTabPropertyChanged;
+            tab.PropertyChanged += OnRecoveryRelevantTabPropertyChanged;
+        }
     }
 
     private void StartTrackingRecovery(RuntimePanelViewModel panel)
@@ -5490,6 +5642,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         foreach (var panel in workspace.Tabs.SelectMany(tab => tab.Panels))
         {
             StopTrackingRecovery(panel);
+        }
+
+        foreach (var tab in workspace.Tabs)
+        {
+            tab.PropertyChanged -= OnRecoveryRelevantTabPropertyChanged;
         }
     }
 
@@ -5522,6 +5679,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         QueueRuntimeRecoverySnapshot();
     }
 
+    private void OnRecoveryRelevantTabPropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs eventArgs)
+    {
+        if (sender is RuntimeTabViewModel
+            && eventArgs.PropertyName == nameof(RuntimeTabViewModel.DockLayoutRevision))
+        {
+            QueueRuntimeRecoverySnapshot();
+        }
+    }
+
     private void QueueRuntimeRecoverySnapshot()
     {
         if (_runtimeRecoveryWriter is null || _shutdownStarted)
@@ -5535,8 +5703,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             payload = RuntimeWorkspaceRecoveryCodec.Serialize(RuntimeWorkspace);
         }
         catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+            exception is ArgumentException
+                or InvalidDataException
+                or InvalidOperationException
+                or System.Text.Json.JsonException)
         {
+            Console.Error.WriteLine(
+                $"[ghostshell:recovery] Runtime recovery snapshot preparation failed: {exception}");
             SetError("Runtime recovery state could not be prepared.");
             return;
         }
@@ -5558,6 +5731,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         RuntimeRecoveryWriteFailedEventArgs eventArgs)
     {
         _ = sender;
+        Console.Error.WriteLine(
+            $"[ghostshell:recovery] Runtime recovery write failed: "
+            + $"{eventArgs.Error.Code}: {eventArgs.Error.Message}");
         void Apply() => SetError($"Runtime recovery is unavailable ({eventArgs.Error.Code}).");
 
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
@@ -8782,15 +8958,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             LayoutDefinition.CurrentSchemaVersion,
             "Recovered runtime layout",
             new LayoutGrid(recovered.Columns, recovered.Rows),
-            slots);
+            slots,
+            recovered.DockLayoutJson);
         var tab = new RuntimeTabViewModel(
             TabInstanceId.New(),
             recovered.Title,
             recovered.Source,
-            recovered.UsesAutomaticLayout ? null : layout,
+            // A recovery snapshot contains the authoritative Dock tree even
+            // when the tab began in automatic-layout mode. Reconstructing a
+            // fresh automatic layout here discards user docking, splitter and
+            // floating-window changes captured later in the session.
+            layout,
             recovered.HistorySource?.ToHistorySource(),
             recovered.AgentPolicy?.ToProvenance()
-                ?? RuntimeAgentPolicyProvenance.LegacyFallback);
+                ?? RuntimeAgentPolicyProvenance.LegacyFallback,
+            usesAutomaticLayout: recovered.UsesAutomaticLayout);
         try
         {
             var restoredPanels = new Dictionary<string, RuntimePanelViewModel>(StringComparer.Ordinal);
@@ -8798,10 +8980,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             {
                 var recoveredPanel = recovered.Panels[index];
                 var panel = RestorePanel(workspaceId, tab.Id, recoveredPanel);
-                AddPanelOrDispose(
-                    tab,
-                    panel,
-                    recovered.UsesAutomaticLayout ? null : slots[index].Id);
+                try
+                {
+                    tab.AddPanel(
+                        panel,
+                        recovered.UsesAutomaticLayout ? null : slots[index].Id,
+                        recoveredPanel.Key);
+                }
+                catch
+                {
+                    panel.Dispose();
+                    throw;
+                }
                 restoredPanels.Add(recoveredPanel.Key, panel);
             }
 
@@ -8931,6 +9121,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 recovered.Title,
                 PanelKind.ProcessMonitor,
                 connection);
+        }
+
+        if (recovered.Kind == RuntimePanelRecoveryKind.Placeholder
+            || recovered is
+            {
+                Kind: RuntimePanelRecoveryKind.Unavailable,
+                KindLabel: "CHOOSE",
+            })
+        {
+            return new PanelPlaceholderViewModel(PanelInstanceId.New());
         }
 
         return new UnavailableRuntimePanelViewModel(

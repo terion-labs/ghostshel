@@ -32,7 +32,12 @@ public sealed class ProjectDependencyTests
             "ProjectReference");
         Assert.All(references, reference => Assert.Contains(
             Path.GetFileName(reference.Replace('\\', Path.DirectorySeparatorChar)),
-            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" }));
+            new[]
+            {
+                "GhostShell.Application.csproj",
+                "GhostShell.Core.csproj",
+                "GhostShell.Docking.csproj",
+            }));
         Assert.DoesNotContain(references, reference =>
             reference.Contains("Terminal", StringComparison.Ordinal)
             || reference.Contains("Browser", StringComparison.Ordinal)
