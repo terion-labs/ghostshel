@@ -209,20 +209,29 @@ public sealed class WorkspaceViewContractTests
                     StringComparison.Ordinal));
         }
 
-        var panelItems = Assert.Single(
+        var dockControl = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding RuntimeWorkspace.ActiveTab.Panels}",
-                    StringComparison.Ordinal));
-        Assert.Null(AttributeValue(panelItems, "MinWidth"));
-        Assert.Null(AttributeValue(panelItems, "MinHeight"));
+            element => element.Name.LocalName == "DockControl");
+        Assert.Equal(
+            "{Binding RuntimeWorkspace.ActiveTab.DockLayout}",
+            AttributeValue(dockControl, "Layout"));
+        Assert.Equal(
+            "{Binding RuntimeWorkspace.ActiveTab.DockFactory}",
+            AttributeValue(dockControl, "Factory"));
+        Assert.Equal("True", AttributeValue(dockControl, "IsDockingEnabled"));
+        Assert.Equal("True", AttributeValue(dockControl, "InitializeFactory"));
+        Assert.Equal("False", AttributeValue(dockControl, "InitializeLayout"));
+        // Dock windows are real platform windows. The managed-window layer would
+        // constrain them to the workspace canvas and add a second in-app title
+        // bar instead of providing actual floating panels.
+        Assert.Null(AttributeValue(dockControl, "EnableManagedWindowLayer"));
+        Assert.Null(AttributeValue(dockControl, "MinWidth"));
+        Assert.Null(AttributeValue(dockControl, "MinHeight"));
         Assert.NotEqual(
             "ScrollViewer",
-            panelItems.Parent?.Name.LocalName);
-        Assert.Contains(
-            panelItems.Descendants(),
+            dockControl.Parent?.Name.LocalName);
+        Assert.DoesNotContain(
+            root.Descendants(),
             element => element.Name.LocalName == "RuntimePanelLayoutPanel");
 
         Assert.Contains(
@@ -243,7 +252,7 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "AutomationProperties.LiveSetting"),
                     "Polite",
                     StringComparison.Ordinal));
-        Assert.Contains(
+        var transferManagerButton = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "Button"
                 && string.Equals(
@@ -254,6 +263,36 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "AutomationProperties.Name"),
                     "Open transfer manager",
                     StringComparison.Ordinal));
+        Assert.Equal(
+            "OnToggleFileTransferManagerClick",
+            AttributeValue(transferManagerButton, "Click"));
+        Assert.DoesNotContain(
+            transferManagerButton.Descendants(),
+            element => element.Name.LocalName is "Flyout" or "Popup");
+        Assert.Contains(
+            transferManagerButton.Descendants(),
+            element => element.Name.LocalName == "SymbolIcon"
+                && string.Equals(
+                    AttributeValue(element, "Symbol"),
+                    "ArrowSort",
+                    StringComparison.Ordinal));
+        var transferManager = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "SurfaceCard"
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "File transfer manager",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "IsVisible"),
+                    "False",
+                    StringComparison.Ordinal));
+        Assert.Equal("2", AttributeValue(transferManager, "Grid.Row"));
+        Assert.Equal(
+            "Cycle",
+            AttributeValue(
+                transferManager,
+                "KeyboardNavigation.TabNavigation"));
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "ItemsControl"
@@ -335,12 +374,44 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(6, runtimeTemplateTypes.Length);
 
         var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
+        var dragGhost = Assert.Single(
+            mainWindow.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "DragGhostPresenter",
+                StringComparison.Ordinal));
+        Assert.Equal("SurfaceCard", dragGhost.Name.LocalName);
+        Assert.Equal("Overlay", AttributeValue(dragGhost, "Elevation"));
+        Assert.Equal("0", AttributeValue(dragGhost, "Opacity"));
+        var dragGhostLayer = Assert.Single(
+            mainWindow.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "DragGhostLayer",
+                StringComparison.Ordinal));
+        Assert.Equal("1000", AttributeValue(dragGhostLayer, "ZIndex"));
+        Assert.Contains(
+            "ResolveDragGhostPresenter() is not { } presenter",
+            mainWindowCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "this.FindControl<Control>(\"DragGhostPresenter\")",
+            mainWindowCode,
+            StringComparison.Ordinal);
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
             mainWindowCode,
             StringComparison.Ordinal);
         Assert.Contains(
-            "DataFormat.CreateStringApplicationFormat(",
+            "ShowDragGhost(",
+            mainWindowCode,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MoveDragGhost(",
+            mainWindowCode,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "DragDrop.DoDragDropAsync(",
             mainWindowCode,
             StringComparison.Ordinal);
         Assert.Contains("ViewModel.MoveTabAsync(", mainWindowCode, StringComparison.Ordinal);

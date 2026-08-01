@@ -46,6 +46,10 @@ internal static class HistoricalDatabaseFixture
                 "indexed-agent-run-audit-reading",
                 "D8C1BEDF1C2E218569363632927A1B2CF78E37DA4B88494B853AC28267B9F320",
                 IsDestructive: false),
+            [7] = new(
+                "session-restore-preference",
+                "653DC5C26135B69989F1F543AD93AE14971163B11F82B4E1E4BB4708E75F53B7",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -287,6 +291,7 @@ internal static class HistoricalDatabaseFixture
             3 => "onboarding_progress",
             4 => "agent_action_audit_state",
             5 => "audit_events_agent_run_idx",
+            6 => "session_restore_preference",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

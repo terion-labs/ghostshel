@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
 using GhostShell.Application;
@@ -149,14 +150,16 @@ public sealed partial class App : Avalonia.Application
                 DataContext = mainWindowViewModel,
             };
             desktop.MainWindow = mainWindow;
+            foreach (var hostWindow in desktop.Windows.OfType<RuntimePanelHostWindow>())
+            {
+                hostWindow.RefreshRuntimePanelTemplates();
+            }
+
             QuickTerminalController.Initialize(mainWindow);
             mainWindow.Closed += OnMainWindowClosed;
             desktop.Exit += OnDesktopExit;
             AttachAppearance(mainWindow);
-            if (_startupState?.RecoveryState == RecoveryDecisionState.Pending)
-            {
-                mainWindow.Opened += OnRecoveryWindowOpened;
-            }
+            mainWindow.Opened += OnStartupWindowOpened;
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -507,16 +510,29 @@ public sealed partial class App : Avalonia.Application
         (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
     }
 
-    private async void OnRecoveryWindowOpened(object? sender, EventArgs e)
+    private async void OnStartupWindowOpened(object? sender, EventArgs e)
     {
         if (sender is not MainWindow owner
-            || _startupState is null
-            || _recoveryCoordinator is null)
+            || _startupState is null)
         {
             return;
         }
 
-        owner.Opened -= OnRecoveryWindowOpened;
+        owner.Opened -= OnStartupWindowOpened;
+        if (_startupState.RecoveryState != RecoveryDecisionState.Pending)
+        {
+            _ = await MainWindowViewModel.RestoreSessionOnStartupAsync(
+                CancellationToken.None);
+            return;
+        }
+
+        _ = await MainWindowViewModel.LoadSessionRestorePreferenceAsync(
+            CancellationToken.None);
+        if (_recoveryCoordinator is null)
+        {
+            return;
+        }
+
         var choice = await new RecoveryDialog().ShowDialog<RecoveryChoice>(owner);
         var result = await _recoveryCoordinator.ResolveAsync(choice, CancellationToken.None);
         if (!result.IsSuccess)

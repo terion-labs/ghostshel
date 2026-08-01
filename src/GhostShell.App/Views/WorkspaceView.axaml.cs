@@ -1,16 +1,40 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Dock.Avalonia.Controls;
+using Dock.Model.Controls;
 
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views;
 
 public sealed partial class WorkspaceView : UserControl
 {
+    private int _dockInitializationGeneration;
+    private IRootDock? _initializedDockLayout;
+
     public WorkspaceView()
     {
         InitializeComponent();
+        RuntimeDockControl.HostWindowFactory =
+            static () => new RuntimePanelHostWindow();
+        RuntimeDockControl.PropertyChanged += OnRuntimeDockControlPropertyChanged;
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        ScheduleDockInitialization();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _dockInitializationGeneration++;
+        base.OnDetachedFromVisualTree(e);
     }
 
     public event EventHandler<RoutedEventArgs>? ActivateTabRequested;
@@ -94,6 +118,47 @@ public sealed partial class WorkspaceView : UserControl
     public event EventHandler<PointerPressedEventArgs>? TitleBarPointerPressedRequested;
 
     public event EventHandler<RoutedEventArgs>? ToggleAgentRequested;
+
+    private void OnRuntimeDockControlPropertyChanged(
+        object? sender,
+        AvaloniaPropertyChangedEventArgs e)
+    {
+        _ = sender;
+        if (e.Property == DockControl.LayoutProperty)
+        {
+            ScheduleDockInitialization();
+        }
+    }
+
+    private void ScheduleDockInitialization()
+    {
+        var generation = ++_dockInitializationGeneration;
+        Dispatcher.UIThread.Post(
+            () => Dispatcher.UIThread.Post(
+                () => InitializeCurrentDockLayout(generation),
+                DispatcherPriority.Background),
+            DispatcherPriority.Loaded);
+    }
+
+    private void InitializeCurrentDockLayout(int generation)
+    {
+        if (generation != _dockInitializationGeneration
+            || VisualRoot is null
+            || RuntimeDockControl.Layout is not IRootDock layout
+            || ReferenceEquals(layout, _initializedDockLayout)
+            || layout.Factory is null)
+        {
+            return;
+        }
+
+        // DockControl's automatic InitializeLayout path closes native windows
+        // whenever the view is transiently detached. Recovery necessarily
+        // crosses one such launcher-to-workspace transition. Initialize only
+        // the final attached layout so a restored floating window is not
+        // presented and then immediately removed from the serialized model.
+        layout.Factory.InitLayout(layout);
+        _initializedDockLayout = layout;
+    }
 
     private void OnActivateTabClick(object? sender, RoutedEventArgs e) =>
         ActivateTabRequested?.Invoke(sender, e);
@@ -234,6 +299,20 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) =>
         TitleBarPointerPressedRequested?.Invoke(sender, e);
+
+    private void OnToggleFileTransferManagerClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        FileTransferManager.IsVisible = !FileTransferManager.IsVisible;
+        if (FileTransferManager.IsVisible)
+        {
+            FileTransferManagerCloseButton.Focus(NavigationMethod.Tab);
+            return;
+        }
+
+        FileTransferManagerButton.Focus(NavigationMethod.Tab);
+    }
 
     private void OnToggleAgentClick(object? sender, RoutedEventArgs e) =>
         ToggleAgentRequested?.Invoke(sender, e);

@@ -16,13 +16,17 @@ public sealed record LayoutDefinition : IDurableDefinition
         int schemaVersion,
         string name,
         LayoutGrid grid,
-        IReadOnlyList<LayoutSlotDefinition> slots)
+        IReadOnlyList<LayoutSlotDefinition> slots,
+        string? dockLayoutJson = null)
     {
         Id = id;
         SchemaVersion = schemaVersion;
         Name = name;
         Grid = grid ?? throw new ArgumentNullException(nameof(grid));
         Slots = Array.AsReadOnly(slots?.ToArray() ?? throw new ArgumentNullException(nameof(slots)));
+        DockLayoutJson = string.IsNullOrWhiteSpace(dockLayoutJson)
+            ? null
+            : dockLayoutJson;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Layout;
@@ -40,4 +44,12 @@ public sealed record LayoutDefinition : IDurableDefinition
 
     /// <summary>The list order is the default keyboard and accessibility traversal order.</summary>
     public IReadOnlyList<LayoutSlotDefinition> Slots { get; }
+
+    /// <summary>
+    /// Dock's serialized recursive layout, including split proportions and
+    /// floating-window geometry. Core deliberately treats this as an opaque
+    /// payload; the desktop adapter owns its format and rebinds leaf ids to live
+    /// panel instances after deserialization.
+    /// </summary>
+    public string? DockLayoutJson { get; }
 }

@@ -925,6 +925,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
     private const double DefaultPanelMinimumWidth = 220;
     private const double DefaultPanelMinimumHeight = 140;
     private readonly IReadOnlyDictionary<LayoutSlotId, LayoutSlotDefinition> _layoutSlots;
+    private readonly RuntimeDockLayoutController _dockLayout;
     private readonly List<RuntimeSplitRelationship> _runtimeSplits = [];
     private readonly bool _hasSavedLayout;
     private PanelInstanceId? _activePanelId;
@@ -941,7 +942,8 @@ public sealed class RuntimeTabViewModel : ObservableObject
         string source,
         LayoutDefinition? layout = null,
         RuntimeHistorySource? historySource = null,
-        RuntimeAgentPolicyProvenance? agentPolicy = null)
+        RuntimeAgentPolicyProvenance? agentPolicy = null,
+        bool? usesAutomaticLayout = null)
     {
         Id = id;
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -952,7 +954,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         _columns = layout?.Grid.Columns ?? 1;
         _rows = layout?.Grid.Rows ?? 1;
         _hasSavedLayout = layout is not null;
-        _usesAutomaticLayout = layout is null;
+        _usesAutomaticLayout = usesAutomaticLayout ?? layout is null;
         _layoutSlots = layout?.Slots.ToDictionary(
             slot => slot.Id,
             slot => new LayoutSlotDefinition(
@@ -964,6 +966,9 @@ public sealed class RuntimeTabViewModel : ObservableObject
                     slot.Bounds.RowSpan),
                 new LayoutMinimumSize(slot.MinimumSize.Width, slot.MinimumSize.Height)))
             ?? new Dictionary<LayoutSlotId, LayoutSlotDefinition>();
+        _dockLayout = new RuntimeDockLayoutController(layout);
+        _dockLayout.LayoutChanged += (_, _) =>
+            OnPropertyChanged(nameof(DockLayoutRevision));
     }
 
     public TabInstanceId Id { get; }
@@ -981,6 +986,14 @@ public sealed class RuntimeTabViewModel : ObservableObject
     public RuntimeAgentPolicyProvenance AgentPolicy { get; }
 
     public ObservableCollection<RuntimePanelViewModel> Panels { get; } = [];
+
+    public Dock.Model.Controls.IRootDock DockLayout => _dockLayout.Layout;
+
+    public Dock.Model.Core.IFactory DockFactory => _dockLayout.Factory;
+
+    public int DockLayoutRevision => _dockLayout.Revision;
+
+    public string SerializeDockLayout() => _dockLayout.Serialize();
 
     public PanelInstanceId? ActivePanelId
     {
@@ -1280,7 +1293,10 @@ public sealed class RuntimeTabViewModel : ObservableObject
         return minimumAtBoundary[tracks];
     }
 
-    public void AddPanel(RuntimePanelViewModel panel, LayoutSlotId? slotId = null)
+    public void AddPanel(
+        RuntimePanelViewModel panel,
+        LayoutSlotId? slotId = null,
+        string? savedDockableId = null)
     {
         ArgumentNullException.ThrowIfNull(panel);
         ClearZoom();
@@ -1288,6 +1304,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         {
             panel.AssignLayout(_columns, _rows, slot.Bounds, slot.MinimumSize);
             Panels.Add(panel);
+            _dockLayout.Attach(panel, savedDockableId ?? requestedSlot.Value);
             if (ActivePanelId is null)
             {
                 ActivatePanel(panel.Id);
@@ -1318,6 +1335,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
             // session host's own order, which appends. Slotting it into the
             // placeholder's index put the two lists out of step and every later
             // receipt was rejected as a mismatched graph.
+            _dockLayout.ReplacePlaceholder(target, panel);
             target.Dispose();
             Panels.Remove(target);
             Panels.Add(panel);
@@ -1327,6 +1345,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         }
 
         Panels.Add(panel);
+        _dockLayout.Attach(panel, savedDockableId);
         if (ActivePanelId is null)
         {
             ActivatePanel(panel.Id);
@@ -1364,78 +1383,14 @@ public sealed class RuntimeTabViewModel : ObservableObject
         }
 
         ClearZoom();
-        var currentPanels = Panels.Select(item => new PanelLayoutSnapshot(
-            item,
-            new LayoutGridBounds(
-                item.LayoutColumn,
-                item.LayoutRow,
-                item.LayoutColumnSpan,
-                item.LayoutRowSpan),
-            new LayoutMinimumSize(item.LayoutMinimumWidth, item.LayoutMinimumHeight)))
-            .ToArray();
-        var activeLayout = currentPanels.Single(item => ReferenceEquals(item.Panel, activePanel));
         Panels.Add(panel);
         _usesAutomaticLayout = false;
-        _runtimeSplits.Add(new RuntimeSplitRelationship(activePanel.Id, panel.Id, orientation));
-
-        if (orientation == PanelSplitOrientation.LeftRight)
-        {
-            _columns *= 2;
-            foreach (var item in currentPanels)
-            {
-                var bounds = ReferenceEquals(item.Panel, activePanel)
-                    ? new LayoutGridBounds(
-                        item.Bounds.Column * 2,
-                        item.Bounds.Row,
-                        item.Bounds.ColumnSpan,
-                        item.Bounds.RowSpan)
-                    : new LayoutGridBounds(
-                        item.Bounds.Column * 2,
-                        item.Bounds.Row,
-                        item.Bounds.ColumnSpan * 2,
-                        item.Bounds.RowSpan);
-                item.Panel.AssignLayout(_columns, _rows, bounds, item.MinimumSize);
-            }
-
-            panel.AssignLayout(
-                _columns,
-                _rows,
-                new LayoutGridBounds(
-                    (activeLayout.Bounds.Column * 2) + activeLayout.Bounds.ColumnSpan,
-                    activeLayout.Bounds.Row,
-                    activeLayout.Bounds.ColumnSpan,
-                    activeLayout.Bounds.RowSpan),
-                new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight));
-        }
-        else
-        {
-            _rows *= 2;
-            foreach (var item in currentPanels)
-            {
-                var bounds = ReferenceEquals(item.Panel, activePanel)
-                    ? new LayoutGridBounds(
-                        item.Bounds.Column,
-                        item.Bounds.Row * 2,
-                        item.Bounds.ColumnSpan,
-                        item.Bounds.RowSpan)
-                    : new LayoutGridBounds(
-                        item.Bounds.Column,
-                        item.Bounds.Row * 2,
-                        item.Bounds.ColumnSpan,
-                        item.Bounds.RowSpan * 2);
-                item.Panel.AssignLayout(_columns, _rows, bounds, item.MinimumSize);
-            }
-
-            panel.AssignLayout(
-                _columns,
-                _rows,
-                new LayoutGridBounds(
-                    activeLayout.Bounds.Column,
-                    (activeLayout.Bounds.Row * 2) + activeLayout.Bounds.RowSpan,
-                    activeLayout.Bounds.ColumnSpan,
-                    activeLayout.Bounds.RowSpan),
-                new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight));
-        }
+        panel.AssignLayout(
+            1,
+            1,
+            new LayoutGridBounds(0, 0, 1, 1),
+            new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
+        _dockLayout.Attach(panel, split: orientation, targetPanelId: activePanel.Id);
 
         ActivatePanel(panel.Id);
         NotifyPanelLayoutChanged();
@@ -1461,6 +1416,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         }
 
         ActivePanelId = panelId;
+        _dockLayout.Activate(panelId);
         if (Panels.SingleOrDefault(panel => panel.Id == panelId) is not PanelPlaceholderViewModel)
         {
             HostActivePanelId = panelId;
@@ -1546,33 +1502,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
             return null;
         }
 
-        RuntimePanelViewModel? destination;
-        if (direction == PanelFocusDirection.Next)
-        {
-            var nextIndex = (Panels.IndexOf(activePanel) + 1) % Panels.Count;
-            destination = Panels[nextIndex];
-        }
-        else
-        {
-            var activeCenter = PanelCenter(activePanel);
-            destination = Panels
-                .Where(panel => !ReferenceEquals(panel, activePanel))
-                .Select(panel => new
-                {
-                    Panel = panel,
-                    Center = PanelCenter(panel),
-                    Index = Panels.IndexOf(panel),
-                })
-                .Where(candidate => IsInDirection(activeCenter, candidate.Center, direction))
-                .OrderBy(candidate => CrossAxisOverlaps(activePanel, candidate.Panel, direction) ? 0 : 1)
-                .ThenBy(candidate => PrimaryDistance(activeCenter, candidate.Center, direction))
-                .ThenBy(candidate => CrossAxisDistance(activeCenter, candidate.Center, direction))
-                .ThenBy(candidate => candidate.Index)
-                .Select(candidate => candidate.Panel)
-                .FirstOrDefault();
-        }
-
-        return destination?.Id;
+        return _dockLayout.FindPanel(activePanel.Id, direction);
     }
 
     public bool ToggleActivePanelZoom()
@@ -1619,6 +1549,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         var vacatedRight = vacatedLeft + Math.Max(1, panel.LayoutColumnSpan);
         var vacatedBottom = vacatedTop + Math.Max(1, panel.LayoutRowSpan);
         CollapseRuntimeSplit(panel);
+        _dockLayout.Remove(panelId);
         panel.Dispose();
         Panels.RemoveAt(removedIndex);
         if (wasActive)
@@ -1668,6 +1599,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         replacement.IsActive = current.IsActive;
         replacement.IsVisibleInLayout = current.IsVisibleInLayout;
         replacement.IsZoomed = current.IsZoomed;
+        _dockLayout.Rebind(current, replacement);
         Panels[index] = replacement;
         current.Dispose();
         OnPropertyChanged(nameof(ActivePanel));
@@ -1840,6 +1772,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
                 : new LayoutGridBounds(0, at, _columns, 1),
             new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
         Panels.Add(placeholder);
+        _dockLayout.AttachToEdge(placeholder, side);
         _usesAutomaticLayout = false;
         ActivatePanel(placeholder.Id);
         NotifyPanelLayoutChanged();
@@ -1902,6 +1835,10 @@ public sealed class RuntimeTabViewModel : ObservableObject
                     placeholderSpan),
             new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
         Panels.Add(placeholder);
+        _dockLayout.Attach(
+            placeholder,
+            split: orientation,
+            targetPanelId: target.Id);
         _usesAutomaticLayout = false;
         ActivatePanel(placeholder.Id);
         NotifyPanelLayoutChanged();
