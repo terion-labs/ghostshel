@@ -11,6 +11,22 @@
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
     AutomationProperties.Name="Database panel">
+  <UserControl.Styles>
+    <Style Selector="Border.ResultRow">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+    <Style Selector="Border.ResultRow.even">
+      <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    </Style>
+    <Style Selector="Border.ResultRow:pointerover">
+      <Setter Property="Background" Value="{DynamicResource ShellControlHoverBrush}" />
+    </Style>
+    <Style Selector="Border.ResultRow.selected">
+      <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
+    </Style>
+  </UserControl.Styles>
   <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="36,Auto,*,25">
@@ -136,48 +152,83 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Foreground="{DynamicResource ShellDangerBrush}" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
           </controls:SurfaceCard>
 
-          <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" IsVisible="{Binding HasResults}">
-            <Grid RowDefinitions="Auto,*">
-              <Border Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-                <ItemsControl ItemsSource="{Binding ResultColumns}">
-                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto" IsVisible="{Binding HasResults}">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+              <Grid RowDefinitions="Auto,*">
+                <Border Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Width="40" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="#" TextAlignment="Right" />
+                    <ItemsControl ItemsSource="{Binding ResultColumns}">
+                      <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <StackPanel Width="164" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}">
+                            <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DataTypeName}" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding ResultRows}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border
+                            Classes="ResultRow"
+                            Classes.even="{Binding IsEven}"
+                            Classes.selected="{Binding IsSelected}"
+                            PointerPressed="OnResultRowPressed">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Width="40" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Number}" TextAlignment="Right" />
+                            <ItemsControl ItemsSource="{Binding Cells}">
+                              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <TextBlock
+                                      Width="164"
+                                      Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                                      Classes.Muted="{Binding IsNull}"
+                                      FontSize="{DynamicResource ShellFontSize10}"
+                                      Text="{Binding Text}"
+                                      TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Grid>
+            </ScrollViewer>
+
+            <!-- The TablePlus-style field inspector: every column of the selected
+                 row readable in full, no matter how narrow the grid cells are. -->
+            <Border Grid.Column="1" Width="236" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1,0,0,0" IsVisible="{Binding HasSelectedRow}">
+              <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsControl Margin="{controls:Inset Sm}" ItemsSource="{Binding SelectedRowFields}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <StackPanel Width="164" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}">
-                        <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DataTypeName}" TextTrimming="CharacterEllipsis" />
+                      <StackPanel Margin="{controls:Inset Bottom=Sm}" Spacing="{DynamicResource ShellSpaceXs}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DataTypeName}" />
+                        </Grid>
+                        <TextBlock
+                            Classes.Muted="{Binding IsNull}"
+                            FontSize="{DynamicResource ShellFontSize10}"
+                            Text="{Binding Text}"
+                            TextWrapping="Wrap" />
                       </StackPanel>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-              </Border>
-              <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding ResultRows}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-                        <ItemsControl ItemsSource="{Binding Cells}">
-                          <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                              <TextBlock
-                                  Width="164"
-                                  Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-                                  Classes.Muted="{Binding IsNull}"
-                                  FontSize="{DynamicResource ShellFontSize10}"
-                                  Text="{Binding Text}"
-                                  TextTrimming="CharacterEllipsis"
-                                  ToolTip.Tip="{Binding Text}" />
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
               </ScrollViewer>
-            </Grid>
-          </ScrollViewer>
+            </Border>
+          </Grid>
 
           <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowEmptyHint}">
             <icons:SymbolIcon HorizontalAlignment="Center" Symbol="Database" FontSize="24" Foreground="{DynamicResource ShellMutedBrush}" />

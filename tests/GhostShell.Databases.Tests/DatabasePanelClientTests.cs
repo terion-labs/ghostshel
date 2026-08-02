@@ -28,9 +28,12 @@ public sealed class DatabasePanelClientTests : IDisposable
             .ToArray();
 
         Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
-        Assert.Contains("sqlite", ids);
-        Assert.Contains("postgres", ids);
-        Assert.Contains("mysql", ids);
+        Assert.Equal(
+            [
+                "sqlite", "postgres", "mysql", "mariadb", "sqlserver", "cockroach",
+                "redshift", "duckdb", "oracle", "firebird", "clickhouse",
+            ],
+            ids);
         // The durable target format splits on the first colon, so ids must
         // never contain one — and pickers rely on non-blank display names.
         Assert.All(BuiltInDatabaseDrivers.All, driver =>
@@ -101,11 +104,11 @@ public sealed class DatabasePanelClientTests : IDisposable
         var client = new DatabasePanelClient();
 
         await Assert.ThrowsAsync<ArgumentException>(() => client.ListTablesAsync(
-            "oracle",
+            "db2",
             "whatever",
             CancellationToken.None));
         Assert.Throws<ArgumentException>(() =>
-            client.BuildTablePreviewQuery("oracle", "t", 10));
+            client.BuildTablePreviewQuery("db2", "t", 10));
     }
 
     [Fact]
@@ -119,5 +122,14 @@ public sealed class DatabasePanelClientTests : IDisposable
         Assert.Equal(
             "SELECT * FROM `weird``name` LIMIT 25;",
             client.BuildTablePreviewQuery("mysql", "weird`name", 25));
+        Assert.Equal(
+            "SELECT TOP (25) * FROM [weird]]name];",
+            client.BuildTablePreviewQuery("sqlserver", "weird]name", 25));
+        Assert.Equal(
+            "SELECT * FROM \"t\" FETCH FIRST 25 ROWS ONLY",
+            client.BuildTablePreviewQuery("oracle", "t", 25));
+        Assert.Equal(
+            "SELECT FIRST 25 * FROM \"t\"",
+            client.BuildTablePreviewQuery("firebird", "t", 25));
     }
 }

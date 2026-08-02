@@ -579,8 +579,10 @@ internal sealed class QaApplication : Avalonia.Application
                 connectionString: "Data Source=/srv/app/production.db");
             tab.AddPanel(panel);
             _ = tab.ActivatePanel(panel.Id);
-            // The stub completes synchronously, so the capture shows real rows.
+            // The stub completes synchronously, so the capture shows real rows,
+            // and a selected row exercises the field inspector.
             _ = panel.PreviewTableAsync(panel.Tables[0]);
+            panel.SelectRow(panel.ResultRows[2]);
             tab.NotifyPanelLayoutChanged();
             workspace.Tabs.Add(tab);
         }

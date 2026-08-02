@@ -29,11 +29,32 @@ public sealed class DatabaseResultCellViewModel(string? text)
     public string Text { get; } = text ?? "NULL";
 }
 
-public sealed class DatabaseResultRowViewModel(IReadOnlyList<string?> cells)
+public sealed class DatabaseResultRowViewModel(int number, IReadOnlyList<string?> cells)
+    : ObservableObject
 {
+    private bool _isSelected;
+
+    /// <summary>The 1-based position inside the current result page.</summary>
+    public int Number { get; } = number;
+
+    public bool IsEven => Number % 2 == 0;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        internal set => SetProperty(ref _isSelected, value);
+    }
+
     public IReadOnlyList<DatabaseResultCellViewModel> Cells { get; } =
         cells.Select(cell => new DatabaseResultCellViewModel(cell)).ToArray();
 }
+
+/// <summary>One field of the selected row, presented in the inspector column.</summary>
+public sealed record DatabaseRowFieldViewModel(
+    string Name,
+    string DataTypeName,
+    string Text,
+    bool IsNull);
 
 public sealed class DatabaseResultColumnViewModel(DatabaseColumnDescriptor column)
 {
@@ -66,6 +87,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private string _resultSummary = string.Empty;
     private IReadOnlyList<DatabaseResultColumnViewModel> _resultColumns = [];
     private IReadOnlyList<DatabaseResultRowViewModel> _resultRows = [];
+    private DatabaseResultRowViewModel? _selectedRow;
+    private IReadOnlyList<DatabaseRowFieldViewModel> _selectedRowFields = [];
 
     public DatabaseRuntimePanelViewModel(
         PanelInstanceId id,
@@ -205,6 +228,51 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool ShowEmptyHint => !HasResults;
 
+    public DatabaseResultRowViewModel? SelectedRow => _selectedRow;
+
+    public bool HasSelectedRow => _selectedRow is not null;
+
+    public IReadOnlyList<DatabaseRowFieldViewModel> SelectedRowFields
+    {
+        get => _selectedRowFields;
+        private set => SetProperty(ref _selectedRowFields, value);
+    }
+
+    /// <summary>
+    /// Selects one row for the field inspector; selecting the current row again
+    /// or passing null clears the inspector.
+    /// </summary>
+    public void SelectRow(DatabaseResultRowViewModel? row)
+    {
+        if (ReferenceEquals(_selectedRow, row))
+        {
+            row = null;
+        }
+
+        if (_selectedRow is not null)
+        {
+            _selectedRow.IsSelected = false;
+        }
+
+        _selectedRow = row;
+        if (row is not null)
+        {
+            row.IsSelected = true;
+        }
+
+        SelectedRowFields = row is null
+            ? []
+            : ResultColumns
+                .Zip(row.Cells, (column, cell) => new DatabaseRowFieldViewModel(
+                    column.Name,
+                    column.DataTypeName,
+                    cell.Text,
+                    cell.IsNull))
+                .ToArray();
+        OnPropertyChanged(nameof(SelectedRow));
+        OnPropertyChanged(nameof(HasSelectedRow));
+    }
+
     /// <summary>
     /// The durable "driverId:connection string" address, or null while the
     /// panel has no usable target. Recovery and workspace autosave persist it.
@@ -276,11 +344,12 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 sql,
                 MaxRows,
                 cancellationToken);
+            SelectRow(null);
             ResultColumns = page.Columns
                 .Select(column => new DatabaseResultColumnViewModel(column))
                 .ToArray();
             ResultRows = page.Rows
-                .Select(row => new DatabaseResultRowViewModel(row))
+                .Select((row, index) => new DatabaseResultRowViewModel(index + 1, row))
                 .ToArray();
             var elapsed = page.Elapsed.TotalMilliseconds
                 .ToString("0", CultureInfo.InvariantCulture);

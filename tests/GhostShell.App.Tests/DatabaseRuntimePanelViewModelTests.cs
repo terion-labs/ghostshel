@@ -97,6 +97,42 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Selecting_a_row_fills_the_field_inspector_and_toggles_off()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+        panel.QueryText = "SELECT id, name FROM people;";
+        await panel.RunQueryAsync();
+
+        Assert.Equal([1, 2], panel.ResultRows.Select(row => row.Number));
+        Assert.False(panel.HasSelectedRow);
+
+        panel.SelectRow(panel.ResultRows[1]);
+
+        Assert.True(panel.HasSelectedRow);
+        Assert.True(panel.ResultRows[1].IsSelected);
+        Assert.Equal(
+            [("id", "2", false), ("name", "NULL", true)],
+            panel.SelectedRowFields.Select(field => (field.Name, field.Text, field.IsNull)));
+
+        // Selecting the same row again clears the inspector; a fresh result
+        // set also starts unselected.
+        panel.SelectRow(panel.ResultRows[1]);
+        Assert.False(panel.HasSelectedRow);
+        Assert.False(panel.ResultRows[1].IsSelected);
+
+        panel.SelectRow(panel.ResultRows[0]);
+        await panel.RunQueryAsync();
+        Assert.False(panel.HasSelectedRow);
+    }
+
+    [Fact]
     public async Task Table_preview_fills_the_editor_with_the_driver_query()
     {
         var client = new FakeDatabasePanelClient();

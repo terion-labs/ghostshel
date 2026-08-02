@@ -60,6 +60,16 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         }
     }
 
+    private void OnResultRowPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control { DataContext: DatabaseResultRowViewModel row }
+            && Panel is { } panel)
+        {
+            panel.SelectRow(row);
+        }
+    }
+
     private void OnTableClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
