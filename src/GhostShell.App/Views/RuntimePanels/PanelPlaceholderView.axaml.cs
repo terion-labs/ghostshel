@@ -21,6 +21,8 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     public event EventHandler<RoutedEventArgs>? StatisticsRequested;
 
+    public event EventHandler<RoutedEventArgs>? DatabaseRequested;
+
     public event EventHandler<RoutedEventArgs>? FileViewerRequested;
 
     public event EventHandler<RoutedEventArgs>? ProcessMonitorRequested;
@@ -48,6 +50,9 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     private void OnChooseStatisticsClick(object? sender, RoutedEventArgs e) =>
         StatisticsRequested?.Invoke(sender, e);
+
+    private void OnChooseDatabaseClick(object? sender, RoutedEventArgs e) =>
+        DatabaseRequested?.Invoke(sender, e);
 
     private void OnChooseFileViewerClick(object? sender, RoutedEventArgs e) =>
         FileViewerRequested?.Invoke(sender, e);

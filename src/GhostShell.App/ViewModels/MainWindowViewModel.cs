@@ -67,6 +67,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IFilePanelClient _filePanelClient;
     private readonly IFileTransferQueueClient _fileTransferQueue;
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
+    private readonly IDatabasePanelClient? _databasePanelClient;
     private readonly TerminalStartupCommandDispatcher _startupCommandDispatcher;
     private readonly IFileProviderProfileRuntime? _fileProviderRuntime;
     private readonly IAiProviderProfileRuntime? _aiProviderRuntime;
@@ -175,6 +176,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IGovernedAgentRuntime? agentChatRuntime = null,
         IAgentApprovalPrincipal? agentApprovalPrincipal = null,
         IBrowserRendererViewFactory? browserRendererViewFactory = null,
+        IDatabasePanelClient? databasePanelClient = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
@@ -190,6 +192,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _fileTransferQueue = fileTransferQueue
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
         _browserRendererViewFactory = browserRendererViewFactory;
+        _databasePanelClient = databasePanelClient;
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
@@ -2166,6 +2169,50 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelInstanceId.New(),
                 kind == PanelKind.Statistics ? "Statistics" : "Process Monitor",
                 kind);
+            tab.AddPanel(panel);
+            runtime.Tabs.Add(tab);
+            runtime.ActiveTab = tab;
+            if (!await RegisterRuntimeWorkspaceAsync(runtime, cancellationToken))
+            {
+                return false;
+            }
+
+            RuntimeWorkspace = runtime;
+            _runtimeHistorySource = null;
+            StartAcceptedRuntimePanels(runtime);
+            StartRuntimeGraphWatch(runtime);
+            Route = ShellRoute.Workspace;
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+        finally
+        {
+            DisposeRuntimeWorkspaceUnlessOwned(runtime);
+        }
+    }
+
+    public async Task<bool> OpenLocalDatabaseWorkspaceAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ClearError();
+        if (_databasePanelClient is null)
+        {
+            SetError("The database drivers are unavailable in this build.");
+            return false;
+        }
+
+        var runtime = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            "Database",
+            ThemePreference.BronzeFallback.ToString(),
+            []);
+        try
+        {
+            var tab = new RuntimeTabViewModel(
+                TabInstanceId.New(),
+                "Database",
+                "Local");
+            var panel = CreateDatabasePanel(PanelInstanceId.New(), "Database");
             tab.AddPanel(panel);
             runtime.Tabs.Add(tab);
             runtime.ActiveTab = tab;
@@ -4533,6 +4580,32 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default) =>
         AddMonitorPanelAsync(PanelKind.ProcessMonitor, cancellationToken);
 
+    public async Task<bool> AddDatabasePanelAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace tab before adding a database panel.");
+            return false;
+        }
+
+        var panel = CreateDatabasePanel(PanelInstanceId.New(), "Database");
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            panel,
+            "Database panel creation",
+            () =>
+            {
+                tab.AddPanel(panel);
+                StartTrackingRecovery(panel);
+                _ = tab.ActivatePanel(panel.Id);
+            },
+            cancellationToken);
+    }
+
     private async Task<bool> AddMonitorPanelAsync(
         PanelKind kind,
         CancellationToken cancellationToken)
@@ -4947,6 +5020,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default) =>
         AddSinglePanelTabAsync(PanelKind.Statistics, cancellationToken);
 
+    public Task<bool> AddDatabaseTabAsync(
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.DatabaseViewer, cancellationToken);
+
     public Task<bool> AddProcessMonitorTabAsync(
         CancellationToken cancellationToken = default) =>
         AddSinglePanelTabAsync(PanelKind.ProcessMonitor, cancellationToken);
@@ -5027,6 +5104,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         PanelInstanceId.New(),
                         title,
                         kind),
+                PanelKind.DatabaseViewer => CreateDatabasePanel(
+                    PanelInstanceId.New(),
+                    title),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
             };
             if (kind == PanelKind.Browser
@@ -5053,6 +5133,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.FileViewer => "File Viewer",
         PanelKind.Statistics => "Statistics",
         PanelKind.ProcessMonitor => "Process Monitor",
+        PanelKind.DatabaseViewer => "Database",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -5676,7 +5757,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void StartTrackingRecovery(RuntimePanelViewModel panel)
     {
-        if (panel is FileRuntimePanelViewModel or BrowserRuntimePanelViewModel)
+        if (panel is FileRuntimePanelViewModel
+            or BrowserRuntimePanelViewModel
+            or DatabaseRuntimePanelViewModel)
         {
             panel.PropertyChanged += OnRecoveryRelevantPanelPropertyChanged;
         }
@@ -5720,6 +5803,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 or nameof(FileRuntimePanelViewModel.ShowHidden),
             BrowserRuntimePanelViewModel => eventArgs.PropertyName is
                 nameof(BrowserRuntimePanelViewModel.CurrentAddress),
+            DatabaseRuntimePanelViewModel => eventArgs.PropertyName is
+                nameof(DatabaseRuntimePanelViewModel.RecoveryTarget),
             _ => false,
         } is false)
         {
@@ -6044,6 +6129,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelKind.FileViewer => ScreenPanelKind.FileViewer,
                 PanelKind.Statistics => ScreenPanelKind.Statistics,
                 PanelKind.ProcessMonitor => ScreenPanelKind.ProcessMonitor,
+                PanelKind.DatabaseViewer => ScreenPanelKind.DatabaseViewer,
                 _ => null,
             };
 
@@ -6085,6 +6171,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             {
                 TerminalRuntimePanelViewModel terminal => terminal.RecoveryStartupLocation,
                 BrowserRuntimePanelViewModel browser => browser.CurrentAddress.ToString(),
+                DatabaseRuntimePanelViewModel database =>
+                    database.RecoveryTarget ?? stored?.Startup.Location,
                 _ => stored?.Startup.Location,
             };
         }
@@ -8922,6 +9010,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             || Workspaces.Count > 0
             || Connections.Any(connection => connection.CanOpen);
         var canStartBrowser = CanStartBrowserSession;
+        var canStartDatabase = _databasePanelClient is not null;
         candidates.AddRange(
         [
             new LauncherSearchResultViewModel(
@@ -8978,6 +9067,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 IsAvailable: true,
                 UnavailableReason: null,
                 ["create", "new", "process", "monitor", "local", "host", "panel"]),
+            new LauncherSearchResultViewModel(
+                new LauncherSearchTarget.CreatePanel(PanelKind.DatabaseViewer),
+                Symbol.Database,
+                "Create · database",
+                "New database viewer",
+                "Query SQLite, PostgreSQL, or MySQL.",
+                canStartDatabase ? "Open" : "Unavailable",
+                canStartDatabase,
+                canStartDatabase
+                    ? null
+                    : "The database drivers are unavailable in this build.",
+                ["create", "new", "database", "sql", "sqlite", "postgres", "mysql", "panel"]),
         ]);
 
         foreach (var command in BuiltInCommands.Registry.Commands)
@@ -9486,6 +9587,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     "The recovered browser address is invalid.");
         }
 
+        if (recovered.Kind == RuntimePanelRecoveryKind.DatabaseViewer)
+        {
+            var target = DatabasePanelTarget.TryParse(recovered.StartupLocation);
+            return CreateDatabasePanel(
+                PanelInstanceId.New(),
+                recovered.Title,
+                target?.DriverId,
+                target?.ConnectionString);
+        }
+
         if (recovered.Kind == RuntimePanelRecoveryKind.Statistics)
         {
             var connection = recovered.ConnectionId is { } processConnectionId
@@ -9701,6 +9812,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelInstanceId.New(),
                 title,
                 PanelKindFromDefinition(panel.Kind));
+        }
+
+        if (panel.Kind == ScreenPanelKind.DatabaseViewer)
+        {
+            var target = DatabasePanelTarget.TryParse(panel.Startup.Location);
+            return CreateDatabasePanel(
+                PanelInstanceId.New(),
+                title,
+                target?.DriverId,
+                target?.ConnectionString);
         }
 
         if (panel.Kind != ScreenPanelKind.Terminal)
@@ -9926,6 +10047,30 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
     }
+
+    /// <summary>
+    /// A database panel needs no hosted session: queries run through the
+    /// application-level client, so the panel is unavailable only when the
+    /// desktop composition did not provide one.
+    /// </summary>
+    private RuntimePanelViewModel CreateDatabasePanel(
+        PanelInstanceId panelId,
+        string title,
+        string? driverId = null,
+        string? connectionString = null) =>
+        _databasePanelClient is null
+            ? new UnavailableRuntimePanelViewModel(
+                panelId,
+                PanelKind.DatabaseViewer,
+                title,
+                "Database",
+                "The database drivers are unavailable in this build.")
+            : new DatabaseRuntimePanelViewModel(
+                panelId,
+                title,
+                _databasePanelClient,
+                driverId,
+                connectionString);
 
     private void StartAcceptedRuntimePanels(RuntimeWorkspaceViewModel runtime)
     {
@@ -10314,6 +10459,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ScreenPanelKind.FileViewer => "Files",
         ScreenPanelKind.Statistics => "Statistics",
         ScreenPanelKind.ProcessMonitor => "Processes",
+        ScreenPanelKind.DatabaseViewer => "Database",
         _ => "Panel",
     };
 
@@ -10324,6 +10470,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.FileViewer => "File Viewer",
         PanelKind.Statistics => "Statistics",
         PanelKind.ProcessMonitor => "Process Monitor",
+        PanelKind.DatabaseViewer => "Database",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -10334,6 +10481,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ScreenPanelKind.FileViewer => PanelKind.FileViewer,
         ScreenPanelKind.Statistics => PanelKind.Statistics,
         ScreenPanelKind.ProcessMonitor => PanelKind.ProcessMonitor,
+        ScreenPanelKind.DatabaseViewer => PanelKind.DatabaseViewer,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -10348,6 +10496,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             "FILES" or "FILEVIEWER" => PanelKind.FileViewer,
             "STATISTICS" => PanelKind.Statistics,
             "PROCESSMONITOR" => PanelKind.ProcessMonitor,
+            "DATABASE" or "DATABASEVIEWER" => PanelKind.DatabaseViewer,
             _ => throw new InvalidOperationException(
                 "The recovered panel kind is not supported by this build."),
         };

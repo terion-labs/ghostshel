@@ -19,6 +19,8 @@ public sealed partial class NewPanelChooserView : UserControl
 
     public event EventHandler<RoutedEventArgs>? AddStatisticsPanelRequested;
 
+    public event EventHandler<RoutedEventArgs>? AddDatabasePanelRequested;
+
     public event EventHandler<RoutedEventArgs>? AddTerminalPanelRequested;
 
     /// <summary>Raised with the chosen connection row as the sender.</summary>
@@ -45,6 +47,9 @@ public sealed partial class NewPanelChooserView : UserControl
 
     private void OnAddStatisticsPanelClick(object? sender, RoutedEventArgs e) =>
         AddStatisticsPanelRequested?.Invoke(sender, e);
+
+    private void OnAddDatabasePanelClick(object? sender, RoutedEventArgs e) =>
+        AddDatabasePanelRequested?.Invoke(sender, e);
 
     private void OnAddTerminalPanelClick(object? sender, RoutedEventArgs e) =>
         AddTerminalPanelRequested?.Invoke(sender, e);

@@ -707,6 +707,7 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         new(ScreenPanelKind.FileViewer, "File viewer"),
         new(ScreenPanelKind.Statistics, "Statistics"),
         new(ScreenPanelKind.ProcessMonitor, "Process monitor"),
+        new(ScreenPanelKind.DatabaseViewer, "Database"),
     ];
 
     private readonly ScreenPanelDefinition _original;
@@ -870,7 +871,8 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
 
     public bool SupportsLocation => Kind is ScreenPanelKind.Terminal
         or ScreenPanelKind.Browser
-        or ScreenPanelKind.FileViewer;
+        or ScreenPanelKind.FileViewer
+        or ScreenPanelKind.DatabaseViewer;
 
     public ScreenPanelDefinition Build()
     {

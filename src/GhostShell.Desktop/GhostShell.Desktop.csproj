@@ -6,6 +6,7 @@
     <ProjectReference Include="..\GhostShell.App\GhostShell.App.csproj" />
     <ProjectReference Include="..\GhostShell.Application\GhostShell.Application.csproj" />
     <ProjectReference Include="..\GhostShell.Browser\GhostShell.Browser.csproj" />
+    <ProjectReference Include="..\GhostShell.Databases\GhostShell.Databases.csproj" />
     <ProjectReference Include="..\GhostShell.Files\GhostShell.Files.csproj" />
     <ProjectReference Include="..\GhostShell.Infrastructure\GhostShell.Infrastructure.csproj" />
     <ProjectReference Include="..\GhostShell.Mcp\GhostShell.Mcp.csproj" />

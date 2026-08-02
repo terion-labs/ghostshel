@@ -164,6 +164,33 @@ public sealed class ProjectDependencyTests
     }
 
     [Fact]
+    public void DatabasesBoundaryDependsOnlyOnApplicationCoreAndAdoDrivers()
+    {
+        var references = References(
+                LoadProject("src/GhostShell.Databases/GhostShell.Databases.csproj"),
+                "ProjectReference")
+            .Select(reference => Path.GetFileName(
+                reference.Replace('\\', Path.DirectorySeparatorChar)))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" },
+            references);
+
+        var sourceRoot = Path.Combine(RepositoryRoot, "src/GhostShell.Databases");
+        foreach (var file in Directory.EnumerateFiles(
+                     sourceRoot,
+                     "*.cs",
+                     SearchOption.TopDirectoryOnly))
+        {
+            var source = File.ReadAllText(file);
+            Assert.DoesNotContain("Avalonia", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Ghostty", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void ProtocolContainsNoUiNativeOrProviderPayloadTypes()
     {
         var sourceRoot = Path.Combine(RepositoryRoot, "src/GhostShell.Protocol");

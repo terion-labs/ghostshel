@@ -145,9 +145,11 @@ public static class ScreenValidator
                 panel.Id.Value));
         }
 
+        // A database viewer's location is its saved target: "driverId:connection string".
         var supportsLocation = panel.Kind is ScreenPanelKind.Terminal
             or ScreenPanelKind.Browser
-            or ScreenPanelKind.FileViewer;
+            or ScreenPanelKind.FileViewer
+            or ScreenPanelKind.DatabaseViewer;
         if (!supportsLocation && panel.Startup.Location is not null)
         {
             issues.Add(new(

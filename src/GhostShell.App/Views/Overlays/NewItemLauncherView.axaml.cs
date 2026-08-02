@@ -15,6 +15,8 @@ public sealed partial class NewItemLauncherView : UserControl
     public event EventHandler<RoutedEventArgs>? CloseRequested;
     public event EventHandler<RoutedEventArgs>? NewBrowserRequested;
 
+    public event EventHandler<RoutedEventArgs>? NewDatabaseRequested;
+
     public event EventHandler<RoutedEventArgs>? NewFileViewerRequested;
 
     public event EventHandler<RoutedEventArgs>? NewLocalTerminalRequested;
@@ -43,6 +45,9 @@ public sealed partial class NewItemLauncherView : UserControl
 
     private void OnNewBrowserClick(object? sender, RoutedEventArgs e) =>
         NewBrowserRequested?.Invoke(sender, e);
+
+    private void OnNewDatabaseClick(object? sender, RoutedEventArgs e) =>
+        NewDatabaseRequested?.Invoke(sender, e);
 
     private void OnNewFileViewerClick(object? sender, RoutedEventArgs e) =>
         NewFileViewerRequested?.Invoke(sender, e);

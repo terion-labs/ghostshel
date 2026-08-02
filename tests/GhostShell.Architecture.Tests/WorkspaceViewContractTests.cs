@@ -376,7 +376,7 @@ public sealed class WorkspaceViewContractTests
                 StringComparison.Ordinal) == true)
             .ToArray();
 
-        Assert.Equal(6, runtimeTemplateTypes.Length);
+        Assert.Equal(7, runtimeTemplateTypes.Length);
 
         var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
         var dragGhost = Assert.Single(

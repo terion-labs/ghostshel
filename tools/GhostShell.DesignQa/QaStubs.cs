@@ -346,3 +346,59 @@ internal sealed class QaTimeProvider : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => QaData.Now;
 }
+
+/// <summary>
+/// A synchronous database client so the viewer's table list and result grid are
+/// reviewable without any database engine behind the harness.
+/// </summary>
+internal sealed class QaDatabasePanelClient : IDatabasePanelClient
+{
+    public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } =
+    [
+        new("sqlite", "SQLite", "Data Source=/path/to/database.db"),
+        new("postgres", "PostgreSQL", "Host=localhost;Database=app;Username=postgres"),
+        new("mysql", "MySQL", "Server=localhost;Database=app;User ID=root"),
+    ];
+
+    public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
+        string driverId,
+        string connectionString,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<DatabaseTableDescriptor>>(
+        [
+            new("deployments", DatabaseTableKind.Table),
+            new("environments", DatabaseTableKind.Table),
+            new("recent_failures", DatabaseTableKind.View),
+            new("releases", DatabaseTableKind.Table),
+            new("service_owners", DatabaseTableKind.View),
+        ]);
+
+    public Task<DatabaseQueryPage> QueryAsync(
+        string driverId,
+        string connectionString,
+        string sql,
+        int maxRows,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new DatabaseQueryPage(
+            [
+                new("id", "INTEGER"),
+                new("service", "TEXT"),
+                new("region", "TEXT"),
+                new("status", "TEXT"),
+                new("deployed_at", "TEXT"),
+            ],
+            [
+                new string?[] { "184", "billing-api", "eu-central-1", "healthy", "2026-08-02T21:14:09Z" },
+                new string?[] { "183", "billing-api", "us-east-1", "healthy", "2026-08-02T21:12:44Z" },
+                new string?[] { "182", "checkout-web", "eu-central-1", "rolled-back", "2026-08-02T19:03:18Z" },
+                new string?[] { "181", "ledger-worker", "eu-central-1", "healthy", "2026-08-02T17:40:51Z" },
+                new string?[] { "180", "ledger-worker", "us-east-1", null, "2026-08-02T17:39:12Z" },
+                new string?[] { "179", "checkout-web", "ap-south-1", "healthy", "2026-08-02T15:22:30Z" },
+            ],
+            Truncated: false,
+            RowsAffected: 0,
+            TimeSpan.FromMilliseconds(12)));
+
+    public string BuildTablePreviewQuery(string driverId, string tableName, int limit) =>
+        $"SELECT * FROM \"{tableName}\" LIMIT {limit};";
+}

@@ -14,4 +14,7 @@ public enum PanelKind
     /// over the whole window; appended last so persisted history keeps its values.
     /// </summary>
     Placeholder,
+
+    /// <summary>Appended after Placeholder so persisted history keeps its values.</summary>
+    DatabaseViewer,
 }

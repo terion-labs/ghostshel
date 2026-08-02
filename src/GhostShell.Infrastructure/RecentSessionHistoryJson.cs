@@ -143,6 +143,7 @@ internal static class RecentSessionHistoryJson
         PanelKind.FileViewer => "file-viewer",
         PanelKind.Statistics => "statistics",
         PanelKind.ProcessMonitor => "process-monitor",
+        PanelKind.DatabaseViewer => "database-viewer",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 

@@ -414,6 +414,9 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void OnAddProcessMonitorPanelClick(object? sender, RoutedEventArgs e) =>
         AddPanel(sender, e, ScreenPanelKind.ProcessMonitor);
 
+    private void OnAddDatabasePanelClick(object? sender, RoutedEventArgs e) =>
+        AddPanel(sender, e, ScreenPanelKind.DatabaseViewer);
+
     private void AddPanel(object? sender, RoutedEventArgs e, ScreenPanelKind kind)
     {
         _ = e;

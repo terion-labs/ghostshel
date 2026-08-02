@@ -361,6 +361,7 @@
                     <Button Classes="TextButton Accent" Click="OnAddBrowserPanelClick" Content="+ Browser" IsEnabled="{Binding CanAddPanel}" />
                     <Button Classes="TextButton Accent" Click="OnAddStatisticsPanelClick" Content="+ Statistics" IsEnabled="{Binding CanAddPanel}" />
                     <Button Classes="TextButton Accent" Click="OnAddProcessMonitorPanelClick" Content="+ Processes" IsEnabled="{Binding CanAddPanel}" />
+                    <Button Classes="TextButton Accent" Click="OnAddDatabasePanelClick" Content="+ Database" IsEnabled="{Binding CanAddPanel}" />
                   </WrapPanel>
                 </Grid>
 

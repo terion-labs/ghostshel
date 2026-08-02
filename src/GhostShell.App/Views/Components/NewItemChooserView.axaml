@@ -54,7 +54,7 @@
 
     <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceSm}">
       <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Start something new" />
-      <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Button x:Name="NewTerminalButton" Classes="ChooserButton LauncherChooser" Click="OnNewLocalTerminalClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new local terminal">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="19" /></Border>
@@ -88,6 +88,13 @@
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="Process monitor" TextTrimming="CharacterEllipsis" />
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Watch running processes" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="5" Classes="ChooserButton LauncherChooser" Click="OnNewDatabaseClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new database viewer">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Database" FontSize="19" /></Border>
+            <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="Database" TextTrimming="CharacterEllipsis" />
+            <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Query SQLite, Postgres, MySQL" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
       </Grid>

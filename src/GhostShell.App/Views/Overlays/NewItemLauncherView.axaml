@@ -23,6 +23,7 @@
         AddConnectionRequested="OnAddConnectionClick"
         CloseRequested="OnCloseClick"
         NewBrowserRequested="OnNewBrowserClick"
+        NewDatabaseRequested="OnNewDatabaseClick"
         NewFileViewerRequested="OnNewFileViewerClick"
         NewLocalTerminalRequested="OnNewLocalTerminalClick"
         NewProcessMonitorRequested="OnNewProcessMonitorClick"

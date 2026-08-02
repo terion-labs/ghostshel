@@ -14,6 +14,7 @@ public sealed class RuntimePanelViewContractTests
     [InlineData("FileRuntimePanelView")]
     [InlineData("StatisticsRuntimePanelView")]
     [InlineData("ProcessMonitorRuntimePanelView")]
+    [InlineData("DatabaseRuntimePanelView")]
     [InlineData("UnavailableRuntimePanelView")]
     [InlineData("PanelPlaceholderView")]
     public void Panel_headers_are_the_dock_drag_surface_without_a_second_tab_strip(
@@ -45,6 +46,9 @@ public sealed class RuntimePanelViewContractTests
     [InlineData(
         "ProcessMonitorRuntimePanelViewModel",
         "ProcessMonitorRuntimePanelView")]
+    [InlineData(
+        "DatabaseRuntimePanelViewModel",
+        "DatabaseRuntimePanelView")]
     [InlineData(
         "UnavailableRuntimePanelViewModel",
         "UnavailableRuntimePanelView")]
@@ -98,6 +102,10 @@ public sealed class RuntimePanelViewContractTests
         "ProcessMonitorRuntimePanelView",
         "Process monitor panel",
         "Close Process Monitor panel")]
+    [InlineData(
+        "DatabaseRuntimePanelView",
+        "Database panel",
+        "Close database panel")]
     [InlineData(
         "UnavailableRuntimePanelView",
         null,

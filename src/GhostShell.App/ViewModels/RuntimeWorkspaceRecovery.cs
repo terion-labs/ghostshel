@@ -150,11 +150,13 @@ internal static class RuntimeWorkspaceRecoveryCodec
             FileRuntimePanelViewModel => RuntimePanelRecoveryKind.FileViewer,
             StatisticsRuntimePanelViewModel => RuntimePanelRecoveryKind.Statistics,
             ProcessMonitorRuntimePanelViewModel => RuntimePanelRecoveryKind.ProcessMonitor,
+            DatabaseRuntimePanelViewModel => RuntimePanelRecoveryKind.DatabaseViewer,
             PanelPlaceholderViewModel => RuntimePanelRecoveryKind.Placeholder,
             _ => RuntimePanelRecoveryKind.Unavailable,
         };
         var terminal = panel as TerminalRuntimePanelViewModel;
         var browser = panel as BrowserRuntimePanelViewModel;
+        var database = panel as DatabaseRuntimePanelViewModel;
         var file = panel as FileRuntimePanelViewModel;
         var statistics = panel as StatisticsRuntimePanelViewModel;
         var processes = panel as ProcessMonitorRuntimePanelViewModel;
@@ -167,7 +169,9 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 ?? file?.ConnectionId.Value
                 ?? statistics?.ConnectionId.Value
                 ?? processes?.ConnectionId.Value,
-            terminal?.RecoveryStartupLocation ?? browser?.CurrentAddress.ToString(),
+            terminal?.RecoveryStartupLocation
+                ?? browser?.CurrentAddress.ToString()
+                ?? database?.RecoveryTarget,
             file?.SelectedProfile?.Id ?? file?.CurrentLocation?.ProviderProfileId,
             file?.CurrentLocation is { } location
                 ? RuntimeFileLocationRecoveryPayload.Capture(location)
@@ -383,6 +387,14 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && panel.FileLocation is null
                 && !panel.ShowHidden
                 && panel.Filter is null,
+            RuntimePanelRecoveryKind.DatabaseViewer =>
+                panel.KindLabel is null
+                && panel.ConnectionId is null
+                && IsOptionalText(panel.StartupLocation, 4_096)
+                && panel.FileProviderProfileId is null
+                && panel.FileLocation is null
+                && !panel.ShowHidden
+                && panel.Filter is null,
             _ => false,
         };
         if (!IsIdentifier(panel.Key)
@@ -591,6 +603,7 @@ internal enum RuntimePanelRecoveryKind
     ProcessMonitor = 4,
     Browser = 5,
     Placeholder = 6,
+    DatabaseViewer = 7,
 }
 
 internal sealed record RuntimePanelRecoveryPayload(

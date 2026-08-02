@@ -41,6 +41,7 @@
             ShowWorkspaces="False"
             AddConnectionRequested="OnAddConnectionClick"
             NewBrowserRequested="OnChooseBrowserClick"
+            NewDatabaseRequested="OnChooseDatabaseClick"
             NewFileViewerRequested="OnChooseFileViewerClick"
             NewLocalTerminalRequested="OnChooseTerminalClick"
             NewProcessMonitorRequested="OnChooseProcessMonitorClick"

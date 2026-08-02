@@ -147,6 +147,7 @@ public sealed record RecentSessionHistoryItemViewModel(
         PanelKind.Browser => "Browser",
         PanelKind.Statistics => "Statistics",
         PanelKind.ProcessMonitor => "Process Monitor",
+        PanelKind.DatabaseViewer => "Database",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 

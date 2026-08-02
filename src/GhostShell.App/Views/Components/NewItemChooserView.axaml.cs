@@ -34,6 +34,7 @@ public sealed partial class NewItemChooserView : UserControl
     public event EventHandler<RoutedEventArgs>? AddConnectionRequested;
     public event EventHandler<RoutedEventArgs>? CloseRequested;
     public event EventHandler<RoutedEventArgs>? NewBrowserRequested;
+    public event EventHandler<RoutedEventArgs>? NewDatabaseRequested;
     public event EventHandler<RoutedEventArgs>? NewFileViewerRequested;
     public event EventHandler<RoutedEventArgs>? NewLocalTerminalRequested;
     public event EventHandler<RoutedEventArgs>? NewProcessMonitorRequested;
@@ -55,6 +56,9 @@ public sealed partial class NewItemChooserView : UserControl
 
     private void OnNewBrowserClick(object? sender, RoutedEventArgs e) =>
         NewBrowserRequested?.Invoke(sender, e);
+
+    private void OnNewDatabaseClick(object? sender, RoutedEventArgs e) =>
+        NewDatabaseRequested?.Invoke(sender, e);
 
     private void OnNewFileViewerClick(object? sender, RoutedEventArgs e) =>
         NewFileViewerRequested?.Invoke(sender, e);

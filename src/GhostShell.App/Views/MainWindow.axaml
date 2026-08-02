@@ -101,6 +101,14 @@
           PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
 
+    <DataTemplate DataType="vm:DatabaseRuntimePanelViewModel">
+      <panelViews:DatabaseRuntimePanelView
+          CloseRequested="OnCloseRuntimePanelClick"
+          SplitRequested="OnSplitRuntimePanelRequested"
+          GotFocus="OnRuntimePanelGotFocus"
+          PointerPressed="OnRuntimePanelPointerPressed" />
+    </DataTemplate>
+
     <DataTemplate DataType="vm:UnavailableRuntimePanelViewModel">
       <panelViews:UnavailableRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
@@ -113,6 +121,7 @@
           AddConnectionRequested="OnAddConnectionClick"
           BrowserRequested="OnPlaceholderBrowserClick"
           CloseRequested="OnCloseRuntimePanelClick"
+          DatabaseRequested="OnPlaceholderDatabaseClick"
           FileViewerRequested="OnPlaceholderFileViewerClick"
           GotFocus="OnRuntimePanelGotFocus"
           OpenConnectionRequested="OnPlaceholderConnectionClick"
@@ -289,6 +298,7 @@
           CloseRequested="OnCloseOverlayClick"
           IsVisible="{Binding IsNewItemVisible}"
           NewBrowserRequested="OnNewBrowserClick"
+          NewDatabaseRequested="OnNewDatabaseClick"
           NewFileViewerRequested="OnNewFileViewerClick"
           NewLocalTerminalRequested="OnNewLocalTerminalClick"
           NewProcessMonitorRequested="OnNewProcessMonitorClick"
@@ -303,6 +313,7 @@
           x:Name="NewPanelChooserOverlayView"
           AddBrowserPanelRequested="OnAddBrowserPanelClick"
           AddConnectionPanelRequested="OnAddConnectionPanelClick"
+          AddDatabasePanelRequested="OnAddDatabasePanelClick"
           AddFilePanelRequested="OnAddFilePanelClick"
           AddProcessMonitorPanelRequested="OnAddProcessMonitorPanelClick"
           AddStatisticsPanelRequested="OnAddStatisticsPanelClick"

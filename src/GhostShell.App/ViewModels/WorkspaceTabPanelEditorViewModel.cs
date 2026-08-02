@@ -63,7 +63,8 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
 
     public bool SupportsLocation => Kind is ScreenPanelKind.Terminal
         or ScreenPanelKind.Browser
-        or ScreenPanelKind.FileViewer;
+        or ScreenPanelKind.FileViewer
+        or ScreenPanelKind.DatabaseViewer;
 
     public IReadOnlyList<WorkspaceLayoutSlotOption> SlotOptions => _slotOptions;
 

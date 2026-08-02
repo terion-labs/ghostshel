@@ -131,6 +131,33 @@ public sealed partial class MainWindow
         }
     }
 
+    public async Task RequestNewDatabaseAsync()
+    {
+        if (ViewModel.HasOverlay && !await TryCloseOverlayAsync())
+        {
+            return;
+        }
+
+        if (!ViewModel.HasRuntimeWorkspace)
+        {
+            await ReplaceRuntimeWorkspaceAsync(
+                ViewModel.OpenLocalDatabaseWorkspaceAsync);
+            return;
+        }
+
+        ViewModel.ShowWorkspace();
+        if (ViewModel.RuntimeWorkspace?.ActiveTab is null)
+        {
+            ViewModel.SetError("Open a workspace or connection before adding a database viewer.");
+            return;
+        }
+
+        if (await ViewModel.AddDatabasePanelAsync(_lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
     public Task RequestNewStatisticsAsync() =>
         RequestNewMonitorAsync(PanelKind.Statistics);
 
@@ -142,7 +169,8 @@ public sealed partial class MainWindow
         if (kind is not (PanelKind.Browser
             or PanelKind.FileViewer
             or PanelKind.Statistics
-            or PanelKind.ProcessMonitor))
+            or PanelKind.ProcessMonitor
+            or PanelKind.DatabaseViewer))
         {
             throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
@@ -172,6 +200,8 @@ public sealed partial class MainWindow
                 await ViewModel.AddStatisticsTabAsync(_lifetime.Token),
             PanelKind.ProcessMonitor =>
                 await ViewModel.AddProcessMonitorTabAsync(_lifetime.Token),
+            PanelKind.DatabaseViewer =>
+                await ViewModel.AddDatabaseTabAsync(_lifetime.Token),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
         if (added)
@@ -186,6 +216,7 @@ public sealed partial class MainWindow
         PanelKind.FileViewer => RequestNewFileViewerAsync(),
         PanelKind.Statistics => RequestNewStatisticsAsync(),
         PanelKind.ProcessMonitor => RequestNewProcessMonitorAsync(),
+        PanelKind.DatabaseViewer => RequestNewDatabaseAsync(),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -886,6 +917,14 @@ public sealed partial class MainWindow
         await ChoosePlaceholderAsync(
             sender,
             () => ViewModel.AddProcessMonitorPanelAsync(_lifetime.Token));
+    }
+
+    private async void OnPlaceholderDatabaseClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddDatabasePanelAsync(_lifetime.Token));
     }
 
     private async void OnPlaceholderConnectionClick(object? sender, RoutedEventArgs e)
@@ -1692,6 +1731,16 @@ public sealed partial class MainWindow
         _ = sender;
         _ = e;
         if (await ViewModel.AddProcessMonitorPanelAsync(_lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private async void OnAddDatabasePanelClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (await ViewModel.AddDatabasePanelAsync(_lifetime.Token))
         {
             FocusActivePanel();
         }

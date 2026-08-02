@@ -202,6 +202,14 @@ internal sealed class QaApplication : Avalonia.Application
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleCapabilityRequest();
         }),
+        // The database viewer with a connected stub: table list, query editor,
+        // and a populated result grid. Last workspace route, because the added
+        // panel stays in the shared fixture.
+        new("workspace-database", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDatabasePanel(vm);
+        }),
         new("settings-workspace-editor", vm =>
         {
             vm.ShowSettings(SettingsPage.Workspaces);
@@ -546,6 +554,46 @@ internal sealed class QaApplication : Avalonia.Application
             .Invoke(viewModel, [workspace]);
 
         return viewModel;
+    }
+
+    private static void AddSampleDatabasePanel(MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            return;
+        }
+
+        var tab = workspace.Tabs.FirstOrDefault(candidate =>
+            candidate.Panels.Any(panel => panel is DatabaseRuntimePanelViewModel));
+        if (tab is null)
+        {
+            tab = new RuntimeTabViewModel(
+                new TabInstanceId("qa-tab-database"),
+                "deployments-db",
+                "Local");
+            var panel = new DatabaseRuntimePanelViewModel(
+                new PanelInstanceId("qa-panel-database"),
+                "Database",
+                new QaDatabasePanelClient(),
+                driverId: "sqlite",
+                connectionString: "Data Source=/srv/app/production.db");
+            tab.AddPanel(panel);
+            _ = tab.ActivatePanel(panel.Id);
+            // The stub completes synchronously, so the capture shows real rows.
+            _ = panel.PreviewTableAsync(panel.Tables[0]);
+            tab.NotifyPanelLayoutChanged();
+            workspace.Tabs.Add(tab);
+        }
+
+        foreach (var candidate in workspace.Tabs)
+        {
+            candidate.IsActive = ReferenceEquals(candidate, tab);
+        }
+
+        typeof(RuntimeWorkspaceViewModel)
+            .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(workspace, [tab]);
     }
 
     /// <summary>

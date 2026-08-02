@@ -672,6 +672,13 @@ public sealed partial class MainWindow : Window
         await RequestNewAdapterTabAsync(PanelKind.ProcessMonitor);
     }
 
+    private async void OnNewDatabaseClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await RequestNewAdapterTabAsync(PanelKind.DatabaseViewer);
+    }
+
     private async void OnAddConnectionClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -1242,6 +1249,9 @@ public sealed partial class MainWindow : Window
                 break;
             case PanelKind.ProcessMonitor:
                 await RequestNewProcessMonitorAsync();
+                break;
+            case PanelKind.DatabaseViewer:
+                await RequestNewDatabaseAsync();
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
