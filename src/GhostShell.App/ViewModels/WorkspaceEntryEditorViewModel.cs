@@ -53,9 +53,9 @@ public sealed class WorkspaceEntryEditorViewModel : ObservableObject, IDisposabl
 
     public string KindLabel => Kind switch
     {
-        WorkspaceEditorEntryKind.Connection => "CONNECTION",
-        WorkspaceEditorEntryKind.SavedScreen => "SAVED SCREEN",
-        WorkspaceEditorEntryKind.WorkspaceTab => "WORKSPACE TAB",
+        WorkspaceEditorEntryKind.Connection => "Connection",
+        WorkspaceEditorEntryKind.SavedScreen => "Saved screen",
+        WorkspaceEditorEntryKind.WorkspaceTab => "Workspace tab",
         _ => throw new ArgumentOutOfRangeException(),
     };
 
@@ -144,7 +144,7 @@ public sealed class WorkspaceEntryEditorViewModel : ObservableObject, IDisposabl
         _ => true,
     };
 
-    public string ReferenceStatus => HasMissingReference ? "REPAIR REQUIRED" : "AVAILABLE";
+    public string ReferenceStatus => HasMissingReference ? "Repair required" : "Available";
 
     internal static WorkspaceEntryEditorViewModel Create(
         WorkspaceEntry entry,

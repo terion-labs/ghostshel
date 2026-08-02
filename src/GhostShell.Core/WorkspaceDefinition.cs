@@ -7,6 +7,12 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     public const int CurrentSchemaVersion = 1;
     public const string DefaultIcon = "workspace";
 
+    /// <summary>
+    /// The one workspace that always exists. It is seeded on start when absent
+    /// and the catalog refuses to delete it.
+    /// </summary>
+    public const string DefaultWorkspaceId = "default";
+
     [JsonConstructor]
     public WorkspaceDefinition(
         WorkspaceId id,
@@ -16,7 +22,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         string? accent,
         IReadOnlyList<WorkspaceEntry> entries,
         AgentPolicy? agentPolicyOverride = null,
-        string? icon = null)
+        string? icon = null,
+        bool autoSave = false)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -26,6 +33,7 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         Entries = Array.AsReadOnly(entries?.ToArray() ?? throw new ArgumentNullException(nameof(entries)));
         AgentPolicyOverride = agentPolicyOverride;
         Icon = string.IsNullOrWhiteSpace(icon) ? DefaultIcon : icon.Trim();
+        AutoSave = autoSave;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -53,6 +61,12 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     public IReadOnlyList<WorkspaceEntry> Entries { get; }
 
     public AgentPolicy? AgentPolicyOverride { get; }
+
+    /// <summary>
+    /// When set, tab and panel changes made while working inside the open
+    /// workspace are written back to this definition automatically.
+    /// </summary>
+    public bool AutoSave { get; }
 
     public WorkspaceDefinition MoveEntry(WorkspaceEntryId entryId, int destinationIndex)
     {
@@ -84,7 +98,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
             Accent,
             reordered,
             AgentPolicyOverride,
-            Icon);
+            Icon,
+            AutoSave);
     }
 
     public static bool IsValidIcon(string? icon)

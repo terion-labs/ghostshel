@@ -58,7 +58,7 @@ public sealed class AgentSafetyCardViewContractTests
             card.Descendants(),
             element => string.Equals(
                 AttributeValue(element, "Content"),
-                "NOT APPROVAL",
+                "Not approval",
                 StringComparison.Ordinal));
 
         var answer = FindNamedElement(document, "AgentQuestionResponseInput");

@@ -13,7 +13,7 @@ public sealed record AgentChatMessageViewModel(
 
     public bool IsAssistant => Role == AgentChatMessageRole.Assistant;
 
-    public string Author => IsUser ? "YOU" : "GHOSTSHELL";
+    public string Author => IsUser ? "You" : "GhostSHELL";
 }
 
 public sealed record AgentApprovalArgumentViewModel(
@@ -97,11 +97,7 @@ public sealed record AgentQuestionCardViewModel
         ArgumentNullException.ThrowIfNull(question);
         Id = question.Id;
         Question = string.Concat(question.Question);
-        ExpiresAt = question.ExpiresAtUtc
-            .ToLocalTime()
-            .ToString(
-                "yyyy-MM-dd HH:mm:ss zzz",
-                CultureInfo.InvariantCulture);
+        ExpiresAt = AgentPresentationTime.Friendly(question.ExpiresAtUtc);
         ContentOrigin = question.ContentOrigin;
     }
 
@@ -338,16 +334,16 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public string StateLabel => State switch
     {
-        GovernedAgentState.Ready => "READY",
-        GovernedAgentState.StreamingProvider => "THINKING",
-        GovernedAgentState.AwaitingUserInput => "INPUT NEEDED",
-        GovernedAgentState.AwaitingCapabilityDecision => "CAPABILITY REQUEST",
-        GovernedAgentState.AwaitingApproval => "APPROVAL",
-        GovernedAgentState.RunningTool => "TOOL ACTIVE",
-        GovernedAgentState.Cancelling => "STOPPING",
-        GovernedAgentState.Failed => "FAILED",
-        GovernedAgentState.Cancelled => "STOPPED",
-        _ => "UNKNOWN",
+        GovernedAgentState.Ready => "Ready",
+        GovernedAgentState.StreamingProvider => "Thinking",
+        GovernedAgentState.AwaitingUserInput => "Input needed",
+        GovernedAgentState.AwaitingCapabilityDecision => "Capability request",
+        GovernedAgentState.AwaitingApproval => "Approval",
+        GovernedAgentState.RunningTool => "Tool active",
+        GovernedAgentState.Cancelling => "Stopping",
+        GovernedAgentState.Failed => "Failed",
+        GovernedAgentState.Cancelled => "Stopped",
+        _ => "Unknown",
     };
 
     public bool IsBusy => State is
@@ -573,8 +569,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     }
 
     public string CapabilityLabel => TerminalMutationAvailable
-        ? "GOVERNED INPUT"
-        : "CAPABILITY CHECK";
+        ? "Governed input"
+        : "Capability check";
 
     public string EffectivePolicyProvider
     {
@@ -866,8 +862,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public string ConnectionStatus => SelectedProvider is null
         ? HasProvider && _isRunBound
-            ? "CLEAR REQUIRED"
-            : "NOT CONNECTED"
+            ? "Clear required"
+            : "Not connected"
         : StateLabel;
 
     public Task SendAsync(
@@ -1645,7 +1641,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var target = $"Verified target · {ShortDigest(action.TargetIdentity)}";
         var occurred = LocalAuditTime(action.OccurredAtUtc);
         return new AgentAuditEntryViewModel(
-            "ACTION",
+            "Action",
             title,
             action.ToolName,
             outcome,
@@ -1680,12 +1676,12 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var target = $"Verified target · {ShortDigest(policy.TargetIdentity)}";
         var occurred = LocalAuditTime(policy.OccurredAtUtc);
         return new AgentAuditEntryViewModel(
-            "POLICY",
+            "Policy",
             transition,
             string.Empty,
-            "SUCCEEDED",
+            "Succeeded",
             evidence,
-            "SUCCEEDED",
+            "Succeeded",
             result,
             target,
             occurred,
@@ -1926,9 +1922,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                     argument.DisplayValue,
                     argument.IsSensitive))
                 .ToArray(),
-            approval.ExpiresAtUtc
-                .ToLocalTime()
-                .ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture),
+            AgentPresentationTime.Friendly(approval.ExpiresAtUtc),
             approval.TemporarilyYieldsTerminalInput);
     }
 
@@ -1947,11 +1941,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             request.TargetTitle,
             FormatTarget(request.Target),
             request.AffectedToolTitles.ToArray(),
-            request.ExpiresAtUtc
-                .ToLocalTime()
-                .ToString(
-                    "yyyy-MM-dd HH:mm:ss zzz",
-                    CultureInfo.InvariantCulture));
+            AgentPresentationTime.Friendly(request.ExpiresAtUtc));
     }
 
     private static AgentYoloAuthorityViewModel? CreateYoloAuthority(
@@ -1965,12 +1955,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var duration = authority.ExpiresAtUtc - authority.ConfirmedAtUtc;
         return new AgentYoloAuthorityViewModel(
             FormatTarget(authority.Target),
-            $"{duration.TotalMinutes:0} MIN WINDOW",
-            authority.ExpiresAtUtc
-                .ToLocalTime()
-                .ToString(
-                    "yyyy-MM-dd HH:mm:ss zzz",
-                    CultureInfo.InvariantCulture));
+            $"{duration.TotalMinutes:0} min window",
+            AgentPresentationTime.Friendly(authority.ExpiresAtUtc));
     }
 
     private static string FormatTarget(AgentTarget? target) =>
@@ -2003,7 +1989,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     private static string FormatEnum<T>(T value)
         where T : struct, Enum =>
-        value.ToString().ToUpperInvariant();
+        value.ToString();
 
     private void NotifyAvailabilityChanged()
     {
@@ -2076,4 +2062,17 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             destination.Add(item);
         }
     }
+}
+
+/// <summary>
+/// User-facing time formatting for run-local authority: a person deciding a
+/// permission reads "2 Jan 2026, 14:34", not a zoned ISO timestamp. Audit
+/// evidence keeps its precise form — that surface is a record, not a prompt.
+/// </summary>
+internal static class AgentPresentationTime
+{
+    public static string Friendly(DateTimeOffset value) =>
+        value.ToLocalTime().ToString(
+            "d MMM yyyy, HH:mm",
+            CultureInfo.InvariantCulture);
 }

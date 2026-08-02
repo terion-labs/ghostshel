@@ -61,7 +61,11 @@ public sealed class DefinitionCatalogTests
         Assert.Equal(7, stored.Revision);
         Assert.Empty(second.Value.Layouts);
         Assert.Empty(second.Value.Screens);
-        Assert.Empty(second.Value.Workspaces);
+        // The Default workspace always exists: it is re-seeded even when other
+        // definitions were persisted, and only it.
+        var defaultWorkspace = Assert.Single(second.Value.Workspaces).Value;
+        Assert.Equal(WorkspaceDefinition.DefaultWorkspaceId, defaultWorkspace.Id.Value);
+        Assert.Empty(defaultWorkspace.Entries);
         Assert.Equal(attemptsAfterFirstInitialization, fixture.TotalSaveAttempts);
     }
 
@@ -347,12 +351,20 @@ public sealed class DefinitionCatalogTests
         Assert.Equal(attemptsBeforeSave, fixture.Screens.SaveAttempts);
     }
 
+    /// <summary>
+    /// Saved screens follow a layout edit instead of vetoing it: an added slot
+    /// arrives in each dependent screen as an unassigned terminal panel, and a
+    /// removed slot takes its mapping with it. Blocking the save made the
+    /// designer a dead end for any layout a screen had adopted.
+    /// </summary>
     [Fact]
-    public async Task Save_layout_rejects_a_change_that_would_invalidate_a_saved_screen()
+    public async Task Save_layout_reconciles_dependent_screens_with_the_new_slot_set()
     {
         var fixture = new CatalogFixture();
         Assert.True((await fixture.Catalog.InitializeAsync(CancellationToken.None)).IsSuccess);
         var current = Assert.Single(fixture.Catalog.Snapshot.Layouts);
+        var originalScreen = Assert.Single(fixture.Catalog.Snapshot.Screens).Value;
+        var originalPanel = Assert.Single(originalScreen.Panels);
         var changedShape = new LayoutDefinition(
             current.Value.Id,
             LayoutDefinition.CurrentSchemaVersion,
@@ -368,9 +380,100 @@ public sealed class DefinitionCatalogTests
             current.Revision,
             CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(DefinitionStoreErrorCode.DependencyConflict, result.Error!.Code);
-        Assert.Equal(current, Assert.Single(fixture.Catalog.Snapshot.Layouts));
+        Assert.True(result.IsSuccess);
+        var reconciled = Assert.Single(fixture.Catalog.Snapshot.Screens).Value;
+        Assert.Equal(2, reconciled.Panels.Count);
+        var kept = Assert.Single(
+            reconciled.Panels,
+            panel => panel.SlotId == originalPanel.SlotId);
+        Assert.Equal(originalPanel, kept);
+        var added = Assert.Single(
+            reconciled.Panels,
+            panel => panel.SlotId == new LayoutSlotId("new-slot"));
+        Assert.Equal(ScreenPanelKind.Terminal, added.Kind);
+        Assert.Null(added.ConnectionId);
+
+        // Shrinking back to one slot drops the added mapping again.
+        var shrunk = new LayoutDefinition(
+            current.Value.Id,
+            LayoutDefinition.CurrentSchemaVersion,
+            current.Value.Name,
+            new LayoutGrid(1, 1),
+            [CreateSlot("main", column: 0)]);
+        var stored = Assert.Single(fixture.Catalog.Snapshot.Layouts);
+        var shrinkResult = await fixture.Catalog.SaveLayoutAsync(
+            shrunk,
+            stored.Revision,
+            CancellationToken.None);
+
+        Assert.True(shrinkResult.IsSuccess);
+        var restored = Assert.Single(fixture.Catalog.Snapshot.Screens).Value;
+        Assert.Equal(originalPanel, Assert.Single(restored.Panels));
+    }
+
+    [Fact]
+    public async Task Save_workspace_with_layouts_accepts_tab_layouts_pending_in_the_same_batch()
+    {
+        var fixture = new CatalogFixture();
+        Assert.True((await fixture.Catalog.InitializeAsync(CancellationToken.None)).IsSuccess);
+        var connection = Assert.Single(fixture.Catalog.Snapshot.Connections).Value;
+        var stored = fixture.Catalog.Snapshot.Workspaces
+            .Single(item => item.Value.Id.Value == WorkspaceDefinition.DefaultWorkspaceId);
+        var autoLayout = new LayoutDefinition(
+            new LayoutId($"{LayoutDefinition.AutoSaveIdPrefix}{stored.Value.Id.Value}.tab-0"),
+            LayoutDefinition.CurrentSchemaVersion,
+            "Terminal (auto)",
+            new LayoutGrid(1, 1),
+            [CreateSlot("slot-a", column: 0)]);
+        var workspace = new WorkspaceDefinition(
+            stored.Value.Id,
+            WorkspaceDefinition.CurrentSchemaVersion,
+            stored.Value.Name,
+            stored.Value.Description,
+            stored.Value.Accent,
+            [
+                new WorkspaceEntry.Tab(
+                    WorkspaceEntryId.New(),
+                    "Terminal",
+                    autoLayout.Id,
+                    [
+                        new ScreenPanelDefinition(
+                            ScreenPanelId.New(),
+                            new LayoutSlotId("slot-a"),
+                            ScreenPanelKind.Terminal,
+                            "Terminal",
+                            connection.Id,
+                            PanelStartupBehavior.None),
+                    ]),
+            ],
+            stored.Value.AgentPolicyOverride,
+            stored.Value.Icon,
+            autoSave: true);
+
+        // Saved through the plain workspace path the tab layout is missing;
+        // the batched save validates the workspace against the pending layout.
+        var alone = await fixture.Catalog.SaveWorkspaceAsync(
+            workspace,
+            stored.Revision,
+            CancellationToken.None);
+        Assert.False(alone.IsSuccess);
+
+        var error = await fixture.Catalog.SaveWorkspaceWithLayoutsAsync(
+            workspace,
+            stored.Revision,
+            [(autoLayout, null)],
+            CancellationToken.None);
+
+        Assert.Null(error);
+        Assert.Contains(
+            fixture.Catalog.Snapshot.Layouts,
+            item => item.Value.Id == autoLayout.Id);
+        var saved = fixture.Catalog.Snapshot.Workspaces
+            .Single(item => item.Value.Id == stored.Value.Id)
+            .Value;
+        Assert.True(saved.AutoSave);
+        var tab = Assert.IsType<WorkspaceEntry.Tab>(Assert.Single(saved.Entries));
+        Assert.Equal(autoLayout.Id, tab.LayoutId);
     }
 
     [Fact]

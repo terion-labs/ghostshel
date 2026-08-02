@@ -53,7 +53,7 @@
               <TextBlock FontWeight="SemiBold" Text="Shell executable" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Leave blank to use the host default shell." />
             </StackPanel>
-            <TextBox Grid.Column="1" Classes="Monospace" Text="{Binding LocalShell}" PlaceholderText="/bin/zsh" />
+            <TextBox Grid.Column="1" Text="{Binding LocalShell}" PlaceholderText="/bin/zsh" />
           </Grid>
         </controls:SurfaceCard>
 
@@ -70,12 +70,12 @@
             </Grid>
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding UsesSecretReference}">
               <TextBlock FontWeight="SemiBold" Text="Credential secret reference" />
-              <TextBox Classes="Monospace" Text="{Binding SecretReference}" PlaceholderText="Opaque secret ID from the OS vault" />
+              <TextBox Text="{Binding SecretReference}" PlaceholderText="Opaque secret ID from the OS vault" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Diagnostics authenticate inside the secure adapter boundary. A terminal claims the stored credential through a one-use, lifetime-bound helper when it starts." TextWrapping="Wrap" />
             </StackPanel>
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding UsesPassphraseReference}">
               <TextBlock FontWeight="SemiBold" Text="Passphrase secret reference (optional)" />
-              <TextBox Classes="Monospace" Text="{Binding PassphraseSecretReference}" />
+              <TextBox Text="{Binding PassphraseSecretReference}" />
             </StackPanel>
           </StackPanel>
         </controls:SurfaceCard>
@@ -98,7 +98,7 @@
           <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Startup directory" />
-              <TextBox Classes="Monospace" Text="{Binding StartupDirectory}" PlaceholderText="Optional working directory" />
+              <TextBox Text="{Binding StartupDirectory}" PlaceholderText="Optional working directory" />
             </StackPanel>
             <Grid ColumnDefinitions="*,140,140" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
@@ -115,8 +115,8 @@
                     Text="Remote runtimes use explicit keepalive arguments."
                     TextWrapping="Wrap" />
               </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="INTERVAL (SECONDS)" /><NumericUpDown Minimum="1" Maximum="86400" Value="{Binding KeepAliveSeconds}" /></StackPanel>
-              <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="MAX FAILURES" /><NumericUpDown Minimum="1" Maximum="100" Value="{Binding KeepAliveFailures}" /></StackPanel>
+              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Interval (seconds)" /><NumericUpDown Minimum="1" Maximum="86400" Value="{Binding KeepAliveSeconds}" /></StackPanel>
+              <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Max failures" /><NumericUpDown Minimum="1" Maximum="100" Value="{Binding KeepAliveFailures}" /></StackPanel>
             </Grid>
           </StackPanel>
         </controls:SurfaceCard>
@@ -136,7 +136,7 @@
             <DataTemplate>
               <Grid Margin="{controls:Inset Xs}" ColumnDefinitions="9,110,80,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <Ellipse Width="7" Height="7" Fill="{Binding StatusColor}" />
-                <TextBlock Grid.Column="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Stage}" />
+                <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Stage}" />
                 <TextBlock Grid.Column="2" Classes="Eyebrow" Text="{Binding Status}" />
                 <TextBlock Grid.Column="3" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Message}" TextWrapping="Wrap" />
               </Grid>
@@ -159,12 +159,12 @@
                   IsVisible="{Binding CanTrustHostKey}" />
             </Grid>
             <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="Eyebrow" Text="ALGORITHM" />
-              <TextBlock Grid.Column="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Algorithm}" />
-              <TextBlock Grid.Row="1" Classes="Eyebrow" Text="PRESENTED" />
-              <TextBlock Grid.Row="1" Grid.Column="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
-              <TextBlock Grid.Row="2" Classes="Eyebrow" Text="PREVIOUS" />
-              <TextBlock Grid.Row="2" Grid.Column="1" Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TrustedHostKeyFingerprint}" TextWrapping="Wrap" />
+              <TextBlock Classes="Eyebrow" Text="Algorithm" />
+              <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Algorithm}" />
+              <TextBlock Grid.Row="1" Classes="Eyebrow" Text="Presented" />
+              <TextBlock Grid.Row="1" Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="2" Classes="Eyebrow" Text="Previous" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TrustedHostKeyFingerprint}" TextWrapping="Wrap" />
             </Grid>
           </StackPanel>
         </controls:SurfaceCard>

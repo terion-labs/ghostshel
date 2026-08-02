@@ -97,6 +97,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? EditSecretRequested;
 
+    public event EventHandler<RoutedEventArgs>? CreateWorkspaceRequested;
+
     public event EventHandler<RoutedEventArgs>? EditWorkspaceRequested;
 
     public event EventHandler<RoutedEventArgs>? ExportDefinitionsRequested;
@@ -356,6 +358,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnEditSecretClick(object? sender, RoutedEventArgs e) =>
         EditSecretRequested?.Invoke(sender, e);
+
+    private void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e) =>
+        CreateWorkspaceRequested?.Invoke(sender, e);
 
     private void OnEditWorkspaceClick(object? sender, RoutedEventArgs e) =>
         EditWorkspaceRequested?.Invoke(sender, e);

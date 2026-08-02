@@ -104,6 +104,7 @@ public static class DesktopComposition
         services.AddSingleton<IGovernedAgentRuntime>(provider =>
             provider.GetRequiredService<GovernedAgentRuntime>());
         services.AddSingleton(typeof(IDefinitionRepository<>), typeof(SqliteDefinitionRepository<>));
+        services.AddSingleton<ILayoutGraphStore, SqliteLayoutGraphStore>();
         services.AddSingleton<IDefinitionCatalog, DefinitionCatalog>();
         services.AddSingleton<IDefinitionBundleStore, SqliteDefinitionBundleStore>();
         services.AddSingleton<IApplicationRunStore, SqliteApplicationRunStore>();

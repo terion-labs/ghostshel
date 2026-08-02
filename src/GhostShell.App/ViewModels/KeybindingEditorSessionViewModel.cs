@@ -12,9 +12,9 @@ public sealed record KeybindingProfileItemViewModel(
     bool IsBuiltIn,
     bool IsUnsaved)
 {
-    public string LayerLabel => Layer.ToString().ToUpperInvariant();
+    public string LayerLabel => Layer.ToString();
 
-    public string StateLabel => IsUnsaved ? "UNSAVED" : IsBuiltIn ? "PRESET" : "CUSTOM";
+    public string StateLabel => IsUnsaved ? "Unsaved" : IsBuiltIn ? "Preset" : "Custom";
 }
 
 public sealed record KeybindingEditorRowItemViewModel(
@@ -52,12 +52,12 @@ public sealed record KeybindingEditorRowItemViewModel(
     public bool HasIssue => Row.Issues.Count > 0;
 
     public string Status => Row.HasBlockingConflict
-        ? "CONFLICT"
+        ? "Conflict"
         : Row.IsUnknownCommand
-            ? "UNKNOWN"
+            ? "Unknown"
             : Row.IsBound
-                ? "ACTIVE"
-                : "UNBOUND";
+                ? "Active"
+                : "Unbound";
 
     public string IssueSummary => string.Join(' ', Row.Issues.Select(issue => issue.Message));
 }

@@ -18,7 +18,7 @@
           <controls:PanelDockHandle DataContext="{Binding $parent[dock:DockableControl].DataContext}">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
               <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="ZOOMED" />
+              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
             </StackPanel>
           </controls:PanelDockHandle>
           <StackPanel

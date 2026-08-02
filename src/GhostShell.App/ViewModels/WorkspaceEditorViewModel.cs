@@ -20,6 +20,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private string _description;
     private string _accent;
     private string _icon;
+    private bool _autoSave;
     private string _iconSearch = string.Empty;
     private bool _isDirty;
     private IReadOnlyList<DefinitionValidationIssue> _validationIssues = [];
@@ -77,6 +78,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _description = workspace.Description ?? string.Empty;
         _accent = workspace.Accent ?? string.Empty;
         _icon = workspace.Icon;
+        _autoSave = workspace.AutoSave;
         _screens = screens.ToDictionary(screen => screen.Id);
         _readOnlyEntries = new(_entries);
 
@@ -235,13 +237,29 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// When on, tab and panel changes made while working inside the open
+    /// workspace are written back to this definition automatically.
+    /// </summary>
+    public bool AutoSave
+    {
+        get => _autoSave;
+        set
+        {
+            if (SetProperty(ref _autoSave, value))
+            {
+                Changed();
+            }
+        }
+    }
+
     public bool IsDirty => _isDirty;
 
     public string DirtyStatus => IsNew
-        ? "UNSAVED NEW WORKSPACE"
+        ? "Unsaved new workspace"
         : IsDirty
-            ? "UNSAVED CHANGES"
-            : "SAVED DEFINITION";
+            ? "Unsaved changes"
+            : "Saved definition";
 
     public IReadOnlyList<DefinitionValidationIssue> ValidationIssues => _validationIssues;
 
@@ -419,10 +437,12 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         var accent = _original.Accent ?? string.Empty;
         var accentChanged = !StringComparer.Ordinal.Equals(_accent, accent);
         var iconChanged = !StringComparer.Ordinal.Equals(_icon, _original.Icon);
+        var autoSaveChanged = _autoSave != _original.AutoSave;
         _name = _original.Name;
         _description = description;
         _accent = accent;
         _icon = _original.Icon;
+        _autoSave = _original.AutoSave;
         if (nameChanged)
         {
             OnPropertyChanged(nameof(Name));
@@ -441,6 +461,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         if (iconChanged)
         {
             OnPropertyChanged(nameof(Icon));
+        }
+
+        if (autoSaveChanged)
+        {
+            OnPropertyChanged(nameof(AutoSave));
         }
 
         RestoreEntries();
@@ -524,7 +549,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         Accent,
         _entries.Select(entry => entry.Build()).ToArray(),
         _original.AgentPolicyOverride,
-        Icon);
+        Icon,
+        AutoSave);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {
@@ -641,7 +667,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             .Select(connection => new ScreenConnectionOption(
                 connection.Id,
                 connection.Name,
-                connection.ConnectionKind.ToString().ToUpperInvariant(),
+                KindBadges.Connection(connection.ConnectionKind),
                 true))
             .ToList();
         var referencedIds = workspace.Entries
@@ -663,7 +689,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             options.Add(new ScreenConnectionOption(
                 missingId,
                 missingId.Value,
-                "UNAVAILABLE",
+                "Unavailable",
                 false));
         }
 
@@ -752,7 +778,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             .Select(profile => new ScreenFileProviderOption(
                 profile.Id,
                 profile.Name,
-                profile.ProviderKind.ToString().ToUpperInvariant(),
+                KindBadges.FileProvider(profile.ProviderKind),
                 true)));
         var referencedIds = workspace.Entries
             .OfType<WorkspaceEntry.Tab>()
@@ -767,7 +793,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             options.Add(new ScreenFileProviderOption(
                 missingId,
                 missingId.Value,
-                "UNAVAILABLE",
+                "Unavailable",
                 false));
         }
 

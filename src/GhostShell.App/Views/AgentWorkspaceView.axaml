@@ -55,16 +55,16 @@
             AutomationProperties.Name="{Binding AgentChat.YoloAuthority.Scope, StringFormat={}YOLO enabled · exact scope {0}}">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <controls:StatusChip Tone="Danger" HorizontalAlignment="Left" Content="YOLO ENABLED" />
+              <controls:StatusChip Tone="Danger" HorizontalAlignment="Left" Content="YOLO enabled" />
               <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding AgentChat.YoloAuthority.Duration}" />
             </Grid>
             <TextBlock Text="{Binding AgentChat.YoloAuthority.Warning}" TextWrapping="Wrap" />
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="Eyebrow" Text="EXACT SCOPE" />
-              <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding AgentChat.YoloAuthority.Scope}" TextWrapping="Wrap" />
+              <TextBlock Classes="Eyebrow" Text="Exact scope" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.YoloAuthority.Scope}" TextWrapping="Wrap" />
               <TextBlock
-                  Classes="Muted Monospace"
-                  FontSize="{DynamicResource ShellFontSize8}"
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize9}"
                   Text="{Binding AgentChat.TargetContextLabel}"
                   TextWrapping="Wrap"
                   IsVisible="{Binding AgentChat.HasTargetContext}" />
@@ -124,19 +124,19 @@
                 <Flyout Placement="Bottom">
                   <StackPanel Width="330" Spacing="{DynamicResource ShellSpaceSm}">
                     <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding AgentChat.HasExactTarget}">
-                      <TextBlock Classes="Eyebrow" Text="EXACT TARGET" />
+                      <TextBlock Classes="Eyebrow" Text="Exact target" />
                       <TextBlock FontWeight="SemiBold" Text="{Binding AgentChat.TargetTitle}" TextWrapping="Wrap" />
                       <TextBlock
-                          Classes="Muted Monospace"
-                          FontSize="{DynamicResource ShellFontSize8}"
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
                           Text="{Binding AgentChat.ExactTarget}"
                           TextWrapping="Wrap" />
                     </StackPanel>
                     <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding AgentChat.HasTargetContext}">
-                      <TextBlock Classes="Eyebrow" Text="CONTEXT" />
+                      <TextBlock Classes="Eyebrow" Text="Context" />
                       <TextBlock
-                          Classes="Muted Monospace"
-                          FontSize="{DynamicResource ShellFontSize8}"
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
                           Text="{Binding AgentChat.TargetContextLabel}"
                           TextWrapping="Wrap" />
                     </StackPanel>
@@ -152,8 +152,8 @@
                           <TextBlock FontWeight="SemiBold" Text="Inspect context" />
                           <TextBlock
                               Grid.Column="1"
-                              Classes="Muted Monospace"
-                              FontSize="{DynamicResource ShellFontSize8}"
+                              Classes="Muted"
+                              FontSize="{DynamicResource ShellFontSize9}"
                               Text="{Binding AgentChat.ContextInspectorSummary}" />
                         </Grid>
                       </Expander.Header>
@@ -181,7 +181,7 @@
                                       TextTrimming="CharacterEllipsis" />
                                   <TextBlock
                                       Classes="Eyebrow"
-                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      FontSize="{DynamicResource ShellFontSize9}"
                                       Text="{Binding State}"
                                       TextWrapping="Wrap" />
                                   <TextBlock
@@ -190,18 +190,18 @@
                                       Text="{Binding TabTitle, StringFormat={}Tab · {0}}"
                                       TextTrimming="CharacterEllipsis" />
                                   <TextBlock
-                                      Classes="Muted Monospace"
-                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      Classes="Muted"
+                                      FontSize="{DynamicResource ShellFontSize9}"
                                       Text="{Binding ExactIdentity}"
                                       TextWrapping="Wrap" />
                                   <TextBlock
-                                      Classes="Muted Monospace"
-                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      Classes="Muted"
+                                      FontSize="{DynamicResource ShellFontSize9}"
                                       Text="{Binding Context}"
                                       TextWrapping="Wrap" />
                                   <TextBlock
-                                      Classes="Muted Monospace"
-                                      FontSize="{DynamicResource ShellFontSize8}"
+                                      Classes="Muted"
+                                      FontSize="{DynamicResource ShellFontSize9}"
                                       Text="{Binding Operations, StringFormat={}Operations · {0}}"
                                       TextWrapping="Wrap" />
                                 </StackPanel>
@@ -220,15 +220,15 @@
                           <TextBlock FontWeight="SemiBold" Text="Effective policy" />
                           <TextBlock
                               Grid.Column="1"
-                              Classes="Muted Monospace"
-                              FontSize="{DynamicResource ShellFontSize8}"
+                              Classes="Muted"
+                              FontSize="{DynamicResource ShellFontSize9}"
                               Text="{Binding AgentChat.PolicyModeLabel}" />
                         </Grid>
                       </Expander.Header>
                       <StackPanel Margin="{controls:Inset Top=Sm}" Spacing="{DynamicResource ShellSpaceXs}">
                         <TextBlock
-                            Classes="Muted Monospace"
-                            FontSize="{DynamicResource ShellFontSize8}"
+                            Classes="Muted"
+                            FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding AgentChat.EffectivePolicySummary}"
                             TextWrapping="Wrap" />
                         <ItemsControl ItemsSource="{Binding AgentChat.EffectivePolicyCapabilities}">
@@ -247,7 +247,7 @@
                                 <TextBlock
                                     Grid.Column="1"
                                     Classes="Eyebrow"
-                                    FontSize="{DynamicResource ShellFontSize8}"
+                                    FontSize="{DynamicResource ShellFontSize9}"
                                     Text="{Binding Permission}" />
                               </Grid>
                             </DataTemplate>
@@ -315,7 +315,7 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
           <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding AgentChat.HasProvisionalAssistantText}">
-            <TextBlock Classes="Eyebrow Accent" Text="RESPONDING" />
+            <TextBlock Classes="Eyebrow Accent" Text="Responding" />
             <TextBlock
                 Text="{Binding AgentChat.ProvisionalAssistantText}"
                 TextWrapping="Wrap"
@@ -334,10 +334,10 @@
               AutomationProperties.HelpText="Live status reported by the AI model. This text is not durable audit evidence">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="Eyebrow Accent" Text="AGENT PROGRESS" />
+                <TextBlock Classes="Eyebrow Accent" Text="Agent progress" />
                 <TextBlock
                     Grid.Column="1"
-                    Classes="Eyebrow Monospace"
+                    Classes="Eyebrow"
                     Text="{Binding AgentChat.CurrentProgress.PercentLabel}"
                     IsVisible="{Binding AgentChat.CurrentProgress.HasPercent}" />
               </Grid>
@@ -385,12 +385,12 @@
                     Grid.Column="1"
                     VerticalAlignment="Center"
                     Classes="Eyebrow Accent"
-                    Text="{Binding AgentChat.ActiveTool.TargetTitle, StringFormat={}RUNNING IN {0}}"
+                    Text="{Binding AgentChat.ActiveTool.TargetTitle, StringFormat={}Running in {0}}"
                     TextTrimming="CharacterEllipsis" />
                 <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding AgentChat.ActiveTool.Risk}" />
               </Grid>
               <TextBlock FontWeight="SemiBold" Text="{Binding AgentChat.ActiveTool.ToolTitle}" TextWrapping="Wrap" />
-              <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.ActiveTool.ToolName}" TextWrapping="Wrap" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.ActiveTool.ToolName}" TextWrapping="Wrap" />
               <Button
                   Margin="{controls:Inset Top=Xs}"
                   HorizontalAlignment="Left"
@@ -429,8 +429,8 @@
                 <TextBlock
                     Grid.Column="2"
                     VerticalAlignment="Center"
-                    Classes="Muted Monospace"
-                    FontSize="{DynamicResource ShellFontSize8}"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
                     Text="{Binding AgentChat.AuditSummary}" />
               </Grid>
             </Expander.Header>
@@ -461,7 +461,7 @@
                           <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                             <TextBlock
                                 Classes="Eyebrow Accent"
-                                FontSize="{DynamicResource ShellFontSize8}"
+                                FontSize="{DynamicResource ShellFontSize9}"
                                 Text="{Binding Kind}" />
                             <TextBlock
                                 FontWeight="SemiBold"
@@ -473,8 +473,8 @@
                               VerticalAlignment="Top" Content="{Binding Outcome}" />
                         </Grid>
                         <TextBlock
-                            Classes="Muted Monospace"
-                            FontSize="{DynamicResource ShellFontSize8}"
+                            Classes="Muted"
+                            FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding ToolName}"
                             TextWrapping="Wrap"
                             IsVisible="{Binding HasToolName}" />
@@ -484,24 +484,24 @@
                             Text="{Binding Evidence}"
                             TextWrapping="Wrap" />
                         <TextBlock
-                            Classes="Monospace"
-                            FontSize="{DynamicResource ShellFontSize8}"
+                            
+                            FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding Timeline}"
                             TextWrapping="Wrap" />
                         <TextBlock
-                            Classes="Muted Monospace"
-                            FontSize="{DynamicResource ShellFontSize8}"
+                            Classes="Muted"
+                            FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding Result}"
                             TextWrapping="Wrap"
                             IsVisible="{Binding HasResult}" />
                         <TextBlock
-                            Classes="Muted Monospace"
-                            FontSize="{DynamicResource ShellFontSize8}"
+                            Classes="Muted"
+                            FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding TargetBinding}"
                             TextWrapping="Wrap" />
                         <TextBlock
                             Classes="Muted"
-                            FontSize="{DynamicResource ShellFontSize8}"
+                            FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding OccurredAt}" />
                       </StackPanel>
                     </Border>
@@ -685,11 +685,11 @@
                     AutomationProperties.HelpText="Choose exact live terminals. Terminal and tab labels are untrusted metadata; stable IDs are shown below.">
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                     <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Classes="Eyebrow" Text="SELECT TERMINALS" />
+                      <TextBlock Classes="Eyebrow" Text="Select terminals" />
                       <TextBlock
                           Grid.Column="1"
-                          Classes="Muted Monospace"
-                          FontSize="{DynamicResource ShellFontSize8}"
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
                           Text="{Binding AgentTerminalSelectionSummary}" />
                     </Grid>
                     <TextBlock
@@ -720,8 +720,8 @@
                                     Text="{Binding TabTitle, StringFormat={}Tab · {0}}"
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
-                                    Classes="Muted Monospace"
-                                    FontSize="{DynamicResource ShellFontSize8}"
+                                    Classes="Muted"
+                                    FontSize="{DynamicResource ShellFontSize9}"
                                     Text="{Binding IdentityLabel}"
                                     TextTrimming="CharacterEllipsis" />
                               </StackPanel>

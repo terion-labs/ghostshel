@@ -123,7 +123,7 @@ public sealed class WorkspaceEditorViewModelTests
 
         Assert.True(editor.HasMissingReferences);
         Assert.Equal(3, editor.MissingReferenceCount);
-        Assert.All(editor.Entries, entry => Assert.Equal("REPAIR REQUIRED", entry.ReferenceStatus));
+        Assert.All(editor.Entries, entry => Assert.Equal("Repair required", entry.ReferenceStatus));
         Assert.Throws<InvalidOperationException>(() => editor.CreateSaveRequest());
 
         editor.Entries.Single(entry => entry.IsConnection).SelectedConnection =
@@ -319,6 +319,32 @@ public sealed class WorkspaceEditorViewModelTests
         Assert.Null(request.ExpectedRevision);
         Assert.Equal("Personal", request.Definition.Name);
         Assert.Equal(WorkspaceDefinition.DefaultIcon, request.Definition.Icon);
+    }
+
+    [Fact]
+    public void Autosave_toggle_marks_dirty_and_persists_in_the_save_request()
+    {
+        var connection = LocalConnection("local");
+        var layout = Layout("single", "main");
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([]),
+            4,
+            [connection],
+            [],
+            [layout]);
+
+        Assert.False(editor.AutoSave);
+        Assert.False(editor.IsDirty);
+
+        editor.AutoSave = true;
+
+        Assert.True(editor.IsDirty);
+        Assert.True(editor.CreateSaveRequest().Definition.AutoSave);
+
+        editor.Reset();
+
+        Assert.False(editor.AutoSave);
+        Assert.False(editor.IsDirty);
     }
 
     private static WorkspaceDefinition Workspace(

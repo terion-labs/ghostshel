@@ -17,7 +17,7 @@
     <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto">
       <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
-        <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
       </StackPanel>
       <Button
           Grid.Column="1"
@@ -45,7 +45,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Executable" />
               <TextBox
-                  Classes="Monospace"
+                  
                   Text="{Binding Executable}"
                   PlaceholderText="/absolute/path/to/server"
                   AutomationProperties.Name="MCP server executable path" />
@@ -58,7 +58,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Working directory" />
               <TextBox
-                  Classes="Monospace"
+                  
                   Text="{Binding WorkingDirectory}"
                   PlaceholderText="Optional absolute directory"
                   AutomationProperties.Name="MCP server working directory" />
@@ -77,7 +77,7 @@
           <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock Classes="SectionHeading" Text="ORDERED ARGUMENTS" />
+                <TextBlock Classes="SectionHeading" Text="Ordered arguments" />
                 <TextBlock
                     Classes="Muted"
                     FontSize="{DynamicResource ShellFontSize10}"
@@ -98,11 +98,11 @@
                     <TextBlock
                         MinWidth="24"
                         VerticalAlignment="Center"
-                        Classes="Monospace Muted"
+                        Classes="Muted"
                         Text="{Binding Position, StringFormat={}#{0}}" />
                     <TextBox
                         Grid.Column="1"
-                        Classes="Monospace"
+                        
                         Text="{Binding Value}"
                         PlaceholderText="One argument"
                         AutomationProperties.Name="{Binding AccessibleName}" />
@@ -141,7 +141,7 @@
           <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock Classes="SectionHeading" Text="ENVIRONMENT BINDINGS" />
+                <TextBlock Classes="SectionHeading" Text="Environment bindings" />
                 <TextBlock
                     Classes="Muted"
                     FontSize="{DynamicResource ShellFontSize10}"
@@ -160,13 +160,13 @@
                 <DataTemplate>
                   <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="2*,3*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <TextBox
-                        Classes="Monospace"
+                        
                         Text="{Binding Name}"
                         PlaceholderText="VARIABLE_NAME"
                         AutomationProperties.Name="{Binding NameAccessibleName}" />
                     <TextBox
                         Grid.Column="1"
-                        Classes="Monospace"
+                        
                         Text="{Binding SecretReference}"
                         PlaceholderText="Opaque SecretRef"
                         AutomationProperties.Name="{Binding SecretReferenceAccessibleName}"
@@ -190,7 +190,7 @@
           <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock Classes="SectionHeading" Text="ENABLED TOOL ALLOWLIST" />
+                <TextBlock Classes="SectionHeading" Text="Enabled tool allowlist" />
                 <TextBlock
                     Classes="Muted"
                     FontSize="{DynamicResource ShellFontSize10}"
@@ -209,7 +209,7 @@
                 <DataTemplate>
                   <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <TextBox
-                        Classes="Monospace"
+                        
                         Text="{Binding Name}"
                         PlaceholderText="exact.tool.name"
                         AutomationProperties.Name="{Binding NameAccessibleName}" />

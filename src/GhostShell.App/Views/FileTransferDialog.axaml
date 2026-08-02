@@ -21,9 +21,9 @@
       <controls:SurfaceCard Tone="Notice" Padding="0" x:Name="ValidationCard" IsVisible="False"><TextBlock x:Name="ValidationMessage" Margin="{controls:Inset Md}" Foreground="{DynamicResource ShellDangerBrush}" TextWrapping="Wrap" /></controls:SurfaceCard>
       <controls:SurfaceCard Tone="Notice" Padding="0">
         <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock Classes="Eyebrow" Text="SOURCE" />
-          <TextBlock Classes="Monospace" Text="{Binding Source.Name}" />
-          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SourceLocation}" />
+          <TextBlock Classes="Eyebrow" Text="Source" />
+          <TextBlock Text="{Binding Source.Name}" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SourceLocation}" />
         </StackPanel>
       </controls:SurfaceCard>
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -36,7 +36,7 @@
       </StackPanel>
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontWeight="SemiBold" Text="Destination location" />
-        <TextBox Classes="Monospace" Text="{Binding Destination}" />
+        <TextBox Text="{Binding Destination}" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The location is parsed into a structured provider address; it is never appended to a local command string." />
       </StackPanel>
     </StackPanel>

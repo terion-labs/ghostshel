@@ -379,6 +379,9 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellSurfaceRaisedBrush"] = Brush(resources.RaisedSurface);
         Resources["ShellSurfaceHoverBrush"] = Brush(resources.HoverSurface);
         Resources["ShellBorderBrush"] = Brush(resources.Border);
+        Resources["ShellControlSurfaceBrush"] = Brush(resources.ControlSurface);
+        Resources["ShellControlBorderBrush"] = Brush(resources.ControlBorder);
+        Resources["ShellControlHoverBrush"] = Brush(resources.ControlHoverSurface);
         Resources["ShellTextBrush"] = Brush(resources.Text);
         Resources["ShellMutedBrush"] = Brush(resources.MutedText);
         Resources["ShellAccentBrush"] = Brush(resources.Accent);
@@ -395,6 +398,38 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellWarningSoftBrush"] = Brush(resources.WarningSoft);
         Resources["ShellWarningBorderBrush"] = Brush(resources.WarningBorder);
         Resources["ShellNoticeBorderBrush"] = Brush(resources.NoticeBorder);
+        // Controls the design system has not retemplated — check boxes, radio
+        // buttons, switches, sliders, calendar and text selection — take their
+        // accent from Fluent's SystemAccentColor family, which otherwise tracks
+        // the operating system rather than the shell's accent setting. Publishing
+        // the resolved shell accent (and the shade ramp Fluent derives from it)
+        // is what makes every control answer the same appearance setting.
+        Resources["SystemAccentColor"] = resources.Accent;
+        Resources["SystemAccentColorDark1"] = Shade(resources.Accent, Colors.Black, 0.15);
+        Resources["SystemAccentColorDark2"] = Shade(resources.Accent, Colors.Black, 0.30);
+        Resources["SystemAccentColorDark3"] = Shade(resources.Accent, Colors.Black, 0.45);
+        Resources["SystemAccentColorLight1"] = Shade(resources.Accent, Colors.White, 0.15);
+        Resources["SystemAccentColorLight2"] = Shade(resources.Accent, Colors.White, 0.30);
+        Resources["SystemAccentColorLight3"] = Shade(resources.Accent, Colors.White, 0.45);
+        // Text selection reads as a translucent accent wash, as the host does it,
+        // rather than Fluent's opaque block.
+        Resources["TextControlSelectionHighlightColor"] = Color.FromArgb(
+            0x66,
+            resources.Accent.R,
+            resources.Accent.G,
+            resources.Accent.B);
+        // The focused field wears the host's accent halo — macOS's focus ring —
+        // rather than only a recolored border.
+        Resources["ShellFocusRingShadow"] = new BoxShadows(new BoxShadow
+        {
+            Blur = 0,
+            Spread = 3,
+            Color = Color.FromArgb(
+                0x59,
+                resources.Accent.R,
+                resources.Accent.G,
+                resources.Accent.B),
+        });
         Resources["ShellUiFontFamily"] = resources.FontFamily;
         Resources["ShellBaseFontSize"] = resources.BaseFontSize;
         Resources["ShellPillFontSize"] = resources.PillFontSize;
@@ -416,6 +451,12 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellCardRadius"] = resources.CardCornerRadius.TopLeft;
         Resources["ShellPillCornerRadius"] = resources.PillCornerRadius;
         Resources["ShellInnerCornerRadius"] = resources.InnerCornerRadius;
+        // The clearance between a rounded miniature frame and the tiles inside
+        // it. It follows the radius, not a fixed step: at a tight radius a
+        // couple of pixels reads fine, while a round setting needs the tiles
+        // pulled in or they touch the frame's curve at every corner.
+        Resources["ShellPreviewTileInset"] = new Thickness(
+            Math.Max(3, resources.InnerCornerRadius.TopLeft * 0.6));
 
         // The spacing scale, in both forms the framework needs: a number for the
         // Spacing/ColumnSpacing/RowSpacing properties, and a Thickness for Margin
@@ -491,6 +532,20 @@ public sealed partial class App : Avalonia.Application
     }
 
     private static SolidColorBrush Brush(Color color) => new(color);
+
+    /// <summary>
+    /// One step of the accent shade ramp: the accent blended toward black or
+    /// white, mirroring how Fluent derives its Dark1–3/Light1–3 variants from
+    /// the system accent it is being asked to forget.
+    /// </summary>
+    private static Color Shade(Color accent, Color target, double amount) =>
+        Color.FromRgb(
+            BlendChannel(accent.R, target.R, amount),
+            BlendChannel(accent.G, target.G, amount),
+            BlendChannel(accent.B, target.B, amount));
+
+    private static byte BlendChannel(byte from, byte to, double amount) =>
+        (byte)Math.Round(from + ((to - from) * Math.Clamp(amount, 0, 1)));
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {

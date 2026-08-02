@@ -23,13 +23,13 @@
         <StackPanel Margin="{controls:Inset Right=Xs, Bottom=Sm}" Spacing="{DynamicResource ShellSpaceMd}">
           <controls:SurfaceCard Padding="0">
             <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-              <TextBlock Classes="SectionHeading" Text="WORKSPACE IDENTITY" />
+              <TextBlock Classes="SectionHeading" Text="Workspace identity" />
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock FontWeight="SemiBold" Text="Name" />
                 <TextBox x:Name="WorkspaceNameInput" Text="{Binding Name, Mode=TwoWay}" PlaceholderText="Operations" />
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="SectionHeading" Text="COLOR" />
+                <TextBlock Classes="SectionHeading" Text="Color" />
                 <!-- Presets first, because picking an identity colour is a choice
                      between a handful of recognisable options, not a colour-space
                      problem. The custom picker and the screen eyedropper stay
@@ -58,7 +58,7 @@
                   <TextBox
                       x:Name="AccentHexInput"
                       Grid.Column="1"
-                      Classes="Monospace"
+                      
                       Text="{Binding Accent, Mode=TwoWay}"
                       PlaceholderText="#B8793A"
                       AutomationProperties.Name="Workspace accent hex value" />
@@ -76,7 +76,7 @@
 
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="ICON" />
+                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="Icon" />
                   <TextBlock
                       Grid.Column="1"
                       VerticalAlignment="Center"
@@ -120,31 +120,57 @@
                     TextWrapping="Wrap"
                     PlaceholderText="What this workspace is for" />
               </StackPanel>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock FontWeight="SemiBold" Text="Autosave" />
+                  <TextBlock
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize9}"
+                      Text="Save tab and panel changes back to this workspace while you work."
+                      TextWrapping="Wrap" />
+                </StackPanel>
+                <ToggleSwitch
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding AutoSave, Mode=TwoWay}"
+                    AutomationProperties.Name="Autosave workspace changes" />
+              </Grid>
             </StackPanel>
           </controls:SurfaceCard>
 
           <controls:SurfaceCard Padding="0">
             <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-              <TextBlock Classes="SectionHeading" Text="ADD TO WORKSPACE" />
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="CONNECTION REFERENCE" />
-                  <ComboBox x:Name="AddConnectionPicker" AutomationProperties.Name="Connection to add">
+              <TextBlock Classes="SectionHeading" Text="Add to workspace" />
+              <!-- Tabs lead: a workspace is a collection of named tabs, each with
+                   a layout and configured panels. References to reusable screens
+                   and plain connections are the secondary ways in. -->
+              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="New tab" />
+                <TextBox
+                    x:Name="AddTabNameInput"
+                    PlaceholderText="Tab name"
+                    AutomationProperties.Name="Name for new workspace tab" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <ComboBox x:Name="AddLayoutPicker" AutomationProperties.Name="Layout for new workspace tab">
                     <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
                   </ComboBox>
-                </StackPanel>
-                <Button
-                    Grid.Column="1"
-                    MinWidth="70"
-                    VerticalAlignment="Bottom"
-                    Classes="SecondaryButton"
-                    Click="OnAddConnectionClick"
-                    Content="Add"
-                    AutomationProperties.Name="Add connection reference" />
-              </Grid>
+                  <Button
+                      Grid.Column="1"
+                      MinWidth="70"
+                      Classes="SecondaryButton"
+                      Click="OnAddWorkspaceTabClick"
+                      Content="Add tab"
+                      AutomationProperties.Name="Add workspace-only tab" />
+                </Grid>
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="Then pick the tab in the launch order to attach a panel type and connection to each layout slot."
+                    TextWrapping="Wrap" />
+              </StackPanel>
               <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="SAVED SCREEN" />
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Saved screen" />
                   <ComboBox x:Name="AddScreenPicker" AutomationProperties.Name="Saved screen to add">
                     <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
                   </ComboBox>
@@ -169,8 +195,8 @@
               </Grid>
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="EMPTY WORKSPACE TAB" />
-                  <ComboBox x:Name="AddLayoutPicker" AutomationProperties.Name="Layout for new workspace tab">
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Connection reference" />
+                  <ComboBox x:Name="AddConnectionPicker" AutomationProperties.Name="Connection to add">
                     <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
                   </ComboBox>
                 </StackPanel>
@@ -179,16 +205,16 @@
                     MinWidth="70"
                     VerticalAlignment="Bottom"
                     Classes="SecondaryButton"
-                    Click="OnAddWorkspaceTabClick"
-                    Content="Add tab"
-                    AutomationProperties.Name="Add workspace-only tab" />
+                    Click="OnAddConnectionClick"
+                    Content="Add"
+                    AutomationProperties.Name="Add connection reference" />
               </Grid>
             </StackPanel>
           </controls:SurfaceCard>
 
           <Grid ColumnDefinitions="*,Auto" Margin="{controls:Inset Horizontal=Xs}">
-            <TextBlock Classes="SectionHeading" Text="LAUNCH ORDER" />
-            <TextBlock Grid.Column="1" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Entries.Count, StringFormat={}{0} ITEMS}" />
+            <TextBlock Classes="SectionHeading" Text="Launch order" />
+            <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Entries.Count, StringFormat={}{0} items}" />
           </Grid>
 
           <ListBox
@@ -309,10 +335,10 @@
               <StackPanel DataContext="{Binding Tab}" Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                    <TextBlock Classes="SectionHeading" Text="WORKSPACE-ONLY TAB" />
+                    <TextBlock Classes="SectionHeading" Text="Workspace-only tab" />
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="This panel snapshot belongs only to the workspace." />
                   </StackPanel>
-                  <TextBlock Grid.Column="1" Foreground="{DynamicResource ShellDangerBrush}" FontSize="{DynamicResource ShellFontSize9}" IsVisible="{Binding HasMissingDefinition}" Text="REPAIR REQUIRED" />
+                  <TextBlock Grid.Column="1" Foreground="{DynamicResource ShellDangerBrush}" FontSize="{DynamicResource ShellFontSize9}" IsVisible="{Binding HasMissingDefinition}" Text="Repair required" />
                 </Grid>
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -328,7 +354,7 @@
                 </Grid>
 
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="PANELS" />
+                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="Panels" />
                   <WrapPanel Grid.Column="1" Orientation="Horizontal">
                     <Button Classes="TextButton Accent" Click="OnAddTerminalPanelClick" Content="+ Terminal" IsEnabled="{Binding CanAddPanel}" />
                     <Button Classes="TextButton Accent" Click="OnAddFilePanelClick" Content="+ Files" IsEnabled="{Binding CanAddPanel}" />
@@ -344,7 +370,7 @@
                       <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0" Margin="{controls:Inset Bottom=Sm}">
                         <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
                           <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                            <Border Width="28" Height="28" Classes="IconTile"><TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="#" /></Border>
+                            <Border Width="28" Height="28" Classes="IconTile"><TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize9}" Text="#" /></Border>
                             <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                               <TextBlock Classes="Eyebrow Accent" Text="{Binding KindLabel}" />
                               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Id.Value}" TextTrimming="CharacterEllipsis" />
@@ -389,7 +415,7 @@
 
                           <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding SupportsLocation}">
                             <TextBlock FontWeight="SemiBold" Text="Startup location" />
-                            <TextBox Classes="Monospace" Text="{Binding StartupLocation, Mode=TwoWay}" PlaceholderText="Optional working directory or URL" />
+                            <TextBox Text="{Binding StartupLocation, Mode=TwoWay}" PlaceholderText="Optional working directory or URL" />
                           </StackPanel>
 
                           <Grid
@@ -401,7 +427,7 @@
                               <TextBox
                                   MinHeight="76"
                                   AcceptsReturn="True"
-                                  Classes="Monospace"
+                                  
                                   Text="{Binding StartupCommands, Mode=TwoWay}"
                                   TextWrapping="NoWrap"
                                   PlaceholderText="One command per line"
@@ -442,7 +468,7 @@
 
             <controls:SurfaceCard Padding="0" IsVisible="{Binding !IsWorkspaceTab}">
               <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock Classes="SectionHeading" Text="REFERENCE BEHAVIOR" />
+                <TextBlock Classes="SectionHeading" Text="Reference behavior" />
                 <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="References resolve when the workspace opens. Running sessions keep their own independent runtime state." TextWrapping="Wrap" />
               </StackPanel>
             </controls:SurfaceCard>
@@ -455,7 +481,7 @@
       <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ValidationSummary}" TextWrapping="Wrap" />
-          <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellDangerBrush}" IsVisible="{Binding !IsValid}" Text="SAVE BLOCKED UNTIL VALID" />
+          <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellDangerBrush}" IsVisible="{Binding !IsValid}" Text="Save blocked until valid" />
         </StackPanel>
         <Button Grid.Column="1" VerticalAlignment="Center" Classes="TextButton" Click="OnResetClick" Content="Reset" IsEnabled="{Binding IsDirty}" />
         <Button Grid.Column="2" MinWidth="88" VerticalAlignment="Center" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />

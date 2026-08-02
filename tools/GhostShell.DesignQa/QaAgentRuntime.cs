@@ -68,6 +68,47 @@ internal sealed class QaOfflineAgentRuntime : IGovernedAgentRuntime
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Publishes a pending run-local capability request so the decision card is
+    /// reviewable. The card asks the panel's one governance question, and it
+    /// rotted unreviewed precisely because no capture could ever render it.
+    /// </summary>
+    public void PublishSampleCapabilityRequest()
+    {
+        var target = new AgentTarget.Panel(
+            new WindowInstanceId("qa-window"),
+            new WorkspaceInstanceId("qa-workspace"),
+            new TabInstanceId("qa-tab"),
+            new PanelInstanceId("qa-panel"));
+        _snapshot = Offline with
+        {
+            State = GovernedAgentState.RunningTool,
+            Target = target,
+            TargetTitle = "Process Monitor · local machine",
+            Messages =
+            [
+                new AgentChatMessage(
+                    AgentChatMessageRole.User,
+                    "List the busiest local processes."),
+            ],
+            PendingCapabilityRequest = new GovernedAgentCapabilityRequest(
+                new AgentCapabilityRequestId("qa-capability-request"),
+                new AgentRunId("qa-run"),
+                AgentCapability.ProcessControl,
+                "Process inspection",
+                ["List local processes"],
+                target,
+                "Process Monitor · local machine",
+                policyGeneration: 1,
+                expiresAtUtc: new DateTimeOffset(2026, 12, 31, 12, 0, 0, TimeSpan.Zero)),
+            CapabilityNotice =
+                "Terminal writes are asked for one action at a time, in this panel only.",
+            Status = "Waiting for your run-local capability decision.",
+        };
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Returns to the offline boundary this harness reports by default.</summary>
     public void Reset()
     {

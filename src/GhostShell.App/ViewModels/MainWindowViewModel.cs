@@ -98,6 +98,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private Task? _shutdownTask;
     private RecentSessionStoreError? _historyDrainError;
     private CancellationTokenSource? _runtimeGraphWatchCancellation;
+    private CancellationTokenSource? _workspaceAutoSaveDebounce;
     private RuntimeHistorySource? _runtimeHistorySource;
     private ShellRoute _route = ShellRoute.Launcher;
     private LauncherPage _launcherPage;
@@ -1397,7 +1398,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasApplicationKeySequenceHint =>
         !string.IsNullOrWhiteSpace(ApplicationKeySequenceHint);
 
-    public string HostStatus => "SESSION HOST · DESKTOP";
+    public string HostStatus => "Session host · desktop";
 
     public string CommandPaletteShortcut =>
         QuickTerminalHotkeyText.FormatApplicationCommand("K");
@@ -1814,6 +1815,44 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         Overlay = ShellOverlay.DefinitionEditor;
     }
 
+    /// <summary>
+    /// Opens the workspace editor over a fresh unsaved definition. Nothing is
+    /// persisted until the editor saves, so cancelling leaves no orphan.
+    /// </summary>
+    public void BeginCreateWorkspace()
+    {
+        if (WorkspaceEditor?.RequestCancel()
+            == WorkspaceEditorCancelDisposition.ConfirmDiscard)
+        {
+            SetError(
+                "Save or discard the current workspace changes before creating another workspace.");
+            return;
+        }
+
+        var snapshot = _catalog.Snapshot;
+        var definition = new WorkspaceDefinition(
+            WorkspaceId.New(),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Untitled workspace",
+            description: null,
+            ThemePreference.BronzeFallback.ToString(),
+            []);
+        WorkspaceEditor = new WorkspaceEditorViewModel(
+            definition,
+            expectedRevision: null,
+            snapshot.Connections.Select(item => item.Value).ToArray(),
+            snapshot.Screens.Select(item => item.Value).ToArray(),
+            snapshot.Layouts.Select(item => item.Value).ToArray(),
+            snapshot.FileProviderProfiles.Select(item => item.Value).ToArray());
+        _editingDefinition = definition.Key;
+        _editingRevision = null;
+        EditorName = definition.Name;
+        EditorDescription = string.Empty;
+        OnPropertyChanged(nameof(EditorTitle));
+        ClearError();
+        Overlay = ShellOverlay.DefinitionEditor;
+    }
+
     public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
         SaveWorkspaceEditorAsync(CancellationToken cancellationToken)
     {
@@ -1930,7 +1969,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                             runtime.Tabs.Add(CreateRuntimeTab(
                                 runtime.Id,
                                 screenReference.Alias ?? screen.Name,
-                                "SAVED SCREEN",
+                                "Saved screen",
                                 screen.LayoutId,
                                 screen.Panels,
                                 screen.Key,
@@ -1946,7 +1985,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         runtime.Tabs.Add(CreateRuntimeTab(
                             runtime.Id,
                             tab.Name,
-                            "WORKSPACE TAB",
+                            "Workspace tab",
                             tab.LayoutId,
                             tab.Panels,
                             workspace.Key,
@@ -2060,7 +2099,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             runtime.Tabs.Add(CreateRuntimeTab(
                 runtime.Id,
                 screen.Name,
-                "SAVED SCREEN",
+                "Saved screen",
                 screen.LayoutId,
                 screen.Panels,
                 screen.Key,
@@ -2120,7 +2159,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             var tab = new RuntimeTabViewModel(
                 TabInstanceId.New(),
                 kind == PanelKind.Statistics ? "Statistics" : "Processes",
-                "LOCAL HOST");
+                "Local host");
             var panel = CreateMonitorPanel(
                 runtime.Id,
                 tab.Id,
@@ -2169,7 +2208,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             var tab = new RuntimeTabViewModel(
                 TabInstanceId.New(),
                 "Browser",
-                "LOCAL");
+                "Local");
             var panel = CreateBrowserPanel(
                 runtime.Id,
                 tab.Id,
@@ -3358,7 +3397,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             stored.Revision,
             _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
             _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
-            _catalog.Snapshot.Layouts.Select(item => item.Value).ToArray(),
+            SelectableLayouts(),
             _aiProviderRuntime?.Profiles ?? []);
     }
 
@@ -3366,11 +3405,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         return SavedScreenEditorViewModel.CreateNew(
             RequireName(name, "Saved screen"),
-            _catalog.Snapshot.Layouts.Select(item => item.Value).ToArray(),
+            SelectableLayouts(),
             _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
             _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
             _aiProviderRuntime?.Profiles ?? []);
     }
+
+    /// <summary>
+    /// The layouts a user may pick for new screens and tabs. Auto-saved layouts
+    /// carry a live tab's captured geometry and stay out of every picker; the
+    /// workspace editor still receives the full set so existing tab references
+    /// resolve.
+    /// </summary>
+    private LayoutDefinition[] SelectableLayouts() => _catalog.Snapshot.Layouts
+        .Select(item => item.Value)
+        .Where(layout => !LayoutDefinition.IsAutoSaved(layout.Id))
+        .ToArray();
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<ScreenDefinition>>> SaveSavedScreenAsync(
         SavedScreenEditorSaveRequest request,
@@ -4828,7 +4878,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return CreateRuntimeTab(
                     runtime.Id,
                     currentScreen.Name,
-                    "SAVED SCREEN",
+                    "Saved screen",
                     currentScreen.LayoutId,
                     currentScreen.Panels,
                     currentScreen.Key,
@@ -4951,8 +5001,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         var title = SinglePanelTabTitle(kind);
         var source = kind is PanelKind.Statistics or PanelKind.ProcessMonitor
-            ? "LOCAL HOST"
-            : "LOCAL";
+            ? "Local host"
+            : "Local";
         var tab = new RuntimeTabViewModel(TabInstanceId.New(), title, source);
         try
         {
@@ -5692,6 +5742,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void QueueRuntimeRecoverySnapshot()
     {
+        QueueWorkspaceAutoSave();
         if (_runtimeRecoveryWriter is null || _shutdownStarted)
         {
             return;
@@ -5743,6 +5794,344 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         else
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(Apply);
+        }
+    }
+
+    private const int WorkspaceAutoSaveDebounceMilliseconds = 1500;
+
+    private sealed record WorkspaceAutoSaveCapture(
+        WorkspaceDefinition Workspace,
+        long WorkspaceRevision,
+        IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)> Layouts);
+
+    /// <summary>
+    /// Schedules a write-back of the live tabs into the open workspace's durable
+    /// definition. Piggybacks on the recovery-snapshot triggers, so anything worth
+    /// recovering is also worth persisting; the debounce coalesces drag storms
+    /// into one save.
+    /// </summary>
+    private void QueueWorkspaceAutoSave()
+    {
+        if (_shutdownStarted || AutoSaveSourceWorkspace() is null)
+        {
+            return;
+        }
+
+        _workspaceAutoSaveDebounce?.Cancel();
+        var debounce = new CancellationTokenSource();
+        _workspaceAutoSaveDebounce = debounce;
+        _ = AutoSaveWorkspaceAsync(debounce.Token);
+    }
+
+    private StoredDefinition<WorkspaceDefinition>? AutoSaveSourceWorkspace()
+    {
+        if (_runtimeHistorySource?.SourceDefinition is not { } sourceKey
+            || sourceKey.Kind != WorkspaceDefinition.Kind)
+        {
+            return null;
+        }
+
+        var stored = _catalog.Snapshot.Workspaces
+            .SingleOrDefault(item => item.Value.Id.Value == sourceKey.Value);
+        return stored is { Value.AutoSave: true } ? stored : null;
+    }
+
+    private async Task AutoSaveWorkspaceAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(WorkspaceAutoSaveDebounceMilliseconds, cancellationToken);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (cancellationToken.IsCancellationRequested
+            || _shutdownStarted
+            || AutoSaveSourceWorkspace() is not { } stored)
+        {
+            return;
+        }
+
+        WorkspaceAutoSaveCapture? capture;
+        try
+        {
+            capture = CaptureWorkspaceAutoSave(stored.Value, stored.Revision);
+        }
+        catch (Exception exception) when (exception is
+            ArgumentException or InvalidOperationException or FormatException)
+        {
+            Console.Error.WriteLine(
+                $"[ghostshell:autosave] Workspace capture failed: {exception}");
+            return;
+        }
+
+        if (capture is null)
+        {
+            return;
+        }
+
+        var error = await _catalog.SaveWorkspaceWithLayoutsAsync(
+            capture.Workspace,
+            capture.WorkspaceRevision,
+            capture.Layouts,
+            CancellationToken.None);
+        if (error is null)
+        {
+            await CleanUpOrphanedAutoSaveLayoutsAsync(capture.Workspace);
+            return;
+        }
+
+        // A revision conflict means another writer got there first; the next
+        // change captures against the fresh revision. Anything else is logged
+        // rather than surfaced — autosave must not nag while the user works.
+        if (error.Code != DefinitionStoreErrorCode.RevisionConflict)
+        {
+            Console.Error.WriteLine(
+                $"[ghostshell:autosave] Workspace autosave failed: {error.Code}: {error.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Captures the live tabs as workspace-only tab entries plus one auto-saved
+    /// layout per tab. Returns null when the runtime is mid-mutation (placeholder
+    /// or unavailable panels, dock tree out of step) or when nothing changed —
+    /// which also breaks the save→refresh→save loop, since a save's own catalog
+    /// refresh re-queues an identical capture.
+    /// </summary>
+    private WorkspaceAutoSaveCapture? CaptureWorkspaceAutoSave(
+        WorkspaceDefinition storedDefinition,
+        long storedRevision)
+    {
+        if (RuntimeWorkspace is not { Tabs.Count: > 0 } runtime)
+        {
+            return null;
+        }
+
+        var storedTabs = storedDefinition.Entries.OfType<WorkspaceEntry.Tab>().ToList();
+        var storedLayouts = _catalog.Snapshot.Layouts
+            .ToDictionary(item => item.Value.Id.Value, StringComparer.Ordinal);
+        var usedStoredTabs = new HashSet<WorkspaceEntryId>();
+        var layouts = new List<(LayoutDefinition Definition, long? ExpectedRevision)>();
+        var entries = new List<WorkspaceEntry>();
+        for (var index = 0; index < runtime.Tabs.Count; index++)
+        {
+            var tab = runtime.Tabs[index];
+            // Dock documents are the durable slot identities: a restored panel
+            // keeps its saved document id, so capturing by document keeps slot
+            // ids stable across sessions. The document's context is the live
+            // panel bound to that slot.
+            var panelsBySlot = new Dictionary<string, RuntimePanelViewModel>(StringComparer.Ordinal);
+            foreach (var region in DockLayoutProjection.CollectRegions(tab.DockLayout))
+            {
+                if (region.Document.Context is not RuntimePanelViewModel panel)
+                {
+                    // A document with no bound panel is an empty layout slot:
+                    // it keeps its place in the dock geometry but gets no slot
+                    // mapping.
+                    continue;
+                }
+
+                if (PanelKindForAutoSave(panel) is null)
+                {
+                    // A placeholder or unavailable panel cannot be described
+                    // durably; saving now would drop it from the definition.
+                    // Defer the whole pass until the runtime settles.
+                    return null;
+                }
+
+                panelsBySlot[region.Document.Id] = panel;
+            }
+
+            if (panelsBySlot.Count == 0 || panelsBySlot.Count != tab.Panels.Count)
+            {
+                return null;
+            }
+
+            var (grid, projectedSlots) = DockLayoutProjection.ProjectSlots(
+                tab.DockLayout,
+                id => panelsBySlot.TryGetValue(id, out var panel)
+                    ? new LayoutMinimumSize(panel.LayoutMinimumWidth, panel.LayoutMinimumHeight)
+                    : new LayoutMinimumSize(220, 140));
+            var slots = projectedSlots
+                .Where(slot => panelsBySlot.ContainsKey(slot.Id.Value))
+                .ToArray();
+            if (slots.Length != panelsBySlot.Count)
+            {
+                return null;
+            }
+            var layoutId = new LayoutId(
+                $"{LayoutDefinition.AutoSaveIdPrefix}{storedDefinition.Id.Value}.tab-{index}");
+            var layout = new LayoutDefinition(
+                layoutId,
+                LayoutDefinition.CurrentSchemaVersion,
+                $"{tab.Title} (auto)",
+                grid,
+                slots,
+                tab.SerializeDockLayout());
+            layouts.Add((
+                layout,
+                storedLayouts.TryGetValue(layoutId.Value, out var storedLayout)
+                    ? storedLayout.Revision
+                    : null));
+
+            var storedTab = storedTabs.FirstOrDefault(candidate =>
+                !usedStoredTabs.Contains(candidate.Id)
+                && string.Equals(candidate.Name, tab.Title, StringComparison.Ordinal));
+            if (storedTab is not null)
+            {
+                usedStoredTabs.Add(storedTab.Id);
+            }
+
+            var usedStoredPanels = new HashSet<ScreenPanelId>();
+            entries.Add(new WorkspaceEntry.Tab(
+                storedTab?.Id ?? WorkspaceEntryId.New(),
+                tab.Title,
+                layoutId,
+                slots
+                    .Select(slot => CaptureAutoSavePanel(
+                        panelsBySlot[slot.Id.Value],
+                        slot.Id,
+                        storedTab,
+                        usedStoredPanels))
+                    .ToArray()));
+        }
+
+        // Connection and saved-screen references materialized into the live tabs
+        // above; under autosave the definition is the live state, so the entry
+        // list is replaced wholesale.
+        var definition = new WorkspaceDefinition(
+            storedDefinition.Id,
+            WorkspaceDefinition.CurrentSchemaVersion,
+            storedDefinition.Name,
+            storedDefinition.Description,
+            storedDefinition.Accent,
+            entries,
+            storedDefinition.AgentPolicyOverride,
+            storedDefinition.Icon,
+            autoSave: true);
+        var unchanged = DefinitionPayloadEquals(definition, storedDefinition)
+            && layouts.All(item =>
+                storedLayouts.TryGetValue(item.Definition.Id.Value, out var existing)
+                && DefinitionPayloadEquals(item.Definition, existing.Value));
+        return unchanged
+            ? null
+            : new WorkspaceAutoSaveCapture(definition, storedRevision, layouts);
+    }
+
+    private static bool DefinitionPayloadEquals(object left, object right) =>
+        left.GetType() == right.GetType()
+        && string.Equals(
+            System.Text.Json.JsonSerializer.Serialize(left, left.GetType()),
+            System.Text.Json.JsonSerializer.Serialize(right, right.GetType()),
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// The durable kind a live panel persists as, or null for panels that are
+    /// not durable state. Unavailable panels keep their declared kind — their
+    /// adapter is missing, not their identity — so autosave does not stall on
+    /// them; <see cref="CaptureAutoSavePanel"/> falls back to the stored
+    /// definition for the configuration they cannot express.
+    /// </summary>
+    private static ScreenPanelKind? PanelKindForAutoSave(RuntimePanelViewModel panel) =>
+        panel is PanelPlaceholderViewModel
+            ? null
+            : panel.Kind switch
+            {
+                PanelKind.Terminal => ScreenPanelKind.Terminal,
+                PanelKind.Browser => ScreenPanelKind.Browser,
+                PanelKind.FileViewer => ScreenPanelKind.FileViewer,
+                PanelKind.Statistics => ScreenPanelKind.Statistics,
+                PanelKind.ProcessMonitor => ScreenPanelKind.ProcessMonitor,
+                _ => null,
+            };
+
+    private static ScreenPanelDefinition CaptureAutoSavePanel(
+        RuntimePanelViewModel panel,
+        LayoutSlotId slotId,
+        WorkspaceEntry.Tab? storedTab,
+        HashSet<ScreenPanelId> usedStoredPanels)
+    {
+        var kind = PanelKindForAutoSave(panel)!.Value;
+        ConnectionId? connectionId = panel switch
+        {
+            TerminalRuntimePanelViewModel terminal => terminal.ConnectionId,
+            FileRuntimePanelViewModel file => file.ConnectionId,
+            StatisticsRuntimePanelViewModel statistics => statistics.ConnectionId,
+            ProcessMonitorRuntimePanelViewModel processes => processes.ConnectionId,
+            _ => null,
+        };
+        var stored = storedTab?.Panels.FirstOrDefault(candidate =>
+            !usedStoredPanels.Contains(candidate.Id)
+            && candidate.Kind == kind
+            && (connectionId is null || candidate.ConnectionId == connectionId));
+        if (stored is not null)
+        {
+            usedStoredPanels.Add(stored.Id);
+        }
+
+        string? location;
+        if (panel is UnavailableRuntimePanelViewModel)
+        {
+            // The live panel cannot express its configuration, so the stored
+            // definition keeps everything it already knows.
+            connectionId ??= stored?.ConnectionId;
+            location = stored?.Startup.Location;
+        }
+        else
+        {
+            location = panel switch
+            {
+                TerminalRuntimePanelViewModel terminal => terminal.RecoveryStartupLocation,
+                BrowserRuntimePanelViewModel browser => browser.CurrentAddress.ToString(),
+                _ => stored?.Startup.Location,
+            };
+        }
+        FileProviderProfileId? fileProvider = kind != ScreenPanelKind.FileViewer
+            ? null
+            : panel is FileRuntimePanelViewModel fileViewer
+                && (fileViewer.SelectedProfile?.Id ?? fileViewer.CurrentLocation?.ProviderProfileId)
+                    is { } profileId
+                ? new FileProviderProfileId(profileId)
+                : stored?.FileProviderProfileId;
+        // Startup commands cannot be read back from a live panel, so a matched
+        // stored panel keeps the commands the user configured for this tab.
+        return new ScreenPanelDefinition(
+            stored?.Id ?? new ScreenPanelId(panel.Id.Value),
+            slotId,
+            kind,
+            panel.Title,
+            connectionId,
+            new PanelStartupBehavior(
+                location,
+                stored?.Startup.Commands,
+                stored?.Startup.DeliveryFailurePolicy
+                    ?? StartupCommandDeliveryFailurePolicy.RetryWhileLive),
+            fileProvider);
+    }
+
+    /// <summary>
+    /// Deletes auto-saved layouts of this workspace that no live tab references
+    /// any more — a closed tab leaves its captured layout behind otherwise. Best
+    /// effort: a failure here only delays cleanup until the next save.
+    /// </summary>
+    private async Task CleanUpOrphanedAutoSaveLayoutsAsync(WorkspaceDefinition workspace)
+    {
+        var prefix = $"{LayoutDefinition.AutoSaveIdPrefix}{workspace.Id.Value}.";
+        var referenced = workspace.Entries
+            .OfType<WorkspaceEntry.Tab>()
+            .Select(tab => tab.LayoutId.Value)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var layout in _catalog.Snapshot.Layouts
+            .Where(item => item.Value.Id.Value.StartsWith(prefix, StringComparison.Ordinal)
+                && !referenced.Contains(item.Value.Id.Value))
+            .ToArray())
+        {
+            _ = await _catalog.DeleteAsync(
+                layout.Value.Key,
+                layout.Revision,
+                CancellationToken.None);
         }
     }
 
@@ -7716,6 +8105,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ReplaceIfChanged(
             Layouts,
             snapshot.Layouts
+                .Where(item => !LayoutDefinition.IsAutoSaved(item.Value.Id))
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(item => new LayoutCardViewModel(
                     item.Value.Id,
@@ -7723,9 +8113,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     item.Value.Name,
                     item.Value.Grid.Rows,
                     item.Value.Grid.Columns,
-                    item.Value.Slots.Count))
+                    item.Value.Slots.Count,
+                    CreateLayoutPreview(item.Value)))
                 .ToArray(),
-            static (a, b) => a == b);
+            static (a, b) => a.PresentsSameAs(b));
         OnPropertyChanged(nameof(HasWorkspaces));
         OnPropertyChanged(nameof(HasNoWorkspaces));
         ReplaceIfChanged(
@@ -7821,6 +8212,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         RefreshHistorySearchResults();
     }
 
+    /// <summary>
+    /// The layout's own shape — a layout row without its geometry made every
+    /// card read as "some grid". No slot is emphasized: unlike a screen, a
+    /// layout has no primary panel, only regions.
+    /// </summary>
+    private static IReadOnlyList<LauncherScreenPanelPreviewViewModel> CreateLayoutPreview(
+        LayoutDefinition layout) =>
+        layout.Slots
+            .Select(slot => new LauncherScreenPanelPreviewViewModel(
+                layout.Grid.Columns,
+                layout.Grid.Rows,
+                slot.Bounds.Column,
+                slot.Bounds.Row,
+                slot.Bounds.ColumnSpan,
+                slot.Bounds.RowSpan,
+                IsPrimary: false))
+            .ToArray();
+
     private static IReadOnlyList<LauncherScreenPanelPreviewViewModel> CreateScreenPreview(
         ScreenDefinition screen,
         LayoutDefinition? layout)
@@ -7874,7 +8283,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     item.Value.Id,
                     item.Revision,
                     item.Value.Name,
-                    item.Value.ProviderKind.ToString().ToUpperInvariant(),
+                    FileProviderKindLabel(item.Value.ProviderKind),
                     FileProviderEndpoint(item.Value.Configuration),
                     error is not null ? "Unavailable" : isLive ? "Ready" : "Loading",
                     error?.Message
@@ -7902,7 +8311,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return CreateSavedConnectionShortcut(
                     new PanelConnectionOptionViewModel.Target.Connection(item.Value.Id),
                     item.Value.Name,
-                    ConnectionKindBadge(item.Value.ConnectionKind),
+                    KindBadges.Connection(item.Value.ConnectionKind),
                     launchItem is { CanOpen: true },
                     item.Value.Endpoint.PanelLaunchCapabilities);
             })
@@ -8039,10 +8448,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     item.Value.Name,
                     item.Value.ProviderKind switch
                     {
-                        AiProviderKind.OpenAi => "OPENAI",
-                        AiProviderKind.OpenAiCompatible => "OPENAI COMPATIBLE",
-                        AiProviderKind.Anthropic => "ANTHROPIC",
-                        _ => item.Value.ProviderKind.ToString().ToUpperInvariant(),
+                        AiProviderKind.OpenAi => "OpenAI",
+                        AiProviderKind.OpenAiCompatible => "OpenAI compatible",
+                        AiProviderKind.Anthropic => "Anthropic",
+                        _ => item.Value.ProviderKind.ToString(),
                     },
                     item.Value.Endpoint.AbsoluteUri,
                     item.Value.DefaultModel,
@@ -8507,7 +8916,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var activeBindings = ActiveApplicationKeymap.Bindings
             .ToLookup(binding => binding.CommandId);
         var candidates = new List<LauncherSearchResultViewModel>();
-        var savedDefinitionAction = HasRuntimeWorkspace ? "ADD TAB" : "OPEN";
+        var savedDefinitionAction = HasRuntimeWorkspace ? "Add tab" : "Open";
 
         var canStartFileViewer = RuntimeWorkspace?.ActiveTab is not null
             || Workspaces.Count > 0
@@ -8518,20 +8927,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             new LauncherSearchResultViewModel(
                 new LauncherSearchTarget.CreatePanel(PanelKind.Terminal),
                 Symbol.WindowConsole,
-                "CREATE · TERMINAL",
+                "Create · terminal",
                 "New terminal",
                 "Start a local PTY in a new tab.",
-                "OPEN",
+                "Open",
                 IsAvailable: true,
                 UnavailableReason: null,
                 ["create", "new", "terminal", "local", "pty", "panel", "tab"]),
             new LauncherSearchResultViewModel(
                 new LauncherSearchTarget.CreatePanel(PanelKind.Browser),
                 Symbol.Globe,
-                "CREATE · BROWSER",
+                "Create · browser",
                 "New browser",
                 "Open a native browser panel.",
-                canStartBrowser ? "OPEN" : "UNAVAILABLE",
+                canStartBrowser ? "Open" : "Unavailable",
                 canStartBrowser,
                 canStartBrowser
                     ? null
@@ -8540,10 +8949,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             new LauncherSearchResultViewModel(
                 new LauncherSearchTarget.CreatePanel(PanelKind.FileViewer),
                 Symbol.Folder,
-                "CREATE · FILES",
+                "Create · files",
                 "New File Viewer",
                 "Browse local or configured file providers.",
-                canStartFileViewer ? "OPEN" : "UNAVAILABLE",
+                canStartFileViewer ? "Open" : "Unavailable",
                 canStartFileViewer,
                 canStartFileViewer
                     ? null
@@ -8552,20 +8961,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             new LauncherSearchResultViewModel(
                 new LauncherSearchTarget.CreatePanel(PanelKind.Statistics),
                 Symbol.PulseSquare,
-                "CREATE · STATISTICS",
+                "Create · statistics",
                 "New statistics panel",
                 "Watch live system metrics on this host.",
-                "OPEN",
+                "Open",
                 IsAvailable: true,
                 UnavailableReason: null,
                 ["create", "new", "statistics", "stats", "local", "host", "panel"]),
             new LauncherSearchResultViewModel(
                 new LauncherSearchTarget.CreatePanel(PanelKind.ProcessMonitor),
                 Symbol.Gauge,
-                "CREATE · PROCESS MONITOR",
+                "Create · process monitor",
                 "New process monitor",
                 "Watch running processes on this host.",
-                "OPEN",
+                "Open",
                 IsAvailable: true,
                 UnavailableReason: null,
                 ["create", "new", "process", "monitor", "local", "host", "panel"]),
@@ -8611,7 +9020,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             $"CONNECTION · {connection.Kind}",
             connection.Name,
             connection.Detail,
-            connection.CanOpen ? savedDefinitionAction : "UNAVAILABLE",
+            connection.CanOpen ? savedDefinitionAction : "Unavailable",
             connection.CanOpen,
             connection.CanOpen ? null : connection.Status,
             [
@@ -8634,7 +9043,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         candidates.AddRange(Workspaces.Select(workspace => new LauncherSearchResultViewModel(
             new LauncherSearchTarget.Workspace(workspace.Id),
             workspace.IconSymbol,
-            "WORKSPACE",
+            "Workspace",
             workspace.Name,
             workspace.Description,
             CountLabel(workspace.ItemCount, "item"),
@@ -8791,7 +9200,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var tab = new RuntimeTabViewModel(
             TabInstanceId.New(),
             string.IsNullOrWhiteSpace(title) ? connection.Name : title.Trim(),
-            "CONNECTION",
+            "Connection",
             historySource: new RuntimeHistorySource(connection.Key, connection.Name),
             agentPolicy: agentPolicy);
         try
@@ -9028,7 +9437,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     PanelInstanceId.New(),
                     PanelKind.Terminal,
                     recovered.Title,
-                    "TERMINAL",
+                    "Terminal",
                     "The recovered terminal connection is no longer available. Repair or recreate the connection, then reopen the panel.")
                 : CreateTerminalPanel(
                     workspaceId,
@@ -9073,7 +9482,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     PanelInstanceId.New(),
                     PanelKind.Browser,
                     recovered.Title,
-                    "BROWSER",
+                    "Browser",
                     "The recovered browser address is invalid.");
         }
 
@@ -9088,7 +9497,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     PanelInstanceId.New(),
                     PanelKind.Statistics,
                     recovered.Title,
-                    "STATISTICS",
+                    "Statistics",
                     "The recovered monitoring connection is no longer available.");
             }
 
@@ -9110,7 +9519,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     PanelInstanceId.New(),
                     PanelKind.ProcessMonitor,
                     recovered.Title,
-                    "PROCESS MONITOR",
+                    "Process monitor",
                     "The recovered monitoring connection is no longer available.");
             }
 
@@ -9127,7 +9536,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             || recovered is
             {
                 Kind: RuntimePanelRecoveryKind.Unavailable,
-                KindLabel: "CHOOSE",
+                KindLabel: "Choose",
             })
         {
             return new PanelPlaceholderViewModel(PanelInstanceId.New());
@@ -9230,7 +9639,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                             PanelInstanceId.New(),
                             PanelKind.FileViewer,
                             title,
-                            "FILE VIEWER",
+                            "File viewer",
                             "This panel has an invalid startup location. Repair the saved screen with a location supported by its file provider.");
                     }
                 }
@@ -9256,7 +9665,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     PanelInstanceId.New(),
                     PanelKind.Browser,
                     title,
-                    "BROWSER",
+                    "Browser",
                     "This panel has an invalid startup URL. Repair the saved screen with a complete HTTP or HTTPS address.");
             }
 
@@ -9281,8 +9690,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     PanelKindFromDefinition(panel.Kind),
                     title,
                     panel.Kind == ScreenPanelKind.Statistics
-                        ? "STATISTICS"
-                        : "PROCESS MONITOR",
+                        ? "Statistics"
+                        : "Process monitor",
                     "Remote system monitoring is unavailable. Remove the saved connection from this panel to monitor the local host.");
             }
 
@@ -9300,7 +9709,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelInstanceId.New(),
                 PanelKindFromDefinition(panel.Kind),
                 title,
-                panel.Kind.ToString().ToUpperInvariant(),
+                KindBadges.Panel(panel.Kind),
                 $"{panel.Kind} panels are defined, but their native adapter arrives in a later milestone.");
         }
 
@@ -9315,7 +9724,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelInstanceId.New(),
                 PanelKind.Terminal,
                 title,
-                "TERMINAL",
+                "Terminal",
                 "This panel references a connection that is not available. Repair the saved screen in Settings.");
         }
 
@@ -9447,7 +9856,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 panelId,
                 PanelKind.Browser,
                 title,
-                "BROWSER",
+                "Browser",
                 "The native browser adapter is unavailable in this build.");
         }
 
@@ -9462,7 +9871,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 panelId,
                 PanelKind.Browser,
                 title,
-                "BROWSER",
+                "Browser",
                 "The operating-system browser engine could not be initialized.");
         }
 
@@ -9671,19 +10080,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             : $"{panels} · {shown}";
     }
 
-    /// <summary>
-    /// The launcher badge keeps each transport's conventional casing—initialisms
-    /// stay uppercase and words stay title case—rather than shouting every kind.
-    /// </summary>
-    private static string ConnectionKindBadge(ConnectionKind kind) => kind switch
-    {
-        ConnectionKind.Ssh => "SSH",
-        ConnectionKind.Wsl => "WSL",
-        ConnectionKind.Local => "Local",
-        ConnectionKind.Docker => "Docker",
-        _ => kind.ToString(),
-    };
-
     private static LauncherConnectionViewModel ToConnectionItem(
         ConnectionProfile connection,
         long revision)
@@ -9705,7 +10101,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             connection.Id,
             revision,
             connection.Name,
-            ConnectionKindBadge(connection.ConnectionKind),
+            KindBadges.Connection(connection.ConnectionKind),
             detail,
             canOpen ? "Validated on open" : "Unavailable on this platform",
             canOpen,
@@ -9731,23 +10127,23 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private static string FileProviderKindLabel(FileProviderKind kind) => kind switch
     {
-        FileProviderKind.Local => "LOCAL",
+        FileProviderKind.Local => "Local",
         FileProviderKind.S3 => "S3",
         FileProviderKind.Sftp => "SFTP",
         FileProviderKind.Ftp => "FTP/FTPS",
         FileProviderKind.Smb => "SMB",
-        FileProviderKind.WebDav => "WEBDAV",
+        FileProviderKind.WebDav => "WebDAV",
         _ => kind.ToString().ToUpperInvariant(),
     };
 
     private static string FileProviderFamilyLabel(FileProviderFamily family) => family switch
     {
-        FileProviderFamily.Posix or FileProviderFamily.Windows => "LOCAL",
+        FileProviderFamily.Posix or FileProviderFamily.Windows => "Local",
         FileProviderFamily.S3 => "S3",
         FileProviderFamily.Sftp => "SFTP",
         FileProviderFamily.Ftp => "FTP/FTPS",
         FileProviderFamily.Smb => "SMB",
-        FileProviderFamily.WebDav => "WEBDAV",
+        FileProviderFamily.WebDav => "WebDAV",
         _ => family.ToString().ToUpperInvariant(),
     };
 
@@ -9941,16 +10337,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
-    private static PanelKind PanelKindFromRecovery(string? kindLabel) => kindLabel switch
-    {
-        "TERMINAL" => PanelKind.Terminal,
-        "BROWSER" => PanelKind.Browser,
-        "FILES" or "FILEVIEWER" => PanelKind.FileViewer,
-        "STATISTICS" => PanelKind.Statistics,
-        "PROCESSMONITOR" => PanelKind.ProcessMonitor,
-        _ => throw new InvalidOperationException(
-            "The recovered panel kind is not supported by this build."),
-    };
+    // Normalized before matching: the label doubles as a visible badge, whose
+    // casing follows the interface register, while older recovery rows carry
+    // the uppercase form.
+    private static PanelKind PanelKindFromRecovery(string? kindLabel) =>
+        kindLabel?.Replace(" ", string.Empty).ToUpperInvariant() switch
+        {
+            "TERMINAL" => PanelKind.Terminal,
+            "BROWSER" => PanelKind.Browser,
+            "FILES" or "FILEVIEWER" => PanelKind.FileViewer,
+            "STATISTICS" => PanelKind.Statistics,
+            "PROCESSMONITOR" => PanelKind.ProcessMonitor,
+            _ => throw new InvalidOperationException(
+                "The recovered panel kind is not supported by this build."),
+        };
 
     private static string RequireName(string value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();

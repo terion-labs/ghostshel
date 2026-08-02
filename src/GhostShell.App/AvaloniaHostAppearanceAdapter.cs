@@ -157,6 +157,9 @@ internal sealed record EffectiveAppearanceResources(
     Color RaisedSurface,
     Color HoverSurface,
     Color Border,
+    Color ControlSurface,
+    Color ControlBorder,
+    Color ControlHoverSurface,
     Color Text,
     Color MutedText,
     Color Accent,
@@ -229,6 +232,12 @@ internal static class EffectiveAppearanceResourceMapper
         // Finder separates its content plane from its sidebar material. Keep that
         // distinction semantic: using the sidebar tone as the general surface
         // would also recolor cards, panel headers, and status bars.
+        // The Control* trio is what push buttons and other clickable chrome are
+        // made of. macOS raises its controls well above the surrounding surface
+        // — a dark-mode push button is a distinctly lighter gray with a
+        // translucent hairline — while the product's own profile keeps controls
+        // nearly flush with their card. Separating the tokens lets each host
+        // profile answer differently without recoloring cards and panels.
         var palette = (isMacOsProfile, isLight) switch
         {
             (true, false) => (
@@ -240,6 +249,9 @@ internal static class EffectiveAppearanceResourceMapper
                 Raised: "#2C2C2E",
                 Hover: "#3A3A3C",
                 Border: "#3A3A3C",
+                ControlSurface: "#48484A",
+                ControlBorder: "#14FFFFFF",
+                ControlHover: "#545457",
                 Text: "#F5F5F7",
                 Muted: "#A1A1A6"),
             (true, true) => (
@@ -251,6 +263,9 @@ internal static class EffectiveAppearanceResourceMapper
                 Raised: "#FFFFFF",
                 Hover: "#E5E5EA",
                 Border: "#D1D1D6",
+                ControlSurface: "#FFFFFF",
+                ControlBorder: "#D1D1D6",
+                ControlHover: "#F2F2F4",
                 Text: "#1D1D1F",
                 Muted: "#6E6E73"),
             (false, false) => (
@@ -262,6 +277,9 @@ internal static class EffectiveAppearanceResourceMapper
                 Raised: "#1A1A1A",
                 Hover: "#2E2E2E",
                 Border: "#38383C",
+                ControlSurface: "#1A1A1A",
+                ControlBorder: "#38383C",
+                ControlHover: "#2E2E2E",
                 Text: "#FFFFFF",
                 Muted: "#B8B9B6"),
             _ => (
@@ -273,6 +291,9 @@ internal static class EffectiveAppearanceResourceMapper
                 Raised: "#FFFFFF",
                 Hover: "#D7D8D5",
                 Border: "#B8BAB6",
+                ControlSurface: "#FFFFFF",
+                ControlBorder: "#B8BAB6",
+                ControlHover: "#D7D8D5",
                 Text: "#111111",
                 Muted: "#5C5E5A"),
         };
@@ -284,6 +305,9 @@ internal static class EffectiveAppearanceResourceMapper
         var raised = Parse(palette.Raised);
         var hover = Parse(palette.Hover);
         var border = Parse(palette.Border);
+        var controlSurface = Parse(palette.ControlSurface);
+        var controlBorder = Parse(palette.ControlBorder);
+        var controlHover = Parse(palette.ControlHover);
         var text = Parse(palette.Text);
         var muted = Parse(palette.Muted);
 
@@ -297,6 +321,9 @@ internal static class EffectiveAppearanceResourceMapper
             raised = Parse(isLight ? "#FFFFFF" : "#080808");
             hover = Parse(isLight ? "#E6E6E6" : "#202020");
             border = Parse(isLight ? "#000000" : "#FFFFFF");
+            controlSurface = raised;
+            controlBorder = border;
+            controlHover = hover;
             text = Parse(isLight ? "#000000" : "#FFFFFF");
             muted = Parse(isLight ? "#262626" : "#E6E6E6");
         }
@@ -374,6 +401,9 @@ internal static class EffectiveAppearanceResourceMapper
             raised,
             hover,
             border,
+            controlSurface,
+            controlBorder,
+            controlHover,
             text,
             muted,
             accent,

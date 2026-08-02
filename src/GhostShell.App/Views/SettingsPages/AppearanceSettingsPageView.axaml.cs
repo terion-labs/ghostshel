@@ -171,11 +171,16 @@ public sealed partial class AppearanceSettingsPageView : UserControl
     /// </summary>
     private void OnDensityClick(object? sender, RoutedEventArgs e)
     {
-        _ = e;
         foreach (var option in new[] { DensityCompact, DensityCozy, DensityComfortable })
         {
             option.IsChecked = ReferenceEquals(option, sender);
         }
+
+        // The segments deliberately do not wire IsCheckedChanged — this handler
+        // reassigns every segment's checked state and would echo one click as
+        // three change events. It must therefore report the change itself, or
+        // the density picker saves nothing and the setting is a dead control.
+        OnAppearanceChanged(sender, e);
     }
 
     /// <summary>

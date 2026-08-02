@@ -15,7 +15,7 @@
     <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto">
       <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
-        <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
       </StackPanel>
       <Button Grid.Column="1" Classes="IconButton" Click="OnCancelClick" Content="×" IsCancel="True" AutomationProperties.Name="Close AI-provider editor" />
     </Grid>
@@ -36,13 +36,13 @@
             </Grid>
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="API base endpoint" />
-              <TextBox Classes="Monospace" Text="{Binding Endpoint}" PlaceholderText="https://api.example.com/v1/" />
+              <TextBox Text="{Binding Endpoint}" PlaceholderText="https://api.example.com/v1/" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="HTTPS is required except for an exact loopback endpoint. Redirects, embedded credentials, queries, and fragments are rejected." TextWrapping="Wrap" />
             </StackPanel>
             <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock FontWeight="SemiBold" Text="Default model" />
-                <TextBox Classes="Monospace" Text="{Binding DefaultModel}" />
+                <TextBox Text="{Binding DefaultModel}" />
               </StackPanel>
               <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock FontWeight="SemiBold" Text="Fallback order" />
@@ -61,7 +61,7 @@
 
         <controls:SurfaceCard Padding="0">
           <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
-            <TextBlock Classes="SectionHeading" Text="AUTHENTICATION" />
+            <TextBlock Classes="SectionHeading" Text="Authentication" />
             <CheckBox
                 IsVisible="{Binding CanDisableAuthentication}"
                 IsChecked="{Binding UseNoAuthentication}"
@@ -87,7 +87,7 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                    <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Id}" />
+                    <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Id}" />
                     <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayName}" />
                   </Grid>
                 </DataTemplate>

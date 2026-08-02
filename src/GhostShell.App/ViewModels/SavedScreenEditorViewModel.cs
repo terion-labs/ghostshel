@@ -285,12 +285,12 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
     public bool CanEdit => !IsSaving;
 
     public string DirtyStatus => IsSaving
-        ? "SAVING"
+        ? "Saving"
         : IsNew
-        ? "UNSAVED NEW SCREEN"
+        ? "Unsaved new screen"
         : IsDirty
-            ? "UNSAVED CHANGES"
-            : "SAVED DEFINITION";
+            ? "Unsaved changes"
+            : "Saved definition";
 
     public int MissingConnectionCount => _panels.Count(panel => panel.HasMissingConnection);
 
@@ -330,13 +330,13 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
 
     public string PersistenceErrorLabel => PersistenceError?.Code switch
     {
-        DefinitionStoreErrorCode.RevisionConflict => "REVISION CONFLICT",
-        DefinitionStoreErrorCode.DependencyConflict => "MISSING DEPENDENCY",
-        DefinitionStoreErrorCode.Cancelled => "SAVE CANCELLED",
-        DefinitionStoreErrorCode.StorageUnavailable => "STORAGE UNAVAILABLE",
-        DefinitionStoreErrorCode.StorageFailure => "STORAGE FAILURE",
+        DefinitionStoreErrorCode.RevisionConflict => "Revision conflict",
+        DefinitionStoreErrorCode.DependencyConflict => "Missing dependency",
+        DefinitionStoreErrorCode.Cancelled => "Save cancelled",
+        DefinitionStoreErrorCode.StorageUnavailable => "Storage unavailable",
+        DefinitionStoreErrorCode.StorageFailure => "Storage failure",
         null => string.Empty,
-        _ => "SAVE FAILED",
+        _ => "Save failed",
     };
 
     public IReadOnlyList<LauncherScreenPanelPreviewViewModel> PreviewPanels
@@ -646,7 +646,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
             .Select(connection => new ScreenConnectionOption(
                 connection.Id,
                 connection.Name,
-                connection.ConnectionKind.ToString().ToUpperInvariant(),
+                KindBadges.Connection(connection.ConnectionKind),
                 true))
             .ToList();
         foreach (var missingId in screen.Panels
@@ -658,7 +658,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
             options.Add(new ScreenConnectionOption(
                 missingId,
                 missingId.Value,
-                "UNAVAILABLE",
+                "Unavailable",
                 false));
         }
 
@@ -679,7 +679,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
             .Select(profile => new ScreenFileProviderOption(
                 profile.Id,
                 profile.Name,
-                profile.ProviderKind.ToString().ToUpperInvariant(),
+                KindBadges.FileProvider(profile.ProviderKind),
                 true)));
         foreach (var missingId in screen.Panels
             .Select(panel => panel.FileProviderProfileId)
@@ -690,7 +690,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
             options.Add(new ScreenFileProviderOption(
                 missingId,
                 missingId.Value,
-                "UNAVAILABLE",
+                "Unavailable",
                 false));
         }
 
@@ -778,7 +778,7 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         set => SelectedKind = KindOptions.Single(option => option.Kind == value);
     }
 
-    public string PanelLabel => $"{Kind.ToString().ToUpperInvariant()} · {SlotId.Value}";
+    public string PanelLabel => $"{KindBadges.Panel(Kind)} · {SlotId.Value}";
 
     public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
 

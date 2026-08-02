@@ -312,7 +312,7 @@ internal sealed class RuntimeDockLayoutController
         }
     }
 
-    private static void NormalizeRestoredLayout(IRootDock root)
+    internal static void NormalizeRestoredLayout(IRootDock root)
     {
         NormalizeSelections(root);
         foreach (var window in root.Windows ?? [])

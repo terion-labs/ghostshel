@@ -82,11 +82,11 @@
       <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
         <TextBlock Classes="SectionHeading" Text="Status" />
         <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-          <controls:StatusChip Content="CONNECTED" />
-          <controls:StatusChip Tone="Warning" Content="NEEDS ATTENTION" />
-          <controls:StatusChip Tone="Danger" Content="YOLO ENABLED" />
+          <controls:StatusChip Content="Connected" />
+          <controls:StatusChip Tone="Warning" Content="Needs attention" />
+          <controls:StatusChip Tone="Danger" Content="YOLO enabled" />
           <controls:StatusChip Tone="Notice" Content="claude-opus-4-5" />
-          <controls:StatusChip Tone="Default" Content="ASK" />
+          <controls:StatusChip Tone="Default" Content="Ask" />
           <controls:StatusChip Shape="Rounded" Content="SSH" />
           <controls:StatusChip Shape="Rounded" Content="Docker" />
         </StackPanel>
@@ -112,7 +112,7 @@
           <controls:SettingRow
               Label="Global hotkey"
               Description="Press the shortcut that summons the panel from anywhere.">
-            <TextBox Classes="Monospace" Text="Ctrl+Alt+T" />
+            <TextBox Text="Ctrl+Alt+T" />
           </controls:SettingRow>
           <controls:SettingRow
               Label="Show on display"

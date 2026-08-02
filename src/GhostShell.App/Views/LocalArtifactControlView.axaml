@@ -37,7 +37,7 @@
       </controls:SurfaceCard>
 
       <TextBlock
-          Classes="Muted Monospace"
+          Classes="Muted"
           FontSize="{DynamicResource ShellFontSize9}"
           Text="{Binding StatusMessage}"
           TextWrapping="Wrap"
@@ -77,8 +77,8 @@
                       Text="{Binding Description}"
                       TextWrapping="Wrap" />
                   <WrapPanel Orientation="Horizontal">
-                    <TextBlock Margin="{controls:Inset Right=Md}" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding FileCountLabel}" />
-                    <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SizeLabel}" />
+                    <TextBlock Margin="{controls:Inset Right=Md}" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding FileCountLabel}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SizeLabel}" />
                   </WrapPanel>
                 </StackPanel>
                 <Button
@@ -90,7 +90,7 @@
                     IsEnabled="{Binding HasFiles}"
                     AutomationProperties.Name="{Binding ClearAutomationName}" />
               </Grid>
-            </controls:SurfaceCard>          </DataTemplate>
+            </controls:SurfaceCard> </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
     </StackPanel>

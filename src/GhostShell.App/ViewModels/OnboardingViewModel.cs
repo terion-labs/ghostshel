@@ -27,9 +27,9 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
     private bool _isBusy;
     private bool _hasFailure;
     private string _statusMessage = "Checking this local profile…";
-    private string _localTerminalState = "CHECKING";
+    private string _localTerminalState = "Checking";
     private string _localTerminalDetail = "Resolving the configured local shell without launching it.";
-    private string _credentialVaultState = "CHECKING";
+    private string _credentialVaultState = "Checking";
     private string _credentialVaultDetail =
         "Checking whether credentials can use operating-system protected storage.";
     private bool _disposed;
@@ -394,7 +394,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
         if (local is null)
         {
             return new(
-                "NEEDS ATTENTION",
+                "Needs attention",
                 "No local terminal definition is available. Import a setup or create a local connection.",
                 HasFailure: true);
         }
@@ -408,12 +408,12 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
         {
             ConnectionRuntimeResult<ConnectionTestReport>.Success =>
                 new(
-                    "READY",
+                    "Ready",
                     "The configured local shell is installed and executable. This check did not launch it.",
                     HasFailure: false),
             ConnectionRuntimeResult<ConnectionTestReport>.Failure failure =>
                 new(
-                    "NEEDS ATTENTION",
+                    "Needs attention",
                     $"{failure.Error.Message} Open the connection editor to repair it.",
                     HasFailure: true),
             _ => throw new InvalidOperationException(
@@ -426,18 +426,18 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
         if (_vaultAvailability.CanPersist)
         {
             return new(
-                "READY",
+                "Ready",
                 "Credential values can use operating-system protected storage. Definitions keep opaque references only.",
                 HasFailure: false);
         }
 
         return _vaultAvailability.Persistence == SecretVaultPersistenceKind.MemoryOnly
             ? new(
-                "MEMORY ONLY",
+                "Memory only",
                 "Persistent credential storage is unavailable. Credentials can exist only for this process.",
                 HasFailure: true)
             : new(
-                "UNAVAILABLE",
+                "Unavailable",
                 "Persistent credentials cannot be saved. Local terminals without stored credentials still work.",
                 HasFailure: true);
     }

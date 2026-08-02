@@ -25,7 +25,7 @@ public sealed class KeybindingEditorSessionViewModelTests
         Assert.False(session.CanSave);
         Assert.All(session.Rows, row => Assert.False(row.CanEdit));
         Assert.False(copyMode.CanUnbind);
-        Assert.Equal("ACTIVE", copyMode.Status);
+        Assert.Equal("Active", copyMode.Status);
         Assert.Contains("read-only", session.StateSummary, StringComparison.OrdinalIgnoreCase);
 
         var error = Assert.Throws<InvalidOperationException>(() => session.Unbind(copyMode.Id));
@@ -81,8 +81,8 @@ public sealed class KeybindingEditorSessionViewModelTests
         Assert.Equal(1, session.ConflictCount);
         Assert.True(session.HasConflicts);
         Assert.False(session.CanSave);
-        Assert.Equal("CONFLICT", Row(session, BuiltInCommands.Copy).Status);
-        Assert.Equal("CONFLICT", Row(session, BuiltInCommands.Paste).Status);
+        Assert.Equal("Conflict", Row(session, BuiltInCommands.Copy).Status);
+        Assert.Equal("Conflict", Row(session, BuiltInCommands.Paste).Status);
         Assert.Contains("Resolve 1", session.StateSummary, StringComparison.Ordinal);
         Assert.Throws<InvalidOperationException>(() => session.CreateSaveRequest());
 

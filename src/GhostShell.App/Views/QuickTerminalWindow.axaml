@@ -80,10 +80,10 @@
                 FontSize="14"
                 Foreground="{DynamicResource ShellAccentBrush}" />
             <TextBlock
-                Classes="Monospace"
+                
                 FontSize="{DynamicResource ShellFontSize10}"
                 FontWeight="SemiBold"
-                Text="QUICK TERMINAL" />
+                Text="Quick terminal" />
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ConnectionName}" />
           </StackPanel>
 
@@ -91,19 +91,19 @@
               Grid.Column="1"
               HorizontalAlignment="Center"
               VerticalAlignment="Center"
-              Classes="Monospace Muted"
+              Classes="Muted"
               FontSize="{DynamicResource ShellFontSize9}"
-              Text="{Binding ProfileName, StringFormat={}PROFILE · {0}}" />
+              Text="{Binding ProfileName, StringFormat={}Profile · {0}}" />
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
             <Ellipse Width="7" Height="7" Fill="{Binding ShortcutStatusBrush}" />
             <TextBlock
-                Classes="Monospace Muted"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
                 Text="{Binding ShortcutStatus}"
                 ToolTip.Tip="{Binding ShortcutDetail}" />
             <TextBlock
-                Classes="Monospace Muted"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
                 Text="{Binding EscapeStatus}"
                 ToolTip.Tip="{Binding EscapeDetail}" />

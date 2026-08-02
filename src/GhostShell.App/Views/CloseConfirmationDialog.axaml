@@ -19,7 +19,7 @@
     </StackPanel>
     <Border Grid.Row="1" Padding="{controls:Inset Md}" Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellControlCornerRadius}">
       <TextBlock
-          Classes="Monospace"
+          
           FontSize="{DynamicResource ShellFontSize10}"
           Foreground="{DynamicResource ShellWarningBrush}"
           Text="{Binding SessionSummary}"

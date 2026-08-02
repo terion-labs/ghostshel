@@ -2,26 +2,17 @@ using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
 
-public enum LayoutDesignerDirection
-{
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
-public enum LayoutDesignerEdge
-{
-    Left,
-    Right,
-    Top,
-    Bottom,
-}
-
 public enum LayoutDesignerCancelDisposition
 {
     Close,
     ConfirmDiscard,
+}
+
+/// <summary>The two split gestures a slot offers, matching the runtime workspace.</summary>
+public enum LayoutDesignerSplitDirection
+{
+    Right,
+    Down,
 }
 
 public sealed record LayoutDesignerOperationResult
@@ -49,23 +40,84 @@ public sealed record LayoutDesignerSaveRequest(
     long? ExpectedRevision);
 
 /// <summary>
-/// Immutable presentation snapshot for one layout slot. <see cref="Order"/> is also the
-/// keyboard and accessibility traversal position.
+/// Presentation state for one designer slot. The instance is also the Dock
+/// document's Context, so it is mutable: the document keeps one identity while
+/// its order, share of the canvas, and selection change under editing.
 /// </summary>
-public sealed record LayoutDesignerSlotViewModel(
-    int Order,
-    LayoutSlotDefinition Definition,
-    bool IsSelected,
-    int Columns = 0,
-    int Rows = 0)
+public sealed class LayoutDesignerSlotViewModel : ObservableObject
 {
-    public LayoutSlotId Id => Definition.Id;
+    private int _order;
+    private double _widthShare;
+    private double _heightShare;
+    private bool _isSelected;
 
-    public LayoutGridBounds Bounds => Definition.Bounds;
+    public LayoutDesignerSlotViewModel(string id)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        Id = id;
+    }
 
-    public LayoutMinimumSize MinimumSize => Definition.MinimumSize;
+    /// <summary>The layout slot id, which is also the Dock document id.</summary>
+    public string Id { get; }
+
+    /// <summary>The keyboard and accessibility traversal position, 1-based.</summary>
+    public int Order
+    {
+        get => _order;
+        internal set
+        {
+            if (SetProperty(ref _order, value))
+            {
+                OnPropertyChanged(nameof(OrderLabel));
+                OnPropertyChanged(nameof(UsesOrangePalette));
+                OnPropertyChanged(nameof(UsesBluePalette));
+                OnPropertyChanged(nameof(UsesGreenPalette));
+                OnPropertyChanged(nameof(UsesPinkPalette));
+            }
+        }
+    }
+
+    /// <summary>The slot's share of the canvas width, 0..1.</summary>
+    public double WidthShare
+    {
+        get => _widthShare;
+        internal set
+        {
+            if (SetProperty(ref _widthShare, value))
+            {
+                OnPropertyChanged(nameof(SizeLabel));
+            }
+        }
+    }
+
+    /// <summary>The slot's share of the canvas height, 0..1.</summary>
+    public double HeightShare
+    {
+        get => _heightShare;
+        internal set
+        {
+            if (SetProperty(ref _heightShare, value))
+            {
+                OnPropertyChanged(nameof(SizeLabel));
+            }
+        }
+    }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        internal set => SetProperty(ref _isSelected, value);
+    }
 
     public string OrderLabel => $"Panel {Order}";
+
+    /// <summary>
+    /// The slot's size as the share of the screen it will actually occupy —
+    /// "50% × 33%" — because proportions, not grid coordinates, are what the
+    /// dock-based designer edits.
+    /// </summary>
+    public string SizeLabel =>
+        $"{Math.Round(WidthShare * 100)}% × {Math.Round(HeightShare * 100)}%";
 
     public bool UsesOrangePalette => PaletteIndex == 0;
 
@@ -74,63 +126,6 @@ public sealed record LayoutDesignerSlotViewModel(
     public bool UsesGreenPalette => PaletteIndex == 2;
 
     public bool UsesPinkPalette => PaletteIndex == 3;
-
-    public string PositionLabel =>
-        $"Column {Bounds.Column + 1}, row {Bounds.Row + 1}, "
-        + $"{Bounds.ColumnSpan} by {Bounds.RowSpan}";
-
-    /// <summary>
-    /// The panel's size as a share of the grid — "½ × ¼" — which is what the
-    /// panel will actually look like when the screen opens. Grid coordinates say
-    /// where a panel is anchored; they do not say how big it looks, and reading
-    /// "6 by 4" against a 12 × 8 grid is arithmetic the reader should not have to
-    /// do. The exact coordinates stay available as the accessible name.
-    /// </summary>
-    public string SizeLabel => Columns > 0 && Rows > 0
-        ? $"{Fraction(Bounds.ColumnSpan, Columns)} × {Fraction(Bounds.RowSpan, Rows)}"
-        : string.Empty;
-
-    /// <summary>
-    /// Renders a span as a vulgar fraction where one exists, because "⅓" reads at
-    /// a glance and "0.33" does not. Anything without a familiar glyph falls back
-    /// to the plain ratio rather than an approximation.
-    /// </summary>
-    private static string Fraction(int span, int total)
-    {
-        if (span >= total)
-        {
-            return "1";
-        }
-
-        var divisor = GreatestCommonDivisor(span, total);
-        var numerator = span / divisor;
-        var denominator = total / divisor;
-        return (numerator, denominator) switch
-        {
-            (1, 2) => "½",
-            (1, 3) => "⅓",
-            (2, 3) => "⅔",
-            (1, 4) => "¼",
-            (3, 4) => "¾",
-            (1, 5) => "⅕",
-            (1, 6) => "⅙",
-            (1, 8) => "⅛",
-            (3, 8) => "⅜",
-            (5, 8) => "⅝",
-            (7, 8) => "⅞",
-            _ => $"{numerator}/{denominator}",
-        };
-    }
-
-    private static int GreatestCommonDivisor(int first, int second)
-    {
-        while (second != 0)
-        {
-            (first, second) = (second, first % second);
-        }
-
-        return first;
-    }
 
     private int PaletteIndex => (Order - 1) % 4;
 }

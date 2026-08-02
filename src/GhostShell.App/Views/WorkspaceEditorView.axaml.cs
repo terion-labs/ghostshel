@@ -74,7 +74,11 @@ public sealed partial class WorkspaceEditorView : UserControl
         }
 
         ConfigurePickers();
-        EnsureEntrySelection();
+        // After the binding pass, not during DataContextChanged: the entry
+        // list's ItemsSource has not delivered the new editor's entries yet, so
+        // selecting the first entry now is coerced back to nothing — which is
+        // why reopening the editor used to land on the empty state.
+        Avalonia.Threading.Dispatcher.UIThread.Post(EnsureEntrySelection);
     }
 
     private void ConfigurePickers()
@@ -96,14 +100,19 @@ public sealed partial class WorkspaceEditorView : UserControl
             return;
         }
 
+        // Auto-saved layouts carry a live tab's captured geometry; they resolve
+        // existing tab references but are not offered for new tabs.
+        var pickableLayouts = editor.LayoutOptions
+            .Where(option => !LayoutDefinition.IsAutoSaved(option.Id))
+            .ToArray();
         addConnectionPicker.ItemsSource = editor.ConnectionOptions;
         addScreenPicker.ItemsSource = editor.ScreenOptions;
-        addLayoutPicker.ItemsSource = editor.LayoutOptions;
+        addLayoutPicker.ItemsSource = pickableLayouts;
         entryConnectionPicker.ItemsSource = editor.ConnectionOptions;
         entryScreenPicker.ItemsSource = editor.ScreenOptions;
         addConnectionPicker.SelectedItem = editor.ConnectionOptions.FirstOrDefault(option => option.IsAvailable);
         addScreenPicker.SelectedItem = editor.ScreenOptions.FirstOrDefault(option => option.IsAvailable);
-        addLayoutPicker.SelectedItem = editor.LayoutOptions.FirstOrDefault(option => option.IsAvailable);
+        addLayoutPicker.SelectedItem = pickableLayouts.FirstOrDefault(option => option.IsAvailable);
         SynchronizeIconPicker();
     }
 
@@ -309,7 +318,15 @@ public sealed partial class WorkspaceEditorView : UserControl
             return;
         }
 
-        CompleteAdd(editor.AddWorkspaceTab(option.Id));
+        var nameInput = this.FindControl<TextBox>("AddTabNameInput")!;
+        var name = string.IsNullOrWhiteSpace(nameInput.Text) ? "New tab" : nameInput.Text.Trim();
+        var result = editor.AddWorkspaceTab(option.Id, name);
+        if (result.IsSuccess)
+        {
+            nameInput.Text = string.Empty;
+        }
+
+        CompleteAdd(result);
     }
 
     private void CompleteAdd(WorkspaceEditorOperationResult result)

@@ -36,7 +36,7 @@
               Text="Search connections, screens, workspaces, sessions, or commands…"
               TextTrimming="CharacterEllipsis" />
           <Border Grid.Column="2" Classes="Keycap">
-            <TextBlock Classes="Monospace" Text="{Binding CommandPaletteShortcut}" />
+            <TextBlock Text="{Binding CommandPaletteShortcut}" />
           </Border>
         </Grid>
       </Button>
@@ -145,7 +145,7 @@
                       <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
                       <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
                       <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding Kind}" />
                     </Grid>

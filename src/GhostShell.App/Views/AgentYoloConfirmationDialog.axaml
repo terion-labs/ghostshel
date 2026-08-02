@@ -42,7 +42,7 @@
               FontSize="18"
               Foreground="{DynamicResource ShellDangerBrush}" />
           <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-            <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellDangerBrush}" Text="HIGH-RISK RUN OVERRIDE" />
+            <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellDangerBrush}" Text="High-risk run override" />
             <TextBlock
                 Text="Terminal input and destructive terminal actions can execute without per-action approval until this window expires."
                 TextWrapping="Wrap" />
@@ -57,31 +57,31 @@
 
       <controls:SurfaceCard Padding="0">
         <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock Classes="Eyebrow" Text="EXACT TERMINAL SCOPE" />
+          <TextBlock Classes="Eyebrow" Text="Exact terminal scope" />
           <TextBlock x:Name="TargetTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
           <TextBlock
               x:Name="ExactTarget"
-              Classes="Muted Monospace"
+              Classes="Muted"
               FontSize="{DynamicResource ShellFontSize9}"
               TextWrapping="Wrap" />
           <StackPanel Margin="{controls:Inset Top=Xs}" Spacing="{DynamicResource ShellSpaceXs}">
-            <TextBlock Classes="Eyebrow" Text="CONNECTION" />
+            <TextBlock Classes="Eyebrow" Text="Connection" />
             <TextBlock
                 x:Name="ConnectionBoundary"
-                Classes="Muted Monospace"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
                 TextWrapping="Wrap" />
           </StackPanel>
           <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-            <TextBlock Classes="Eyebrow" Text="WORKING DIRECTORY" />
+            <TextBlock Classes="Eyebrow" Text="Working directory" />
             <TextBlock
                 x:Name="WorkingDirectory"
-                Classes="Muted Monospace"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
                 TextWrapping="Wrap" />
           </StackPanel>
-          <TextBlock Classes="Eyebrow" Margin="{controls:Inset Top=Xs}" Text="DURATION" />
-          <TextBlock Classes="Monospace" Text="15 minutes · this run only" />
+          <TextBlock Classes="Eyebrow" Margin="{controls:Inset Top=Xs}" Text="Duration" />
+          <TextBlock Text="15 minutes · this run only" />
         </StackPanel>
       </controls:SurfaceCard>
 

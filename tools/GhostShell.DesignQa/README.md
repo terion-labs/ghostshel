@@ -33,6 +33,10 @@ host process, and driving it needs Accessibility permission. This harness
 renders in-process through `RenderTargetBitmap`, so it needs neither, never
 captures unrelated windows, and produces byte-stable output for diffing.
 
+It runs on Avalonia's headless platform with real Skia drawing: no window ever
+appears on screen and nothing steals focus, while text, layout, and colour
+render exactly as the desktop platform would draw them offscreen.
+
 ## What it does and does not prove
 
 It uses the compiled application resources, the real `MainWindow`, the real

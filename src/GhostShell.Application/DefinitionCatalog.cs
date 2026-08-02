@@ -41,6 +41,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
     private readonly IDefinitionRepository<AiProviderProfile> _aiProviderProfiles;
     private readonly IDefinitionRepository<McpServerProfile> _mcpServerProfiles;
     private readonly IDefinitionRepository<QuickTerminalSettings> _quickTerminalSettings;
+    private readonly ILayoutGraphStore? _layoutGraph;
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private DefinitionCatalogSnapshot _snapshot = DefinitionCatalogSnapshot.Empty;
     private bool _initialized;
@@ -56,8 +57,10 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
         IDefinitionRepository<FileProviderProfile> fileProviderProfiles,
         IDefinitionRepository<AiProviderProfile> aiProviderProfiles,
         IDefinitionRepository<McpServerProfile> mcpServerProfiles,
-        IDefinitionRepository<QuickTerminalSettings> quickTerminalSettings)
+        IDefinitionRepository<QuickTerminalSettings> quickTerminalSettings,
+        ILayoutGraphStore? layoutGraph = null)
     {
+        _layoutGraph = layoutGraph;
         _connections = connections ?? throw new ArgumentNullException(nameof(connections));
         _layouts = layouts ?? throw new ArgumentNullException(nameof(layouts));
         _screens = screens ?? throw new ArgumentNullException(nameof(screens));
@@ -152,16 +155,165 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             ValidateConnectionName,
             cancellationToken);
 
-    public ValueTask<DefinitionStoreResult<StoredDefinition<LayoutDefinition>>> SaveLayoutAsync(
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<LayoutDefinition>>> SaveLayoutAsync(
         LayoutDefinition definition,
         long? expectedRevision,
-        CancellationToken cancellationToken) =>
-        SaveValidatedAsync(
-            definition,
-            expectedRevision,
-            _layouts,
-            ValidateLayout,
-            cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var error = ValidateLayout(definition);
+            if (error is not null)
+            {
+                return DefinitionStoreResult<StoredDefinition<LayoutDefinition>>.Failure(error);
+            }
+
+            // A layout edit changes the slot set, and saved screens follow the
+            // layout rather than vetoing it: mappings for removed slots are
+            // dropped, and added slots arrive as unassigned terminal panels the
+            // user fills in when the screen next opens. Refusing the save here
+            // made the designer a dead end for any layout a screen had adopted.
+            var reconciled = new List<(ScreenDefinition Screen, long Revision)>();
+            foreach (var screen in Snapshot.Screens
+                         .Where(item => item.Value.LayoutId == definition.Id))
+            {
+                if (ScreenValidator.Validate(screen.Value, definition).IsValid)
+                {
+                    continue;
+                }
+
+                var updated = ReconcileScreenWithLayout(screen.Value, definition);
+                if (!ScreenValidator.Validate(updated, definition).IsValid)
+                {
+                    return DefinitionStoreResult<StoredDefinition<LayoutDefinition>>.Failure(
+                        new DefinitionStoreError(
+                            DefinitionStoreErrorCode.DependencyConflict,
+                            $"The layout change would invalidate saved screen '{screen.Value.Name}'."));
+                }
+
+                reconciled.Add((updated, screen.Revision));
+            }
+
+            DefinitionStoreResult<StoredDefinition<LayoutDefinition>> result;
+            if (reconciled.Count > 0 && _layoutGraph is not null)
+            {
+                // The storage graph validates dependents on every write, so the
+                // layout and its reconciled screens must land as one batch —
+                // saved separately, either order is rejected for the other's
+                // sake.
+                result = await _layoutGraph.SaveLayoutWithScreensAsync(
+                        definition,
+                        expectedRevision,
+                        reconciled
+                            .Select(item => new ScreenRevisionUpdate(item.Screen, item.Revision))
+                            .ToArray(),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!result.IsSuccess)
+                {
+                    return result;
+                }
+            }
+            else
+            {
+                result = await _layouts.SaveAsync(
+                        definition,
+                        expectedRevision,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!result.IsSuccess)
+                {
+                    return result;
+                }
+
+                foreach (var (screen, revision) in reconciled)
+                {
+                    var screenResult = await _screens.SaveAsync(
+                            screen,
+                            revision,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!screenResult.IsSuccess)
+                    {
+                        // The layout is already durable. Publish what happened
+                        // and surface the screen failure instead of pretending
+                        // the layout save itself failed.
+                        _ = await RefreshCoreAsync(cancellationToken).ConfigureAwait(false);
+                        Changed?.Invoke(this, EventArgs.Empty);
+                        return DefinitionStoreResult<StoredDefinition<LayoutDefinition>>.Failure(
+                            screenResult.Error!);
+                    }
+                }
+            }
+
+            var refreshed = await RefreshCoreAsync(cancellationToken).ConfigureAwait(false);
+            if (!refreshed.IsSuccess)
+            {
+                return DefinitionStoreResult<StoredDefinition<LayoutDefinition>>.Failure(
+                    refreshed.Error!);
+            }
+
+            Changed?.Invoke(this, EventArgs.Empty);
+            return result;
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Projects a screen's panel mappings onto an edited layout: panels whose
+    /// slots are gone are dropped, and slots the screen does not map yet are
+    /// filled with unassigned terminal panels using default startup behavior.
+    /// </summary>
+    private static ScreenDefinition ReconcileScreenWithLayout(
+        ScreenDefinition screen,
+        LayoutDefinition layout)
+    {
+        var knownSlots = layout.Slots.Select(slot => slot.Id).ToHashSet();
+        var panels = screen.Panels
+            .Where(panel => knownSlots.Contains(panel.SlotId))
+            .ToList();
+        var usedPanelIds = panels
+            .Select(panel => panel.Id.Value)
+            .ToHashSet(StringComparer.Ordinal);
+        var mappedSlots = panels.Select(panel => panel.SlotId).ToHashSet();
+        foreach (var slot in layout.Slots)
+        {
+            if (!mappedSlots.Add(slot.Id))
+            {
+                continue;
+            }
+
+            var panelId = $"panel-{slot.Id.Value}";
+            var suffix = 2;
+            while (!usedPanelIds.Add(panelId))
+            {
+                panelId = $"panel-{slot.Id.Value}-{suffix++}";
+            }
+
+            panels.Add(new ScreenPanelDefinition(
+                new ScreenPanelId(panelId),
+                slot.Id,
+                ScreenPanelKind.Terminal,
+                Title: null,
+                ConnectionId: null,
+                PanelStartupBehavior.None));
+        }
+
+        return new ScreenDefinition(
+            screen.Id,
+            screen.SchemaVersion,
+            screen.Name,
+            screen.Description,
+            screen.LayoutId,
+            panels,
+            screen.Tags,
+            screen.AgentPolicyOverride);
+    }
 
     public ValueTask<DefinitionStoreResult<StoredDefinition<ScreenDefinition>>> SaveScreenAsync(
         ScreenDefinition definition,
@@ -184,6 +336,99 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             _workspaces,
             ValidateWorkspace,
             cancellationToken);
+
+    /// <summary>
+    /// Saves a workspace together with the auto-saved tab layouts its entries
+    /// reference. The two must land as one batch: the storage graph rejects a
+    /// workspace whose tab layouts are not stored yet, and would strand the
+    /// layouts if the workspace write failed after them. Auto-saved layouts skip
+    /// the duplicate-name rule because catalog listings hide them.
+    /// </summary>
+    public async ValueTask<DefinitionStoreError?> SaveWorkspaceWithLayoutsAsync(
+        WorkspaceDefinition workspace,
+        long? expectedWorkspaceRevision,
+        IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)> layouts,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(layouts);
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            foreach (var (layout, _) in layouts)
+            {
+                var layoutValidation = LayoutValidator.Validate(layout);
+                if (!layoutValidation.IsValid)
+                {
+                    return Invalid(layoutValidation);
+                }
+            }
+
+            var error = ValidateWorkspace(
+                workspace,
+                layouts.Select(item => item.Definition).ToArray());
+            if (error is not null)
+            {
+                return error;
+            }
+
+            if (_layoutGraph is not null)
+            {
+                var writes = layouts
+                    .Select(item => new DefinitionGraphWrite(item.Definition, item.ExpectedRevision))
+                    .Append(new DefinitionGraphWrite(workspace, expectedWorkspaceRevision))
+                    .ToArray();
+                var saveError = await _layoutGraph.SaveGraphAsync(writes, cancellationToken)
+                    .ConfigureAwait(false);
+                if (saveError is not null)
+                {
+                    return saveError;
+                }
+            }
+            else
+            {
+                foreach (var (layout, expectedRevision) in layouts)
+                {
+                    var layoutResult = await _layouts.SaveAsync(
+                            layout,
+                            expectedRevision,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!layoutResult.IsSuccess)
+                    {
+                        _ = await RefreshCoreAsync(cancellationToken).ConfigureAwait(false);
+                        Changed?.Invoke(this, EventArgs.Empty);
+                        return layoutResult.Error;
+                    }
+                }
+
+                var workspaceResult = await _workspaces.SaveAsync(
+                        workspace,
+                        expectedWorkspaceRevision,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!workspaceResult.IsSuccess)
+                {
+                    _ = await RefreshCoreAsync(cancellationToken).ConfigureAwait(false);
+                    Changed?.Invoke(this, EventArgs.Empty);
+                    return workspaceResult.Error;
+                }
+            }
+
+            var refreshed = await RefreshCoreAsync(cancellationToken).ConfigureAwait(false);
+            if (!refreshed.IsSuccess)
+            {
+                return refreshed.Error;
+            }
+
+            Changed?.Invoke(this, EventArgs.Empty);
+            return null;
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
 
     public ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>> SaveThemeAsync(
         ThemePreference definition,
@@ -277,6 +522,18 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                     new DefinitionStoreError(
                         DefinitionStoreErrorCode.DependencyConflict,
                         "This AI-provider profile is referenced by a saved screen or workspace agent policy."));
+            }
+
+            if (key.Kind == WorkspaceDefinition.Kind
+                && string.Equals(
+                    key.Value,
+                    WorkspaceDefinition.DefaultWorkspaceId,
+                    StringComparison.Ordinal))
+            {
+                return DefinitionStoreResult<Unit>.Failure(
+                    new DefinitionStoreError(
+                        DefinitionStoreErrorCode.DependencyConflict,
+                        "The Default workspace always exists and cannot be deleted."));
             }
 
             var result = key.Kind switch
@@ -400,18 +657,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             return Invalid(validation);
         }
 
-        foreach (var screen in Snapshot.Screens
-                     .Where(item => item.Value.LayoutId == definition.Id))
-        {
-            var screenValidation = ScreenValidator.Validate(screen.Value, definition);
-            if (!screenValidation.IsValid)
-            {
-                return new DefinitionStoreError(
-                    DefinitionStoreErrorCode.DependencyConflict,
-                    $"The layout change would invalidate saved screen '{screen.Value.Name}'.");
-            }
-        }
-
+        // Dependent screens are not validated here: the layout save reconciles
+        // them to the edited slot set instead of refusing the edit.
         return null;
     }
 
@@ -468,7 +715,12 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             : null;
     }
 
-    private DefinitionStoreError? ValidateWorkspace(WorkspaceDefinition definition)
+    private DefinitionStoreError? ValidateWorkspace(WorkspaceDefinition definition) =>
+        ValidateWorkspace(definition, pendingLayouts: null);
+
+    private DefinitionStoreError? ValidateWorkspace(
+        WorkspaceDefinition definition,
+        IReadOnlyList<LayoutDefinition>? pendingLayouts)
     {
         var duplicate = ValidateName(Snapshot.Workspaces, definition);
         if (duplicate is not null)
@@ -495,6 +747,12 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             .Select(item => item.Value.Id)
             .ToHashSet();
         var layouts = Snapshot.Layouts.ToDictionary(item => item.Value.Id, item => item.Value);
+        foreach (var pending in pendingLayouts ?? [])
+        {
+            // Layouts that land in the same batch as the workspace are valid
+            // dependency targets even though the snapshot has not seen them yet.
+            layouts[pending.Id] = pending;
+        }
         foreach (var entry in definition.Entries)
         {
             switch (entry)
@@ -811,7 +1069,31 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             || Snapshot.Screens.Count != 0
             || Snapshot.Workspaces.Count != 0)
         {
-            return DefinitionStoreResult<Unit>.Success(Unit.Value);
+            // The Default workspace always exists, whatever else the profile
+            // holds — a profile that predates the guarantee gets it back here.
+            if (Snapshot.Workspaces.Any(item =>
+                    string.Equals(
+                        item.Value.Id.Value,
+                        WorkspaceDefinition.DefaultWorkspaceId,
+                        StringComparison.Ordinal)))
+            {
+                return DefinitionStoreResult<Unit>.Success(Unit.Value);
+            }
+
+            var restored = await _workspaces.SaveAsync(
+                    new WorkspaceDefinition(
+                        new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
+                        WorkspaceDefinition.CurrentSchemaVersion,
+                        "Default",
+                        "Your local GhostSHELL workspace.",
+                        "#B8793A",
+                        []),
+                    null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return restored.IsSuccess
+                ? DefinitionStoreResult<Unit>.Success(Unit.Value)
+                : DefinitionStoreResult<Unit>.Failure(restored.Error!);
         }
 
         var defaults = CreateFirstRunDefinitions();
@@ -956,9 +1238,9 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             ],
             ["local"]);
         var workspace = new WorkspaceDefinition(
-            new WorkspaceId("default"),
+            new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
             WorkspaceDefinition.CurrentSchemaVersion,
-            "Local",
+            "Default",
             "Your local GhostSHELL workspace.",
             "#B8793A",
             [

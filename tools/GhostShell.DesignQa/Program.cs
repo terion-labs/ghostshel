@@ -1,5 +1,6 @@
 using System.Reflection;
 using Avalonia;
+using Avalonia.Headless;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -54,7 +55,14 @@ internal static class Program
 
     private static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<QaApplication>()
-            .UsePlatformDetect()
+            // Headless with real Skia drawing: every capture already renders
+            // offscreen through RenderTargetBitmap, so the on-screen windows
+            // only ever existed to pump layout — and stole focus doing it.
+            .UseSkia()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions
+            {
+                UseHeadlessDrawing = false,
+            })
             .WithInterFont()
             .ConfigureFonts(fontManager =>
                 fontManager.AddFontCollection(new GhostShellTerminalFontCollection()))
@@ -186,6 +194,14 @@ internal sealed class QaApplication : Avalonia.Application
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleConversation();
         }),
+        // The one governance decision the panel ever asks. It was the panel's
+        // least reviewed surface for exactly that reason.
+        new("workspace-agent-capability", vm =>
+        {
+            vm.ShowWorkspace();
+            AgentProfiles.PublishSampleProfile();
+            AgentRuntime.PublishSampleCapabilityRequest();
+        }),
         new("settings-workspace-editor", vm =>
         {
             vm.ShowSettings(SettingsPage.Workspaces);
@@ -194,6 +210,13 @@ internal sealed class QaApplication : Avalonia.Application
         // Keyboard focus has its own visuals; capturing it keeps the focus ring
         // reviewable instead of only reachable by hand.
         new("settings-appearance-focused", vm => vm.ShowSettings(SettingsPage.Appearance), FocusFirst: "SettingsBackButton"),
+        // The whole settings-apply-immediately loop, end to end: the click
+        // commits the theme, the catalog change re-publishes the resources, and
+        // the capture must visibly densify against plain settings-appearance.
+        new(
+            "settings-appearance-density-compact",
+            vm => vm.ShowSettings(SettingsPage.Appearance),
+            ClickFirst: "Compact padding density"),
         // Long settings pages are also captured whole, so a section below the
         // fold is reviewable without scrolling by hand.
         new("settings-appearance-full", vm => vm.ShowSettings(SettingsPage.Appearance), Height: 2100),
@@ -314,6 +337,15 @@ internal sealed class QaApplication : Avalonia.Application
         ("design-system-comfortable",
             static () => new DesignSystemGalleryWindow(),
             AppearanceExtreme(cornerRadius: 20, InterfaceDensity.Comfortable)),
+        // The light appearance, which otherwise only exists on user machines.
+        ("design-system-light",
+            static () => new DesignSystemGalleryWindow(),
+            new ThemePreference(
+                ThemePreference.Default.Id,
+                ThemePreference.Default.Name,
+                AppearanceMode.Light,
+                PlatformProfile.Automatic,
+                AccentPreference.FollowHost)),
     ];
 
     public override void Initialize()
@@ -354,11 +386,21 @@ internal sealed class QaApplication : Avalonia.Application
     {
         if (_productApplication is { } productApplication)
         {
-            ApplyProductAppearanceResources(productApplication, theme);
+            var mapped = ApplyProductAppearanceResources(productApplication, theme);
+            // The theme dictionaries key off the requested variant, exactly as
+            // the product's ApplyAppearance switches it; without this a light
+            // theme capture would mix light published tokens with dark
+            // dictionary fallbacks.
+            if (Current is { } current
+                && mapped?.GetType().GetProperty("ThemeVariant")?.GetValue(mapped)
+                    is ThemeVariant variant)
+            {
+                current.RequestedThemeVariant = variant;
+            }
         }
     }
 
-    private static void ApplyProductAppearanceResources(
+    private static object? ApplyProductAppearanceResources(
         GhostShell.App.App productApplication,
         ThemePreference theme)
     {
@@ -385,6 +427,7 @@ internal sealed class QaApplication : Avalonia.Application
                 "ApplyApplicationResources",
                 BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(productApplication, [mapped]);
+        return mapped;
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -422,6 +465,15 @@ internal sealed class QaApplication : Avalonia.Application
     private static MainWindowViewModel CreateViewModel()
     {
         var catalog = new QaDefinitionCatalog(QaData.Snapshot);
+        // The product republishes the appearance whenever the catalog changes;
+        // mirroring that here makes "settings apply immediately" capturable.
+        catalog.Changed += (_, _) =>
+        {
+            if (catalog.SavedTheme is { } savedTheme)
+            {
+                ApplyTheme(savedTheme);
+            }
+        };
         var viewModel = new MainWindowViewModel(
             DispatchProxy.Create<ISessionHostClient, UnusedProxy>(),
             catalog,
@@ -559,6 +611,22 @@ internal sealed class QaApplication : Avalonia.Application
                 AgentProfiles.Reset();
                 AgentRuntime.Reset();
                 Files.Reset();
+                // The sample drag ghost belongs to the one route that shows it;
+                // without this it floats over every capture that follows.
+                typeof(MainWindow)
+                    .GetMethod(
+                        "HideDragGhost",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?.Invoke(window, []);
+                // Likewise flyouts a route clicked open — the transfer manager
+                // otherwise floats over every capture after its own.
+                foreach (var popup in window.GetVisualDescendants()
+                             .OfType<Avalonia.Controls.Primitives.Popup>()
+                             .Where(popup => popup.IsOpen))
+                {
+                    popup.Close();
+                }
+
                 route.Apply(viewModel);
                 await Task.Delay(220);
                 Dispatcher.UIThread.RunJobs();
@@ -589,7 +657,10 @@ internal sealed class QaApplication : Avalonia.Application
                         ?? throw new InvalidOperationException(
                             $"The route wanted to click '{clickTarget}', which is not in the tree.");
                     button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    await Task.Delay(140);
+                    // Long enough for debounced effects of the click — the
+                    // appearance page coalesces edits for 220 ms before the
+                    // theme commit re-publishes the resources.
+                    await Task.Delay(500);
                     Dispatcher.UIThread.RunJobs();
                     window.UpdateLayout();
                 }

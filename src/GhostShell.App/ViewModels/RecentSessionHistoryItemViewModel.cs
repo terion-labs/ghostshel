@@ -163,9 +163,9 @@ public sealed record RecentSessionHistoryItemViewModel(
 
     private static string SourceKindLabel(DefinitionKind kind) => kind switch
     {
-        var value when value == ConnectionProfile.Kind => "CONNECTION",
-        var value when value == ScreenDefinition.Kind => "SCREEN",
-        var value when value == WorkspaceDefinition.Kind => "WORKSPACE",
-        _ => kind.Value.ToUpperInvariant(),
+        var value when value == ConnectionProfile.Kind => "Connection",
+        var value when value == ScreenDefinition.Kind => "Screen",
+        var value when value == WorkspaceDefinition.Kind => "Workspace",
+        _ => kind.Value,
     };
 }

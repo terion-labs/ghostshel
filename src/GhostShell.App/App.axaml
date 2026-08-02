@@ -71,6 +71,9 @@
           <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#1A1A1A" />
           <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#2E2E2E" />
           <SolidColorBrush x:Key="ShellBorderBrush" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="ShellControlSurfaceBrush" Color="#1A1A1A" />
+          <SolidColorBrush x:Key="ShellControlBorderBrush" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="ShellControlHoverBrush" Color="#2E2E2E" />
           <SolidColorBrush x:Key="ShellTextBrush" Color="#FFFFFF" />
           <SolidColorBrush x:Key="ShellMutedBrush" Color="#B8B9B6" />
           <SolidColorBrush x:Key="ShellAccentBrush" Color="#FF8400" />
@@ -97,6 +100,9 @@
           <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#FFFFFF" />
           <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#CBCCC9" />
           <SolidColorBrush x:Key="ShellBorderBrush" Color="#CBCCC9" />
+          <SolidColorBrush x:Key="ShellControlSurfaceBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ShellControlBorderBrush" Color="#CBCCC9" />
+          <SolidColorBrush x:Key="ShellControlHoverBrush" Color="#CBCCC9" />
           <SolidColorBrush x:Key="ShellTextBrush" Color="#111111" />
           <SolidColorBrush x:Key="ShellMutedBrush" Color="#666666" />
           <SolidColorBrush x:Key="ShellAccentBrush" Color="#FF8400" />
@@ -153,6 +159,17 @@
       <Thickness x:Key="ShellSavedConnectionStripPadding">0,2,0,1</Thickness>
       <Thickness x:Key="ShellToolbarSeparatorMargin">0,7</Thickness>
       <BoxShadows x:Key="ShellOverlayShadow">0 18 54 0 #A0000000</BoxShadows>
+      <BoxShadows x:Key="ShellFocusRingShadow">0 0 0 3 #59FF8400</BoxShadows>
+      <!-- The clearance between a hairline-framed control and its content: the
+           switch knob's travel inset and the colour well's frame. Deliberately
+           not density-scaled — the host draws these controls at fixed size. -->
+      <Thickness x:Key="ShellHairlineInset">2</Thickness>
+      <Thickness x:Key="ShellPreviewTileInset">3</Thickness>
+      <!-- Placement zones are pointer targets before they are icons: the plate has
+           to be big enough to land on mid-drag, so the size is set here rather
+           than left to Dock's glyph-sized default. -->
+      <x:Double x:Key="DockTargetSelectorSize">56</x:Double>
+      <x:Double x:Key="DockTargetSelectorGridMaxSize">176</x:Double>
       <!-- Each panel exposes its existing title through PanelDockHandle, so Dock's
            duplicate document strip stays hidden without losing drag or floating. -->
       <x:Boolean x:Key="DockDocumentControlTabStripVisible">False</x:Boolean>

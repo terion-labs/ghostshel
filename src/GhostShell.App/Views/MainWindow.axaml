@@ -236,6 +236,7 @@
         EditMcpServerRequested="OnEditMcpServerClick"
         EditScreenRequested="OnEditScreenClick"
         EditSecretRequested="OnEditSecretClick"
+        CreateWorkspaceRequested="OnCreateWorkspaceClick"
         EditWorkspaceRequested="OnEditWorkspaceClick"
         ExportDefinitionsRequested="OnExportDefinitionsClick"
         FilesSettingsRequested="OnFilesSettingsClick"
@@ -315,29 +316,14 @@
           x:Name="LayoutDesignerOverlayView"
           AddSlotRequested="OnLayoutAddSlotClick"
           CloseRequested="OnCloseOverlayClick"
-          DesignerKeyDownRequested="OnLayoutDesignerKeyDown"
           EditLayoutRequested="OnEditLayoutClick"
-          GridSizeChangedRequested="OnLayoutGridSizeChanged"
-          GrowBottomRequested="OnLayoutGrowBottomClick"
-          GrowLeftRequested="OnLayoutGrowLeftClick"
-          GrowRightRequested="OnLayoutGrowRightClick"
-          GrowTopRequested="OnLayoutGrowTopClick"
           IsVisible="{Binding IsLayoutDesignerVisible}"
-          MoveDownRequested="OnLayoutMoveDownClick"
-          MoveEarlierRequested="OnLayoutMoveEarlierClick"
-          MoveLaterRequested="OnLayoutMoveLaterClick"
-          MoveLeftRequested="OnLayoutMoveLeftClick"
-          MoveRightRequested="OnLayoutMoveRightClick"
-          MoveUpRequested="OnLayoutMoveUpClick"
           RemoveSlotRequested="OnLayoutRemoveSlotClick"
           ResetRequested="OnResetLayoutClick"
           SaveRequested="OnSaveLayoutDesignerClick"
-          ShrinkBottomRequested="OnLayoutShrinkBottomClick"
-          ShrinkLeftRequested="OnLayoutShrinkLeftClick"
-          ShrinkRightRequested="OnLayoutShrinkRightClick"
-          ShrinkTopRequested="OnLayoutShrinkTopClick"
           SlotSelectedRequested="OnLayoutSlotClick"
-          PaintPanelRequested="OnLayoutPaintPanelClick" />
+          SplitSlotDownRequested="OnLayoutSplitSlotDownClick"
+          SplitSlotRightRequested="OnLayoutSplitSlotRightClick" />
 
       <controls:SurfaceCard Elevation="Overlay" Padding="0"
           Margin="42,58,42,34"
@@ -374,7 +360,7 @@
         IsVisible="{Binding HasApplicationKeySequenceHint}"
         AutomationProperties.LiveSetting="Polite"
         AutomationProperties.Name="Application key sequence status">
-      <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ApplicationKeySequenceHint}" TextWrapping="Wrap" />
+      <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ApplicationKeySequenceHint}" TextWrapping="Wrap" />
     </controls:SurfaceCard>
 
     <Border

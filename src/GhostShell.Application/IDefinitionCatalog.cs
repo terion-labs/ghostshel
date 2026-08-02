@@ -34,6 +34,37 @@ public interface IDefinitionCatalog
         long? expectedRevision,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Saves a workspace together with the auto-saved tab layouts its entries
+    /// reference, as one atomic batch. Returns null on success. The default
+    /// implementation composes the individual saves for catalogs without a
+    /// transactional store; <see cref="DefinitionCatalog"/> overrides it with a
+    /// single validated batch.
+    /// </summary>
+    async ValueTask<DefinitionStoreError?> SaveWorkspaceWithLayoutsAsync(
+        WorkspaceDefinition workspace,
+        long? expectedWorkspaceRevision,
+        IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)> layouts,
+        CancellationToken cancellationToken)
+    {
+        foreach (var (layout, expectedRevision) in layouts)
+        {
+            var layoutResult = await SaveLayoutAsync(layout, expectedRevision, cancellationToken)
+                .ConfigureAwait(false);
+            if (!layoutResult.IsSuccess)
+            {
+                return layoutResult.Error;
+            }
+        }
+
+        var workspaceResult = await SaveWorkspaceAsync(
+                workspace,
+                expectedWorkspaceRevision,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return workspaceResult.IsSuccess ? null : workspaceResult.Error;
+    }
+
     ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>> SaveThemeAsync(
         ThemePreference definition,
         long? expectedRevision,

@@ -16,7 +16,7 @@
 
     <controls:SurfaceCard Padding="0">
       <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-        <TextBlock Classes="SectionHeading" Text="CONTENT AND REDACTION" />
+        <TextBlock Classes="SectionHeading" Text="Content and redaction" />
         <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock FontWeight="SemiBold" Text="Diagnostic detail" />
           <ComboBox
@@ -85,10 +85,10 @@
     <controls:SurfaceCard Padding="0" IsVisible="{Binding HasArtifact}">
       <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock Classes="SectionHeading" Text="LAST EXPORTED BUNDLE" />
+          <TextBlock Classes="SectionHeading" Text="Last exported bundle" />
           <TextBlock FontWeight="SemiBold" Text="{Binding ArtifactDisplayName}" TextWrapping="Wrap" />
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ReceiptSummary}" />
-          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DigestSummary}" TextWrapping="Wrap" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DigestSummary}" TextWrapping="Wrap" />
         </StackPanel>
         <Button
             Grid.Column="1"

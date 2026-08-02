@@ -56,12 +56,12 @@
                     FontSize="{DynamicResource ShellFontSize12}"
                     Text="Search settings"
                     TextTrimming="CharacterEllipsis" />
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding CommandPaletteShortcut}" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding CommandPaletteShortcut}" />
               </Grid>
             </Button>
             <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="{controls:Inset Horizontal=Md, Bottom=Lg}" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock Margin="{controls:Inset Left=Sm, Top=Xs, Bottom=Sm}" Classes="SectionHeading" Text="PREFERENCES" />
+                <TextBlock Margin="{controls:Inset Left=Sm, Top=Xs, Bottom=Sm}" Classes="SectionHeading" Text="Preferences" />
                 <components:ShellNavigationItem
                     AutomationName="Appearance settings"
                     Click="OnAppearanceSettingsClick"
@@ -200,30 +200,40 @@
                 </Grid>
               </controls:SurfaceCard>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="SectionHeading" Text="WORKSPACES" />
+                <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="Workspaces" /><Button Grid.Column="1" Classes="TextButton Accent" Click="OnCreateWorkspaceClick" Content="New workspace" /></Grid>
                 <ItemsControl ItemsSource="{Binding Workspaces}">
-                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}"><Border Width="32" Height="32" Background="{Binding Accent}" CornerRadius="{DynamicResource ShellControlCornerRadius}"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="15" /></Border><StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Description}" /></StackPanel><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}"><Button Classes="SecondaryButton" Click="OnEditWorkspaceClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteWorkspaceClick" AutomationProperties.Name="Delete workspace"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></Grid></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
+                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}"><Border Width="32" Height="32" Background="{Binding Accent}" CornerRadius="{DynamicResource ShellControlCornerRadius}"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="15" /></Border><StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Description}" /></StackPanel><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}"><Button Classes="SecondaryButton" Click="OnEditWorkspaceClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteWorkspaceClick" IsVisible="{Binding CanDelete}" AutomationProperties.Name="Delete workspace"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></Grid></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="SectionHeading" Text="SAVED SCREENS" />
+                <TextBlock Classes="SectionHeading" Text="Saved screens" />
                 <ItemsControl ItemsSource="{Binding Screens}">
-                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}"><Border Width="32" Height="32" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Grid" FontSize="14" /></Border><StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Description}" /><TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Layout, StringFormat={}Layout: {0}}" /></StackPanel><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}"><Button Classes="SecondaryButton" Click="OnEditScreenClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteScreenClick" AutomationProperties.Name="Delete saved screen"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></Grid></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
+                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}"><Border Width="32" Height="32" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Grid" FontSize="14" /></Border><StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Description}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Layout, StringFormat={}Layout: {0}}" /></StackPanel><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}"><Button Classes="SecondaryButton" Click="OnEditScreenClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteScreenClick" AutomationProperties.Name="Delete saved screen"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></Grid></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="LAYOUTS" /><Button Grid.Column="1" Classes="TextButton Accent" Click="OnShowLayoutDesignerClick" Content="Open layout designer" /></Grid>
+                <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="Layouts" /><Button Grid.Column="1" Classes="TextButton Accent" Click="OnShowLayoutDesignerClick" Content="Open layout designer" /></Grid>
                 <ItemsControl ItemsSource="{Binding Layouts}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
-                        <Grid Margin="{controls:Inset Md}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                          <StackPanel>
+                        <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                          <Border Width="72" Height="44" Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellInnerCornerRadius}" ClipToBounds="True">
+                            <ItemsControl Margin="{DynamicResource ShellPreviewTileInset}" ItemsSource="{Binding PreviewPanels}">
+                              <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:ScreenLayoutPreviewPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Border Margin="{DynamicResource ShellHairlineInset}" Classes="ScreenPreviewPanel" Classes.primary="{Binding IsPrimary}" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </Border>
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                            <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding GridSummary}" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding GridSummary}" />
                           </StackPanel>
-                          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding SlotCount, StringFormat={}{0} SLOTS}" />
-                          <Button Grid.Column="2" Classes="SecondaryButton" Click="OnEditLayoutClick" Content="Edit" />
+                          <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding SlotCount, StringFormat={}{0} slots}" />
+                          <Button Grid.Column="3" VerticalAlignment="Center" Classes="SecondaryButton" Click="OnEditLayoutClick" Content="Edit" />
                         </Grid>
                       </controls:SurfaceCard>
                     </DataTemplate>
@@ -231,7 +241,7 @@
                 </ItemsControl>
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="SectionHeading" Text="DEFINITION PORTABILITY" />
+                <TextBlock Classes="SectionHeading" Text="Definition portability" />
                 <controls:SurfaceCard Padding="0">
                   <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceSm}" ColumnSpacing="{DynamicResource ShellSpaceLg}">
                     <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -253,7 +263,7 @@
                 <components:SettingsPageHeader
                     Heading="Keybindings"
                     Description="Record, unbind, reset, and validate application or terminal shortcuts. Blocking conflicts cannot be saved." />
-                <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ActiveApplicationKeymapName, StringFormat={}ACTIVE APPLICATION PROFILE · {0}}" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ActiveApplicationKeymapName, StringFormat={}Active application profile · {0}}" />
               </StackPanel>
 
               <Grid ColumnDefinitions="*,320" ColumnSpacing="{DynamicResource ShellSpaceLg}">
@@ -287,7 +297,7 @@
                   <StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                       <TextBlock FontWeight="SemiBold" Text="{Binding KeybindingEditorSession.Name}" />
-                      <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding SelectedKeybindingProfile.StateLabel}" /></Border>
+                      <Border Classes="Keycap"><TextBlock Text="{Binding SelectedKeybindingProfile.StateLabel}" /></Border>
                     </StackPanel>
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding KeybindingEditorSession.StateSummary}" />
                   </StackPanel>
@@ -304,7 +314,7 @@
                   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
                     <StackPanel Classes="CardText" Spacing="{DynamicResource ShellSpaceXs}">
                       <TextBlock FontWeight="SemiBold" Text="Application prefix" />
-                      <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding KeybindingEditorSession.PrefixShortcut}" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding KeybindingEditorSession.PrefixShortcut}" />
                     </StackPanel>
                     <StackPanel
                         Grid.Column="1"
@@ -326,7 +336,7 @@
                       ColumnDefinitions="180,360,*,Auto"
                       ColumnSpacing="{DynamicResource ShellSpaceMd}">
                     <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                      <TextBlock Classes="Eyebrow" Text="TIMEOUT (MS)" />
+                      <TextBlock Classes="Eyebrow" Text="Timeout (ms)" />
                       <NumericUpDown
                           x:Name="KeybindingPrefixTimeout"
                           Minimum="50"
@@ -337,7 +347,7 @@
                           ValueChanged="OnKeybindingPrefixOptionsChanged" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                      <TextBlock Classes="Eyebrow" Text="ON UNKNOWN SEQUENCE" />
+                      <TextBlock Classes="Eyebrow" Text="On unknown sequence" />
                       <ComboBox
                           x:Name="KeybindingPrefixFailure"
                           ItemsSource="{Binding KeybindingEditorSession.FailedSequenceBehaviors}"
@@ -360,12 +370,12 @@
               <controls:SurfaceCard Padding="0">
                 <Grid RowDefinitions="34,*">
                   <Grid ColumnDefinitions="130,*,190,130,90,220" Margin="{controls:Inset Horizontal=Md}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                    <TextBlock Classes="Eyebrow" VerticalAlignment="Center" Text="CATEGORY" />
-                    <TextBlock Grid.Column="1" Classes="Eyebrow" VerticalAlignment="Center" Text="COMMAND" />
-                    <TextBlock Grid.Column="2" Classes="Eyebrow" VerticalAlignment="Center" Text="SHORTCUT" />
-                    <TextBlock Grid.Column="3" Classes="Eyebrow" VerticalAlignment="Center" Text="CONTEXT" />
-                    <TextBlock Grid.Column="4" Classes="Eyebrow" VerticalAlignment="Center" Text="STATUS" />
-                    <TextBlock Grid.Column="5" Classes="Eyebrow" VerticalAlignment="Center" Text="ACTIONS" />
+                    <TextBlock Classes="Eyebrow" VerticalAlignment="Center" Text="Category" />
+                    <TextBlock Grid.Column="1" Classes="Eyebrow" VerticalAlignment="Center" Text="Command" />
+                    <TextBlock Grid.Column="2" Classes="Eyebrow" VerticalAlignment="Center" Text="Shortcut" />
+                    <TextBlock Grid.Column="3" Classes="Eyebrow" VerticalAlignment="Center" Text="Context" />
+                    <TextBlock Grid.Column="4" Classes="Eyebrow" VerticalAlignment="Center" Text="Status" />
+                    <TextBlock Grid.Column="5" Classes="Eyebrow" VerticalAlignment="Center" Text="Actions" />
                   </Grid>
                   <ItemsControl Grid.Row="1" ItemsSource="{Binding KeybindingEditorSession.Rows}">
                     <ItemsControl.ItemTemplate>
@@ -374,7 +384,7 @@
                           <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="130,*,190,130,90,220" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                             <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Category}" />
                             <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Shortcut}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Shortcut}" TextTrimming="CharacterEllipsis" />
                             <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Contexts}" TextTrimming="CharacterEllipsis" />
                             <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding Status}" />
                             <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
@@ -406,14 +416,14 @@
                   Heading="Files &amp; transfers"
                   Description="Provider capabilities stay explicit; queued copies and moves are bounded, cancellable, and conflict-aware." />
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="CONFIGURED PROVIDERS" /><Button Grid.Column="1" Classes="PrimaryButton" Click="OnAddFileProviderClick" Content="Add provider" /></Grid>
+                <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="Configured providers" /><Button Grid.Column="1" Classes="PrimaryButton" Click="OnAddFileProviderClick" Content="Add provider" /></Grid>
                 <ItemsControl ItemsSource="{Binding FileProviderDefinitions}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
                         <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                           <Border Width="32" Height="32" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="14" /></Border>
-                          <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Eyebrow" Text="{Binding Kind}" /></StackPanel><TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Endpoint}" TextTrimming="CharacterEllipsis" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding StatusDetail}" TextWrapping="Wrap" /></StackPanel>
+                          <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Eyebrow" Text="{Binding Kind}" /></StackPanel><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Endpoint}" TextTrimming="CharacterEllipsis" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding StatusDetail}" TextWrapping="Wrap" /></StackPanel>
                           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}"><controls:StatusChip Content="{Binding Status}" /><Button Classes="SecondaryButton" Click="OnEditFileProviderClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteFileProviderClick" AutomationProperties.Name="Delete file provider"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel>
                         </Grid>
                       </controls:SurfaceCard>
@@ -423,7 +433,7 @@
                 <controls:SurfaceCard Tone="Notice" Padding="0"><TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Home is always available as a built-in local provider. Saved profiles persist in SQLite; credentials remain in the OS vault." TextWrapping="Wrap" /></controls:SurfaceCard>
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="SectionHeading" Text="TRANSFER QUEUE" />
+                <TextBlock Classes="SectionHeading" Text="Transfer queue" />
                 <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoFileTransfers}">
                   <controls:EmptyStatePanel
                     Margin="{controls:Inset Lg}"
@@ -437,9 +447,9 @@
                       <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
                         <Grid Margin="{controls:Inset Md}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                           <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock Classes="Eyebrow" Text="{Binding Operation}" /><TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Source}" /><icons:SymbolIcon Symbol="ArrowRight" FontSize="12" /><TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Destination}" /></StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock Classes="Eyebrow" Text="{Binding Operation}" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Source}" /><icons:SymbolIcon Symbol="ArrowRight" FontSize="12" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Destination}" /></StackPanel>
                             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Stage}" />
-                            <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Progress}" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Progress}" />
                             <TextBlock Foreground="{DynamicResource ShellDangerBrush}" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
                           </StackPanel>
                           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
@@ -540,7 +550,7 @@
               <controls:SurfaceCard Tone="Notice" Padding="0"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" /><TextBlock Grid.Column="1" Classes="Muted" Text="{Binding SecretVaultStatus}" TextWrapping="Wrap" /></Grid></controls:SurfaceCard>
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-                  <TextBlock Classes="SectionHeading" Text="NEW CONNECTION CREDENTIAL" />
+                  <TextBlock Classes="SectionHeading" Text="New connection credential" />
                   <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Connection" /><ComboBox x:Name="SecretConnectionPicker" ItemsSource="{Binding Connections}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
                     <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Kind" /><ComboBox x:Name="SecretKindPicker" ItemsSource="{Binding SecretKinds}" SelectedIndex="0" /></StackPanel>
@@ -554,7 +564,7 @@
               </controls:SurfaceCard>
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-                  <TextBlock Classes="SectionHeading" Text="NEW FILE-PROVIDER CREDENTIAL" />
+                  <TextBlock Classes="SectionHeading" Text="New file-provider credential" />
                   <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="File provider" /><ComboBox x:Name="SecretFileProviderPicker" ItemsSource="{Binding FileProviderDefinitions}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
                     <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Kind" /><ComboBox x:Name="FileProviderSecretKindPicker" ItemsSource="{Binding SecretKinds}" SelectedIndex="0" /></StackPanel>
@@ -567,7 +577,7 @@
                 </StackPanel>
               </controls:SurfaceCard>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="SectionHeading" Text="STORED METADATA" />
+                <TextBlock Classes="SectionHeading" Text="Stored metadata" />
                 <ItemsControl ItemsSource="{Binding Secrets}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -580,7 +590,7 @@
                             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Dependencies}" />
                             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding LastUsed, StringFormat={}Last used: {0}}" />
                           </StackPanel>
-                          <TextBox Grid.Column="2" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" IsReadOnly="True" Text="{Binding Reference.Value}" />
+                          <TextBox Grid.Column="2" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize9}" IsReadOnly="True" Text="{Binding Reference.Value}" />
                           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                             <Button Classes="SecondaryButton" Click="OnEditSecretClick" Content="Manage" />
                             <Button Classes="IconButton Danger" Click="OnDeleteSecretClick" ToolTip.Tip="Delete credential" AutomationProperties.Name="Delete credential"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button>
@@ -620,13 +630,13 @@
                             <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
                             <TextBlock Classes="Eyebrow" Text="{Binding Kind}" />
                           </StackPanel>
-                          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Endpoint}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Endpoint}" TextTrimming="CharacterEllipsis" />
                           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DefaultModel, StringFormat={}Default model: {0}}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}">
                           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                             <TextBlock FontWeight="SemiBold" Text="{Binding Status}" />
-                            <TextBlock Classes="Eyebrow" Text="{Binding Order, StringFormat={}ORDER {0}}" />
+                            <TextBlock Classes="Eyebrow" Text="{Binding Order, StringFormat={}Order {0}}" />
                           </StackPanel>
                           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding StatusDetail}" TextWrapping="Wrap" />
                         </StackPanel>
@@ -656,7 +666,7 @@
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}" IsEnabled="{Binding HasAiProviders}">
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                    <TextBlock Classes="SectionHeading" Text="STORE PROFILE CREDENTIAL" />
+                    <TextBlock Classes="SectionHeading" Text="Store profile credential" />
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Save the profile first. Its opaque credential slot is fixed in the definition; this action fills that exact profile-scoped slot in the OS vault." TextWrapping="Wrap" />
                   </StackPanel>
                   <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -717,7 +727,7 @@
                         <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                           <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
                           <TextBlock
-                              Classes="Muted Monospace"
+                              Classes="Muted"
                               FontSize="{DynamicResource ShellFontSize9}"
                               Text="{Binding Executable}"
                               TextTrimming="CharacterEllipsis"
@@ -779,7 +789,7 @@
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                    <TextBlock Classes="SectionHeading" Text="STORE ENVIRONMENT CREDENTIAL" />
+                    <TextBlock Classes="SectionHeading" Text="Store environment credential" />
                     <TextBlock
                         Classes="Muted"
                         FontSize="{DynamicResource ShellFontSize10}"
@@ -796,7 +806,7 @@
                           AutomationProperties.Name="MCP environment binding">
                         <ComboBox.ItemTemplate>
                           <DataTemplate>
-                            <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayName}" />
+                            <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayName}" />
                           </DataTemplate>
                         </ComboBox.ItemTemplate>
                       </ComboBox>
@@ -867,7 +877,7 @@
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                     <TextBlock FontWeight="SemiBold" Text="Getting started &amp; local privacy" />
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Review local shell and credential prerequisites, import durable definitions, or change bounded session-history retention." TextWrapping="Wrap" />
-                    <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HistoryRetentionStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Current session history privacy" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HistoryRetentionStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Current session history privacy" />
                   </StackPanel>
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                     <Button Classes="SecondaryButton" Click="OnReviewOnboardingClick" Content="Review setup" AutomationProperties.Name="Review getting started setup" />
@@ -887,17 +897,17 @@
 
               <controls:SurfaceCard Padding="0">
                 <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}" ColumnSpacing="{DynamicResource ShellSpaceXl}">
-                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="VERSION" /><TextBlock Classes="Monospace" FontWeight="SemiBold" Text="{Binding ApplicationVersion}" /></StackPanel>
-                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="PLATFORM" /><TextBlock Classes="Monospace" Text="{Binding PlatformDescription}" /></StackPanel>
-                  <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="RUNTIME" /><TextBlock Classes="Monospace" Text="{Binding RuntimeDescription}" /></StackPanel>
-                  <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="AGENT RUNTIME" /><TextBlock Classes="Monospace" Text="{Binding AgentRuntimeDescription}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Target architecture: native .NET in process, without an external JavaScript runtime." TextWrapping="Wrap" /></StackPanel>
-                  <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="UPDATES" /><TextBlock Classes="Monospace" Text="{Binding UpdateStatus}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Install newer builds through the same channel that provided this copy." TextWrapping="Wrap" /></StackPanel>
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Version" /><TextBlock FontWeight="SemiBold" Text="{Binding ApplicationVersion}" /></StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Platform" /><TextBlock Text="{Binding PlatformDescription}" /></StackPanel>
+                  <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Runtime" /><TextBlock Text="{Binding RuntimeDescription}" /></StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Agent runtime" /><TextBlock Text="{Binding AgentRuntimeDescription}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Target architecture: native .NET in process, without an external JavaScript runtime." TextWrapping="Wrap" /></StackPanel>
+                  <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Updates" /><TextBlock Text="{Binding UpdateStatus}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Install newer builds through the same channel that provided this copy." TextWrapping="Wrap" /></StackPanel>
                 </Grid>
               </controls:SurfaceCard>
 
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="SectionHeading" Text="OPEN-SOURCE COMPONENTS" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Key runtime components are shown here; the bundled notice records the current managed inventory and release-license work still open." TextWrapping="Wrap" /></StackPanel>
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="SectionHeading" Text="Open-source components" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Key runtime components are shown here; the bundled notice records the current managed inventory and release-license work still open." TextWrapping="Wrap" /></StackPanel>
                   <Button Grid.Column="1" Classes="SecondaryButton" Click="OnOpenThirdPartyNoticesClick" Content="Open bundled notices" AutomationProperties.Name="Open bundled third-party notices" />
                 </Grid>
                 <ItemsControl ItemsSource="{Binding ProductComponents}">
@@ -909,9 +919,9 @@
                             <TextBlock FontWeight="SemiBold" Text="{Binding Name}" TextWrapping="Wrap" />
                             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Purpose}" TextWrapping="Wrap" />
                           </StackPanel>
-                          <TextBlock Grid.Column="1" VerticalAlignment="Top" Classes="Eyebrow" Text="BUNDLED" />
+                          <TextBlock Grid.Column="1" VerticalAlignment="Top" Classes="Eyebrow" Text="Bundled" />
                           <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal">
-                            <TextBlock Margin="{controls:Inset Right=Lg}" Classes="Monospace" Text="{Binding Version}" TextWrapping="Wrap" />
+                            <TextBlock Margin="{controls:Inset Right=Lg}" Text="{Binding Version}" TextWrapping="Wrap" />
                             <TextBlock Classes="Muted" Text="{Binding License}" TextWrapping="Wrap" />
                           </WrapPanel>
                         </Grid>

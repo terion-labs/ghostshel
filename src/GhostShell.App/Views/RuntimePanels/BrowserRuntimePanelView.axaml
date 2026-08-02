@@ -69,7 +69,7 @@
               Grid.Column="4"
               VerticalAlignment="Center"
               AutomationProperties.Name="Browser address"
-              Classes="Monospace"
+              
               FontSize="{DynamicResource ShellFontSize10}"
               GotFocus="OnAddressGotFocus"
               IsEnabled="{Binding IsLive, ElementName=RuntimeBrowser}"
@@ -101,7 +101,7 @@
               VerticalAlignment="Center"
               AutomationProperties.LiveSetting="Polite"
               AutomationProperties.Name="Browser session status"
-              Classes="Monospace Muted"
+              Classes="Muted"
               FontSize="{DynamicResource ShellFontSize9}"
               Text="{Binding StatusText, ElementName=RuntimeBrowser}"
               TextTrimming="CharacterEllipsis" />
@@ -155,7 +155,7 @@
                 Foreground="{DynamicResource ShellMutedBrush}"
                 Symbol="Globe" />
             <TextBlock
-                Classes="Monospace Muted"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize11}"
                 Text="{Binding StatusMessage, ElementName=RuntimeBrowser}"
                 TextAlignment="Center"

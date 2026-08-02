@@ -38,8 +38,8 @@ public sealed partial class AgentChatViewModelTests
             provider => Assert.Equal(first.Id, provider.Id),
             provider => Assert.Equal(selected.Id, provider.Id));
         Assert.Equal(selected.Id, viewModel.SelectedProvider?.Id);
-        Assert.Equal("READY", viewModel.ConnectionStatus);
-        Assert.Equal("CAPABILITY CHECK", viewModel.CapabilityLabel);
+        Assert.Equal("Ready", viewModel.ConnectionStatus);
+        Assert.Equal("Capability check", viewModel.CapabilityLabel);
         Assert.False(viewModel.TerminalMutationAvailable);
         Assert.Contains("verified", viewModel.CapabilityNotice);
     }
@@ -251,8 +251,8 @@ public sealed partial class AgentChatViewModelTests
         Assert.Contains("untrusted model text", pending.AccessibleName);
         Assert.Contains("not approval", pending.ResponseWarning);
         Assert.Contains("credentials", pending.ResponseWarning);
-        Assert.Equal("INPUT NEEDED", viewModel.StateLabel);
-        Assert.Equal("INPUT NEEDED", viewModel.ConnectionStatus);
+        Assert.Equal("Input needed", viewModel.StateLabel);
+        Assert.Equal("Input needed", viewModel.ConnectionStatus);
         Assert.True(viewModel.IsBusy);
         Assert.True(viewModel.IsStreaming);
         Assert.True(viewModel.HasPendingQuestion);
@@ -553,8 +553,8 @@ public sealed partial class AgentChatViewModelTests
         Assert.Contains("grants no action", pending.GrantWarning);
         Assert.Contains("ordinary exact approval", pending.GrantWarning);
 
-        Assert.Equal("CAPABILITY REQUEST", viewModel.StateLabel);
-        Assert.Equal("CAPABILITY REQUEST", viewModel.ConnectionStatus);
+        Assert.Equal("Capability request", viewModel.StateLabel);
+        Assert.Equal("Capability request", viewModel.ConnectionStatus);
         Assert.True(viewModel.IsBusy);
         Assert.True(viewModel.IsStreaming);
         Assert.True(viewModel.HasPendingCapabilityRequest);
@@ -1251,8 +1251,8 @@ public sealed partial class AgentChatViewModelTests
         Assert.True(viewModel.IsBusy);
         Assert.True(viewModel.CanStop);
         Assert.True(viewModel.CanRequestStop);
-        Assert.Equal("APPROVAL", viewModel.ConnectionStatus);
-        Assert.Equal("GOVERNED INPUT", viewModel.CapabilityLabel);
+        Assert.Equal("Approval", viewModel.ConnectionStatus);
+        Assert.Equal("Governed input", viewModel.CapabilityLabel);
         Assert.True(viewModel.TerminalMutationAvailable);
         Assert.Equal("SSH · api.example.test", viewModel.ConnectionBoundary);
         Assert.Equal("/srv/api", viewModel.WorkingDirectory);
@@ -1269,8 +1269,8 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal(approvalId, approval.Id);
         Assert.Equal("terminal.send_text", approval.ToolName);
         Assert.Equal("Send text to terminal", approval.ToolTitle);
-        Assert.Equal("MUTATION", approval.Risk);
-        Assert.Equal("ASK", approval.Permission);
+        Assert.Equal("Mutation", approval.Risk);
+        Assert.Equal("Ask", approval.Permission);
         Assert.Equal("Production API shell", approval.TargetTitle);
         Assert.Contains("window/window-1", approval.ExactTarget);
         Assert.Contains("workspace/workspace-1", approval.ExactTarget);
@@ -1426,7 +1426,7 @@ public sealed partial class AgentChatViewModelTests
             ImmediateUiThreadDispatcher.Instance);
 
         Assert.True(viewModel.TerminalMutationAvailable);
-        Assert.Equal("GOVERNED INPUT", viewModel.CapabilityLabel);
+        Assert.Equal("Governed input", viewModel.CapabilityLabel);
         Assert.Contains("Physical human input preempts", viewModel.CapabilityNotice);
     }
 
@@ -1490,7 +1490,7 @@ public sealed partial class AgentChatViewModelTests
                 Assert.Contains("panel/panel-1", first.ExactIdentity);
                 Assert.Contains("session/session-1", first.ExactIdentity);
                 Assert.Equal("SSH · api.example.test · /srv/api", first.Context);
-                Assert.Contains("Focused · ACTIVE · HEALTHY", first.State);
+                Assert.Contains("Focused · Active · Healthy", first.State);
                 Assert.Contains("active work", first.State);
                 Assert.Contains(
                     BuiltInAgentTools.TerminalSendKeys,
@@ -1857,7 +1857,7 @@ public sealed partial class AgentChatViewModelTests
         var activity = Assert.IsType<AgentToolActivityViewModel>(viewModel.ActiveTool);
         Assert.Equal("terminal.read_screen", activity.ToolName);
         Assert.Equal("Read terminal screen", activity.ToolTitle);
-        Assert.Equal("OBSERVATION", activity.Risk);
+        Assert.Equal("Observation", activity.Risk);
         Assert.Equal("Production shell", activity.TargetTitle);
         Assert.False(activity.CancellationRequested);
         Assert.True(viewModel.HasActiveTool);
@@ -1992,7 +1992,7 @@ public sealed partial class AgentChatViewModelTests
 
         Assert.True(viewModel.CanOfferYolo);
         Assert.True(viewModel.CanEnableYolo);
-        Assert.Equal("ASK", viewModel.PolicyModeLabel);
+        Assert.Equal("Ask", viewModel.PolicyModeLabel);
         Assert.DoesNotContain("YOLO requires an exact terminal panel", viewModel.CapabilityNotice);
 
         await viewModel.EnableYoloAsync(
@@ -2019,7 +2019,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.True(viewModel.CanDisableYolo);
         Assert.False(viewModel.CanOfferYolo);
         Assert.Equal("YOLO", viewModel.PolicyModeLabel);
-        Assert.Equal("15 MIN WINDOW", viewModel.YoloAuthority!.Duration);
+        Assert.Equal("15 min window", viewModel.YoloAuthority!.Duration);
         Assert.Contains("window/window-1", viewModel.YoloAuthority.Scope);
         Assert.Contains("2026", viewModel.YoloAuthority.ExpiresAt);
 
@@ -2157,7 +2157,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.False(viewModel.CanEnterPrompt);
         Assert.True(viewModel.CanClear);
         Assert.True(viewModel.NeedsProviderAttention);
-        Assert.Equal("CLEAR REQUIRED", viewModel.ConnectionStatus);
+        Assert.Equal("Clear required", viewModel.ConnectionStatus);
         Assert.Equal(
             "This run's provider is no longer enabled. Clear the run to choose another.",
             viewModel.Status);
@@ -2373,10 +2373,10 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal(runId, auditReader.Queries[0].RunId);
         Assert.Null(auditReader.Queries[0].Before);
         var newest = Assert.Single(viewModel.AuditEntries);
-        Assert.Equal("ACTION", newest.Kind);
+        Assert.Equal("Action", newest.Kind);
         Assert.Equal(BuiltInAgentTools.TerminalReadScreen, newest.ToolName);
         Assert.Contains(
-            "REQUESTED → APPROVED → STARTED → SUCCEEDED",
+            "Requested → Approved → Started → Succeeded",
             newest.Timeline,
             StringComparison.Ordinal);
         Assert.Contains(

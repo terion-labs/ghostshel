@@ -10,6 +10,15 @@ public sealed record LayoutDefinition : IDurableDefinition
 {
     public const int CurrentSchemaVersion = 1;
 
+    /// <summary>
+    /// The id prefix of layouts written by workspace autosave. These carry a
+    /// live tab's captured geometry; pickers and catalog listings hide them.
+    /// </summary>
+    public const string AutoSaveIdPrefix = "auto.";
+
+    public static bool IsAutoSaved(LayoutId id) =>
+        id.Value.StartsWith(AutoSaveIdPrefix, StringComparison.Ordinal);
+
     [JsonConstructor]
     public LayoutDefinition(
         LayoutId id,

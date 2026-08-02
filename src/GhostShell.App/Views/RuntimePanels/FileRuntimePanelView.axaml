@@ -34,7 +34,7 @@
               DataContext="{Binding $parent[dock:DockableControl].DataContext}">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
               <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="ZOOMED" />
+              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
             </StackPanel>
           </controls:PanelDockHandle>
           <StackPanel
@@ -122,7 +122,7 @@
                 <Button.Flyout>
                   <Flyout Placement="Bottom">
                     <StackPanel Width="250" Margin="{controls:Inset Sm}" Spacing="{DynamicResource ShellSpaceSm}">
-                      <TextBlock Classes="Eyebrow" Text="VIEW OPTIONS" />
+                      <TextBlock Classes="Eyebrow" Text="View options" />
                       <Grid ColumnDefinitions="78,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
                         <TextBlock VerticalAlignment="Center" Classes="Muted" Text="Sort by" />
                         <ComboBox Grid.Column="1" ItemsSource="{Binding SortFields}" SelectedItem="{Binding SortField}" AutomationProperties.Name="File sort field" />
@@ -202,7 +202,7 @@
                   <ColumnDefinition Width="5" />
                   <ColumnDefinition Width="{Binding FileModifiedColumnWidth, Mode=TwoWay}" MinWidth="112" />
                 </Grid.ColumnDefinitions>
-                <TextBlock VerticalAlignment="Center" Classes="Eyebrow" Text="NAME" />
+                <TextBlock VerticalAlignment="Center" Classes="Eyebrow" Text="Name" />
                 <Border Grid.Column="1" Width="1" HorizontalAlignment="Center" Background="{DynamicResource ShellBorderBrush}" IsHitTestVisible="False" />
                 <GridSplitter
                     Grid.Column="1"
@@ -212,7 +212,7 @@
                     ResizeDirection="Columns"
                     ResizeBehavior="PreviousAndNext"
                     AutomationProperties.Name="Resize file name and size columns" />
-                <TextBlock Grid.Column="2" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="SIZE" />
+                <TextBlock Grid.Column="2" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="Size" />
                 <Border Grid.Column="3" Width="1" HorizontalAlignment="Center" Background="{DynamicResource ShellBorderBrush}" IsHitTestVisible="False" />
                 <GridSplitter
                     Grid.Column="3"
@@ -222,7 +222,7 @@
                     ResizeDirection="Columns"
                     ResizeBehavior="PreviousAndNext"
                     AutomationProperties.Name="Resize file size and modified columns" />
-                <TextBlock Grid.Column="4" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="MODIFIED" />
+                <TextBlock Grid.Column="4" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="Modified" />
               </Grid>
             </Border>
             <ListBox
@@ -248,12 +248,16 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Grid MinHeight="30" Margin="{controls:Inset Horizontal=Md}">
+                    <!-- Same minimums as the header row: when width runs out, a
+                         minimum only one of the two grids honors makes the
+                         header stop shrinking while the rows keep collapsing,
+                         and the columns visibly part ways. -->
                     <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="{Binding $parent[UserControl].DataContext.FileNameColumnWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[UserControl].DataContext.FileNameColumnWidth}" MinWidth="140" />
                       <ColumnDefinition Width="5" />
-                      <ColumnDefinition Width="{Binding $parent[UserControl].DataContext.FileSizeColumnWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[UserControl].DataContext.FileSizeColumnWidth}" MinWidth="72" />
                       <ColumnDefinition Width="5" />
-                      <ColumnDefinition Width="{Binding $parent[UserControl].DataContext.FileModifiedColumnWidth}" />
+                      <ColumnDefinition Width="{Binding $parent[UserControl].DataContext.FileModifiedColumnWidth}" MinWidth="112" />
                     </Grid.ColumnDefinitions>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                       <icons:SymbolIcon VerticalAlignment="Center" Symbol="Folder" FontSize="13" Foreground="{DynamicResource ShellWarningBrush}" IsVisible="{Binding IsDirectory}" />
@@ -412,16 +416,16 @@
             </Border>
             <controls:SurfaceCard Padding="0" Grid.Row="1" Margin="{controls:Inset Horizontal=Sm, Bottom=Sm}" IsVisible="{Binding HasSelectedMetadata}">
               <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="KIND" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Kind}" /></StackPanel>
-                <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="SIZE" /><TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Size}" /></StackPanel>
-                <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="MODIFIED" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Modified}" /></StackPanel>
-                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="VERSION" /><TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SelectedMetadata.Version}" TextTrimming="CharacterEllipsis" /></StackPanel>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Kind" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Kind}" /></StackPanel>
+                <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Size" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Size}" /></StackPanel>
+                <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Modified" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Modified}" /></StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Version" /><TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SelectedMetadata.Version}" TextTrimming="CharacterEllipsis" /></StackPanel>
                 <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SelectedMetadata.Source}" />
               </Grid>
             </controls:SurfaceCard>
             <Grid Grid.Row="2">
               <ScrollViewer Margin="{controls:Inset Md}" IsVisible="{Binding HasTextPreview}">
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding PreviewText}" TextWrapping="NoWrap" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding PreviewText}" TextWrapping="NoWrap" />
               </ScrollViewer>
               <ScrollViewer Margin="{controls:Inset Md}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasImagePreview}">
                 <Image MaxWidth="900" MaxHeight="900" Stretch="Uniform" Source="{Binding PreviewImage}" />

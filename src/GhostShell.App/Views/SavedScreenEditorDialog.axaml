@@ -28,7 +28,7 @@
 
     <ScrollViewer Grid.Row="1" IsEnabled="{Binding CanEdit}">
       <StackPanel Margin="{controls:Inset Horizontal=Lg, Top=Sm, Bottom=Xl}" Spacing="{DynamicResource ShellSpaceMd}">
-        <TextBlock Classes="SectionHeading" Text="DETAILS" />
+        <TextBlock Classes="SectionHeading" Text="Details" />
         <controls:SurfaceCard Padding="0">
           <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -42,7 +42,7 @@
           </Grid>
         </controls:SurfaceCard>
 
-        <TextBlock Classes="SectionHeading" Text="LAYOUT" />
+        <TextBlock Classes="SectionHeading" Text="Layout" />
         <controls:SurfaceCard Padding="0">
           <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,260" ColumnSpacing="{DynamicResource ShellSpaceLg}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -57,7 +57,7 @@
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
-              <TextBlock Classes="Eyebrow" Text="LIVE STRUCTURE" />
+              <TextBlock Classes="Eyebrow" Text="Live structure" />
               <TextBlock Classes="Muted" Text="{Binding LayoutSummary}" TextWrapping="Wrap" />
             </StackPanel>
             <Border
@@ -126,7 +126,7 @@
           </Grid>
         </controls:SurfaceCard>
 
-        <TextBlock Classes="SectionHeading" Text="AGENT POLICY" />
+        <TextBlock Classes="SectionHeading" Text="Agent policy" />
         <controls:SurfaceCard Padding="0">
           <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -208,7 +208,7 @@
 
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Classes="SectionHeading" Text="PANELS &amp; CONNECTIONS" />
-          <TextBlock Grid.Column="1" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Panels.Count, StringFormat={}{0} slots}" />
+          <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Panels.Count, StringFormat={}{0} slots}" />
         </Grid>
 
         <ItemsControl ItemsSource="{Binding Panels}">
@@ -218,7 +218,7 @@
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
                   <Grid ColumnDefinitions="Auto,*,220" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <Border Width="28" Height="28" Classes="IconTile">
-                      <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="#" />
+                      <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="#" />
                     </Border>
                     <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                       <TextBlock Classes="Eyebrow" Text="{Binding PanelLabel}" />
@@ -269,7 +269,7 @@
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding SupportsLocation}">
                     <TextBlock FontWeight="SemiBold" Text="Startup location" />
                     <TextBox
-                        Classes="Monospace"
+                        
                         Text="{Binding StartupLocation}"
                         PlaceholderText="Working directory, URL, or provider path"
                         AutomationProperties.Name="{Binding PanelLabel, StringFormat=Startup location for {0}}" />
@@ -290,7 +290,7 @@
                       <TextBox
                           MinHeight="82"
                           AcceptsReturn="True"
-                          Classes="Monospace"
+                          
                           Text="{Binding StartupCommands}"
                           TextWrapping="NoWrap"
                           PlaceholderText="One command per line"

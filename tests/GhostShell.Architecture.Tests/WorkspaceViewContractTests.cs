@@ -184,7 +184,7 @@ public sealed class WorkspaceViewContractTests
         // centred controls, so the agent supplies the other half rather than
         // visually doubling only that edge.
         Assert.Equal(
-            "{controls:Inset Right=Sm, Top=Xs, Bottom=Sm}",
+            "{controls:Inset Right=Sm, Top=Sm, Bottom=Sm}",
             AttributeValue(agentWorkspace, "Margin"));
         Assert.Equal(
             "{Binding IsAgentPanelVisible}",
@@ -218,7 +218,12 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(
             "{Binding RuntimeWorkspace.ActiveTab.DockFactory}",
             AttributeValue(dockControl, "Factory"));
-        Assert.Equal("True", AttributeValue(dockControl, "IsDockingEnabled"));
+        // Docking pauses while the layout designer overlay is open: Dock resolves
+        // drop targets across every registered DockControl, and the designer's
+        // canvas must not be able to dock a slot into the live workspace beneath.
+        Assert.Equal(
+            "{Binding !IsLayoutDesignerVisible}",
+            AttributeValue(dockControl, "IsDockingEnabled"));
         Assert.Equal("True", AttributeValue(dockControl, "InitializeFactory"));
         Assert.Equal("False", AttributeValue(dockControl, "InitializeLayout"));
         // Dock windows are real platform windows. The managed-window layer would

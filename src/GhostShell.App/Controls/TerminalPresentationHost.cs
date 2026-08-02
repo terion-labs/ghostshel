@@ -85,7 +85,7 @@ public sealed class TerminalPresentationHost : ContentControl
     private readonly ManagedTerminalSessionHost _presentation;
     private bool _isLive;
     private string? _initializationError;
-    private string _statusText = "STARTING";
+    private string _statusText = "Starting";
     private IBrush _statusBrush = StartingBrush;
     private bool _showFallback;
     private string _statusMessage = string.Empty;

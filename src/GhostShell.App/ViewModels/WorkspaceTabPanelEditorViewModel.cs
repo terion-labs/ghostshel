@@ -55,7 +55,7 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
 
     public ScreenPanelKind Kind => _original.Kind;
 
-    public string KindLabel => Kind.ToString().ToUpperInvariant();
+    public string KindLabel => KindBadges.Panel(Kind);
 
     public bool IsTerminal => Kind == ScreenPanelKind.Terminal;
 

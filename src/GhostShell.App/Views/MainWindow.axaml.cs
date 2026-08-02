@@ -962,26 +962,6 @@ public sealed partial class MainWindow : Window
         FocusLayoutDesignerNameWhenReady();
     }
 
-    private void OnLayoutGridSizeChanged(
-        object? sender,
-        NumericUpDownValueChangedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        var editor = ViewModel.LayoutDesignerEditor;
-        var gridSize = LayoutDesignerOverlay.CaptureGridSize();
-        if (editor is null
-            || gridSize.Rows is null
-            || gridSize.Columns is null)
-        {
-            return;
-        }
-
-        _ = editor.ResizeGrid(
-            (int)gridSize.Rows.Value,
-            (int)gridSize.Columns.Value);
-    }
-
     private void OnLayoutSlotClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
@@ -991,54 +971,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnLayoutMoveLeftClick(object? sender, RoutedEventArgs e) =>
-        MoveLayoutSelection(sender, e, LayoutDesignerDirection.Left);
-
-    private void OnLayoutMoveRightClick(object? sender, RoutedEventArgs e) =>
-        MoveLayoutSelection(sender, e, LayoutDesignerDirection.Right);
-
-    private void OnLayoutMoveUpClick(object? sender, RoutedEventArgs e) =>
-        MoveLayoutSelection(sender, e, LayoutDesignerDirection.Up);
-
-    private void OnLayoutMoveDownClick(object? sender, RoutedEventArgs e) =>
-        MoveLayoutSelection(sender, e, LayoutDesignerDirection.Down);
-
-    private void OnLayoutGrowLeftClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Left, 1);
-
-    private void OnLayoutGrowRightClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Right, 1);
-
-    private void OnLayoutGrowTopClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Top, 1);
-
-    private void OnLayoutGrowBottomClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Bottom, 1);
-
-    private void OnLayoutShrinkLeftClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Left, -1);
-
-    private void OnLayoutShrinkRightClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Right, -1);
-
-    private void OnLayoutShrinkTopClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Top, -1);
-
-    private void OnLayoutShrinkBottomClick(object? sender, RoutedEventArgs e) =>
-        ResizeLayoutSelection(sender, e, LayoutDesignerEdge.Bottom, -1);
-
-    private void OnLayoutMoveEarlierClick(object? sender, RoutedEventArgs e)
+    private void OnLayoutSplitSlotRightClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
-        _ = ViewModel.LayoutDesignerEditor?.MoveSelectedEarlier();
+        if (sender is Control { DataContext: LayoutDesignerSlotViewModel slot })
+        {
+            _ = ViewModel.LayoutDesignerEditor?.SplitSlot(
+                slot.Id,
+                LayoutDesignerSplitDirection.Right);
+        }
     }
 
-    private void OnLayoutMoveLaterClick(object? sender, RoutedEventArgs e)
+    private void OnLayoutSplitSlotDownClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
-        _ = ViewModel.LayoutDesignerEditor?.MoveSelectedLater();
+        if (sender is Control { DataContext: LayoutDesignerSlotViewModel slot })
+        {
+            _ = ViewModel.LayoutDesignerEditor?.SplitSlot(
+                slot.Id,
+                LayoutDesignerSplitDirection.Down);
+        }
     }
 
     private void OnLayoutAddSlotClick(object? sender, RoutedEventArgs e)
@@ -1048,25 +1000,14 @@ public sealed partial class MainWindow : Window
         _ = ViewModel.LayoutDesignerEditor?.AddSlot();
     }
 
-    /// <summary>
-    /// Adds a panel without a drag, for anyone not using a pointer. Dragging an
-    /// empty cell does the same thing with a chosen size.
-    /// </summary>
-    private void OnLayoutPaintPanelClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        if (ViewModel.LayoutDesignerEditor?.AddSlot().IsSuccess == true)
-        {
-            LayoutDesignerOverlay.FocusGrid();
-        }
-    }
-
     private void OnLayoutRemoveSlotClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
-        _ = ViewModel.LayoutDesignerEditor?.RemoveSelectedSlot();
+        // The remove control sits on the slot it removes; without a slot context
+        // it falls back to the current selection for keyboard invocation.
+        _ = sender is Control { DataContext: LayoutDesignerSlotViewModel slot }
+            ? ViewModel.LayoutDesignerEditor?.RemoveSlot(slot.Id)
+            : ViewModel.LayoutDesignerEditor?.RemoveSelectedSlot();
     }
 
     private void OnResetLayoutClick(object? sender, RoutedEventArgs e)
@@ -1076,85 +1017,12 @@ public sealed partial class MainWindow : Window
         ViewModel.LayoutDesignerEditor?.Reset();
     }
 
-    private void OnLayoutDesignerKeyDown(object? sender, KeyEventArgs e)
-    {
-        _ = sender;
-        var editor = ViewModel.LayoutDesignerEditor;
-        if (editor is null)
-        {
-            return;
-        }
-
-        if (e.Key is Key.PageDown or Key.PageUp)
-        {
-            _ = e.Key == Key.PageDown
-                ? editor.SelectNextSlot()
-                : editor.SelectPreviousSlot();
-            FocusSelectedLayoutSlot();
-            e.Handled = true;
-            return;
-        }
-
-        if (!TryGetLayoutDirection(e.Key, out var direction, out var edge))
-        {
-            return;
-        }
-
-        if (e.KeyModifiers.HasFlag(AvaloniaKeyModifiers.Alt))
-        {
-            _ = editor.MoveSelected(direction);
-        }
-        else if (e.KeyModifiers.HasFlag(AvaloniaKeyModifiers.Shift))
-        {
-            _ = editor.ResizeSelected(edge, 1);
-        }
-        else if (e.KeyModifiers.HasFlag(AvaloniaKeyModifiers.Control))
-        {
-            _ = editor.ResizeSelected(edge, -1);
-        }
-        else
-        {
-            return;
-        }
-
-        e.Handled = true;
-    }
-
-    private void MoveLayoutSelection(
-        object? sender,
-        RoutedEventArgs e,
-        LayoutDesignerDirection direction)
+    private void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        _ = ViewModel.LayoutDesignerEditor?.MoveSelected(direction);
-    }
-
-    private void ResizeLayoutSelection(
-        object? sender,
-        RoutedEventArgs e,
-        LayoutDesignerEdge edge,
-        int units)
-    {
-        _ = sender;
-        _ = e;
-        _ = ViewModel.LayoutDesignerEditor?.ResizeSelected(edge, units);
-    }
-
-    private static bool TryGetLayoutDirection(
-        Key key,
-        out LayoutDesignerDirection direction,
-        out LayoutDesignerEdge edge)
-    {
-        (direction, edge) = key switch
-        {
-            Key.Left => (LayoutDesignerDirection.Left, LayoutDesignerEdge.Left),
-            Key.Right => (LayoutDesignerDirection.Right, LayoutDesignerEdge.Right),
-            Key.Up => (LayoutDesignerDirection.Up, LayoutDesignerEdge.Top),
-            Key.Down => (LayoutDesignerDirection.Down, LayoutDesignerEdge.Bottom),
-            _ => default,
-        };
-        return key is Key.Left or Key.Right or Key.Up or Key.Down;
+        ViewModel.BeginCreateWorkspace();
+        FocusDefinitionEditorWhenReady();
     }
 
     private void OnEditWorkspaceClick(object? sender, RoutedEventArgs e)
@@ -1566,17 +1434,6 @@ public sealed partial class MainWindow : Window
             ClearApplicationKeySequenceHint();
         }
 
-        if (e.Key == Key.Escape && ViewModel.IsLayoutDesignerVisible)
-        {
-            // Escape abandons a drag in progress. With no painting mode left there
-            // is nothing else here for it to cancel.
-            if (LayoutDesignerOverlay.CancelPointerGesture())
-            {
-                e.Handled = true;
-                return;
-            }
-        }
-
         if (e.Key == Key.Escape && ViewModel.HasOverlay)
         {
             _ = await TryCloseOverlayAsync();
@@ -1834,19 +1691,6 @@ public sealed partial class MainWindow : Window
                     ?.FocusInitialControl();
             }
         });
-
-    private void FocusSelectedLayoutSlot()
-    {
-        var selected = ViewModel.LayoutDesignerEditor?.SelectedSlot;
-        if (selected is null)
-        {
-            return;
-        }
-
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            LayoutDesignerOverlay.FocusSlot(selected));
-    }
-
 
     private async Task CloseWindowAsync()
     {

@@ -44,7 +44,7 @@
       </controls:SurfaceCard>
 
       <TextBlock
-          Classes="Muted Monospace"
+          Classes="Muted"
           FontSize="{DynamicResource ShellFontSize9}"
           Text="{Binding StatusMessage}"
           TextWrapping="Wrap"
@@ -79,8 +79,8 @@
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
                   <WrapPanel Orientation="Horizontal">
-                    <TextBlock Margin="{controls:Inset Right=Md}" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SnapshotLabel}" />
-                    <TextBlock Margin="{controls:Inset Right=Md}" Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SizeLabel}" />
+                    <TextBlock Margin="{controls:Inset Right=Md}" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SnapshotLabel}" />
+                    <TextBlock Margin="{controls:Inset Right=Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SizeLabel}" />
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding UpdatedLabel}" />
                   </WrapPanel>
                 </StackPanel>
@@ -92,7 +92,7 @@
                     Content="Clear"
                     AutomationProperties.Name="{Binding ClearAutomationName}" />
               </Grid>
-            </controls:SurfaceCard>          </DataTemplate>
+            </controls:SurfaceCard> </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
     </StackPanel>

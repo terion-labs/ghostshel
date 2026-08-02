@@ -266,7 +266,7 @@ public sealed partial class MainWindow
     private async Task OpenDefaultLocalTerminalAsync()
     {
         var connection = ViewModel.Connections.FirstOrDefault(item =>
-                item.CanOpen && item.Kind == "LOCAL")
+                item.CanOpen && string.Equals(item.Kind, "Local", StringComparison.OrdinalIgnoreCase))
             ?? ViewModel.Connections.FirstOrDefault(item => item.CanOpen);
         if (connection is null)
         {

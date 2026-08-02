@@ -123,12 +123,12 @@ public sealed class DiagnosticsExportViewModel : ObservableObject
 
     public string StatusLabel => Status switch
     {
-        DiagnosticsExportStatus.ChoosingDestination => "CHOOSING",
-        DiagnosticsExportStatus.Collecting => "COLLECTING",
-        DiagnosticsExportStatus.Exporting => "EXPORTING",
-        DiagnosticsExportStatus.Success => "CREATED",
-        DiagnosticsExportStatus.Cancelled => "CANCELLED",
-        DiagnosticsExportStatus.Error => "ERROR",
+        DiagnosticsExportStatus.ChoosingDestination => "Choosing",
+        DiagnosticsExportStatus.Collecting => "Collecting",
+        DiagnosticsExportStatus.Exporting => "Exporting",
+        DiagnosticsExportStatus.Success => "Created",
+        DiagnosticsExportStatus.Cancelled => "Cancelled",
+        DiagnosticsExportStatus.Error => "Error",
         _ => string.Empty,
     };
 

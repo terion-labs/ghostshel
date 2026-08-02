@@ -52,6 +52,70 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Autosave_workspace_writes_live_tabs_back_as_a_batched_definition_save()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var stored = Assert.Single(snapshot.Workspaces);
+        var autosaveWorkspace = new WorkspaceDefinition(
+            stored.Value.Id,
+            stored.Value.SchemaVersion,
+            stored.Value.Name,
+            stored.Value.Description,
+            stored.Value.Accent,
+            stored.Value.Entries,
+            stored.Value.AgentPolicyOverride,
+            stored.Value.Icon,
+            autoSave: true);
+        snapshot = snapshot with
+        {
+            Workspaces = [Store(autosaveWorkspace)],
+        };
+        var (client, _) = CreateSessionClient();
+        var catalog = DispatchProxy.Create<IDefinitionCatalog, RecordingAutoSaveCatalogProxy>();
+        var proxy = (RecordingAutoSaveCatalogProxy)(object)catalog;
+        proxy.Snapshot = snapshot;
+        using var viewModel = CreateViewModel(client, catalog);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        // The autosave debounce is 1.5 s; poll rather than assuming timing.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (proxy.SavedWorkspace is null && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(100);
+        }
+
+        var saved = Assert.IsType<WorkspaceDefinition>(proxy.SavedWorkspace);
+        Assert.True(saved.AutoSave);
+        Assert.Equal(stored.Revision, proxy.SavedWorkspaceRevision);
+        var tabs = saved.Entries.Cast<WorkspaceEntry.Tab>().ToArray();
+        Assert.Equal(["Alpha", "Beta", "Gamma"], tabs.Select(tab => tab.Name));
+        // Stored tab entries are matched by name, so entry ids stay stable.
+        Assert.Equal(["alpha", "beta", "gamma"], tabs.Select(tab => tab.Id.Value));
+        Assert.Equal(
+            [ScreenPanelKind.Terminal, ScreenPanelKind.Browser, ScreenPanelKind.FileViewer],
+            tabs[0].Panels.Select(panel => panel.Kind));
+
+        var layouts = proxy.SavedLayouts;
+        Assert.NotNull(layouts);
+        Assert.Equal(3, layouts.Count);
+        Assert.All(layouts, item =>
+        {
+            Assert.True(LayoutDefinition.IsAutoSaved(item.Definition.Id));
+            Assert.Null(item.ExpectedRevision);
+            Assert.NotNull(item.Definition.DockLayoutJson);
+        });
+        foreach (var (tab, layout) in tabs.Zip(layouts.Select(item => item.Definition)))
+        {
+            Assert.Equal(layout.Id, tab.LayoutId);
+            // Every captured layout slot is mapped by exactly one tab panel.
+            Assert.Equal(
+                layout.Slots.Select(slot => slot.Id.Value).Order(),
+                tab.Panels.Select(panel => panel.SlotId.Value).Order());
+        }
+    }
+
+    [Fact]
     public async Task Switching_terminal_connection_preserves_panel_identity_and_layout()
     {
         var (client, recorder) = CreateSessionClient();
@@ -184,7 +248,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             option =>
             {
                 Assert.Equal("Local", option.Name);
-                Assert.Equal("LOCAL", option.Kind);
+                Assert.Equal("Local", option.Kind);
                 Assert.True(option.CanOpen);
             },
             option =>
@@ -202,7 +266,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             option =>
             {
                 Assert.Equal("Unavailable WebDAV", option.Name);
-                Assert.Equal("WEBDAV", option.Kind);
+                Assert.Equal("WebDAV", option.Kind);
                 Assert.False(option.CanOpen);
             });
         Assert.All(
@@ -1098,7 +1162,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal("New Session", viewModel.NewItemLauncherTitle);
         viewModel.LauncherSearchQuery = "Secondary local";
         Assert.Equal(
-            "OPEN",
+            "Open",
             Assert.Single(
                 viewModel.LauncherSearchResults,
                 result => result.Target
@@ -1113,7 +1177,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             .ToArray();
         Assert.Equal("New Tab", viewModel.NewItemLauncherTitle);
         Assert.Equal(
-            "ADD TAB",
+            "Add tab",
             Assert.Single(
                 viewModel.LauncherSearchResults,
                 result => result.Target
@@ -4466,6 +4530,73 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 "add_Changed" or "remove_Changed" => null,
                 _ => throw new NotSupportedException(targetMethod?.Name),
             };
+    }
+
+    /// <summary>
+    /// Records the workspace-autosave writes. The batched save arrives either
+    /// through <c>SaveWorkspaceWithLayoutsAsync</c> directly or — because
+    /// <see cref="DispatchProxy"/> does not intercept default interface
+    /// methods — through the individual saves its default implementation
+    /// composes, so both shapes record into the same properties.
+    /// </summary>
+    public class RecordingAutoSaveCatalogProxy : DispatchProxy
+    {
+        private readonly List<(LayoutDefinition Definition, long? ExpectedRevision)> _layouts = [];
+
+        public DefinitionCatalogSnapshot Snapshot { get; set; } = DefinitionCatalogSnapshot.Empty;
+
+        public WorkspaceDefinition? SavedWorkspace { get; private set; }
+
+        public long? SavedWorkspaceRevision { get; private set; }
+
+        public IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)>
+            SavedLayouts => _layouts;
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.Name switch
+            {
+                "get_Snapshot" => Snapshot,
+                "add_Changed" or "remove_Changed" => null,
+                "SaveWorkspaceWithLayoutsAsync" => RecordBatch(args!),
+                "SaveLayoutAsync" => RecordLayout(args!),
+                "SaveWorkspaceAsync" => RecordWorkspace(args!),
+                _ => throw new NotSupportedException(targetMethod?.Name),
+            };
+
+        private object RecordBatch(object?[] args)
+        {
+            _layouts.AddRange(
+                (IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)>)args[2]!);
+            SavedWorkspace = (WorkspaceDefinition)args[0]!;
+            SavedWorkspaceRevision = (long?)args[1];
+            return ValueTask.FromResult<DefinitionStoreError?>(null);
+        }
+
+        private object RecordLayout(object?[] args)
+        {
+            var definition = (LayoutDefinition)args[0]!;
+            _layouts.Add((definition, (long?)args[1]));
+            return ValueTask.FromResult(
+                DefinitionStoreResult<StoredDefinition<LayoutDefinition>>.Success(
+                    new StoredDefinition<LayoutDefinition>(
+                        definition,
+                        1,
+                        DateTimeOffset.UnixEpoch,
+                        DateTimeOffset.UnixEpoch)));
+        }
+
+        private object RecordWorkspace(object?[] args)
+        {
+            SavedWorkspace = (WorkspaceDefinition)args[0]!;
+            SavedWorkspaceRevision = (long?)args[1];
+            return ValueTask.FromResult(
+                DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Success(
+                    new StoredDefinition<WorkspaceDefinition>(
+                        SavedWorkspace,
+                        ((long?)args[1] ?? 0) + 1,
+                        DateTimeOffset.UnixEpoch,
+                        DateTimeOffset.UnixEpoch)));
+        }
     }
 
     private sealed class RecordingGovernedAgentRuntime : IGovernedAgentRuntime

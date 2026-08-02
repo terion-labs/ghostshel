@@ -17,7 +17,7 @@ public sealed class TerminalPresentationHostTests
         Assert.Equal(
             AutomationLiveSetting.Polite,
             AutomationProperties.GetLiveSetting(presentation));
-        Assert.Equal("STARTING", AutomationProperties.GetItemStatus(presentation));
+        Assert.Equal("Starting", AutomationProperties.GetItemStatus(presentation));
         Assert.Same(managed, presentation.Content);
     }
 

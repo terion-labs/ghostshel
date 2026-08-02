@@ -107,7 +107,7 @@ public sealed class BrowserPresentationHost : ContentControl
     private long _initializationGeneration;
     private bool _isAttachedToVisualTree;
     private string _addressText = string.Empty;
-    private string _statusText = "WAITING";
+    private string _statusText = "Waiting";
     private string _statusMessage = string.Empty;
     private IBrush _statusBrush = WaitingBrush;
     private bool _isLive;
@@ -333,7 +333,7 @@ public sealed class BrowserPresentationHost : ContentControl
 
         ClaimRendererPresentation(RendererView);
 
-        SetWaitingState("Starting the native browser…", "STARTING");
+        SetWaitingState("Starting the native browser…", "Starting");
         var generation = ++_initializationGeneration;
         _attachmentLifetime = new CancellationTokenSource();
         _ = InitializeSessionAsync(generation, _attachmentLifetime.Token);
@@ -559,7 +559,7 @@ public sealed class BrowserPresentationHost : ContentControl
         {
             if (generation == _initializationGeneration)
             {
-                SetWaitingState("Browser renderer stopped.", "STOPPED");
+                SetWaitingState("Browser renderer stopped.", "Stopped");
             }
         }
         catch (Exception exception)
@@ -700,9 +700,9 @@ public sealed class BrowserPresentationHost : ContentControl
         CanGoForward = state.CanGoForward;
         StatusText = state.LoadState switch
         {
-            BrowserLoadState.Ready => "READY",
-            BrowserLoadState.Loading => "LOADING",
-            BrowserLoadState.Failed => "FAILED",
+            BrowserLoadState.Ready => "Ready",
+            BrowserLoadState.Loading => "Loading",
+            BrowserLoadState.Failed => "Failed",
             _ => throw new ArgumentOutOfRangeException(nameof(state)),
         };
         StatusBrush = state.LoadState switch
@@ -718,7 +718,7 @@ public sealed class BrowserPresentationHost : ContentControl
         BrowserStateChanged?.Invoke(this, new BrowserStateChangedEventArgs(state));
     }
 
-    private void SetWaitingState(string message, string status = "WAITING")
+    private void SetWaitingState(string message, string status = "Waiting")
     {
         StatusText = status;
         StatusMessage = message;
@@ -733,7 +733,7 @@ public sealed class BrowserPresentationHost : ContentControl
         IsLoading = false;
         CanGoBack = false;
         CanGoForward = false;
-        StatusText = "ERROR";
+        StatusText = "Error";
         StatusMessage = message;
         StatusBrush = FailedBrush;
         ShowFallback = true;

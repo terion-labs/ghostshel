@@ -17,7 +17,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         ISessionHostClient sessionClient,
         ClientId clientId,
         BrowserRendererView rendererView)
-        : base(id, PanelKind.Browser, title, "BROWSER")
+        : base(id, PanelKind.Browser, title, "Browser")
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(initialAddress);

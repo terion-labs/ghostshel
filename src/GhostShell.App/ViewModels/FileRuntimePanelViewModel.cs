@@ -121,7 +121,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         string? initialLocationText = null,
         bool deferInitialization = false,
         ConnectionProfile? connection = null)
-        : base(id, PanelKind.FileViewer, title, "FILES")
+        : base(id, PanelKind.FileViewer, title, "Files")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _connection = connection ?? BuiltInConnections.Local;

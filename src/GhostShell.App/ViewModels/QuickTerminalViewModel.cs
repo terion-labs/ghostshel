@@ -9,11 +9,11 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
     private EnsureTerminalSessionRequest? _terminalRequest;
     private bool _isInitializing;
     private string _terminalUnavailableMessage = string.Empty;
-    private string _shortcutStatus = "GLOBAL SHORTCUT · REGISTERING";
+    private string _shortcutStatus = "Global shortcut · registering";
     private string _shortcutDetail =
         $"GhostSHELL is registering {QuickTerminalHotkeyText.Example} for Quick Terminal.";
     private string _shortcutStatusBrush = "#8B8B91";
-    private string _escapeStatus = "ESC · HIDE";
+    private string _escapeStatus = "Esc · hide";
     private string _escapeDetail = "Escape hides Quick Terminal.";
 
     public QuickTerminalViewModel(
@@ -164,7 +164,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
         switch (result)
         {
             case GlobalHotkeyRegistrationResult.Success:
-                ShortcutStatus = $"{configured.ToUpperInvariant()} · READY";
+                ShortcutStatus = $"{configured} · ready";
                 ShortcutDetail = $"{configured} toggles Quick Terminal from any application.";
                 ShortcutStatusBrush = "#3FB950";
                 break;
@@ -173,10 +173,10 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
                     ? failure.Error.Code switch
                     {
                         GlobalHotkeyRegistrationErrorCode.Conflict =>
-                            $"{configured.ToUpperInvariant()} · CONFLICT",
+                            $"{configured} · conflict",
                         GlobalHotkeyRegistrationErrorCode.Unsupported =>
-                            "GLOBAL SHORTCUT · UNAVAILABLE",
-                        _ => "GLOBAL SHORTCUT · ERROR",
+                            "Global shortcut · unavailable",
+                        _ => "Global shortcut · error",
                     }
                     : $"{QuickTerminalHotkeyText.Format(activeGesture.Value).ToUpperInvariant()} · FALLBACK";
                 ShortcutDetail = activeGesture is null
@@ -193,11 +193,11 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
         switch (result)
         {
             case GlobalHotkeyRegistrationResult.Success:
-                EscapeStatus = "ESC · HIDE";
+                EscapeStatus = "Esc · hide";
                 EscapeDetail = "Escape hides Quick Terminal without ending its terminal session.";
                 break;
             case GlobalHotkeyRegistrationResult.Failure failure:
-                EscapeStatus = "ESC · UNAVAILABLE";
+                EscapeStatus = "Esc · unavailable";
                 EscapeDetail = failure.Error.Message;
                 break;
         }

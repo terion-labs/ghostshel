@@ -18,14 +18,14 @@
     <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock Classes="Eyebrow" Text="INPUT NEEDED" />
+          <TextBlock Classes="Eyebrow" Text="Input needed" />
           <TextBlock
               FontSize="{DynamicResource ShellFontSize13}"
               FontWeight="SemiBold"
               Text="Untrusted model question"
               TextWrapping="Wrap" />
         </StackPanel>
-        <controls:StatusChip Grid.Column="1" VerticalAlignment="Top" Classes.Warning="True" Content="NOT APPROVAL" />
+        <controls:StatusChip Grid.Column="1" VerticalAlignment="Top" Classes.Warning="True" Content="Not approval" />
       </Grid>
       <TextBlock Text="{Binding AgentChat.PendingQuestion.Question}" TextWrapping="Wrap" />
       <TextBlock
@@ -50,7 +50,7 @@
         </Grid>
       </Border>
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock Classes="Eyebrow" Text="YOUR ANSWER" />
+        <TextBlock Classes="Eyebrow" Text="Your answer" />
         <TextBox
             x:Name="AgentQuestionResponseInput"
             MinHeight="36"

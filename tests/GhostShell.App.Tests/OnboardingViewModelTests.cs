@@ -26,8 +26,8 @@ public sealed class OnboardingViewModelTests
         await viewModel.Initialization;
 
         Assert.True(viewModel.IsVisible);
-        Assert.Equal("READY", viewModel.LocalTerminalState);
-        Assert.Equal("READY", viewModel.CredentialVaultState);
+        Assert.Equal("Ready", viewModel.LocalTerminalState);
+        Assert.Equal("Ready", viewModel.CredentialVaultState);
         Assert.Contains("did not launch", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(viewModel.CanFinish);
 
@@ -86,8 +86,8 @@ public sealed class OnboardingViewModelTests
         await viewModel.Initialization;
 
         Assert.True(viewModel.IsVisible);
-        Assert.Equal("NEEDS ATTENTION", viewModel.LocalTerminalState);
-        Assert.Equal("UNAVAILABLE", viewModel.CredentialVaultState);
+        Assert.Equal("Needs attention", viewModel.LocalTerminalState);
+        Assert.Equal("Unavailable", viewModel.CredentialVaultState);
         Assert.True(viewModel.HasFailure);
         Assert.True(viewModel.CanRetry);
     }

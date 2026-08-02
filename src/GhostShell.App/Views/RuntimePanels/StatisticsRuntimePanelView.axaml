@@ -29,13 +29,13 @@
               DataContext="{Binding $parent[dock:DockableControl].DataContext}">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
               <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="ZOOMED" />
+              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
             </StackPanel>
           </controls:PanelDockHandle>
           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
             <TextBlock
                 VerticalAlignment="Center"
-                Classes="Muted Monospace"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
                 Text="{Binding StatusText}"
                 AutomationProperties.LiveSetting="Polite"
@@ -83,8 +83,8 @@
             <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <controls:SurfaceCard Padding="0">
                 <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" RowDefinitions="Auto,Auto,Auto,108,Auto">
-                  <TextBlock Classes="Eyebrow" Text="CPU USAGE" />
-                  <TextBlock Grid.Row="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding CpuText}" />
+                  <TextBlock Classes="Eyebrow" Text="CPU usage" />
+                  <TextBlock Grid.Row="1" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding CpuText}" />
                   <TextBlock Grid.Row="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Normalized across logical processors" TextWrapping="Wrap" />
                   <controls:TimeSeriesChart
                       Grid.Row="3"
@@ -96,15 +96,15 @@
                       GridBrush="{DynamicResource ShellBorderBrush}"
                       AutomationProperties.Name="CPU usage history over the last two minutes" />
                   <Grid Grid.Row="4" Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto">
-                    <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="LAST 2 MIN" />
-                    <TextBlock Grid.Column="1" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="NOW · 100% MAX" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Last 2 min" />
+                    <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Now · 100% max" />
                   </Grid>
                 </Grid>
               </controls:SurfaceCard>
               <controls:SurfaceCard Padding="0" Grid.Column="1">
                 <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" RowDefinitions="Auto,Auto,Auto,108,Auto">
-                  <TextBlock Classes="Eyebrow" Text="PROCESS MEMORY" />
-                  <TextBlock Grid.Row="1" Classes="Monospace" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding MemoryText}" />
+                  <TextBlock Classes="Eyebrow" Text="Process memory" />
+                  <TextBlock Grid.Row="1" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding MemoryText}" />
                   <TextBlock Grid.Row="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Combined RSS from accessible processes" TextWrapping="Wrap" />
                   <controls:TimeSeriesChart
                       Grid.Row="3"
@@ -115,8 +115,8 @@
                       GridBrush="{DynamicResource ShellBorderBrush}"
                       AutomationProperties.Name="Process memory history over the last two minutes" />
                   <Grid Grid.Row="4" Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto">
-                    <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="LAST 2 MIN" />
-                    <TextBlock Grid.Column="1" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="NOW · AUTO SCALE" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Last 2 min" />
+                    <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Now · auto scale" />
                   </Grid>
                 </Grid>
               </controls:SurfaceCard>
@@ -125,15 +125,15 @@
             <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Eyebrow" Text="RUNNING PROCESSES" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="{Binding ProcessCountText}" TextWrapping="Wrap" />
+                  <TextBlock Classes="Eyebrow" Text="Running processes" />
+                  <TextBlock FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="{Binding ProcessCountText}" TextWrapping="Wrap" />
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessDetailText}" TextWrapping="Wrap" />
                 </StackPanel>
               </controls:SurfaceCard>
               <controls:SurfaceCard Padding="0" Grid.Column="1">
                 <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="Eyebrow" Text="HOST UPTIME" />
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="{Binding UptimeText}" />
+                  <TextBlock Classes="Eyebrow" Text="Host uptime" />
+                  <TextBlock FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="{Binding UptimeText}" />
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessorCountText, StringFormat={}{0} logical processors}" TextWrapping="Wrap" />
                 </StackPanel>
               </controls:SurfaceCard>
@@ -171,7 +171,7 @@
       <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
           <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="POSIX process counters · no environment or terminal content" />
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
+          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
         </Grid>
       </Border>
     </Grid>

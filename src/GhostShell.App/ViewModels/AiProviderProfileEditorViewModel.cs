@@ -277,7 +277,7 @@ public sealed class AiProviderProfileEditorViewModel : ObservableObject
                 existing is null
                     ? "Create credential slot when saved"
                     : "Replace with a new credential slot",
-                "API KEY",
+                "API key",
                 true),
         };
         options.AddRange(secrets
@@ -295,7 +295,7 @@ public sealed class AiProviderProfileEditorViewModel : ObservableObject
             options.Add(new AiProviderSecretOption(
                 apiKey.Secret,
                 "Missing credential",
-                "UNAVAILABLE",
+                "Unavailable",
                 false));
         }
 

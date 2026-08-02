@@ -68,7 +68,7 @@
                               TextTrimming="CharacterEllipsis" />
                           <TextBlock
                               Classes="Muted"
-                              FontSize="{DynamicResource ShellFontSize8}"
+                              FontSize="{DynamicResource ShellFontSize9}"
                               Text="{Binding Detail}"
                               TextTrimming="CharacterEllipsis" />
                         </StackPanel>
@@ -76,7 +76,7 @@
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             Classes="Eyebrow"
-                            FontSize="{DynamicResource ShellFontSize8}"
+                            FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding Kind}" />
                       </Grid>
                     </Button>

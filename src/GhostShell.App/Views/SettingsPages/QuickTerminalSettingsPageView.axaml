@@ -39,7 +39,7 @@
           Label="Global hotkey"
           Description="{Binding QuickTerminalSettingsEditor.HotkeyHelpText}">
         <TextBox
-            Classes="Monospace"
+            
             Text="{Binding QuickTerminalSettingsEditor.HotkeyText}"
             AutomationProperties.Name="Quick Terminal global hotkey" />
       </controls:SettingRow>
@@ -95,7 +95,7 @@
           <TextBlock
               Grid.Column="1"
               VerticalAlignment="Center"
-              Classes="Monospace Muted"
+              Classes="Muted"
               Text="%" />
         </Grid>
       </controls:SettingRow>
@@ -119,7 +119,7 @@
           <TextBlock
               Grid.Column="1"
               VerticalAlignment="Center"
-              Classes="Monospace Muted"
+              Classes="Muted"
               Text="%" />
         </Grid>
       </controls:SettingRow>
@@ -136,7 +136,7 @@
           <TextBlock
               Grid.Column="1"
               VerticalAlignment="Center"
-              Classes="Monospace Muted"
+              Classes="Muted"
               Text="px" />
         </Grid>
       </controls:SettingRow>
@@ -182,7 +182,7 @@
           <TextBlock
               Grid.Column="1"
               VerticalAlignment="Center"
-              Classes="Monospace Muted"
+              Classes="Muted"
               Text="ms" />
         </Grid>
       </controls:SettingRow>

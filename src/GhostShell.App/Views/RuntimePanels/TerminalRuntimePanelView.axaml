@@ -40,7 +40,7 @@
           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
             <TextBlock
                 VerticalAlignment="Center"
-                Classes="Monospace Muted"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
                 Text="{Binding StatusText, ElementName=RuntimeTerminal}"
                 AutomationProperties.LiveSetting="Polite"
@@ -95,7 +95,7 @@
           <StackPanel MaxWidth="440" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
             <icons:SymbolIcon Symbol="WindowConsole" FontSize="24" Foreground="{DynamicResource ShellMutedBrush}" />
             <TextBlock
-                Classes="Monospace Muted"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize11}"
                 Text="{Binding StatusMessage, ElementName=RuntimeTerminal}"
                 TextAlignment="Center"
@@ -118,7 +118,7 @@
             IsVisible="{Binding HasStartupCommandError}">
           <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
             <TextBlock
-                Classes="Monospace"
+                
                 FontSize="{DynamicResource ShellFontSize10}"
                 FontWeight="SemiBold"
                 Foreground="{DynamicResource ShellWarningBrush}"
@@ -142,7 +142,7 @@
             IsHitTestVisible="False"
             IsVisible="{Binding IsCopyMode}">
           <TextBlock
-              Classes="Monospace"
+              
               FontSize="{DynamicResource ShellFontSize9}"
               Foreground="{DynamicResource ShellWarningBrush}"
               Text="COPY MODE · scroll/select with the pointer · copy normally · Esc exits" />
@@ -165,7 +165,7 @@
                 TextAlignment="Center"
                 TextWrapping="Wrap" />
             <TextBlock
-                Classes="Muted Monospace"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize10}"
                 Text="{Binding RecoveryLabel}"
                 TextAlignment="Center"
@@ -173,13 +173,13 @@
             <controls:SurfaceCard Padding="0" IsVisible="{Binding HasHostKeyReview}">
               <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
                 <TextBlock FontWeight="SemiBold" Text="{Binding HostKeyReviewTitle}" TextAlignment="Center" />
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HostKeyReview.Presented.Algorithm}" TextAlignment="Center" />
-                <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextAlignment="Center" TextWrapping="Wrap" />
-                <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding TrustedHostKeyFingerprint}" TextAlignment="Center" TextWrapping="Wrap" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HostKeyReview.Presented.Algorithm}" TextAlignment="Center" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextAlignment="Center" TextWrapping="Wrap" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding TrustedHostKeyFingerprint}" TextAlignment="Center" TextWrapping="Wrap" />
                 <Button Classes="SecondaryButton" Click="OnTrustHostKeyClick" Content="{Binding TrustHostKeyLabel}" IsVisible="{Binding CanTrustHostKey}" />
               </StackPanel>
             </controls:SurfaceCard>
-            <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ReconnectStatus}" IsVisible="{Binding IsReconnecting}" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ReconnectStatus}" IsVisible="{Binding IsReconnecting}" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
               <Button
                   Classes="SecondaryButton"

@@ -293,7 +293,7 @@ public sealed class SavedScreenEditorViewModelTests
         var request = editor.CreateSaveRequest();
 
         Assert.True(editor.IsDirty);
-        Assert.Equal("UNSAVED CHANGES", editor.DirtyStatus);
+        Assert.Equal("Unsaved changes", editor.DirtyStatus);
         Assert.Equal("Build terminal", request.Definition.Panels[0].Title);
         Assert.Equal("/work/project", request.Definition.Panels[0].Startup.Location);
         Assert.Equal(["dotnet restore", "dotnet test"], request.Definition.Panels[0].Startup.Commands);

@@ -28,7 +28,7 @@
             Text="{Binding LauncherSearchQuery}" />
         <Button Grid.Column="2" Padding="0" MinHeight="0" Background="Transparent" BorderThickness="0" VerticalAlignment="Center" Click="OnCloseClick" AutomationProperties.Name="Close command palette">
           <Border Classes="Keycap">
-            <TextBlock Classes="Monospace" Text="ESC" />
+            <TextBlock Text="Esc" />
           </Border>
         </Button>
       </Grid>
@@ -61,12 +61,12 @@
                   <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="14" />
                 </Border>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="SectionHeading" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Group}" />
+                  <TextBlock Classes="SectionHeading" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Group}" />
                   <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayDetail}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <Border Grid.Column="2" Classes="Keycap" VerticalAlignment="Center" IsVisible="{Binding HasTrailingText}">
-                  <TextBlock Classes="Monospace" Text="{Binding TrailingText}" />
+                  <TextBlock Text="{Binding TrailingText}" />
                 </Border>
               </Grid>
             </Button>
@@ -89,7 +89,7 @@
       <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="*,Auto">
           <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Unavailable results stay visible but cannot be opened." />
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="↑↓ navigate  ↵ activate" />
+          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="↑↓ navigate ↵ activate" />
         </Grid>
       </Border>
     </Grid>

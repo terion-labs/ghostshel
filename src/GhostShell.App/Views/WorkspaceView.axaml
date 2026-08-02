@@ -134,7 +134,11 @@
         <!-- The add button belongs under the last workspace, not pinned to the
              far end of the rail: with two workspaces it was stranded most of a
              screen below them, reading as an unrelated control. -->
-        <StackPanel Margin="{controls:Inset Sm}" Spacing="{DynamicResource ShellSpaceSm}">
+        <!-- Horizontal inset stays smaller than the vertical one: the 56 DIP
+             rail minus its border leaves the 40 DIP tiles only 38 DIP at the
+             larger inset, and the clipped sides read as flattened circles once
+             the corner radius rounds the tiles. -->
+        <StackPanel Margin="{controls:Inset Horizontal=Xs, Vertical=Sm}" Spacing="{DynamicResource ShellSpaceSm}">
           <ItemsControl ItemsSource="{Binding Workspaces}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
@@ -144,7 +148,9 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <Button Width="40" Height="40" Padding="0" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon Symbol="Add" FontSize="14" /></Button>
+          <!-- A ghost tile, not a push button: the rail's add affordance sits
+               beside filled workspace tiles and must read as an empty slot. -->
+          <Button Width="40" Height="40" Padding="0" Background="Transparent" BorderBrush="{DynamicResource ShellBorderBrush}" Foreground="{DynamicResource ShellMutedBrush}" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon Symbol="Add" FontSize="14" /></Button>
         </StackPanel>
       </Border>
 
@@ -176,7 +182,7 @@
           x:Name="AgentWorkspaceSurface"
           DockPanel.Dock="Right"
           Width="352"
-          Margin="{controls:Inset Right=Sm, Top=Xs, Bottom=Sm}"
+          Margin="{controls:Inset Right=Sm, Top=Sm, Bottom=Sm}"
           AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
           ApproveAgentActionRequested="OnApproveAgentActionClick"
           CancelAgentActionRequested="OnCancelAgentActionClick"
@@ -195,8 +201,11 @@
           ShowAgentSettingsRequested="OnShowAgentSettingsClick"
           SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick" />
 
+      <!-- The canvas gutter matches the splitter step, so a panel's distance to
+           the rail, to the agent panel, and to its neighbour panel all read as
+           the same gap. -->
       <Grid
-          Margin="{controls:Inset Xs}"
+          Margin="{controls:Inset Sm}"
           IsVisible="{Binding IsWorkspaceCanvasVisible}">
         <dock:DockControl
             x:Name="RuntimeDockControl"
@@ -204,7 +213,7 @@
             VerticalAlignment="Stretch"
             Layout="{Binding RuntimeWorkspace.ActiveTab.DockLayout}"
             Factory="{Binding RuntimeWorkspace.ActiveTab.DockFactory}"
-            IsDockingEnabled="True"
+            IsDockingEnabled="{Binding !IsLayoutDesignerVisible}"
             InitializeFactory="True"
             InitializeLayout="False">
           <dock:DockControl.Styles>
@@ -250,7 +259,7 @@
 
     <Border Grid.Row="4" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}" Margin="{controls:Inset Horizontal=Sm}">
-        <TextBlock VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding RuntimeWorkspace.ActiveTab.Source}" />
+        <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding RuntimeWorkspace.ActiveTab.Source}" />
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding WorkspaceStatus}" />
         <TextBlock
             Grid.Column="2"
@@ -279,7 +288,7 @@
                 Foreground="{DynamicResource ShellAccentBrush}" />
             <TextBlock
                 VerticalAlignment="Center"
-                FontSize="{DynamicResource ShellFontSize8}"
+                FontSize="{DynamicResource ShellFontSize9}"
                 FontWeight="Medium"
                 Text="{Binding FileTransferStatusText}"
                 AutomationProperties.LiveSetting="Polite" />
@@ -312,7 +321,7 @@
             <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="File transfers" />
             <TextBlock
                 Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize8}"
+                FontSize="{DynamicResource ShellFontSize9}"
                 Text="Transfers stream through this computer between file providers."
                 TextWrapping="Wrap" />
           </StackPanel>
@@ -342,12 +351,12 @@
                     <StackPanel MinWidth="0" Spacing="{DynamicResource ShellSpaceXs}">
                       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                         <TextBlock FontSize="{DynamicResource ShellFontSize9}" FontWeight="SemiBold" Text="{Binding Operation}" />
-                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Stage}" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Stage}" />
                       </StackPanel>
-                      <TextBlock FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Source}" TextTrimming="CharacterEllipsis" />
                       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                         <icons:SymbolIcon Symbol="ArrowRight" FontSize="9" Foreground="{DynamicResource ShellMutedBrush}" />
-                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize8}" Text="{Binding Destination}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Destination}" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
@@ -370,7 +379,7 @@
                         Grid.ColumnSpan="2"
                         Margin="{controls:Inset Top=Xs}"
                         Foreground="{DynamicResource ShellDangerBrush}"
-                        FontSize="{DynamicResource ShellFontSize8}"
+                        FontSize="{DynamicResource ShellFontSize9}"
                         Text="{Binding Error}"
                         TextWrapping="Wrap"
                         IsVisible="{Binding HasError}" />

@@ -15,13 +15,13 @@
       <TextBlock Classes="Muted" Text="{Binding Explanation}" TextWrapping="Wrap" />
       <controls:SurfaceCard Padding="0">
         <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
-          <TextBlock Classes="Eyebrow" Text="ENDPOINT" />
-          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Review.Endpoint}" />
-          <TextBlock Classes="Eyebrow" Text="PRESENTED HOST KEY" />
-          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Review.Presented.Algorithm}" />
-          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Review.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
-          <TextBlock Classes="Eyebrow" Text="PREVIOUSLY TRUSTED" IsVisible="{Binding Review.RequiresExplicitReplacement}" />
-          <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Foreground="{DynamicResource ShellDangerBrush}" Text="{Binding Review.Trusted.Sha256Fingerprint}" TextWrapping="Wrap" IsVisible="{Binding Review.RequiresExplicitReplacement}" />
+          <TextBlock Classes="Eyebrow" Text="Endpoint" />
+          <TextBlock FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Review.Endpoint}" />
+          <TextBlock Classes="Eyebrow" Text="Presented host key" />
+          <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Review.Presented.Algorithm}" />
+          <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Review.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
+          <TextBlock Classes="Eyebrow" Text="Previously trusted" IsVisible="{Binding Review.RequiresExplicitReplacement}" />
+          <TextBlock FontSize="{DynamicResource ShellFontSize10}" Foreground="{DynamicResource ShellDangerBrush}" Text="{Binding Review.Trusted.Sha256Fingerprint}" TextWrapping="Wrap" IsVisible="{Binding Review.RequiresExplicitReplacement}" />
         </StackPanel>
       </controls:SurfaceCard>
       <TextBlock Foreground="{DynamicResource ShellWarningBrush}" FontSize="{DynamicResource ShellFontSize10}" Text="Verify this fingerprint through a separate trusted channel before continuing. GhostSHELL will never replace a changed key automatically." TextWrapping="Wrap" />

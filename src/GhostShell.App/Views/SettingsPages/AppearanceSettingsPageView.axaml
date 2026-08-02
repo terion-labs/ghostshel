@@ -13,7 +13,7 @@
         Description="Customize how the app looks — colour scheme, accent, and window chrome." />
 
     <!-- Theme -->
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Theme" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Follow the host colour scheme or pin an explicit one." />
@@ -34,8 +34,8 @@
               <Grid ColumnDefinitions="*,*">
                 <Border Background="#111111" BorderBrush="#38383C" BorderThickness="1,1,0,1" CornerRadius="8,0,0,8" />
                 <Border Grid.Column="1" Background="#F2F3F0" BorderBrush="#B8BAB6" BorderThickness="0,1,1,1" CornerRadius="0,8,8,0" />
-                <TextBlock Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="#B8B9B6" Text="❯ dev" />
-                <TextBlock Grid.Column="1" Margin="{controls:Inset Right=Sm}" HorizontalAlignment="Right" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="#5C5E5A" Text="❯ dev" />
+                <TextBlock Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize9}" Foreground="#B8B9B6" Text="❯ dev" />
+                <TextBlock Grid.Column="1" Margin="{controls:Inset Right=Sm}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize9}" Foreground="#5C5E5A" Text="❯ dev" />
               </Grid>
             </Border>
             <Grid ColumnDefinitions="*,Auto">
@@ -53,9 +53,9 @@
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Height="72" Background="#111111" BorderBrush="#38383C" BorderThickness="1" CornerRadius="{DynamicResource ShellControlCornerRadius}" ClipToBounds="True">
               <StackPanel Margin="{controls:Inset Sm}" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="#B8B9B6" Text="❯ npm run dev" />
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="#77D797" Text="✓ ready in 312ms" />
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="{DynamicResource ShellAccentBrush}" Text="▸ localhost:3000" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="#B8B9B6" Text="❯ npm run dev" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="#77D797" Text="✓ ready in 312ms" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="{DynamicResource ShellAccentBrush}" Text="▸ localhost:3000" />
               </StackPanel>
             </Border>
             <Grid ColumnDefinitions="*,Auto">
@@ -73,9 +73,9 @@
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Height="72" Background="#F2F3F0" BorderBrush="#B8BAB6" BorderThickness="1" CornerRadius="{DynamicResource ShellControlCornerRadius}" ClipToBounds="True">
               <StackPanel Margin="{controls:Inset Sm}" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="#5C5E5A" Text="❯ npm run dev" />
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="#147A3F" Text="✓ ready in 312ms" />
-                <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="{DynamicResource ShellAccentBrush}" Text="▸ localhost:3000" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="#5C5E5A" Text="❯ npm run dev" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="#147A3F" Text="✓ ready in 312ms" />
+                <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="{DynamicResource ShellAccentBrush}" Text="▸ localhost:3000" />
               </StackPanel>
             </Border>
             <Grid ColumnDefinitions="*,Auto">
@@ -95,7 +95,7 @@
     </StackPanel>
 
     <!-- Terminal palette -->
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Terminal palette" />
@@ -118,9 +118,9 @@
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <Border Height="72" Background="{Binding Background, Converter={StaticResource HexColorBrushConverter}}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellControlCornerRadius}" ClipToBounds="True">
                   <StackPanel Margin="{controls:Inset Sm}" Spacing="{DynamicResource ShellSpaceXs}">
-                    <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="{Binding Foreground, Converter={StaticResource HexColorBrushConverter}}" Text="❯ npm run dev" />
-                    <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="{Binding Green, Converter={StaticResource HexColorBrushConverter}}" Text="✓ ready in 312ms" />
-                    <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Foreground="{Binding Blue, Converter={StaticResource HexColorBrushConverter}}" Text="▸ localhost:3000" />
+                    <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="{Binding Foreground, Converter={StaticResource HexColorBrushConverter}}" Text="❯ npm run dev" />
+                    <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="{Binding Green, Converter={StaticResource HexColorBrushConverter}}" Text="✓ ready in 312ms" />
+                    <TextBlock FontSize="{DynamicResource ShellFontSize9}" Foreground="{Binding Blue, Converter={StaticResource HexColorBrushConverter}}" Text="▸ localhost:3000" />
                   </StackPanel>
                 </Border>
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
@@ -135,7 +135,7 @@
     </StackPanel>
 
     <!-- Colors -->
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Colors" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Fine-tune the terminal palette and review its ANSI colors." />
@@ -151,7 +151,7 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Background">
               <TextBox
-                  Classes="Monospace"
+                  
                   Text="{Binding TerminalSettingsEditor.Background}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -180,7 +180,7 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Foreground">
               <TextBox
-                  Classes="Monospace"
+                  
                   Text="{Binding TerminalSettingsEditor.Foreground}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -209,7 +209,7 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Cursor">
               <TextBox
-                  Classes="Monospace"
+                  
                   Text="{Binding TerminalSettingsEditor.Cursor}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -238,7 +238,7 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Selection">
               <TextBox
-                  Classes="Monospace"
+                  
                   Text="{Binding TerminalSettingsEditor.Selection}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -260,7 +260,7 @@
       </Grid>
     </StackPanel>
 
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Accent" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Where the interface accent comes from." />
@@ -302,7 +302,7 @@
               <TextBox
                   x:Name="CustomAccentText"
                   Grid.Column="1"
-                  Classes="Monospace"
+                  
                   TextChanged="OnCustomAccentTextChanged"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -327,7 +327,7 @@
       </Grid>
     </StackPanel>
 
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Font" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="The terminal profile's typeface, size, and line height." />
@@ -388,7 +388,7 @@
       </Grid>
     </StackPanel>
 
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Typography" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Scale application text across every GhostSHELL window." />
@@ -414,13 +414,13 @@
           <controls:LabeledField
               Label="Terminal typeface"
               Hint="Renderer font, size, line height, and the ANSI palette belong to the terminal profile.">
-            <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize13}" Text="Set on the Terminal page" />
+            <TextBlock FontSize="{DynamicResource ShellFontSize13}" Text="Set on the Terminal page" />
           </controls:LabeledField>
         </controls:SurfaceCard>
       </Grid>
     </StackPanel>
 
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Corners &amp; UI" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Window chrome, density and interface behavior." />
@@ -497,7 +497,7 @@
     </StackPanel>
 
     <!-- Tabs & Workspaces -->
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Tabs &amp; Workspaces" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Where the tab strip sits, plus how the workspaces panel is arranged." />
@@ -606,7 +606,7 @@
     </StackPanel>
 
     <!-- Preview -->
-    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Preview" />
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="The saved profile as the shell renders it right now." />
@@ -646,7 +646,7 @@
                       <Border Width="7" Height="7" VerticalAlignment="Center" Background="{DynamicResource ShellSuccessBrush}" CornerRadius="{DynamicResource ShellPillCornerRadius}" />
                       <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="production-api" />
                     </StackPanel>
-                    <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="deploy@10.0.1.42" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="deploy@10.0.1.42" />
                   </StackPanel>
                 </Border>
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
@@ -668,12 +668,12 @@
     <controls:SurfaceCard Padding="0">
       <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
         <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock Classes="SectionHeading" Text="CURRENT STORED PROFILE" />
-          <TextBlock Classes="Monospace" Text="{Binding ThemeMode, StringFormat={}Mode: {0}}" />
-          <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeProfile, StringFormat={}Platform: {0}}" />
-          <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeTextScale, StringFormat={}Text size: {0}}" />
-          <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAppearanceStatus}" />
-          <TextBlock Classes="Monospace Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAccentStatus}" />
+          <TextBlock Classes="SectionHeading" Text="Current stored profile" />
+          <TextBlock Text="{Binding ThemeMode, StringFormat={}Mode: {0}}" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeProfile, StringFormat={}Platform: {0}}" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeTextScale, StringFormat={}Text size: {0}}" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAppearanceStatus}" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAccentStatus}" />
         </StackPanel>
         <TextBlock
             Grid.Column="1"

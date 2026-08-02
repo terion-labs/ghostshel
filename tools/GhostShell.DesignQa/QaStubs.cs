@@ -51,9 +51,20 @@ internal sealed class QaDefinitionCatalog : IDefinitionCatalog
         WorkspaceDefinition definition, long? expectedRevision, CancellationToken cancellationToken) =>
         Store(definition);
 
+    /// <summary>
+    /// The saved appearance, kept so the harness can re-publish it exactly as
+    /// the product does — "settings apply immediately" is itself a reviewable
+    /// behavior, and a stub that swallowed the save made it uncapturable.
+    /// </summary>
+    public ThemePreference? SavedTheme { get; private set; }
+
     public ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>> SaveThemeAsync(
-        ThemePreference definition, long? expectedRevision, CancellationToken cancellationToken) =>
-        Store(definition);
+        ThemePreference definition, long? expectedRevision, CancellationToken cancellationToken)
+    {
+        SavedTheme = definition;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return Store(definition);
+    }
 
     public ValueTask<DefinitionStoreResult<StoredDefinition<TerminalProfile>>> SaveTerminalProfileAsync(
         TerminalProfile definition, long? expectedRevision, CancellationToken cancellationToken) =>

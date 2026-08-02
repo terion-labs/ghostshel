@@ -17,8 +17,8 @@ public sealed partial class DefinitionImportPreflightDialog : Window
         FileName = Path.GetFileName(plan.Path);
         Directory = Path.GetDirectoryName(plan.Path) ?? plan.Path;
         ModeLabel = plan.Mode == DefinitionImportMode.ReplaceExisting
-            ? "REPLACE MATCHES"
-            : "STOP ON CONFLICT";
+            ? "Replace matches"
+            : "Stop on conflict";
         Summary = $"{plan.DefinitionCount} definitions · {plan.Conflicts.Count} identity conflicts · {plan.Issues.Count(issue => issue.IsBlocking)} blocking issues";
         CommitHint = plan.CanApply
             ? plan.Mode == DefinitionImportMode.ReplaceExisting
@@ -69,7 +69,7 @@ public sealed partial class DefinitionImportPreflightDialog : Window
 public sealed record DefinitionImportIssueItem(string Label, string Heading, string Message)
 {
     public static DefinitionImportIssueItem From(DefinitionImportIssue issue) => new(
-        issue.IsBlocking ? "BLOCKING" : "NOTICE",
+        issue.IsBlocking ? "BLOCKING" : "Notice",
         Humanize(issue.Code),
         issue.Message);
 

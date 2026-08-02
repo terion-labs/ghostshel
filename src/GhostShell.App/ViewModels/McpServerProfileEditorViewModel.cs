@@ -555,7 +555,7 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
                 binding.Name,
                 binding.Reference,
                 "Not found",
-                "UNAVAILABLE",
+                "Unavailable",
                 McpServerCredentialReviewState.Missing)
             : new McpServerCredentialTrustReviewEntry(
                 binding.Name,

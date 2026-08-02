@@ -19,8 +19,8 @@
     <controls:SurfaceCard Padding="0" Grid.Row="1">
       <Grid Margin="{controls:Inset Md}" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontWeight="SemiBold" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
-        <Border Grid.Column="1" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding ModeLabel}" /></Border>
-        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Directory}" TextTrimming="CharacterEllipsis" />
+        <Border Grid.Column="1" Classes="Keycap"><TextBlock Text="{Binding ModeLabel}" /></Border>
+        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Directory}" TextTrimming="CharacterEllipsis" />
         <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Summary}" />
       </Grid>
     </controls:SurfaceCard>
@@ -35,7 +35,7 @@
             <DataTemplate>
               <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
                 <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                  <Border Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding Label}" /></Border>
+                  <Border Classes="Keycap"><TextBlock Text="{Binding Label}" /></Border>
                   <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                     <TextBlock FontWeight="SemiBold" Text="{Binding Heading}" />
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Message}" TextWrapping="Wrap" />

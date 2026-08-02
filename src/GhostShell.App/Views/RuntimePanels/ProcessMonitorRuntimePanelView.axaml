@@ -29,13 +29,13 @@
               DataContext="{Binding $parent[dock:DockableControl].DataContext}">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
               <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="ZOOMED" />
+              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
             </StackPanel>
           </controls:PanelDockHandle>
           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
             <TextBlock
                 VerticalAlignment="Center"
-                Classes="Muted Monospace"
+                Classes="Muted"
                 FontSize="{DynamicResource ShellFontSize9}"
                 Text="{Binding StatusText}"
                 AutomationProperties.LiveSetting="Polite"
@@ -88,10 +88,10 @@
       <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
         <Grid Height="28" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="70,*,90,110,145" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <TextBlock VerticalAlignment="Center" Classes="Eyebrow" Text="PID" />
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Eyebrow" Text="NAME" />
+          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Eyebrow" Text="Name" />
           <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="CPU" />
-          <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Eyebrow" Text="MEMORY" />
-          <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="Eyebrow" Text="STARTED" />
+          <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Eyebrow" Text="Memory" />
+          <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="Eyebrow" Text="Started" />
         </Grid>
       </Border>
 
@@ -110,13 +110,13 @@
                   ColumnDefinitions="70,*,90,110,145"
                   ColumnSpacing="{DynamicResource ShellSpaceSm}"
                   AutomationProperties.Name="{Binding AccessibleSummary}">
-                <TextBlock VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessId}" />
+                <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessId}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-                  <TextBlock Classes="Monospace" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsGhostShell}" Text="GHOSTSHELL" />
+                  <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding IsGhostShell}" Text="GhostSHELL" />
                 </StackPanel>
-                <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Cpu}" />
-                <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Memory}" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Cpu}" />
+                <TextBlock Grid.Column="3" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Memory}" />
                 <TextBlock Grid.Column="4" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Started}" />
               </Grid>
             </DataTemplate>
@@ -152,8 +152,8 @@
 
       <Border Grid.Row="4" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
-          <TextBlock VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ShowingText}" />
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
+          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ShowingText}" />
+          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
         </Grid>
       </Border>
     </Grid>

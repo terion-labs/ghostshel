@@ -115,7 +115,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
     private string? _lastNotifiedFailureCode;
     private bool _isLive;
     private string? _initializationError;
-    private string _statusText = "STARTING";
+    private string _statusText = "Starting";
     private IBrush _statusBrush = StartingBrush;
     private bool _showFallback;
     private string _statusMessage = string.Empty;
@@ -1266,16 +1266,16 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             or TerminalHostState.Exited;
         (StatusText, StatusBrush, StatusMessage) = state switch
         {
-            TerminalHostState.Waiting => ("WAITING", StartingBrush, string.Empty),
-            TerminalHostState.Starting => ("STARTING", StartingBrush, detail ?? string.Empty),
-            TerminalHostState.Live => ("LIVE", LiveBrush, string.Empty),
+            TerminalHostState.Waiting => ("Waiting", StartingBrush, string.Empty),
+            TerminalHostState.Starting => ("Starting", StartingBrush, detail ?? string.Empty),
+            TerminalHostState.Live => ("Live", LiveBrush, string.Empty),
             TerminalHostState.Unavailable =>
-                ("UNAVAILABLE", UnavailableBrush, detail ?? "Terminal unavailable."),
+                ("Unavailable", UnavailableBrush, detail ?? "Terminal unavailable."),
             TerminalHostState.Exited =>
-                ("EXITED", ExitedBrush, detail ?? "The terminal session ended."),
+                ("Exited", ExitedBrush, detail ?? "The terminal session ended."),
             TerminalHostState.Error =>
-                ("ERROR", UnavailableBrush, detail ?? "Unable to start the terminal."),
-            TerminalHostState.Stopped => ("STOPPED", StartingBrush, string.Empty),
+                ("Error", UnavailableBrush, detail ?? "Unable to start the terminal."),
+            TerminalHostState.Stopped => ("Stopped", StartingBrush, string.Empty),
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
         };
     }

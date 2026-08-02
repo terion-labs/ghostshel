@@ -37,7 +37,7 @@ public sealed class WorkspaceGutterContractTests
 
         var canvasMargin = (string?)canvas.Attribute("Margin");
 
-        Assert.Equal("{controls:Inset Xs}", canvasMargin);
+        Assert.Equal("{controls:Inset Sm}", canvasMargin);
         Assert.Empty(panelMargins);
         Assert.Single(
             canvas.Descendants(),
@@ -46,13 +46,16 @@ public sealed class WorkspaceGutterContractTests
 
     /// <summary>
     /// The workspace edge remains one token while Dock recursively owns every
-    /// interior splitter, independent of nesting depth.
+    /// interior splitter, independent of nesting depth. Both sit on the small
+    /// spacing step: the splitter is styled to <c>ShellSpaceSm</c> and the
+    /// canvas gutter uses the same inset, so a panel's distance to the rail,
+    /// to the agent panel, and to its neighbour reads as one gap.
     /// </summary>
     [Fact]
     public void Edge_and_interior_gaps_come_out_equal()
     {
-        const double canvas = 4;
-        const double dockSplitter = 4;
+        const double canvas = 8;
+        const double dockSplitter = 8;
 
         Assert.Equal(canvas, dockSplitter);
     }

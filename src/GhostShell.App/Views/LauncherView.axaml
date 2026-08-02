@@ -32,7 +32,7 @@
                 </StackPanel>
               </Grid>
               <TextBlock
-                  Classes="Muted Monospace"
+                  Classes="Muted"
                   FontSize="{DynamicResource ShellFontSize11}"
                   Text="{Binding Detail}"
                   TextTrimming="CharacterEllipsis" />
@@ -75,7 +75,7 @@
               AutomationProperties.Name="{Binding Name, StringFormat=Open saved screen {0} in a tab}">
             <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
               <Border Height="82" Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellControlCornerRadius}" ClipToBounds="True">
-                <ItemsControl Margin="{controls:Inset Xs}" ItemsSource="{Binding PreviewPanels}">
+                <ItemsControl Margin="{DynamicResource ShellPreviewTileInset}" ItemsSource="{Binding PreviewPanels}">
                   <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:ScreenLayoutPreviewPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -218,7 +218,7 @@
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <icons:SymbolIcon VerticalAlignment="Center" Symbol="Search" FontSize="14" />
                   <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Search everything…" />
-                  <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding CommandPaletteShortcut}" />
+                  <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding CommandPaletteShortcut}" />
                 </Grid>
               </Button>
               <Button
@@ -243,7 +243,7 @@
                   <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding Onboarding.Title}" />
                   <TextBlock Classes="Muted" Text="{Binding Onboarding.Introduction}" TextWrapping="Wrap" />
                 </StackPanel>
-                <controls:StatusChip Grid.Column="1" VerticalAlignment="Center" Content="LOCAL PROFILE" />
+                <controls:StatusChip Grid.Column="1" VerticalAlignment="Center" Content="Local profile" />
               </Grid>
   
               <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -273,7 +273,7 @@
                       <icons:SymbolIcon Symbol="History" FontSize="15" />
                       <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Session history" />
                     </Grid>
-                    <TextBlock Classes="Eyebrow" Text="LOCAL METADATA" />
+                    <TextBlock Classes="Eyebrow" Text="Local metadata" />
                     <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HistoryRetentionStatus}" TextWrapping="Wrap" />
                   </StackPanel>
                 </controls:SurfaceCard>
@@ -382,7 +382,7 @@
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                           <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Endpoint}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Detail}" />
+                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Endpoint}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Detail}" />
                         </StackPanel>
                         <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding SourceKind}" />
                         <TextBlock Grid.Column="3" MinWidth="76" VerticalAlignment="Center" TextAlignment="Right" Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding LastUsed}" />
@@ -529,7 +529,7 @@
             <Grid RowDefinitions="42,*">
               <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
                 <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="*,Auto">
-                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="RETAINED SESSIONS" />
+                  <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="Retained sessions" />
                   <components:CountPill Grid.Column="1" VerticalAlignment="Center" Value="{Binding HistoryResultCount}" />
                 </Grid>
               </Border>
@@ -550,7 +550,7 @@
                         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
                       <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Spacing="{DynamicResource ShellSpaceXs}">
-                        <Border HorizontalAlignment="Right" Classes="Keycap"><TextBlock Classes="Monospace" Text="{Binding SourceKind}" /></Border>
+                        <Border HorizontalAlignment="Right" Classes="Keycap"><TextBlock Text="{Binding SourceKind}" /></Border>
                         <TextBlock HorizontalAlignment="Right" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding LastUsed}" />
                       </StackPanel>
                     </Grid>
@@ -605,13 +605,13 @@
                   </Grid>
                   <controls:SurfaceCard Tone="Notice" Padding="0"><TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedHistorySession.ReopenStatus}" TextWrapping="Wrap" /></controls:SurfaceCard>
                   <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" RowSpacing="{DynamicResource ShellSpaceSm}">
-                    <TextBlock Classes="SectionHeading" Text="SOURCE TYPE" /><TextBlock Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.SourceKind}" TextWrapping="Wrap" />
-                    <TextBlock Grid.Row="1" Classes="SectionHeading" Text="SOURCE ID" /><TextBlock Grid.Row="1" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.SourceIdentifier}" TextWrapping="Wrap" />
-                    <TextBlock Grid.Row="2" Classes="SectionHeading" Text="SESSION ID" /><TextBlock Grid.Row="2" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.SessionIdentifier}" TextWrapping="Wrap" />
-                    <TextBlock Grid.Row="3" Classes="SectionHeading" Text="PANEL" /><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedHistorySession.PanelKindName}" />
-                    <TextBlock Grid.Row="4" Classes="SectionHeading" Text="STARTED" /><TextBlock Grid.Row="4" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.Started}" TextWrapping="Wrap" />
-                    <TextBlock Grid.Row="5" Classes="SectionHeading" Text="ENDED" /><TextBlock Grid.Row="5" Grid.Column="1" Classes="Monospace" Text="{Binding SelectedHistorySession.Ended}" TextWrapping="Wrap" />
-                    <TextBlock Grid.Row="6" Classes="SectionHeading" Text="DURATION" /><TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedHistorySession.Duration}" />
+                    <TextBlock Classes="SectionHeading" Text="Source type" /><TextBlock Grid.Column="1" Text="{Binding SelectedHistorySession.SourceKind}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Classes="SectionHeading" Text="Source ID" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedHistorySession.SourceIdentifier}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Classes="SectionHeading" Text="Session ID" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedHistorySession.SessionIdentifier}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Classes="SectionHeading" Text="Panel" /><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedHistorySession.PanelKindName}" />
+                    <TextBlock Grid.Row="4" Classes="SectionHeading" Text="Started" /><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedHistorySession.Started}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="5" Classes="SectionHeading" Text="Ended" /><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedHistorySession.Ended}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="6" Classes="SectionHeading" Text="Duration" /><TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedHistorySession.Duration}" />
                   </Grid>
                 </StackPanel>
               </controls:SurfaceCard>
@@ -631,7 +631,7 @@
             </StackPanel>
             <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="SectionHeading" Text="LOCAL RETENTION" />
+              <TextBlock Classes="SectionHeading" Text="Local retention" />
               <ComboBox
                   ItemsSource="{Binding HistoryRetentionOptions}"
                   SelectedItem="{Binding SelectedHistoryRetentionOption, Mode=TwoWay}"

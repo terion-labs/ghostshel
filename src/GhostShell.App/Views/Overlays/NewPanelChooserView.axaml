@@ -93,7 +93,7 @@
                         <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                           <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Classes="Muted Monospace" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding Kind}" />
                       </Grid>

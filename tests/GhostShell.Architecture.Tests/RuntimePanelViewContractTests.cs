@@ -869,9 +869,9 @@ public sealed class RuntimePanelViewContractTests
         Assert.DoesNotContain("OBSERVED", visibleCopy, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("GHOSTSHELL CPU", visibleCopy, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("GHOSTSHELL MEMORY", visibleCopy, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("CPU USAGE", visibleCopy, StringComparison.Ordinal);
-        Assert.Contains("PROCESS MEMORY", visibleCopy, StringComparison.Ordinal);
-        Assert.Contains("RUNNING PROCESSES", visibleCopy, StringComparison.Ordinal);
+        Assert.Contains("CPU usage", visibleCopy, StringComparison.Ordinal);
+        Assert.Contains("Process memory", visibleCopy, StringComparison.Ordinal);
+        Assert.Contains("Running processes", visibleCopy, StringComparison.Ordinal);
     }
 
     private static XElement FindUniqueAccessibleElement(

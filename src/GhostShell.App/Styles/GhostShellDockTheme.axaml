@@ -19,21 +19,42 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Template">
         <ControlTemplate>
-          <Grid>
-            <!-- Separate opacity keeps the Lucide stroke crisp and fully accented. -->
+          <!--
+            The zone is a padded rounded plate, not a glyph-sized square: it is a
+            drop target the pointer has to land on mid-drag, so the whole plate
+            reads and hits, and the glyph floats inside it. The fill is truly
+            translucent — a separate layer under the stroke — because the plate
+            sits over live panel content during the drag and should not blank it;
+            keeping the opacity off the stroke and glyph keeps both fully accented.
+          -->
+          <Grid Margin="{DynamicResource ShellInsetXs}">
             <Border
                 x:Name="PART_AccentSurface"
-                Margin="{DynamicResource ShellInsetXs}"
                 Background="{DynamicResource ShellAccentBrush}"
-                CornerRadius="{DynamicResource ShellControlCornerRadius}"
-                Opacity="0.18" />
+                CornerRadius="{DynamicResource ShellCardCornerRadius}"
+                Opacity="0.16" />
+            <Border
+                x:Name="PART_ZoneOutline"
+                BorderBrush="{DynamicResource ShellAccentBrush}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource ShellCardCornerRadius}"
+                Opacity="0.7" />
             <ContentPresenter
+                Margin="{DynamicResource ShellInsetSm}"
                 Content="{TemplateBinding Content}"
                 HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                 VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
           </Grid>
         </ControlTemplate>
       </Setter>
+
+      <!-- The zone the pointer is over answers by filling in further. -->
+      <Style Selector="^:pointerover /template/ Border#PART_AccentSurface">
+        <Setter Property="Opacity" Value="0.32" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#PART_ZoneOutline">
+        <Setter Property="Opacity" Value="1" />
+      </Style>
     </ControlTheme>
 
     <ControlTheme
@@ -287,6 +308,13 @@
     <Setter Property="StrokeLineCap" Value="Round" />
     <Setter Property="StrokeJoin" Value="Round" />
     <Setter Property="Stretch" Value="Uniform" />
+  </Style>
+
+  <!-- The gap between docked panels is part of the shell's spacing rhythm, not
+       Dock's hairline default: panels breathe at the same small step the rails
+       and gutters use, and the wider splitter is also an easier resize grab. -->
+  <Style Selector="proportional|ProportionalStackPanelSplitter">
+    <Setter Property="Thickness" Value="{DynamicResource ShellSpaceSm}" />
   </Style>
 
   <Style Selector="dock|DockTarget">

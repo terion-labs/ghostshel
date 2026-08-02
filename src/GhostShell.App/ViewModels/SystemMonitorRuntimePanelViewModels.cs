@@ -92,7 +92,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         ConnectionProfile connection,
         IUiThreadDispatcher dispatcher,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
-        : base(id, PanelKind.Statistics, title, "STATISTICS")
+        : base(id, PanelKind.Statistics, title, "Statistics")
     {
         _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
@@ -612,7 +612,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         ConnectionProfile connection,
         IUiThreadDispatcher dispatcher,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
-        : base(id, PanelKind.ProcessMonitor, title, "PROCESS MONITOR")
+        : base(id, PanelKind.ProcessMonitor, title, "Process monitor")
     {
         _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));

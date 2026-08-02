@@ -27,8 +27,8 @@
           AutomationProperties.Name="Shortcut capture area">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
           <TextBlock Classes="Muted" Text="Focus here, then press the shortcut" TextAlignment="Center" />
-          <TextBlock x:Name="RecordedShortcutText" Classes="Monospace" FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="No keys recorded" TextAlignment="Center" TextWrapping="Wrap" />
-          <TextBlock x:Name="StrokeCountText" Classes="Eyebrow" Text="0 OF 8 STROKES" />
+          <TextBlock x:Name="RecordedShortcutText" FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="No keys recorded" TextAlignment="Center" TextWrapping="Wrap" />
+          <TextBlock x:Name="StrokeCountText" Classes="Eyebrow" Text="0 of 8 strokes" />
         </StackPanel>
       </controls:SurfaceCard>
       <TextBlock x:Name="RecorderStatusText" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Tab moves to the controls; Escape cancels." TextAlignment="Center" />
