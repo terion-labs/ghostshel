@@ -116,6 +116,26 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Database_tab_appends_a_single_panel_tab()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var tabCount = runtime.Tabs.Count;
+
+        // The New-tab catalog path; it used to reject DatabaseViewer at the
+        // single-panel-tab kind gate and crash the dispatcher.
+        Assert.True(await viewModel.AddDatabaseTabAsync());
+
+        Assert.Equal(tabCount + 1, runtime.Tabs.Count);
+        var tab = runtime.Tabs[^1];
+        Assert.Equal("Database", tab.Title);
+        var panel = Assert.Single(tab.Panels);
+        Assert.Equal(PanelKind.DatabaseViewer, panel.Kind);
+    }
+
+    [Fact]
     public async Task Switching_terminal_connection_preserves_panel_identity_and_layout()
     {
         var (client, recorder) = CreateSessionClient();

@@ -72,7 +72,7 @@
               Grid.Column="1"
               VerticalAlignment="Center"
               Text="{Binding ConnectionString, Mode=TwoWay}"
-              Watermark="{Binding SelectedDriver.ConnectionStringHint}"
+              PlaceholderText="{Binding SelectedDriver.ConnectionStringHint}"
               KeyDown="OnConnectionStringKeyDown"
               AutomationProperties.Name="Database connection string" />
           <Button
@@ -118,7 +118,7 @@
                 AcceptsReturn="True"
                 Text="{Binding QueryText, Mode=TwoWay}"
                 TextWrapping="NoWrap"
-                Watermark="SELECT …"
+                PlaceholderText="SELECT …"
                 KeyDown="OnQueryKeyDown"
                 AutomationProperties.Name="SQL statement" />
             <Button

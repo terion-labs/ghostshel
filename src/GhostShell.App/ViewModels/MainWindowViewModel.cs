@@ -5040,7 +5040,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (kind is not (PanelKind.Browser
             or PanelKind.FileViewer
             or PanelKind.Statistics
-            or PanelKind.ProcessMonitor))
+            or PanelKind.ProcessMonitor
+            or PanelKind.DatabaseViewer))
         {
             throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
