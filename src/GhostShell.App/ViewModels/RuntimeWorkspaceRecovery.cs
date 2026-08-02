@@ -168,7 +168,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
             terminal?.ConnectionId.Value
                 ?? file?.ConnectionId.Value
                 ?? statistics?.ConnectionId.Value
-                ?? processes?.ConnectionId.Value,
+                ?? processes?.ConnectionId.Value
+                ?? database?.TunnelConnectionId?.Value,
             terminal?.RecoveryStartupLocation
                 ?? browser?.CurrentAddress.ToString()
                 ?? database?.RecoveryTarget,
@@ -389,7 +390,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && panel.Filter is null,
             RuntimePanelRecoveryKind.DatabaseViewer =>
                 panel.KindLabel is null
-                && panel.ConnectionId is null
+                && IsOptionalIdentifier(panel.ConnectionId)
                 && IsOptionalText(panel.StartupLocation, 4_096)
                 && panel.FileProviderProfileId is null
                 && panel.FileLocation is null

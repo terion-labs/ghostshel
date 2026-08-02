@@ -1185,6 +1185,10 @@ public sealed partial class MainWindow
                 ProcessMonitorRuntimePanelViewModel processes,
                 PanelConnectionOptionViewModel.Target.Connection target) =>
                 processes.ConnectionId == target.Id,
+            (
+                DatabaseRuntimePanelViewModel database,
+                PanelConnectionOptionViewModel.Target.Connection target) =>
+                database.TunnelConnectionId == target.Id,
             _ => false,
         };
 

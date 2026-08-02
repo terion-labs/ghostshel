@@ -87,6 +87,7 @@ public static class DesktopComposition
         services.AddSingleton<IBrowserPanelSessionFactory>(provider =>
             provider.GetRequiredService<BrowserPanelSessionFactory>());
         services.AddSingleton<ISystemMonitorPanelSessionFactory, SystemMonitorPanelSessionFactory>();
+        services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();
         services.AddSingleton<IFileProviderProfileRuntime>(provider =>
             provider.GetRequiredService<CatalogFileProviderRuntime>());

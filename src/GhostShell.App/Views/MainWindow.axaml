@@ -104,6 +104,8 @@
     <DataTemplate DataType="vm:DatabaseRuntimePanelViewModel">
       <panelViews:DatabaseRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />

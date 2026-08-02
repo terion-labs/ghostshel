@@ -1,3 +1,5 @@
+using GhostShell.Core;
+
 namespace GhostShell.Application;
 
 /// <summary>One selectable database driver, described for pickers.</summary>
@@ -5,6 +7,29 @@ public sealed record DatabaseDriverDescriptor(
     string Id,
     string DisplayName,
     string ConnectionStringHint);
+
+/// <summary>The network endpoint a connection string points at.</summary>
+public sealed record DatabaseEndpoint(string Host, int Port);
+
+/// <summary>A held local port-forward. Disposing tears the forward down.</summary>
+public interface IDatabaseTunnelLease : IAsyncDisposable
+{
+    int LocalPort { get; }
+}
+
+/// <summary>
+/// Opens SSH local port-forwards for database connections. The implementation
+/// owns the SSH client, credential resolution, and host-key enforcement; the
+/// database engine only sees a loopback endpoint.
+/// </summary>
+public interface IDatabaseTunnelFactory
+{
+    ValueTask<IDatabaseTunnelLease> OpenAsync(
+        ConnectionProfile connection,
+        string targetHost,
+        int targetPort,
+        CancellationToken cancellationToken);
+}
 
 /// <summary>A table or view visible to the connected principal.</summary>
 public sealed record DatabaseTableDescriptor(
@@ -44,10 +69,15 @@ public interface IDatabasePanelClient
 {
     IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; }
 
-    /// <summary>Lists tables and views; also serves as the connectivity probe.</summary>
+    /// <summary>
+    /// Lists tables and views; also serves as the connectivity probe. A non-null
+    /// <paramref name="tunnel"/> routes the connection through an SSH local
+    /// port-forward over that profile.
+    /// </summary>
     Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
         string driverId,
         string connectionString,
+        ConnectionProfile? tunnel,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -57,6 +87,7 @@ public interface IDatabasePanelClient
     Task<DatabaseQueryPage> QueryAsync(
         string driverId,
         string connectionString,
+        ConnectionProfile? tunnel,
         string sql,
         int maxRows,
         CancellationToken cancellationToken);

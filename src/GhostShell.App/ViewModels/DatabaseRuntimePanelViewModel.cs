@@ -78,6 +78,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
     private readonly IDatabasePanelClient _client;
     private readonly CancellationTokenSource _lifetime = new();
+    private ConnectionProfile? _tunnelConnection;
     private DatabaseDriverOptionViewModel _selectedDriver;
     private string _connectionString = string.Empty;
     private string _queryText = string.Empty;
@@ -95,9 +96,13 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         string title,
         IDatabasePanelClient client,
         string? driverId = null,
-        string? connectionString = null)
+        string? connectionString = null,
+        ConnectionProfile? tunnelConnection = null)
         : base(id, PanelKind.DatabaseViewer, title, "Database")
     {
+        _tunnelConnection = tunnelConnection?.Endpoint is ConnectionEndpoint.Ssh
+            ? tunnelConnection
+            : null;
         _client = client ?? throw new ArgumentNullException(nameof(client));
         DriverOptions = client.Drivers
             .Select(descriptor => new DatabaseDriverOptionViewModel(descriptor))
@@ -281,6 +286,35 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         ? null
         : new DatabasePanelTarget(SelectedDriver.Id, ConnectionString).Serialize();
 
+    /// <summary>The SSH connection queries tunnel through, or null for direct.</summary>
+    public ConnectionId? TunnelConnectionId => _tunnelConnection?.Id;
+
+    /// <summary>The selector label, mirroring the File Viewer's connection pill.</summary>
+    public string ConnectionDisplayName => _tunnelConnection?.Name ?? "Direct";
+
+    /// <summary>
+    /// Routes queries through an SSH local port-forward over the given
+    /// connection; a null or non-SSH connection means a direct connection. A
+    /// connected panel re-probes through the new route immediately.
+    /// </summary>
+    public void SetTunnel(ConnectionProfile? connection)
+    {
+        var tunnel = connection?.Endpoint is ConnectionEndpoint.Ssh ? connection : null;
+        if (tunnel?.Id == _tunnelConnection?.Id)
+        {
+            return;
+        }
+
+        _tunnelConnection = tunnel;
+        OnPropertyChanged(nameof(TunnelConnectionId));
+        OnPropertyChanged(nameof(ConnectionDisplayName));
+        SetConnected(false);
+        if (!string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            _ = ConnectAsync();
+        }
+    }
+
     public async Task ConnectAsync()
     {
         if (string.IsNullOrWhiteSpace(ConnectionString))
@@ -294,6 +328,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             var tables = await _client.ListTablesAsync(
                 SelectedDriver.Id,
                 ConnectionString,
+                _tunnelConnection,
                 cancellationToken);
             Tables.Clear();
             foreach (var table in tables)
@@ -341,6 +376,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             var page = await _client.QueryAsync(
                 SelectedDriver.Id,
                 ConnectionString,
+                _tunnelConnection,
                 sql,
                 MaxRows,
                 cancellationToken);

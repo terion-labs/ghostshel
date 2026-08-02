@@ -4383,6 +4383,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        if (livePanel is DatabaseRuntimePanelViewModel database)
+        {
+            // The database panel tunnels through the connection rather than
+            // being rebuilt on it; a local connection means a direct one.
+            if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+            {
+                SetError("Database viewers tunnel through SSH connections only.");
+                return false;
+            }
+
+            database.SetTunnel(connection);
+            workspace.AddConnections(Connections.Where(item => item.Id == connection.Id));
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+
         RuntimePanelViewModel replacement;
         if (livePanel is FileRuntimePanelViewModel)
         {
@@ -5805,7 +5821,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             BrowserRuntimePanelViewModel => eventArgs.PropertyName is
                 nameof(BrowserRuntimePanelViewModel.CurrentAddress),
             DatabaseRuntimePanelViewModel => eventArgs.PropertyName is
-                nameof(DatabaseRuntimePanelViewModel.RecoveryTarget),
+                nameof(DatabaseRuntimePanelViewModel.RecoveryTarget)
+                or nameof(DatabaseRuntimePanelViewModel.TunnelConnectionId),
             _ => false,
         } is false)
         {
@@ -6147,6 +6164,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             FileRuntimePanelViewModel file => file.ConnectionId,
             StatisticsRuntimePanelViewModel statistics => statistics.ConnectionId,
             ProcessMonitorRuntimePanelViewModel processes => processes.ConnectionId,
+            DatabaseRuntimePanelViewModel database => database.TunnelConnectionId,
             _ => null,
         };
         var stored = storedTab?.Panels.FirstOrDefault(candidate =>
@@ -9595,7 +9613,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelInstanceId.New(),
                 recovered.Title,
                 target?.DriverId,
-                target?.ConnectionString);
+                target?.ConnectionString,
+                recovered.ConnectionId is { } tunnelId
+                    ? FindConnection(new ConnectionId(tunnelId))
+                    : null);
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Statistics)
@@ -9822,7 +9843,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelInstanceId.New(),
                 title,
                 target?.DriverId,
-                target?.ConnectionString);
+                target?.ConnectionString,
+                panel.ConnectionId is { } tunnelId ? FindConnection(tunnelId) : null);
         }
 
         if (panel.Kind != ScreenPanelKind.Terminal)
@@ -10058,7 +10080,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelInstanceId panelId,
         string title,
         string? driverId = null,
-        string? connectionString = null) =>
+        string? connectionString = null,
+        ConnectionProfile? tunnelConnection = null) =>
         _databasePanelClient is null
             ? new UnavailableRuntimePanelViewModel(
                 panelId,
@@ -10071,7 +10094,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 title,
                 _databasePanelClient,
                 driverId,
-                connectionString);
+                connectionString,
+                tunnelConnection);
 
     private void StartAcceptedRuntimePanels(RuntimeWorkspaceViewModel runtime)
     {

@@ -51,6 +51,7 @@ public sealed class DatabasePanelClientTests : IDisposable
         _ = await client.QueryAsync(
             "sqlite",
             ConnectionString,
+            tunnel: null,
             """
             CREATE TABLE people(id INTEGER PRIMARY KEY, name TEXT, joined TEXT);
             CREATE VIEW named_people AS SELECT name FROM people;
@@ -60,6 +61,7 @@ public sealed class DatabasePanelClientTests : IDisposable
         var inserted = await client.QueryAsync(
             "sqlite",
             ConnectionString,
+            tunnel: null,
             "INSERT INTO people(name, joined) VALUES ('Ada', '1843'), ('Grace', '1952'), (NULL, NULL);",
             maxRows: 10,
             CancellationToken.None);
@@ -70,6 +72,7 @@ public sealed class DatabasePanelClientTests : IDisposable
         var tables = await client.ListTablesAsync(
             "sqlite",
             ConnectionString,
+            tunnel: null,
             CancellationToken.None);
         Assert.Equal(
             [("named_people", DatabaseTableKind.View), ("people", DatabaseTableKind.Table)],
@@ -78,6 +81,7 @@ public sealed class DatabasePanelClientTests : IDisposable
         var page = await client.QueryAsync(
             "sqlite",
             ConnectionString,
+            tunnel: null,
             client.BuildTablePreviewQuery("sqlite", "people", limit: 10),
             maxRows: 10,
             CancellationToken.None);
@@ -91,6 +95,7 @@ public sealed class DatabasePanelClientTests : IDisposable
         var truncatedPage = await client.QueryAsync(
             "sqlite",
             ConnectionString,
+            tunnel: null,
             "SELECT * FROM people;",
             maxRows: 2,
             CancellationToken.None);
@@ -106,6 +111,7 @@ public sealed class DatabasePanelClientTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => client.ListTablesAsync(
             "db2",
             "whatever",
+            tunnel: null,
             CancellationToken.None));
         Assert.Throws<ArgumentException>(() =>
             client.BuildTablePreviewQuery("db2", "t", 10));

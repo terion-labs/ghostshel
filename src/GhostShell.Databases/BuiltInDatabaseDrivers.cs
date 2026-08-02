@@ -71,6 +71,12 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT * FROM {QuoteIdentifier(tableName)} LIMIT {limit};";
+
+    public DatabaseEndpoint? GetEndpoint(string connectionString) => null;
+
+    public string RewriteEndpoint(string connectionString, string host, int port) =>
+        throw new InvalidOperationException(
+            "SQLite databases are files and cannot be tunneled.");
 }
 
 /// <summary>PostgreSQL and the engines that speak its wire protocol.</summary>
@@ -100,6 +106,21 @@ internal sealed class PostgresFamilyDriver(
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT * FROM {QuoteIdentifier(tableName)} LIMIT {limit};";
+
+    public DatabaseEndpoint? GetEndpoint(string connectionString)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        return string.IsNullOrWhiteSpace(builder.Host)
+            ? null
+            : new DatabaseEndpoint(builder.Host, builder.Port);
+    }
+
+    public string RewriteEndpoint(string connectionString, string host, int port) =>
+        new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Host = host,
+            Port = port,
+        }.ConnectionString;
 }
 
 /// <summary>MySQL and MariaDB, which share MySqlConnector.</summary>
@@ -129,6 +150,21 @@ internal sealed class MySqlFamilyDriver(
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT * FROM {QuoteIdentifier(tableName)} LIMIT {limit};";
+
+    public DatabaseEndpoint? GetEndpoint(string connectionString)
+    {
+        var builder = new MySqlConnectionStringBuilder(connectionString);
+        return string.IsNullOrWhiteSpace(builder.Server)
+            ? null
+            : new DatabaseEndpoint(builder.Server, (int)builder.Port);
+    }
+
+    public string RewriteEndpoint(string connectionString, string host, int port) =>
+        new MySqlConnectionStringBuilder(connectionString)
+        {
+            Server = host,
+            Port = (uint)port,
+        }.ConnectionString;
 }
 
 internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
@@ -153,6 +189,27 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT TOP ({limit}) * FROM {QuoteIdentifier(tableName)};";
+
+    // SQL Server addresses are "host" or "host,port" in DataSource.
+    public DatabaseEndpoint? GetEndpoint(string connectionString)
+    {
+        var source = new SqlConnectionStringBuilder(connectionString).DataSource;
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return null;
+        }
+
+        var parts = source.Split(',', 2);
+        return new DatabaseEndpoint(
+            parts[0].Trim(),
+            parts.Length == 2 && int.TryParse(parts[1], out var port) ? port : 1433);
+    }
+
+    public string RewriteEndpoint(string connectionString, string host, int port) =>
+        new SqlConnectionStringBuilder(connectionString)
+        {
+            DataSource = $"{host},{port}",
+        }.ConnectionString;
 }
 
 internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
@@ -178,6 +235,12 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT * FROM {QuoteIdentifier(tableName)} LIMIT {limit};";
+
+    public DatabaseEndpoint? GetEndpoint(string connectionString) => null;
+
+    public string RewriteEndpoint(string connectionString, string host, int port) =>
+        throw new InvalidOperationException(
+            "DuckDB databases are files and cannot be tunneled.");
 }
 
 internal sealed class OracleDatabaseDriver : IDatabaseDriver
@@ -202,6 +265,37 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT * FROM {QuoteIdentifier(tableName)} FETCH FIRST {limit} ROWS ONLY";
+
+    // Only the EZ Connect form "host[:port][/service]" can be tunneled; a TNS
+    // alias resolves outside the connection string.
+    public DatabaseEndpoint? GetEndpoint(string connectionString)
+    {
+        var source = new OracleConnectionStringBuilder(connectionString).DataSource;
+        if (string.IsNullOrWhiteSpace(source) || source.StartsWith('('))
+        {
+            return null;
+        }
+
+        var slash = source.IndexOf('/', StringComparison.Ordinal);
+        var address = slash < 0 ? source : source[..slash];
+        var colon = address.IndexOf(':', StringComparison.Ordinal);
+        return colon < 0
+            ? new DatabaseEndpoint(address.Trim(), 1521)
+            : new DatabaseEndpoint(
+                address[..colon].Trim(),
+                int.TryParse(address[(colon + 1)..], out var port) ? port : 1521);
+    }
+
+    public string RewriteEndpoint(string connectionString, string host, int port)
+    {
+        var builder = new OracleConnectionStringBuilder(connectionString);
+        var source = builder.DataSource;
+        var slash = source.IndexOf('/', StringComparison.Ordinal);
+        builder.DataSource = slash < 0
+            ? $"{host}:{port}"
+            : $"{host}:{port}{source[slash..]}";
+        return builder.ConnectionString;
+    }
 }
 
 internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
@@ -227,6 +321,21 @@ internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT FIRST {limit} * FROM {QuoteIdentifier(tableName)}";
+
+    public DatabaseEndpoint? GetEndpoint(string connectionString)
+    {
+        var builder = new FbConnectionStringBuilder(connectionString);
+        return string.IsNullOrWhiteSpace(builder.DataSource)
+            ? null
+            : new DatabaseEndpoint(builder.DataSource, builder.Port);
+    }
+
+    public string RewriteEndpoint(string connectionString, string host, int port) =>
+        new FbConnectionStringBuilder(connectionString)
+        {
+            DataSource = host,
+            Port = port,
+        }.ConnectionString;
 }
 
 internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
@@ -252,4 +361,34 @@ internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
 
     public string BuildPreviewQuery(string tableName, int limit) =>
         $"SELECT * FROM {QuoteIdentifier(tableName)} LIMIT {limit};";
+
+    public DatabaseEndpoint? GetEndpoint(string connectionString)
+    {
+        var builder = new System.Data.Common.DbConnectionStringBuilder
+        {
+            ConnectionString = connectionString,
+        };
+        if (!builder.TryGetValue("Host", out var host)
+            || string.IsNullOrWhiteSpace(host as string))
+        {
+            return null;
+        }
+
+        var port = builder.TryGetValue("Port", out var value)
+            && int.TryParse(value as string, out var parsed)
+                ? parsed
+                : 8123;
+        return new DatabaseEndpoint((string)host, port);
+    }
+
+    public string RewriteEndpoint(string connectionString, string host, int port)
+    {
+        var builder = new System.Data.Common.DbConnectionStringBuilder
+        {
+            ConnectionString = connectionString,
+        };
+        builder["Host"] = host;
+        builder["Port"] = port;
+        return builder.ConnectionString;
+    }
 }

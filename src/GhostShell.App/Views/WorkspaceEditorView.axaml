@@ -400,7 +400,7 @@
                             </StackPanel>
                           </Grid>
 
-                          <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding IsTerminal}">
+                          <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding SupportsConnection}">
                             <TextBlock FontWeight="SemiBold" Text="Connection" />
                             <ComboBox ItemsSource="{Binding ConnectionOptions}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}">
                               <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>

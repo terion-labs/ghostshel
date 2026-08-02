@@ -363,6 +363,7 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
     public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
         string driverId,
         string connectionString,
+        ConnectionProfile? tunnel,
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<DatabaseTableDescriptor>>(
         [
@@ -376,6 +377,7 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
     public Task<DatabaseQueryPage> QueryAsync(
         string driverId,
         string connectionString,
+        ConnectionProfile? tunnel,
         string sql,
         int maxRows,
         CancellationToken cancellationToken) =>

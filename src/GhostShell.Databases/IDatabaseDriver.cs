@@ -23,4 +23,13 @@ public interface IDatabaseDriver
     string QuoteIdentifier(string identifier);
 
     string BuildPreviewQuery(string tableName, int limit);
+
+    /// <summary>
+    /// The network endpoint the connection string points at, or null for
+    /// file-based engines that have nothing to tunnel.
+    /// </summary>
+    DatabaseEndpoint? GetEndpoint(string connectionString);
+
+    /// <summary>Repoints the connection string at a forwarded local endpoint.</summary>
+    string RewriteEndpoint(string connectionString, string host, int port);
 }

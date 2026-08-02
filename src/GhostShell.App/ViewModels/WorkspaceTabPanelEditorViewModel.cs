@@ -66,6 +66,10 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
         or ScreenPanelKind.FileViewer
         or ScreenPanelKind.DatabaseViewer;
 
+    /// <summary>For a database panel the connection is the optional SSH tunnel.</summary>
+    public bool SupportsConnection => Kind is ScreenPanelKind.Terminal
+        or ScreenPanelKind.DatabaseViewer;
+
     public IReadOnlyList<WorkspaceLayoutSlotOption> SlotOptions => _slotOptions;
 
     public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
@@ -191,7 +195,7 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
             SelectedSlot?.Id ?? _original.SlotId,
             Kind,
             string.IsNullOrWhiteSpace(Title) ? null : Title.Trim(),
-            IsTerminal ? SelectedConnection?.Id : _original.ConnectionId,
+            SupportsConnection ? SelectedConnection?.Id : _original.ConnectionId,
             new PanelStartupBehavior(
                 StartupLocation,
                 commands,

@@ -133,6 +133,63 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Switching_the_tunnel_reconnects_through_the_new_route()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+        Assert.Equal("Direct", panel.ConnectionDisplayName);
+        Assert.Null(client.LastTunnel);
+
+        var bastion = new ConnectionProfile(
+            new ConnectionId("bastion"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "bastion-eu",
+            new ConnectionEndpoint.Ssh("bastion.example.test", username: "ops"),
+            new ConnectionAuthentication.None(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.AcceptNew);
+        panel.SetTunnel(bastion);
+        await panel.Initialization;
+        // SetTunnel re-probes asynchronously; wait for the busy window to close.
+        while (panel.IsBusy)
+        {
+            await Task.Yield();
+        }
+
+        Assert.Equal("bastion-eu", panel.ConnectionDisplayName);
+        Assert.Equal(bastion.Id, panel.TunnelConnectionId);
+        Assert.True(panel.IsConnected);
+        Assert.Same(bastion, client.LastTunnel);
+
+        // A local connection means direct again.
+        var local = new ConnectionProfile(
+            new ConnectionId("local"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Local",
+            new ConnectionEndpoint.Local("/bin/sh"),
+            new ConnectionAuthentication.None(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.NotApplicable);
+        panel.SetTunnel(local);
+        while (panel.IsBusy)
+        {
+            await Task.Yield();
+        }
+
+        Assert.Equal("Direct", panel.ConnectionDisplayName);
+        Assert.Null(panel.TunnelConnectionId);
+        Assert.Null(client.LastTunnel);
+    }
+
+    [Fact]
     public async Task Table_preview_fills_the_editor_with_the_driver_query()
     {
         var client = new FakeDatabasePanelClient();
@@ -157,6 +214,8 @@ public sealed class DatabaseRuntimePanelViewModelTests
 
         public string? LastSql { get; private set; }
 
+        public ConnectionProfile? LastTunnel { get; private set; }
+
         public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } =
         [
             new("sqlite", "SQLite", "Data Source=…"),
@@ -166,8 +225,10 @@ public sealed class DatabaseRuntimePanelViewModelTests
         public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
             string driverId,
             string connectionString,
+            ConnectionProfile? tunnel,
             CancellationToken cancellationToken)
         {
+            LastTunnel = tunnel;
             ThrowIfConfigured();
             return Task.FromResult<IReadOnlyList<DatabaseTableDescriptor>>(
             [
@@ -179,11 +240,13 @@ public sealed class DatabaseRuntimePanelViewModelTests
         public Task<DatabaseQueryPage> QueryAsync(
             string driverId,
             string connectionString,
+            ConnectionProfile? tunnel,
             string sql,
             int maxRows,
             CancellationToken cancellationToken)
         {
             ThrowIfConfigured();
+            LastTunnel = tunnel;
             LastSql = sql;
             return Task.FromResult(new DatabaseQueryPage(
                 [new("id", "INTEGER"), new("name", "TEXT")],
