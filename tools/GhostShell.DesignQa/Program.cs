@@ -317,6 +317,17 @@ internal sealed class QaApplication : Avalonia.Application
                 QaData.Connections[0].Revision)), null),
         ("dialog-ai-provider-editor", () => new AiProviderProfileEditorDialog(
             new AiProviderProfileEditorViewModel(new QaAiProfileRuntime(), [])), null),
+        ("dialog-database-connection", () => new DatabaseConnectionDetailsDialog(
+            "PostgreSQL",
+            isFileBased: false,
+            new GhostShell.Application.DatabaseConnectionDetails(
+                "db.internal",
+                5432,
+                "coreapi",
+                "ops",
+                "s3cret",
+                null,
+                "SSL Mode=Require")), null),
         ("dialog-mcp-server-editor", () => new McpServerProfileEditorDialog(
             new McpServerProfileEditorViewModel()), null),
         ("dialog-saved-screen-editor", () => new SavedScreenEditorDialog(

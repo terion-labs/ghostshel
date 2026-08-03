@@ -38,4 +38,10 @@ public interface IDatabaseDriver
 
     /// <summary>Repoints the connection string at a forwarded local endpoint.</summary>
     string RewriteEndpoint(string connectionString, string host, int port);
+
+    /// <summary>Decomposes a connection string for the details dialog.</summary>
+    DatabaseConnectionDetails ParseDetails(string connectionString);
+
+    /// <summary>Recomposes dialog fields into this engine's connection string.</summary>
+    string BuildConnectionString(DatabaseConnectionDetails details);
 }

@@ -107,12 +107,24 @@
             <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
           </ComboBox>
           <TextBox
+              x:Name="ConnectionStringBox"
               Grid.Column="1"
               VerticalAlignment="Center"
-              Text="{Binding ConnectionString, Mode=TwoWay}"
               PlaceholderText="{Binding SelectedDriver.ConnectionStringHint}"
               KeyDown="OnConnectionStringKeyDown"
-              AutomationProperties.Name="Database connection string" />
+              GotFocus="OnConnectionStringGotFocus"
+              LostFocus="OnConnectionStringLostFocus"
+              AutomationProperties.Name="Database connection string">
+            <TextBox.InnerRightContent>
+              <Button
+                  Classes="IconButton"
+                  Click="OnConnectionDetailsClick"
+                  ToolTip.Tip="Connection details"
+                  AutomationProperties.Name="Edit connection details">
+                <icons:SymbolIcon Symbol="Options" FontSize="13" />
+              </Button>
+            </TextBox.InnerRightContent>
+          </TextBox>
           <Button
               Grid.Column="2"
               MinWidth="86"

@@ -1,0 +1,59 @@
+<Window
+    x:Class="GhostShell.App.Views.DatabaseConnectionDetailsDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    Width="460"
+    SizeToContent="Height"
+    CanResize="False"
+    WindowStartupLocation="CenterOwner"
+    Background="{DynamicResource ShellBackgroundBrush}"
+    Title="Connection details">
+  <StackPanel Margin="{controls:Inset Xl}" Spacing="{DynamicResource ShellSpaceMd}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+      <TextBlock x:Name="DialogTitle" FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="Connection details" />
+      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Fields compose the connection string; anything the fields do not cover stays in Options." TextWrapping="Wrap" />
+    </StackPanel>
+
+    <StackPanel x:Name="FileSection" Spacing="{DynamicResource ShellSpaceXs}">
+      <TextBlock FontWeight="SemiBold" Text="Database file" />
+      <TextBox x:Name="FilePathInput" PlaceholderText="/path/to/database.db" AutomationProperties.Name="Database file path" />
+    </StackPanel>
+
+    <StackPanel x:Name="ServerSection" Spacing="{DynamicResource ShellSpaceMd}">
+      <Grid ColumnDefinitions="*,96" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+          <TextBlock FontWeight="SemiBold" Text="Host" />
+          <TextBox x:Name="HostInput" PlaceholderText="localhost" AutomationProperties.Name="Database host" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+          <TextBlock FontWeight="SemiBold" Text="Port" />
+          <TextBox x:Name="PortInput" PlaceholderText="5432" AutomationProperties.Name="Database port" />
+        </StackPanel>
+      </Grid>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+          <TextBlock FontWeight="SemiBold" Text="User" />
+          <TextBox x:Name="UserInput" PlaceholderText="user name" AutomationProperties.Name="Database user" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+          <TextBlock FontWeight="SemiBold" Text="Password" />
+          <TextBox x:Name="PasswordInput" PasswordChar="•" PlaceholderText="password" AutomationProperties.Name="Database password" />
+        </StackPanel>
+      </Grid>
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+        <TextBlock x:Name="DatabaseLabel" FontWeight="SemiBold" Text="Database" />
+        <TextBox x:Name="DatabaseInput" PlaceholderText="database name" AutomationProperties.Name="Database name" />
+      </StackPanel>
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+        <TextBlock FontWeight="SemiBold" Text="Options" />
+        <TextBox x:Name="OptionsInput" PlaceholderText="Key=Value;…" AutomationProperties.Name="Additional connection options" />
+      </StackPanel>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <Button Grid.Column="1" MinWidth="88" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" AutomationProperties.Name="Cancel connection details" />
+      <Button Grid.Column="2" MinWidth="110" Classes="PrimaryButton" Click="OnConnectClick" Content="Connect" AutomationProperties.Name="Apply connection details and connect" />
+    </Grid>
+  </StackPanel>
+</Window>

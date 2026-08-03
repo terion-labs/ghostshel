@@ -403,4 +403,12 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
 
     public string BuildTablePreviewQuery(string driverId, string tableName, int limit) =>
         $"SELECT * FROM \"{tableName}\" LIMIT {limit};";
+
+    public DatabaseConnectionDetails ParseConnectionDetails(
+        string driverId,
+        string connectionString) =>
+        new(FilePath: connectionString);
+
+    public string BuildConnectionString(string driverId, DatabaseConnectionDetails details) =>
+        details.FilePath ?? details.Options ?? string.Empty;
 }

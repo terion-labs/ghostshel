@@ -81,7 +81,8 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "sqlite",
         "SQLite",
-        "/path/to/database.db");
+        "/path/to/database.db",
+        IsFileBased: true);
 
     public DbConnection CreateConnection(string connectionString) =>
         new SqliteConnection(connectionString);
@@ -106,6 +107,34 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
     public string RewriteEndpoint(string connectionString, string host, int port) =>
         throw new InvalidOperationException(
             "SQLite databases are files and cannot be tunneled.");
+
+    public DatabaseConnectionDetails ParseDetails(string connectionString)
+    {
+        var normalized = FileConnectionStrings.Normalize(connectionString);
+        var builder = ConnectionDetailKeys.TryCreateBuilder(normalized);
+        if (builder is null)
+        {
+            return new DatabaseConnectionDetails(FilePath: connectionString.Trim());
+        }
+
+        var path = ConnectionDetailKeys.Take(builder, ["Data Source", "DataSource"]);
+        return new DatabaseConnectionDetails(
+            FilePath: path,
+            Options: builder.Count == 0 ? null : builder.ConnectionString);
+    }
+
+    public string BuildConnectionString(DatabaseConnectionDetails details)
+    {
+        if (string.IsNullOrWhiteSpace(details.Options))
+        {
+            return details.FilePath?.Trim() ?? string.Empty;
+        }
+
+        var builder = ConnectionDetailKeys.TryCreateBuilder(details.Options)
+            ?? new System.Data.Common.DbConnectionStringBuilder();
+        ConnectionDetailKeys.Set(builder, ["Data Source", "DataSource"], details.FilePath?.Trim());
+        return builder.ConnectionString;
+    }
 }
 
 /// <summary>PostgreSQL and the engines that speak its wire protocol.</summary>
@@ -150,6 +179,19 @@ internal sealed class PostgresFamilyDriver(
             Host = host,
             Port = port,
         }.ConnectionString;
+
+    private static readonly ConnectionDetailKeys DetailKeys = new(
+        ["Host", "Server"],
+        ["Port"],
+        ["Database", "DB"],
+        ["Username", "User ID", "UserName", "User Id"],
+        ["Password"]);
+
+    public DatabaseConnectionDetails ParseDetails(string connectionString) =>
+        DetailKeys.Parse(connectionString);
+
+    public string BuildConnectionString(DatabaseConnectionDetails details) =>
+        DetailKeys.Build(details);
 }
 
 /// <summary>MySQL and MariaDB, which share MySqlConnector.</summary>
@@ -194,6 +236,19 @@ internal sealed class MySqlFamilyDriver(
             Server = host,
             Port = (uint)port,
         }.ConnectionString;
+
+    private static readonly ConnectionDetailKeys DetailKeys = new(
+        ["Server", "Host", "Data Source"],
+        ["Port"],
+        ["Database"],
+        ["User ID", "UserID", "User", "Username", "Uid"],
+        ["Password", "Pwd"]);
+
+    public DatabaseConnectionDetails ParseDetails(string connectionString) =>
+        DetailKeys.Parse(connectionString);
+
+    public string BuildConnectionString(DatabaseConnectionDetails details) =>
+        DetailKeys.Build(details);
 }
 
 internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
@@ -239,6 +294,40 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
         {
             DataSource = $"{host},{port}",
         }.ConnectionString;
+
+    private static readonly ConnectionDetailKeys DetailKeys = new(
+        ["Server", "Data Source", "Address", "Addr", "Network Address"],
+        [],
+        ["Database", "Initial Catalog"],
+        ["User ID", "UID"],
+        ["Password", "PWD"]);
+
+    public DatabaseConnectionDetails ParseDetails(string connectionString)
+    {
+        var details = DetailKeys.Parse(connectionString);
+        if (details.Host is { } packed)
+        {
+            var parts = packed.Split(',', 2);
+            details = details with
+            {
+                Host = parts[0].Trim(),
+                Port = parts.Length == 2 && int.TryParse(parts[1], out var port)
+                    ? port
+                    : details.Port,
+            };
+        }
+
+        return details;
+    }
+
+    public string BuildConnectionString(DatabaseConnectionDetails details) =>
+        DetailKeys.Build(details with
+        {
+            Host = details.Port is { } port && !string.IsNullOrWhiteSpace(details.Host)
+                ? $"{details.Host},{port}"
+                : details.Host,
+            Port = null,
+        });
 }
 
 internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
@@ -246,7 +335,8 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "duckdb",
         "DuckDB",
-        "/path/to/analytics.duckdb");
+        "/path/to/analytics.duckdb",
+        IsFileBased: true);
 
     public DbConnection CreateConnection(string connectionString) =>
         new DuckDBConnection(connectionString);
@@ -273,6 +363,34 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
     public string RewriteEndpoint(string connectionString, string host, int port) =>
         throw new InvalidOperationException(
             "DuckDB databases are files and cannot be tunneled.");
+
+    public DatabaseConnectionDetails ParseDetails(string connectionString)
+    {
+        var normalized = FileConnectionStrings.Normalize(connectionString);
+        var builder = ConnectionDetailKeys.TryCreateBuilder(normalized);
+        if (builder is null)
+        {
+            return new DatabaseConnectionDetails(FilePath: connectionString.Trim());
+        }
+
+        var path = ConnectionDetailKeys.Take(builder, ["Data Source", "DataSource"]);
+        return new DatabaseConnectionDetails(
+            FilePath: path,
+            Options: builder.Count == 0 ? null : builder.ConnectionString);
+    }
+
+    public string BuildConnectionString(DatabaseConnectionDetails details)
+    {
+        if (string.IsNullOrWhiteSpace(details.Options))
+        {
+            return details.FilePath?.Trim() ?? string.Empty;
+        }
+
+        var builder = ConnectionDetailKeys.TryCreateBuilder(details.Options)
+            ?? new System.Data.Common.DbConnectionStringBuilder();
+        ConnectionDetailKeys.Set(builder, ["Data Source", "DataSource"], details.FilePath?.Trim());
+        return builder.ConnectionString;
+    }
 }
 
 internal sealed class OracleDatabaseDriver : IDatabaseDriver
@@ -328,6 +446,51 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
             : $"{host}:{port}{source[slash..]}";
         return builder.ConnectionString;
     }
+
+    private static readonly ConnectionDetailKeys DetailKeys = new(
+        ["Data Source", "DataSource"],
+        [],
+        [],
+        ["User Id", "UserID", "User"],
+        ["Password"]);
+
+    // The dialog's Database field carries the EZ Connect service name.
+    public DatabaseConnectionDetails ParseDetails(string connectionString)
+    {
+        var details = DetailKeys.Parse(connectionString);
+        if (details.Host is { } packed && !packed.StartsWith('('))
+        {
+            var slash = packed.IndexOf('/', StringComparison.Ordinal);
+            var address = slash < 0 ? packed : packed[..slash];
+            var colon = address.IndexOf(':', StringComparison.Ordinal);
+            details = details with
+            {
+                Host = colon < 0 ? address.Trim() : address[..colon].Trim(),
+                Port = colon >= 0 && int.TryParse(address[(colon + 1)..], out var port)
+                    ? port
+                    : null,
+                Database = slash < 0 ? null : packed[(slash + 1)..].Trim(),
+            };
+        }
+
+        return details;
+    }
+
+    public string BuildConnectionString(DatabaseConnectionDetails details)
+    {
+        var address = details.Port is { } port
+            ? $"{details.Host}:{port}"
+            : details.Host;
+        var packed = string.IsNullOrWhiteSpace(details.Database)
+            ? address
+            : $"{address}/{details.Database}";
+        return DetailKeys.Build(details with
+        {
+            Host = packed,
+            Port = null,
+            Database = null,
+        });
+    }
 }
 
 internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
@@ -368,6 +531,19 @@ internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
             DataSource = host,
             Port = port,
         }.ConnectionString;
+
+    private static readonly ConnectionDetailKeys DetailKeys = new(
+        ["DataSource", "Data Source", "Server", "Host"],
+        ["Port", "Port Number"],
+        ["Database", "Initial Catalog"],
+        ["User", "User ID", "UserID"],
+        ["Password"]);
+
+    public DatabaseConnectionDetails ParseDetails(string connectionString) =>
+        DetailKeys.Parse(connectionString);
+
+    public string BuildConnectionString(DatabaseConnectionDetails details) =>
+        DetailKeys.Build(details);
 }
 
 internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
@@ -423,4 +599,17 @@ internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
         builder["Port"] = port;
         return builder.ConnectionString;
     }
+
+    private static readonly ConnectionDetailKeys DetailKeys = new(
+        ["Host"],
+        ["Port"],
+        ["Database"],
+        ["Username", "User"],
+        ["Password"]);
+
+    public DatabaseConnectionDetails ParseDetails(string connectionString) =>
+        DetailKeys.Parse(connectionString);
+
+    public string BuildConnectionString(DatabaseConnectionDetails details) =>
+        DetailKeys.Build(details);
 }

@@ -6,7 +6,23 @@ namespace GhostShell.Application;
 public sealed record DatabaseDriverDescriptor(
     string Id,
     string DisplayName,
-    string ConnectionStringHint);
+    string ConnectionStringHint,
+    bool IsFileBased = false);
+
+/// <summary>
+/// The structural view of a connection string, for the details dialog. File
+/// engines use <see cref="FilePath"/> only; server engines use the endpoint
+/// and credential fields, with unrecognized parameters preserved verbatim in
+/// <see cref="Options"/>.
+/// </summary>
+public sealed record DatabaseConnectionDetails(
+    string? Host = null,
+    int? Port = null,
+    string? Database = null,
+    string? Username = null,
+    string? Password = null,
+    string? FilePath = null,
+    string? Options = null);
 
 /// <summary>The network endpoint a connection string points at.</summary>
 public sealed record DatabaseEndpoint(string Host, int Port);
@@ -94,4 +110,10 @@ public interface IDatabasePanelClient
 
     /// <summary>A driver-quoted preview statement for one table.</summary>
     string BuildTablePreviewQuery(string driverId, string tableName, int limit);
+
+    /// <summary>Decomposes a connection string into structural fields.</summary>
+    DatabaseConnectionDetails ParseConnectionDetails(string driverId, string connectionString);
+
+    /// <summary>Recomposes structural fields into the driver's connection string.</summary>
+    string BuildConnectionString(string driverId, DatabaseConnectionDetails details);
 }

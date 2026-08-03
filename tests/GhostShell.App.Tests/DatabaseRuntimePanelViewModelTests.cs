@@ -190,6 +190,27 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public void Connection_string_display_masks_password_values()
+    {
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            new FakeDatabasePanelClient());
+
+        panel.ConnectionString = "Host=db;Username=ops;Password=s3cret;SSL Mode=Require";
+        Assert.Equal(
+            "Host=db;Username=ops;Password=••••••;SSL Mode=Require",
+            panel.MaskedConnectionString);
+
+        panel.ConnectionString = "Server=db;Pwd=x";
+        Assert.Equal("Server=db;Pwd=••••••", panel.MaskedConnectionString);
+
+        // A bare file path has nothing to hide and stays untouched.
+        panel.ConnectionString = "/data/app.db";
+        Assert.Equal("/data/app.db", panel.MaskedConnectionString);
+    }
+
+    [Fact]
     public void Dispose_is_idempotent_across_tab_and_window_teardown()
     {
         var panel = new DatabaseRuntimePanelViewModel(
@@ -273,6 +294,14 @@ public sealed class DatabaseRuntimePanelViewModelTests
 
         public string BuildTablePreviewQuery(string driverId, string tableName, int limit) =>
             $"SELECT * FROM \"{tableName}\" LIMIT {limit};";
+
+        public DatabaseConnectionDetails ParseConnectionDetails(
+            string driverId,
+            string connectionString) =>
+            new(FilePath: connectionString);
+
+        public string BuildConnectionString(string driverId, DatabaseConnectionDetails details) =>
+            details.FilePath ?? details.Options ?? string.Empty;
 
         private void ThrowIfConfigured()
         {

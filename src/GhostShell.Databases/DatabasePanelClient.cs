@@ -148,6 +148,17 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
         return Resolve(driverId).BuildPreviewQuery(tableName, limit);
     }
 
+    public DatabaseConnectionDetails ParseConnectionDetails(
+        string driverId,
+        string connectionString) =>
+        Resolve(driverId).ParseDetails(connectionString ?? string.Empty);
+
+    public string BuildConnectionString(string driverId, DatabaseConnectionDetails details)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+        return Resolve(driverId).BuildConnectionString(details);
+    }
+
     public async ValueTask DisposeAsync()
     {
         foreach (var pending in _tunnels.Values)

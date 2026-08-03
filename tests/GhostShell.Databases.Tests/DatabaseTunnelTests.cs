@@ -211,5 +211,11 @@ public sealed class DatabaseTunnelTests
 
         public string RewriteEndpoint(string connectionString, string host, int port) =>
             $"Host={host};Port={port};";
+
+        public DatabaseConnectionDetails ParseDetails(string connectionString) =>
+            new(Options: connectionString);
+
+        public string BuildConnectionString(DatabaseConnectionDetails details) =>
+            details.Options ?? string.Empty;
     }
 }

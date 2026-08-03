@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Windows.Input;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -13,6 +14,8 @@ public sealed class DatabaseDriverOptionViewModel(DatabaseDriverDescriptor descr
     public string DisplayName { get; } = descriptor.DisplayName;
 
     public string ConnectionStringHint { get; } = descriptor.ConnectionStringHint;
+
+    public bool IsFileBased { get; } = descriptor.IsFileBased;
 }
 
 public sealed class DatabaseTableItemViewModel(DatabaseTableDescriptor table)
@@ -183,8 +186,37 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             if (SetProperty(ref _connectionString, value ?? string.Empty))
             {
                 SetConnected(false);
+                OnPropertyChanged(nameof(MaskedConnectionString));
             }
         }
+    }
+
+    private static readonly Regex PasswordAssignment = new(
+        "(?<key>\\b(?:password|pwd|passphrase)\\s*=\\s*)[^;]*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// What the address bar shows while not being edited: the connection
+    /// string with any password value replaced by dots. The real value stays
+    /// in <see cref="ConnectionString"/>.
+    /// </summary>
+    public string MaskedConnectionString =>
+        PasswordAssignment.Replace(ConnectionString, match =>
+            match.Groups["key"].Value + "••••••");
+
+    /// <summary>The current string decomposed for the details dialog.</summary>
+    public DatabaseConnectionDetails ParseConnectionDetails() =>
+        _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString);
+
+    /// <summary>Applies dialog fields and probes the connection right away.</summary>
+    public Task ApplyConnectionDetailsAsync(DatabaseConnectionDetails details)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+        ConnectionString = _client.BuildConnectionString(SelectedDriver.Id, details);
+        return string.IsNullOrWhiteSpace(ConnectionString)
+            ? Task.CompletedTask
+            : ConnectAsync();
     }
 
     public string QueryText
