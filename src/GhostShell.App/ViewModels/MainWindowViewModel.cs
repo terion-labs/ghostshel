@@ -326,6 +326,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<LauncherConnectionViewModel> Connections { get; } = [];
 
+    /// <summary>
+    /// Saved file-transfer providers, presented as connection cards so the
+    /// launcher manages every connection family in one place.
+    /// </summary>
+    public ObservableCollection<LauncherConnectionViewModel> FileConnections { get; } = [];
+
+    /// <summary>Saved database connections, presented as connection cards.</summary>
+    public ObservableCollection<LauncherConnectionViewModel> DatabaseConnections { get; } = [];
+
     public IReadOnlyList<SavedConnectionShortcutViewModel> SavedConnectionShortcuts =>
         BuildSavedConnectionShortcuts();
 
@@ -501,13 +510,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private const int HomePreviewScreenCount = 4;
 
-    public bool HasMoreConnectionsThanPreview => Connections.Count > ConnectionsPreview.Count;
+    public bool HasMoreConnectionsThanPreview => TotalConnectionCount > ConnectionsPreview.Count;
 
     public bool HasMoreScreensThanPreview => Screens.Count > ScreensPreview.Count;
 
-    public bool HasConnections => Connections.Count > 0;
+    public bool HasConnections => TotalConnectionCount > 0;
 
     public bool HasNoConnections => !HasConnections;
+
+    public bool HasTerminalConnections => Connections.Count > 0;
+
+    public bool HasFileConnections => FileConnections.Count > 0;
+
+    public bool HasDatabaseConnections => DatabaseConnections.Count > 0;
+
+    public int TotalConnectionCount =>
+        Connections.Count + FileConnections.Count + DatabaseConnections.Count;
 
     public bool HasScreens => Screens.Count > 0;
 
@@ -2142,6 +2160,135 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ? OpenScreenAsync(screenId, cancellationToken)
             : AddScreenTabAsync(screenId, cancellationToken);
 
+    /// <summary>Opens a saved file provider in a tab, like a terminal connection.</summary>
+    public async Task<bool> LaunchFileProviderAsync(
+        FileProviderProfileId profileId,
+        CancellationToken cancellationToken = default)
+    {
+        ClearError();
+        var stored = _catalog.Snapshot.FileProviderProfiles
+            .SingleOrDefault(item => item.Value.Id == profileId);
+        if (stored is null)
+        {
+            SetError("That file connection no longer exists.");
+            return false;
+        }
+
+        var profile = stored.Value;
+        if (RuntimeWorkspace is not null)
+        {
+            return await AddFileProviderTabAsync(
+                profile.Id,
+                PanelKind.FileViewer,
+                cancellationToken);
+        }
+
+        var runtimeWorkspace = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            profile.Name,
+            ThemePreference.BronzeFallback.ToString(),
+            []);
+        try
+        {
+            var tab = CreateFileProviderTab(runtimeWorkspace.Id, profile);
+            if (tab is null)
+            {
+                return false;
+            }
+
+            runtimeWorkspace.Tabs.Add(tab);
+            runtimeWorkspace.ActiveTab = tab;
+            if (!await RegisterRuntimeWorkspaceAsync(runtimeWorkspace, cancellationToken))
+            {
+                return false;
+            }
+
+            RuntimeWorkspace = runtimeWorkspace;
+            _runtimeHistorySource = null;
+            StartAcceptedRuntimePanels(runtimeWorkspace);
+            StartRuntimeGraphWatch(runtimeWorkspace);
+            Route = ShellRoute.Workspace;
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+        finally
+        {
+            DisposeRuntimeWorkspaceUnlessOwned(runtimeWorkspace);
+        }
+    }
+
+    /// <summary>Opens a saved database connection in a tab.</summary>
+    public async Task<bool> LaunchSavedDatabaseAsync(
+        DatabaseConnectionProfileId profileId,
+        CancellationToken cancellationToken = default)
+    {
+        ClearError();
+        if (_databasePanelClient is null)
+        {
+            SetError("The database drivers are unavailable in this build.");
+            return false;
+        }
+
+        var profile = FindDatabaseConnection(profileId);
+        if (profile is null)
+        {
+            SetError("That database connection no longer exists.");
+            return false;
+        }
+
+        if (RuntimeWorkspace is { } workspace)
+        {
+            return await AppendRuntimeTabAsync(
+                workspace,
+                runtime => CreateSavedDatabaseTab(profile),
+                "database connection tab creation",
+                cancellationToken);
+        }
+
+        var runtimeWorkspace = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            profile.Name,
+            ThemePreference.BronzeFallback.ToString(),
+            []);
+        try
+        {
+            var tab = CreateSavedDatabaseTab(profile);
+            runtimeWorkspace.Tabs.Add(tab);
+            runtimeWorkspace.ActiveTab = tab;
+            if (!await RegisterRuntimeWorkspaceAsync(runtimeWorkspace, cancellationToken))
+            {
+                return false;
+            }
+
+            RuntimeWorkspace = runtimeWorkspace;
+            _runtimeHistorySource = null;
+            StartAcceptedRuntimePanels(runtimeWorkspace);
+            StartRuntimeGraphWatch(runtimeWorkspace);
+            Route = ShellRoute.Workspace;
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+        finally
+        {
+            DisposeRuntimeWorkspaceUnlessOwned(runtimeWorkspace);
+        }
+    }
+
+    private RuntimeTabViewModel CreateSavedDatabaseTab(DatabaseConnectionProfile profile)
+    {
+        var tab = new RuntimeTabViewModel(
+            TabInstanceId.New(),
+            profile.Name,
+            "Database");
+        var panel = CreateDatabasePanelFromTarget(
+            PanelInstanceId.New(),
+            profile.Name,
+            SavedDatabaseTargetPrefix + profile.Id.Value,
+            recoveredTunnel: null);
+        AddPanelOrDispose(tab, panel);
+        return tab;
+    }
+
     public async Task<bool> OpenLocalMonitorWorkspaceAsync(
         PanelKind kind,
         CancellationToken cancellationToken = default)
@@ -2704,6 +2851,52 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             Secrets.ToArray(),
             stored.Value,
             stored.Revision);
+    }
+
+    /// <summary>
+    /// Builds the single editor that covers every connection family. A locked
+    /// family (used when editing an existing definition) restricts the type
+    /// selector to that family; otherwise every available family contributes.
+    /// </summary>
+    public UnifiedConnectionEditorViewModel CreateUnifiedConnectionEditor(
+        SavedConnectionFamily? lockedFamily = null,
+        ConnectionId? terminalConnectionId = null,
+        FileProviderProfileId? fileProfileId = null,
+        DatabaseConnectionProfileId? databaseProfileId = null,
+        SavedConnectionFamily initialFamily = SavedConnectionFamily.Terminal)
+    {
+        var terminal = CreateConnectionEditor(terminalConnectionId);
+        FileProviderProfileEditorViewModel? files = null;
+        if (_fileProviderRuntime is not null
+            && lockedFamily is null or SavedConnectionFamily.Files)
+        {
+            files = CreateFileProviderEditor(fileProfileId);
+        }
+
+        DatabaseConnectionEditorViewModel? database = null;
+        if (_databasePanelClient is not null
+            && lockedFamily is null or SavedConnectionFamily.Database)
+        {
+            DatabaseConnectionProfile? existing = null;
+            if (databaseProfileId is { } databaseId)
+            {
+                existing = FindDatabaseConnection(databaseId)
+                    ?? throw new InvalidOperationException(
+                        "That database connection no longer exists.");
+            }
+
+            database = new DatabaseConnectionEditorViewModel(
+                _databasePanelClient,
+                _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
+                existing);
+        }
+
+        return new UnifiedConnectionEditorViewModel(
+            terminal,
+            files,
+            database,
+            lockedFamily,
+            initialFamily);
     }
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<FileProviderProfile>>>
@@ -8186,6 +8379,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 .Select(item => ToConnectionItem(item.Value, item.Revision))
                 .ToArray(),
             static (a, b) => a.PresentsSameAs(b));
+        ReplaceIfChanged(
+            FileConnections,
+            snapshot.FileProviderProfiles
+                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item => ToFileConnectionItem(item.Value, item.Revision))
+                .ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
+        ReplaceIfChanged(
+            DatabaseConnections,
+            snapshot.DatabaseConnections
+                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item => ToDatabaseConnectionItem(item.Value, item.Revision))
+                .ToArray(),
+            static (a, b) => a.PresentsSameAs(b));
         RefreshFileProviderDefinitions(snapshot);
         RefreshAiProviderDefinitions(snapshot);
         RefreshMcpServerDefinitions(snapshot);
@@ -8228,7 +8435,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasNoWorkspaces));
         ReplaceIfChanged(
             ConnectionsPreview,
-            Connections.Take(HomePreviewConnectionCount).ToArray(),
+            Connections
+                .Concat(FileConnections)
+                .Concat(DatabaseConnections)
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(HomePreviewConnectionCount)
+                .ToArray(),
             static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             ScreensPreview,
@@ -8238,6 +8450,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PanelConnectionOptions));
         OnPropertyChanged(nameof(FileConnectionOptions));
         OnPropertyChanged(nameof(HasNoConnections));
+        OnPropertyChanged(nameof(HasTerminalConnections));
+        OnPropertyChanged(nameof(HasFileConnections));
+        OnPropertyChanged(nameof(HasDatabaseConnections));
+        OnPropertyChanged(nameof(TotalConnectionCount));
         OnPropertyChanged(nameof(HasScreens));
         OnPropertyChanged(nameof(HasNoScreens));
         OnPropertyChanged(nameof(HasMoreConnectionsThanPreview));
@@ -10446,6 +10662,77 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             canOpen ? "Validated on open" : "Unavailable on this platform",
             canOpen,
             connection.Tags);
+    }
+
+    private LauncherConnectionViewModel ToFileConnectionItem(
+        FileProviderProfile profile,
+        long revision) =>
+        new(
+            new ConnectionId(profile.Id.Value),
+            revision,
+            profile.Name,
+            FileProviderKindLabel(profile.ProviderKind),
+            FileProviderEndpoint(profile.Configuration),
+            "Validated on open",
+            _fileProviderRuntime is not null,
+            [],
+            SavedConnectionFamily.Files,
+            profile.Id.Value);
+
+    private LauncherConnectionViewModel ToDatabaseConnectionItem(
+        DatabaseConnectionProfile profile,
+        long revision)
+    {
+        var driver = _databasePanelClient?.Drivers
+            .FirstOrDefault(item => item.Id == profile.DriverId);
+        return new(
+            new ConnectionId(profile.Id.Value),
+            revision,
+            profile.Name,
+            driver?.DisplayName ?? profile.DriverId,
+            DatabaseConnectionDetailText(profile),
+            _databasePanelClient is null
+                ? "Database drivers are unavailable in this build"
+                : "Validated on connect",
+            _databasePanelClient is not null,
+            [],
+            SavedConnectionFamily.Database,
+            profile.Id.Value);
+    }
+
+    /// <summary>
+    /// A compact endpoint summary for the card. The stored connection string
+    /// never contains the password, so falling back to it verbatim is safe.
+    /// </summary>
+    private string DatabaseConnectionDetailText(DatabaseConnectionProfile profile)
+    {
+        if (_databasePanelClient is null)
+        {
+            return profile.DriverId;
+        }
+
+        try
+        {
+            var details = _databasePanelClient.ParseConnectionDetails(
+                profile.DriverId,
+                profile.ConnectionString);
+            if (details.FilePath is { } filePath)
+            {
+                return filePath;
+            }
+
+            var host = details.Host ?? "localhost";
+            var endpoint = details.Port is { } port
+                ? $"{host}:{port.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                : host;
+            return details.Database is { } database
+                ? $"{endpoint}/{database}"
+                : endpoint;
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException)
+        {
+            return profile.ConnectionString;
+        }
     }
 
     private static string FileProviderEndpoint(FileProviderConfiguration configuration) =>

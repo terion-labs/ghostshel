@@ -5,6 +5,11 @@ using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views;
 
+/// <summary>
+/// The one editor for every saved connection family: terminal endpoints, file
+/// providers, and database connections. Which family a definition belongs to
+/// is part of the grouped connection-type selection.
+/// </summary>
 public sealed partial class ConnectionEditorDialog : Window
 {
     private readonly CancellationTokenSource _lifetime = new();
@@ -15,13 +20,13 @@ public sealed partial class ConnectionEditorDialog : Window
         InitializeComponent();
     }
 
-    public ConnectionEditorDialog(ConnectionEditorViewModel viewModel)
+    public ConnectionEditorDialog(UnifiedConnectionEditorViewModel viewModel)
         : this(viewModel, ConnectionEditorDialogPurpose.Save)
     {
     }
 
     public ConnectionEditorDialog(
-        ConnectionEditorViewModel viewModel,
+        UnifiedConnectionEditorViewModel viewModel,
         ConnectionEditorDialogPurpose purpose)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
@@ -30,9 +35,9 @@ public sealed partial class ConnectionEditorDialog : Window
         DataContext = viewModel;
         if (purpose == ConnectionEditorDialogPurpose.Connect)
         {
-            if (this.FindControl<CheckBox>("SaveConnectionCheckBox") is { } saveConnection)
+            if (this.FindControl<Border>("ConnectPurposeRow") is { } connectRow)
             {
-                saveConnection.IsVisible = true;
+                connectRow.IsVisible = true;
             }
 
             if (this.FindControl<Button>("SubmitButton") is { } submit)
@@ -42,7 +47,8 @@ public sealed partial class ConnectionEditorDialog : Window
         }
     }
 
-    private ConnectionEditorViewModel ViewModel => DataContext as ConnectionEditorViewModel
+    private UnifiedConnectionEditorViewModel ViewModel =>
+        DataContext as UnifiedConnectionEditorViewModel
         ?? throw new InvalidOperationException("The connection editor view model is unavailable.");
 
     protected override void OnClosed(EventArgs e)
@@ -64,14 +70,21 @@ public sealed partial class ConnectionEditorDialog : Window
         _ = sender;
         _ = e;
         HideValidationError();
-        await ViewModel.TestAsync(_lifetime.Token);
+        if (ViewModel.IsTerminal)
+        {
+            await ViewModel.Terminal.TestAsync(_lifetime.Token);
+        }
+        else if (ViewModel is { IsFiles: true, Files: { } files })
+        {
+            await files.TestAsync(_lifetime.Token);
+        }
     }
 
     private async void OnTrustHostKeyClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        if (ViewModel.HostKeyReview is not { } review)
+        if (ViewModel.Terminal.HostKeyReview is not { } review)
         {
             return;
         }
@@ -79,7 +92,24 @@ public sealed partial class ConnectionEditorDialog : Window
         var confirmed = await new SshHostKeyReviewDialog(review).ShowDialog<bool>(this);
         if (confirmed)
         {
-            await ViewModel.TrustHostKeyAsync(_lifetime.Token);
+            await ViewModel.Terminal.TrustHostKeyAsync(_lifetime.Token);
+        }
+    }
+
+    private async void OnTrustFileHostKeyClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        HideValidationError();
+        if (ViewModel.Files is not { HostKeyReview: { } review } files)
+        {
+            return;
+        }
+
+        var confirmed = await new SshHostKeyReviewDialog(review).ShowDialog<bool>(this);
+        if (confirmed)
+        {
+            await files.TrustHostKeyAsync(review.Id, _lifetime.Token);
         }
     }
 
@@ -90,20 +120,13 @@ public sealed partial class ConnectionEditorDialog : Window
         try
         {
             HideValidationError();
-            var request = ViewModel.CreateSaveRequest();
-            if (_purpose == ConnectionEditorDialogPurpose.Connect)
-            {
-                var saveConnection =
-                    this.FindControl<CheckBox>("SaveConnectionCheckBox")?.IsChecked == true;
-                Close(new ConnectionEditorConnectRequest(
-                    request.Profile,
-                    saveConnection));
-                return;
-            }
-
-            Close(request);
+            var saveConnection = _purpose != ConnectionEditorDialogPurpose.Connect
+                || !ViewModel.IsTerminal
+                || this.FindControl<CheckBox>("SaveConnectionCheckBox")?.IsChecked == true;
+            Close(ViewModel.CreateSaveResult(saveConnection));
         }
-        catch (Exception exception) when (exception is ArgumentException or OverflowException)
+        catch (Exception exception) when (exception
+            is ArgumentException or OverflowException or UriFormatException or FormatException)
         {
             var error = this.FindControl<TextBlock>("ValidationError");
             if (error is not null)

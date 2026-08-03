@@ -162,9 +162,18 @@ public sealed record LauncherConnectionViewModel(
     string Detail,
     string Status,
     bool CanOpen,
-    IReadOnlyList<string> Tags)
+    IReadOnlyList<string> Tags,
+    SavedConnectionFamily Family = SavedConnectionFamily.Terminal,
+    string? DefinitionId = null)
 {
     public bool HasTags => Tags.Count > 0;
+
+    /// <summary>
+    /// The durable definition id inside this card's family. Terminal cards use
+    /// <see cref="Id"/>; file and database cards carry their own id here and
+    /// keep <see cref="Id"/> only as a list-identity wrapper.
+    /// </summary>
+    public string TargetId => DefinitionId ?? Id.Value;
 
     /// <summary>
     /// Whether the card would look identical. Record equality cannot say: the
@@ -176,6 +185,7 @@ public sealed record LauncherConnectionViewModel(
         other is not null
         && Id == other.Id
         && Revision == other.Revision
+        && Family == other.Family
         && CanOpen == other.CanOpen
         && string.Equals(Name, other.Name, StringComparison.Ordinal)
         && string.Equals(Kind, other.Kind, StringComparison.Ordinal)

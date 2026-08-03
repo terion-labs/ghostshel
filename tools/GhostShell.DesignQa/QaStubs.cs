@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using GhostShell.App;
 using GhostShell.Application;
@@ -348,6 +349,33 @@ internal sealed class QaTimeProvider : TimeProvider
 }
 
 /// <summary>
+/// A file-provider runtime whose test always succeeds, so the unified editor's
+/// files family renders without any provider adapter behind the harness.
+/// </summary>
+internal sealed class QaFileProviderRuntime : IFileProviderProfileRuntime
+{
+    public event EventHandler? ProfilesChanged
+    {
+        add { }
+        remove { }
+    }
+
+    public IReadOnlyList<FileProviderRuntimeDiagnostic> Diagnostics => [];
+
+    public ValueTask<FileProviderTestResult> TestAsync(
+        FileProviderProfile profile,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new FileProviderTestResult(true, "ok", profile.Name));
+
+    public ValueTask ReloadAsync(CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    public void Dispose()
+    {
+    }
+}
+
+/// <summary>
 /// A synchronous database client so the viewer's table list and result grid are
 /// reviewable without any database engine behind the harness.
 /// </summary>
@@ -355,9 +383,9 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
 {
     public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } =
     [
-        new("sqlite", "SQLite", "Data Source=/path/to/database.db"),
         new("postgres", "PostgreSQL", "Host=localhost;Database=app;Username=postgres"),
         new("mysql", "MySQL", "Server=localhost;Database=app;User ID=root"),
+        new("sqlite", "SQLite", "/path/to/database.db", IsFileBased: true),
     ];
 
     public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
@@ -406,9 +434,56 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
 
     public DatabaseConnectionDetails ParseConnectionDetails(
         string driverId,
-        string connectionString) =>
-        new(FilePath: connectionString);
+        string connectionString)
+    {
+        if (!connectionString.Contains('=', StringComparison.Ordinal))
+        {
+            return new DatabaseConnectionDetails(FilePath: connectionString);
+        }
 
-    public string BuildConnectionString(string driverId, DatabaseConnectionDetails details) =>
-        details.FilePath ?? details.Options ?? string.Empty;
+        var values = connectionString
+            .Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(pair => pair.Split('=', 2))
+            .Where(pair => pair.Length == 2)
+            .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.OrdinalIgnoreCase);
+        return new DatabaseConnectionDetails(
+            values.GetValueOrDefault("Host"),
+            values.TryGetValue("Port", out var port)
+                && int.TryParse(port, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : null,
+            values.GetValueOrDefault("Database"),
+            values.GetValueOrDefault("Username"),
+            values.GetValueOrDefault("Password"),
+            Options: null);
+    }
+
+    public string BuildConnectionString(string driverId, DatabaseConnectionDetails details)
+    {
+        if (details.FilePath is { } filePath)
+        {
+            return filePath;
+        }
+
+        var pairs = new List<string>();
+        Append("Host", details.Host);
+        Append("Port", details.Port?.ToString(CultureInfo.InvariantCulture));
+        Append("Database", details.Database);
+        Append("Username", details.Username);
+        Append("Password", details.Password);
+        if (details.Options is { } options)
+        {
+            pairs.Add(options);
+        }
+
+        return string.Join(';', pairs);
+
+        void Append(string key, string? value)
+        {
+            if (value is not null)
+            {
+                pairs.Add($"{key}={value}");
+            }
+        }
+    }
 }

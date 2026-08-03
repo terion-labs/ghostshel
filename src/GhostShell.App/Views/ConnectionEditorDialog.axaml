@@ -4,9 +4,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
     Title="Connection"
-    Width="720"
-    Height="760"
-    MinWidth="620"
+    Width="760"
+    Height="780"
+    MinWidth="640"
     MinHeight="620"
     CanResize="True"
     ShowInTaskbar="False"
@@ -29,7 +29,7 @@
     <ScrollViewer Grid.Row="1">
       <StackPanel Margin="{controls:Inset Horizontal=Lg, Top=Sm, Bottom=Xl}" Spacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Padding="0">
-          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,220" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceMd}">
+          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,240" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceMd}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Name" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Shown in launchers, tabs, and agent scope." />
@@ -37,143 +37,299 @@
             <TextBox Grid.Column="1" Text="{Binding Name}" PlaceholderText="Production shell" />
             <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock FontWeight="SemiBold" Text="Connection type" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Each type uses a structured native launch plan." />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Terminals, file transfer, and databases share this editor." />
             </StackPanel>
             <ComboBox
                 Grid.Row="1"
                 Grid.Column="1"
-                ItemsSource="{Binding ConnectionKinds}"
-                SelectedItem="{Binding Kind}" />
+                ItemsSource="{Binding TypeOptions}"
+                SelectedItem="{Binding SelectedType}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </Grid>
         </controls:SurfaceCard>
 
-        <controls:SurfaceCard Padding="0" IsVisible="{Binding IsLocal}">
-          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,320">
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" Text="Shell executable" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Leave blank to use the host default shell." />
-            </StackPanel>
-            <TextBox Grid.Column="1" Text="{Binding LocalShell}" PlaceholderText="/bin/zsh" />
-          </Grid>
-        </controls:SurfaceCard>
+        <!-- Terminal family -->
+        <StackPanel IsVisible="{Binding IsTerminal}" Spacing="{DynamicResource ShellSpaceMd}">
+          <StackPanel DataContext="{Binding Terminal}" Spacing="{DynamicResource ShellSpaceMd}">
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsLocal}">
+              <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,320">
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock FontWeight="SemiBold" Text="Shell executable" />
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Leave blank to use the host default shell." />
+                </StackPanel>
+                <TextBox Grid.Column="1" Text="{Binding LocalShell}" PlaceholderText="/bin/zsh" />
+              </Grid>
+            </controls:SurfaceCard>
 
-        <controls:SurfaceCard Padding="0" IsVisible="{Binding IsSsh}">
-          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-            <Grid ColumnDefinitions="*,110,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding Host}" PlaceholderText="server.example.com" /></StackPanel>
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Port" /><NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" /></StackPanel>
-              <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" PlaceholderText="Current local user" /></StackPanel>
-            </Grid>
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Authentication" /><ComboBox ItemsSource="{Binding AuthenticationChoices}" SelectedItem="{Binding Authentication}" /></StackPanel>
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host-key policy" /><ComboBox ItemsSource="{Binding HostKeyPolicies}" SelectedItem="{Binding HostKeyPolicy}" /></StackPanel>
-            </Grid>
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding UsesSecretReference}">
-              <TextBlock FontWeight="SemiBold" Text="Credential secret reference" />
-              <TextBox Text="{Binding SecretReference}" PlaceholderText="Opaque secret ID from the OS vault" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Diagnostics authenticate inside the secure adapter boundary. A terminal claims the stored credential through a one-use, lifetime-bound helper when it starts." TextWrapping="Wrap" />
-            </StackPanel>
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding UsesPassphraseReference}">
-              <TextBlock FontWeight="SemiBold" Text="Passphrase secret reference (optional)" />
-              <TextBox Text="{Binding PassphraseSecretReference}" />
-            </StackPanel>
-          </StackPanel>
-        </controls:SurfaceCard>
-
-        <controls:SurfaceCard Padding="0" IsVisible="{Binding IsDocker}">
-          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Container" /><TextBox Text="{Binding Container}" PlaceholderText="api-dev" /></StackPanel>
-            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Docker context (optional)" /><TextBox Text="{Binding DockerContext}" PlaceholderText="desktop-linux" /></StackPanel>
-          </Grid>
-        </controls:SurfaceCard>
-
-        <controls:SurfaceCard Padding="0" IsVisible="{Binding IsWsl}">
-          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Distribution" /><TextBox Text="{Binding Distribution}" PlaceholderText="Ubuntu-24.04" /></StackPanel>
-            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username (optional)" /><TextBox Text="{Binding Username}" /></StackPanel>
-          </Grid>
-        </controls:SurfaceCard>
-
-        <controls:SurfaceCard Padding="0">
-          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="Startup directory" />
-                <TextBox Text="{Binding StartupDirectory}" PlaceholderText="Optional working directory" />
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="Startup command" />
-                <TextBox Text="{Binding StartupCommand}" PlaceholderText="Optional command run in the shell" />
-              </StackPanel>
-            </Grid>
-            <Grid ColumnDefinitions="*,140,140" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                  <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-                    <TextBlock FontWeight="SemiBold" Text="Keep alive" />
-                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #KeepAliveSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
-                  </StackPanel>
-                  <ToggleSwitch x:Name="KeepAliveSwitch" Grid.Column="1" IsChecked="{Binding KeepAliveEnabled}" AutomationProperties.Name="Keep the connection alive" />
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsSsh}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                <Grid ColumnDefinitions="*,110,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding Host}" PlaceholderText="server.example.com" /></StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Port" /><NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" /></StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" PlaceholderText="Current local user" /></StackPanel>
                 </Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Authentication" /><ComboBox ItemsSource="{Binding AuthenticationChoices}" SelectedItem="{Binding Authentication}" /></StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host-key policy" /><ComboBox ItemsSource="{Binding HostKeyPolicies}" SelectedItem="{Binding HostKeyPolicy}" /></StackPanel>
+                </Grid>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding UsesSecretReference}">
+                  <TextBlock FontWeight="SemiBold" Text="Credential secret reference" />
+                  <TextBox Text="{Binding SecretReference}" PlaceholderText="Opaque secret ID from the OS vault" />
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Diagnostics authenticate inside the secure adapter boundary. A terminal claims the stored credential through a one-use, lifetime-bound helper when it starts." TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding UsesPassphraseReference}">
+                  <TextBlock FontWeight="SemiBold" Text="Passphrase secret reference (optional)" />
+                  <TextBox Text="{Binding PassphraseSecretReference}" />
+                </StackPanel>
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsDocker}">
+              <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Container" /><TextBox Text="{Binding Container}" PlaceholderText="api-dev" /></StackPanel>
+                <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Docker context (optional)" /><TextBox Text="{Binding DockerContext}" PlaceholderText="desktop-linux" /></StackPanel>
+              </Grid>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsWsl}">
+              <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Distribution" /><TextBox Text="{Binding Distribution}" PlaceholderText="Ubuntu-24.04" /></StackPanel>
+                <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username (optional)" /><TextBox Text="{Binding Username}" /></StackPanel>
+              </Grid>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock FontWeight="SemiBold" Text="Startup directory" />
+                    <TextBox Text="{Binding StartupDirectory}" PlaceholderText="Optional working directory" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock FontWeight="SemiBold" Text="Startup command" />
+                    <TextBox Text="{Binding StartupCommand}" PlaceholderText="Optional command run in the shell" />
+                  </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,140,140" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                      <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                        <TextBlock FontWeight="SemiBold" Text="Keep alive" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #KeepAliveSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="KeepAliveSwitch" Grid.Column="1" IsChecked="{Binding KeepAliveEnabled}" AutomationProperties.Name="Keep the connection alive" />
+                    </Grid>
+                    <TextBlock
+                        Classes="Muted"
+                        FontSize="{DynamicResource ShellFontSize10}"
+                        Text="Remote runtimes use explicit keepalive arguments."
+                        TextWrapping="Wrap" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Interval (seconds)" /><NumericUpDown Minimum="1" Maximum="86400" Value="{Binding KeepAliveSeconds}" /></StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Max failures" /><NumericUpDown Minimum="1" Maximum="100" Value="{Binding KeepAliveFailures}" /></StackPanel>
+                </Grid>
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Tone="Notice" Padding="0">
+              <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                <Border Width="9" Height="9" VerticalAlignment="Top" Margin="{controls:Inset Top=Xs}" Background="{DynamicResource ShellWarningBrush}" CornerRadius="{DynamicResource ShellControlCornerRadius}" />
+                <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding TestStatus}" />
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TestDetail}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </controls:SurfaceCard>
+
+            <ItemsControl ItemsSource="{Binding Diagnostics}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="{controls:Inset Xs}" ColumnDefinitions="9,110,80,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <Ellipse Width="7" Height="7" Fill="{Binding StatusColor}" />
+                    <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Stage}" />
+                    <TextBlock Grid.Column="2" Classes="Eyebrow" Text="{Binding Status}" />
+                    <TextBlock Grid.Column="3" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Message}" TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding HasHostKeyReview}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding HostKeyReviewTitle}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Endpoint}" />
+                  </StackPanel>
+                  <Button
+                      Grid.Column="1"
+                      Classes="SecondaryButton"
+                      Click="OnTrustHostKeyClick"
+                      Content="{Binding TrustHostKeyLabel}"
+                      IsVisible="{Binding CanTrustHostKey}" />
+                </Grid>
+                <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock Classes="Eyebrow" Text="Algorithm" />
+                  <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Algorithm}" />
+                  <TextBlock Grid.Row="1" Classes="Eyebrow" Text="Presented" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
+                  <TextBlock Grid.Row="2" Classes="Eyebrow" Text="Previous" />
+                  <TextBlock Grid.Row="2" Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TrustedHostKeyFingerprint}" TextWrapping="Wrap" />
+                </Grid>
+              </StackPanel>
+            </controls:SurfaceCard>
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Files family -->
+        <StackPanel IsVisible="{Binding IsFiles}" Spacing="{DynamicResource ShellSpaceMd}">
+          <StackPanel DataContext="{Binding Files}" Spacing="{DynamicResource ShellSpaceMd}">
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsLocal}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock Classes="SectionHeading" Text="Local filesystem" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The adapter is confined to this existing directory and does not follow links outside it." />
+                <TextBox Text="{Binding LocalRoot}" PlaceholderText="Absolute directory path" />
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsS3}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                <TextBlock Classes="SectionHeading" Text="S3 / S3-compatible" />
+                <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Bucket" /><TextBox Text="{Binding BucketName}" /></StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Region" /><TextBox Text="{Binding Region}" PlaceholderText="us-east-1" /></StackPanel>
+                </Grid>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Service URI" /><TextBox Text="{Binding ServiceUri}" PlaceholderText="Optional HTTPS endpoint for compatible services" /></StackPanel>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Initial prefix" /><TextBox Text="{Binding RootPrefix}" PlaceholderText="Optional/path/prefix" /></StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceLg}"><CheckBox IsChecked="{Binding ForcePathStyle}" Content="Force path-style requests" /><CheckBox IsChecked="{Binding AllowInsecureTransport}" Content="Acknowledge HTTP transport" /></StackPanel>
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsSftp}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock Classes="SectionHeading" Text="SFTP" />
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="SFTP reuses the selected SSH endpoint, authentication reference, and durable host-key trust used by terminal SSH." TextWrapping="Wrap" />
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="SSH connection" /><ComboBox ItemsSource="{Binding SshConnections}" SelectedItem="{Binding SelectedSshConnection}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Remote root" /><TextBox Text="{Binding RemoteRoot}" /></StackPanel>
+                <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasHostKeyReview}">
+                  <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding HostKeyReviewTitle}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReviewStatus}" TextWrapping="Wrap" />
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock Classes="Eyebrow" Text="Presented" />
+                      <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding PresentedHostKey}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding HasTrustedHostKey}">
+                      <TextBlock Classes="Eyebrow" Text="Currently trusted" />
+                      <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TrustedHostKey}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button
+                        HorizontalAlignment="Left"
+                        Classes="DestructiveButton"
+                        Click="OnTrustFileHostKeyClick"
+                        Content="{Binding HostKeyActionText}"
+                        IsEnabled="{Binding CanApplyHostKeyTrust}" />
+                  </StackPanel>
+                </controls:SurfaceCard>
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsFtp}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                <TextBlock Classes="SectionHeading" Text="FTP / FTPS" />
+                <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding Host}" /></StackPanel><StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Port" /><NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" /></StackPanel></Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="TLS mode" /><ComboBox ItemsSource="{Binding FtpSecurityModes}" SelectedItem="{Binding FtpSecurity}" /></StackPanel><StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Data connection" /><ComboBox ItemsSource="{Binding FtpConnectionModes}" SelectedItem="{Binding FtpConnectionMode}" /></StackPanel></Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" PlaceholderText="Blank for anonymous" /></StackPanel><StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Remote root" /><TextBox Text="{Binding RemoteRoot}" /></StackPanel></Grid>
+                <CheckBox IsVisible="{Binding IsPlaintextFtp}" IsChecked="{Binding AllowPlaintext}" Content="I understand plaintext FTP exposes credentials and files" />
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsSmb}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                <TextBlock Classes="SectionHeading" Text="SMB 2/3" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Server" /><TextBox Text="{Binding Server}" /></StackPanel><StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Share" /><TextBox Text="{Binding Share}" /></StackPanel></Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Authentication" /><ComboBox ItemsSource="{Binding SmbCredentialModes}" SelectedItem="{Binding SmbCredentialMode}" /></StackPanel><StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Remote root" /><TextBox Text="{Binding RemoteRoot}" /></StackPanel></Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding UsesSmbCredential}"><StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Domain" /><TextBox Text="{Binding Domain}" /></StackPanel><StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" /></StackPanel></Grid>
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsWebDav}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                <TextBlock Classes="SectionHeading" Text="WebDAV" />
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Base URI" /><TextBox Text="{Binding BaseUri}" /></StackPanel>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding Username}" PlaceholderText="Blank when authentication is not required" /></StackPanel>
+                <CheckBox IsChecked="{Binding AllowInsecureTransport}" Content="Acknowledge HTTP transport" />
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding UsesProviderCredential}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock Classes="SectionHeading" Text="OS-vault credential" />
+                <ComboBox ItemsSource="{Binding SecretOptions}" SelectedItem="{Binding SelectedCredential}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Only opaque secret references scoped to this profile are selectable. Secret values never enter this editor. S3 credentials use JSON fields accessKeyId, secretAccessKey, and optional sessionToken." TextWrapping="Wrap" />
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Tone="Notice" Padding="0">
+              <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="{Binding TestStatus}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TestDetail}" TextWrapping="Wrap" /></StackPanel>
+            </controls:SurfaceCard>
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Database family -->
+        <StackPanel IsVisible="{Binding IsDatabase}" Spacing="{DynamicResource ShellSpaceMd}">
+          <StackPanel DataContext="{Binding Database}" Spacing="{DynamicResource ShellSpaceMd}">
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsFileBased}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock Classes="SectionHeading" Text="Database file" />
+                <TextBox Text="{Binding FilePath}" PlaceholderText="/path/to/database.db" AutomationProperties.Name="Database file path" />
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0" IsVisible="{Binding IsServerBased}">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                <TextBlock Classes="SectionHeading" Text="Server" />
+                <Grid ColumnDefinitions="*,110" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding Host}" PlaceholderText="localhost" AutomationProperties.Name="Database host" /></StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Port" /><TextBox Text="{Binding Port}" PlaceholderText="5432" AutomationProperties.Name="Database port" /></StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="User" /><TextBox Text="{Binding Username}" PlaceholderText="user name" AutomationProperties.Name="Database user" /></StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Password" /><TextBox Text="{Binding Password}" PasswordChar="•" PlaceholderText="password" AutomationProperties.Name="Database password" /></StackPanel>
+                </Grid>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Database" /><TextBox Text="{Binding DatabaseName}" PlaceholderText="database name" AutomationProperties.Name="Database name" /></StackPanel>
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock FontWeight="SemiBold" Text="SSH tunnel" />
+                  <ComboBox ItemsSource="{Binding TunnelOptions}" SelectedItem="{Binding SelectedTunnel}" AutomationProperties.Name="SSH tunnel connection"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                </StackPanel>
+              </StackPanel>
+            </controls:SurfaceCard>
+
+            <controls:SurfaceCard Padding="0">
+              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Options" /><TextBox Text="{Binding Options}" PlaceholderText="Key=Value;…" AutomationProperties.Name="Additional connection options" /></StackPanel>
+                <CheckBox IsVisible="{Binding IsServerBased}" IsChecked="{Binding StorePassword}" Content="Store password in the OS keychain" AutomationProperties.Name="Store the password in the OS keychain" />
                 <TextBlock
                     Classes="Muted"
-                    FontSize="{DynamicResource ShellFontSize10}"
-                    Text="Remote runtimes use explicit keepalive arguments."
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    IsVisible="{Binding HasStoredPassword}"
+                    Text="A password is stored in the OS keychain. Leaving the field empty keeps it; storing a new one replaces it."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    IsVisible="{Binding IsServerBased}"
+                    Text="The saved connection string never contains the password. Without the keychain, it is asked for on connect."
                     TextWrapping="Wrap" />
               </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Interval (seconds)" /><NumericUpDown Minimum="1" Maximum="86400" Value="{Binding KeepAliveSeconds}" /></StackPanel>
-              <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Max failures" /><NumericUpDown Minimum="1" Maximum="100" Value="{Binding KeepAliveFailures}" /></StackPanel>
-            </Grid>
+            </controls:SurfaceCard>
           </StackPanel>
-        </controls:SurfaceCard>
-
-        <controls:SurfaceCard Tone="Notice" Padding="0">
-          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-            <Border Width="9" Height="9" VerticalAlignment="Top" Margin="{controls:Inset Top=Xs}" Background="{DynamicResource ShellWarningBrush}" CornerRadius="{DynamicResource ShellControlCornerRadius}" />
-            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" Text="{Binding TestStatus}" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TestDetail}" TextWrapping="Wrap" />
-            </StackPanel>
-          </Grid>
-        </controls:SurfaceCard>
-
-        <ItemsControl ItemsSource="{Binding Diagnostics}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Grid Margin="{controls:Inset Xs}" ColumnDefinitions="9,110,80,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                <Ellipse Width="7" Height="7" Fill="{Binding StatusColor}" />
-                <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Stage}" />
-                <TextBlock Grid.Column="2" Classes="Eyebrow" Text="{Binding Status}" />
-                <TextBlock Grid.Column="3" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Message}" TextWrapping="Wrap" />
-              </Grid>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-
-        <controls:SurfaceCard Padding="0" IsVisible="{Binding HasHostKeyReview}">
-          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="{Binding HostKeyReviewTitle}" />
-                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Endpoint}" />
-              </StackPanel>
-              <Button
-                  Grid.Column="1"
-                  Classes="SecondaryButton"
-                  Click="OnTrustHostKeyClick"
-                  Content="{Binding TrustHostKeyLabel}"
-                  IsVisible="{Binding CanTrustHostKey}" />
-            </Grid>
-            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="Eyebrow" Text="Algorithm" />
-              <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Algorithm}" />
-              <TextBlock Grid.Row="1" Classes="Eyebrow" Text="Presented" />
-              <TextBlock Grid.Row="1" Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HostKeyReview.Presented.Sha256Fingerprint}" TextWrapping="Wrap" />
-              <TextBlock Grid.Row="2" Classes="Eyebrow" Text="Previous" />
-              <TextBlock Grid.Row="2" Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TrustedHostKeyFingerprint}" TextWrapping="Wrap" />
-            </Grid>
-          </StackPanel>
-        </controls:SurfaceCard>
+        </StackPanel>
 
         <TextBlock
             x:Name="ValidationError"
@@ -187,14 +343,22 @@
       <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Opening revalidates runtime, credentials, and platform support." />
-          <CheckBox
-              x:Name="SaveConnectionCheckBox"
-              Content="Save connection"
-              IsChecked="True"
-              IsVisible="False"
-              AutomationProperties.Name="Save this connection for later" />
+          <Border x:Name="ConnectPurposeRow" IsVisible="False">
+            <CheckBox
+                x:Name="SaveConnectionCheckBox"
+                Content="Save connection"
+                IsChecked="True"
+                IsVisible="{Binding IsTerminal}"
+                AutomationProperties.Name="Save this connection for later" />
+          </Border>
         </StackPanel>
-        <Button Grid.Column="1" MinWidth="120" Classes="SecondaryButton" Click="OnTestClick" Content="Run diagnostics" />
+        <Button
+            Grid.Column="1"
+            MinWidth="120"
+            Classes="SecondaryButton"
+            Click="OnTestClick"
+            Content="{Binding TestLabel}"
+            IsVisible="{Binding CanTest}" />
         <Button x:Name="SubmitButton" Grid.Column="2" MinWidth="110" Classes="PrimaryButton" Click="OnSubmitClick" Content="Save" IsDefault="True" />
       </Grid>
     </Border>

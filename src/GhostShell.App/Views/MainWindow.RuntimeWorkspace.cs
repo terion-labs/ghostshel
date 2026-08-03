@@ -993,20 +993,21 @@ public sealed partial class MainWindow
 
         try
         {
-            var editor = ViewModel.CreateConnectionEditor();
-            var request = await new ConnectionEditorDialog(
+            var editor = ViewModel.CreateUnifiedConnectionEditor(
+                SavedConnectionFamily.Terminal);
+            var result = await new ConnectionEditorDialog(
                     editor,
                     ConnectionEditorDialogPurpose.Connect)
-                .ShowDialog<ConnectionEditorConnectRequest?>(this);
-            if (request is null)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is not UnifiedConnectionEditorResult.Terminal terminal)
             {
                 return;
             }
 
-            if (request.SaveConnection)
+            if (terminal.SaveConnection)
             {
                 var saved = await ViewModel.SaveConnectionAsync(
-                    new ConnectionEditorSaveRequest(request.Profile, null),
+                    terminal.Request,
                     _lifetime.Token);
                 if (!saved.IsSuccess)
                 {
@@ -1016,7 +1017,7 @@ public sealed partial class MainWindow
 
             await SwitchTerminalConnectionAsync(
                 panel,
-                () => ViewModel.ReplaceTerminalConnection(panel, request.Profile));
+                () => ViewModel.ReplaceTerminalConnection(panel, terminal.Request.Profile));
         }
         catch (InvalidOperationException exception)
         {
@@ -1084,20 +1085,21 @@ public sealed partial class MainWindow
 
         try
         {
-            var editor = ViewModel.CreateConnectionEditor();
-            var request = await new ConnectionEditorDialog(
+            var editor = ViewModel.CreateUnifiedConnectionEditor(
+                SavedConnectionFamily.Terminal);
+            var result = await new ConnectionEditorDialog(
                     editor,
                     ConnectionEditorDialogPurpose.Connect)
-                .ShowDialog<ConnectionEditorConnectRequest?>(this);
-            if (request is null)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is not UnifiedConnectionEditorResult.Terminal terminal)
             {
                 return;
             }
 
-            if (request.SaveConnection)
+            if (terminal.SaveConnection)
             {
                 var saved = await ViewModel.SaveConnectionAsync(
-                    new ConnectionEditorSaveRequest(request.Profile, null),
+                    terminal.Request,
                     _lifetime.Token);
                 if (!saved.IsSuccess)
                 {
@@ -1107,7 +1109,7 @@ public sealed partial class MainWindow
 
             await SwitchRuntimePanelConnectionAsync(
                 panel,
-                () => ViewModel.ReplacePanelConnection(panel, request.Profile));
+                () => ViewModel.ReplacePanelConnection(panel, terminal.Request.Profile));
         }
         catch (InvalidOperationException exception)
         {
@@ -1121,18 +1123,20 @@ public sealed partial class MainWindow
         try
         {
             await ViewModel.RefreshSecretsAsync(_lifetime.Token);
-            var editor = ViewModel.CreateFileProviderEditor();
-            var request = await new FileProviderProfileEditorDialog(
+            var editor = ViewModel.CreateUnifiedConnectionEditor(
+                SavedConnectionFamily.Files,
+                initialFamily: SavedConnectionFamily.Files);
+            var result = await new ConnectionEditorDialog(
                     editor,
-                    FileProviderProfileEditorDialogPurpose.Connect)
-                .ShowDialog<FileProviderProfileSaveRequest?>(this);
-            if (request is null)
+                    ConnectionEditorDialogPurpose.Connect)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is not UnifiedConnectionEditorResult.Files files)
             {
                 return;
             }
 
             var saved = await ViewModel.SaveFileProviderProfileAsync(
-                request,
+                files.Request,
                 _lifetime.Token);
             if (!saved.IsSuccess || saved.Value is null)
             {

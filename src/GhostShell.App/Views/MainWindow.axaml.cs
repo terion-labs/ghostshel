@@ -617,15 +617,32 @@ public sealed partial class MainWindow : Window
         _ = e;
         if (sender is Control { DataContext: LauncherConnectionViewModel connection })
         {
-            await LaunchConnectionTargetAsync(connection.Id);
+            await LaunchSavedConnectionAsync(connection);
         }
     }
 
-    private async Task LaunchConnectionTargetAsync(ConnectionId connectionId)
+    private Task LaunchSavedConnectionAsync(LauncherConnectionViewModel connection) =>
+        connection.Family switch
+        {
+            SavedConnectionFamily.Files => LaunchTargetAsync(token =>
+                ViewModel.LaunchFileProviderAsync(
+                    new FileProviderProfileId(connection.TargetId),
+                    token)),
+            SavedConnectionFamily.Database => LaunchTargetAsync(token =>
+                ViewModel.LaunchSavedDatabaseAsync(
+                    new DatabaseConnectionProfileId(connection.TargetId),
+                    token)),
+            _ => LaunchConnectionTargetAsync(connection.Id),
+        };
+
+    private Task LaunchConnectionTargetAsync(ConnectionId connectionId) =>
+        LaunchTargetAsync(token => ViewModel.LaunchConnectionAsync(connectionId, token));
+
+    private async Task LaunchTargetAsync(Func<CancellationToken, Task<bool>> launch)
     {
         try
         {
-            if (await ViewModel.LaunchConnectionAsync(connectionId, _lifetime.Token)
+            if (await launch(_lifetime.Token)
                 && ViewModel.Overlay == ShellOverlay.None
                 && ViewModel.Route == ShellRoute.Workspace)
             {
@@ -691,7 +708,7 @@ public sealed partial class MainWindow : Window
         _ = e;
         if (sender is Control { DataContext: LauncherConnectionViewModel connection })
         {
-            await ShowConnectionEditorAsync(connection.Id);
+            await ShowConnectionEditorAsync(connection);
         }
     }
 
@@ -703,35 +720,89 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var confirmed = await new DefinitionDeleteDialog("connection", connection.Name)
+        var noun = connection.Family switch
+        {
+            SavedConnectionFamily.Files => "file connection",
+            SavedConnectionFamily.Database => "database connection",
+            _ => "connection",
+        };
+        var confirmed = await new DefinitionDeleteDialog(noun, connection.Name)
             .ShowDialog<bool>(this);
         if (!confirmed)
         {
             return;
         }
 
+        var kind = connection.Family switch
+        {
+            SavedConnectionFamily.Files => FileProviderProfile.Kind,
+            SavedConnectionFamily.Database => DatabaseConnectionProfile.Kind,
+            _ => ConnectionProfile.Kind,
+        };
         _ = await ViewModel.DeleteAsync(
-            new DefinitionKey(ConnectionProfile.Kind, connection.Id.Value),
+            new DefinitionKey(kind, connection.TargetId),
             connection.Revision,
             _lifetime.Token);
     }
 
-    private async Task ShowConnectionEditorAsync(ConnectionId? connectionId)
+    private async Task ShowConnectionEditorAsync(LauncherConnectionViewModel? existing)
     {
         try
         {
             ViewModel.CloseOverlay();
-            var editor = ViewModel.CreateConnectionEditor(connectionId);
-            var request = await new ConnectionEditorDialog(editor)
-                .ShowDialog<ConnectionEditorSaveRequest?>(this);
-            if (request is not null)
+            // The files form offers only secrets already in the vault, so the
+            // vault listing must be current before the editor is built.
+            await ViewModel.RefreshSecretsAsync(_lifetime.Token);
+            var editor = existing?.Family switch
             {
-                _ = await ViewModel.SaveConnectionAsync(request, _lifetime.Token);
+                SavedConnectionFamily.Terminal => ViewModel.CreateUnifiedConnectionEditor(
+                    SavedConnectionFamily.Terminal,
+                    terminalConnectionId: existing.Id),
+                SavedConnectionFamily.Files => ViewModel.CreateUnifiedConnectionEditor(
+                    SavedConnectionFamily.Files,
+                    fileProfileId: new FileProviderProfileId(existing.TargetId),
+                    initialFamily: SavedConnectionFamily.Files),
+                SavedConnectionFamily.Database => ViewModel.CreateUnifiedConnectionEditor(
+                    SavedConnectionFamily.Database,
+                    databaseProfileId: new DatabaseConnectionProfileId(existing.TargetId),
+                    initialFamily: SavedConnectionFamily.Database),
+                _ => ViewModel.CreateUnifiedConnectionEditor(),
+            };
+            var result = await new ConnectionEditorDialog(editor)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is not null)
+            {
+                await ApplyConnectionEditorResultAsync(result);
             }
         }
         catch (InvalidOperationException exception)
         {
             ViewModel.SetError(exception.Message);
+        }
+    }
+
+    private async Task ApplyConnectionEditorResultAsync(UnifiedConnectionEditorResult result)
+    {
+        switch (result)
+        {
+            case UnifiedConnectionEditorResult.Terminal terminal:
+                _ = await ViewModel.SaveConnectionAsync(terminal.Request, _lifetime.Token);
+                break;
+            case UnifiedConnectionEditorResult.Files files:
+                _ = await ViewModel.SaveFileProviderProfileAsync(files.Request, _lifetime.Token);
+                break;
+            case UnifiedConnectionEditorResult.Database database:
+                _ = await ViewModel.SaveDatabaseConnectionAsync(
+                    database.Request.ExistingId,
+                    database.Request.Name,
+                    database.Request.DriverId,
+                    database.Request.Details,
+                    database.Request.StorePassword,
+                    database.Request.TunnelConnectionId,
+                    _lifetime.Token);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(result), result, null);
         }
     }
 

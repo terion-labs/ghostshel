@@ -306,7 +306,7 @@
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                 <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Connections" />
-                <components:CountPill Value="{Binding Connections.Count}" />
+                <components:CountPill Value="{Binding TotalConnectionCount}" />
               </StackPanel>
               <Button Grid.Column="1" Classes="TextButton" Click="OnLauncherConnectionsClick" AutomationProperties.Name="View all saved connections">
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
@@ -424,9 +424,9 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                 <TextBlock FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Saved Connections" />
-                <components:CountPill VerticalAlignment="Center" Value="{Binding Connections.Count}" />
+                <components:CountPill VerticalAlignment="Center" Value="{Binding TotalConnectionCount}" />
               </StackPanel>
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Every connection this profile can open" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Terminals, file transfer, and databases in one place" />
             </StackPanel>
             <Button
                 Grid.Column="1"
@@ -440,14 +440,36 @@
               </StackPanel>
             </Button>
           </Grid>
-          <ItemsControl
-              x:Name="LauncherAllConnectionsList"
-              ItemsSource="{Binding Connections}"
-              ItemTemplate="{StaticResource ConnectionCardTemplate}"
-              IsVisible="{Binding HasConnections}"
-              AutomationProperties.Name="All saved connections">
-            <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:CardGridPanel MinItemWidth="256" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-          </ItemsControl>
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasTerminalConnections}">
+            <TextBlock Classes="Eyebrow" Text="Terminal" />
+            <ItemsControl
+                x:Name="LauncherAllConnectionsList"
+                ItemsSource="{Binding Connections}"
+                ItemTemplate="{StaticResource ConnectionCardTemplate}"
+                AutomationProperties.Name="Saved terminal connections">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:CardGridPanel MinItemWidth="256" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasFileConnections}">
+            <TextBlock Classes="Eyebrow" Text="File transfer" />
+            <ItemsControl
+                x:Name="LauncherFileConnectionsList"
+                ItemsSource="{Binding FileConnections}"
+                ItemTemplate="{StaticResource ConnectionCardTemplate}"
+                AutomationProperties.Name="Saved file connections">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:CardGridPanel MinItemWidth="256" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasDatabaseConnections}">
+            <TextBlock Classes="Eyebrow" Text="Databases" />
+            <ItemsControl
+                x:Name="LauncherDatabaseConnectionsList"
+                ItemsSource="{Binding DatabaseConnections}"
+                ItemTemplate="{StaticResource ConnectionCardTemplate}"
+                AutomationProperties.Name="Saved database connections">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:CardGridPanel MinItemWidth="256" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
           <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoConnections}">
             <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <icons:SymbolIcon Symbol="WindowConsole" FontSize="17" />

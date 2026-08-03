@@ -16,10 +16,6 @@ public sealed record ConnectionEditorSaveRequest(
     ConnectionProfile Profile,
     long? ExpectedRevision);
 
-public sealed record ConnectionEditorConnectRequest(
-    ConnectionProfile Profile,
-    bool SaveConnection);
-
 public sealed class ConnectionEditorViewModel : ObservableObject
 {
     private readonly IConnectionRuntime _runtime;

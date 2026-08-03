@@ -303,18 +303,50 @@ internal sealed class QaApplication : Avalonia.Application
                 $"Expected one value but found {values.Count}.");
 
     /// <summary>
+    /// The unified editor with all three families available, matching the shell's
+    /// launcher composition. An existing terminal connection pins the editor to
+    /// the terminal family, like editing from the launcher does.
+    /// </summary>
+    private static UnifiedConnectionEditorViewModel CreateQaConnectionEditor(
+        bool existingTerminal = false,
+        SavedConnectionFamily initialFamily = SavedConnectionFamily.Terminal)
+    {
+        var terminal = existingTerminal
+            ? new ConnectionEditorViewModel(
+                new UnusedConnectionRuntime(),
+                QaData.Connections[0].Value,
+                QaData.Connections[0].Revision)
+            : new ConnectionEditorViewModel(new UnusedConnectionRuntime());
+        var connections = QaData.Connections.Select(item => item.Value).ToArray();
+        return new UnifiedConnectionEditorViewModel(
+            terminal,
+            new FileProviderProfileEditorViewModel(
+                new QaFileProviderRuntime(),
+                connections,
+                []),
+            new DatabaseConnectionEditorViewModel(
+                new QaDatabasePanelClient(),
+                connections),
+            lockedFamily: existingTerminal ? SavedConnectionFamily.Terminal : null,
+            initialFamily: initialFamily);
+    }
+
+    /// <summary>
     /// Modal editors and confirmations are their own windows, so they are
     /// captured directly rather than through a shell route.
     /// </summary>
     private static readonly (string Name, Func<Window> Create, ThemePreference? Theme)[] Dialogs =
     [
         ("dialog-connection-editor", () => new ConnectionEditorDialog(
-            new ConnectionEditorViewModel(new UnusedConnectionRuntime())), null),
+            CreateQaConnectionEditor()), null),
         ("dialog-connection-editor-existing", () => new ConnectionEditorDialog(
-            new ConnectionEditorViewModel(
-                new UnusedConnectionRuntime(),
-                QaData.Connections[0].Value,
-                QaData.Connections[0].Revision)), null),
+            CreateQaConnectionEditor(existingTerminal: true)), null),
+        ("dialog-connection-editor-files", () => new ConnectionEditorDialog(
+            CreateQaConnectionEditor(
+                initialFamily: SavedConnectionFamily.Files)), null),
+        ("dialog-connection-editor-database", () => new ConnectionEditorDialog(
+            CreateQaConnectionEditor(
+                initialFamily: SavedConnectionFamily.Database)), null),
         ("dialog-ai-provider-editor", () => new AiProviderProfileEditorDialog(
             new AiProviderProfileEditorViewModel(new QaAiProfileRuntime(), [])), null),
         ("dialog-database-connection", () => new DatabaseConnectionDetailsDialog(
@@ -505,9 +537,11 @@ internal sealed class QaApplication : Avalonia.Application
             recentSessionHistory: new GhostShell.App.RecentSessionHistory(
                 new QaRecentSessionStore(),
                 new QaTimeProvider()),
+            fileProviderRuntime: new QaFileProviderRuntime(),
             timeProvider: new QaTimeProvider(),
             aiProviderRuntime: AgentProfiles,
-            agentChatRuntime: AgentRuntime);
+            agentChatRuntime: AgentRuntime,
+            databasePanelClient: new QaDatabasePanelClient());
 
         // Real connection pills, so the row that carries them is reviewable
         // rather than rendering empty.

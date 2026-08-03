@@ -377,12 +377,15 @@ public sealed partial class MainWindow
         try
         {
             await ViewModel.RefreshSecretsAsync(_lifetime.Token);
-            var editor = ViewModel.CreateFileProviderEditor(profileId);
-            var request = await new FileProviderProfileEditorDialog(editor)
-                .ShowDialog<FileProviderProfileSaveRequest?>(this);
-            if (request is not null)
+            var editor = ViewModel.CreateUnifiedConnectionEditor(
+                SavedConnectionFamily.Files,
+                fileProfileId: profileId,
+                initialFamily: SavedConnectionFamily.Files);
+            var result = await new ConnectionEditorDialog(editor)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is UnifiedConnectionEditorResult.Files files)
             {
-                _ = await ViewModel.SaveFileProviderProfileAsync(request, _lifetime.Token);
+                _ = await ViewModel.SaveFileProviderProfileAsync(files.Request, _lifetime.Token);
             }
         }
         catch (InvalidOperationException exception)

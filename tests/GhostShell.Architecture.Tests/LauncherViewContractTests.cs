@@ -471,7 +471,7 @@ public sealed class LauncherViewContractTests
         // them — a new page reusing a count is fine, a new kind of count is the
         // thing worth catching.
         Assert.Equal(
-            new[] { "{Binding Connections.Count}", "{Binding HistoryResultCount}", "{Binding Screens.Count}" },
+            new[] { "{Binding HistoryResultCount}", "{Binding Screens.Count}", "{Binding TotalConnectionCount}" },
             countPills
                 .Select(element => AttributeValue(element, "Value") ?? string.Empty)
                 .Distinct(StringComparer.Ordinal)

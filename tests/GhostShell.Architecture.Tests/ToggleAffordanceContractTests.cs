@@ -19,12 +19,13 @@ public sealed class ToggleAffordanceContractTests
     private static readonly string[] AllowedCheckBoxOwners =
     [
         // Consent acknowledgements for insecure transports and untrusted servers.
-        "FileProviderProfileEditorDialog.axaml",
         "McpServerTrustConfirmationDialog.axaml",
         "AgentYoloConfirmationDialog.axaml",
         // A mutually exclusive authentication mode, not an on/off setting.
         "AiProviderProfileEditorDialog.axaml",
-        // A one-off persistence choice made while connecting, not a stored setting.
+        // One-off persistence and consent choices: save-on-connect, keychain
+        // storage, and the insecure-transport acknowledgements of the file
+        // family, which this unified editor absorbed.
         "ConnectionEditorDialog.axaml",
     ];
 

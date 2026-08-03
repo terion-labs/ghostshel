@@ -265,6 +265,40 @@ internal static class QaData
         AccentPreference.FollowHost,
         tabStripPlacement: TabStripPlacement.Left);
 
+    public static IReadOnlyList<StoredDefinition<FileProviderProfile>> FileProviderProfiles { get; } =
+    [
+        Stored(new FileProviderProfile(
+            new FileProviderProfileId("release-artifacts"),
+            FileProviderProfile.CurrentSchemaVersion,
+            "release-artifacts",
+            new FileProviderConfiguration.S3("release-artifacts", "eu-central-1"))),
+        Stored(new FileProviderProfile(
+            new FileProviderProfileId("staging-uploads"),
+            FileProviderProfile.CurrentSchemaVersion,
+            "staging-uploads",
+            new FileProviderConfiguration.Sftp(
+                new ConnectionId("staging-web"),
+                "/var/uploads"))),
+    ];
+
+    public static IReadOnlyList<StoredDefinition<DatabaseConnectionProfile>> DatabaseConnections { get; } =
+    [
+        Stored(new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("core-warehouse"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "core-warehouse",
+            "postgres",
+            "Host=warehouse.internal;Port=5432;Database=events;Username=reader",
+            passwordSecret: new SecretRef("qa-database-password"),
+            tunnelConnectionId: new ConnectionId("bastion-eu"))),
+        Stored(new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("local-metrics"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "local-metrics",
+            "sqlite",
+            "/Users/terion/metrics.db")),
+    ];
+
     public static DefinitionCatalogSnapshot Snapshot { get; } = new(
         Connections,
         Layouts,
@@ -273,6 +307,9 @@ internal static class QaData
         [Stored(SideTabTheme)],
         TerminalProfiles,
         Keymaps,
-        [],
-        [Stored(QuickTerminalSettings.Default)]);
+        FileProviderProfiles,
+        [Stored(QuickTerminalSettings.Default)])
+    {
+        DatabaseConnections = DatabaseConnections,
+    };
 }
