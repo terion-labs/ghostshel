@@ -332,6 +332,52 @@ public sealed record ConnectionStartup
 }
 """;
 
+    /// <summary>
+    /// A C# sample with lines far wider than a narrow preview, so wrapping is
+    /// exercised rather than assumed.
+    /// </summary>
+    public const string LongLinedCSharp = """
+public static TerminalLaunchRequest Plan(ConnectionProfile profile, ConnectionStartup startup) =>
+    new(profile.Endpoint, profile.Credential, startup.Directory, startup.Environment, startup.Command);
+
+// A comment long enough that no reasonable panel width can hold it on one line, which is the point.
+""";
+
+    /// <summary>
+    /// Markdown whose fenced block is long enough to expose a fence sized from
+    /// a guessed line height rather than from what the editor laid out.
+    /// </summary>
+    public const string MarkdownWithLongFence = """
+# Control theory
+
+A PID controller turns the error between target and actual warm instances into a
+pool adjustment:
+
+```python
+class PoolController:
+    def __init__(self, kp, ki, kd, minimum, maximum):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.minimum = minimum
+        self.maximum = maximum
+        self.integral = 0.0
+        self.prev_error_filtered = 0.0
+
+    def step(self, target, actual, dt):
+        error = target - actual
+        self.integral += error * dt
+        derivative = (error - self.prev_error_filtered) / dt
+        output = self.kp * error + self.ki * self.integral + self.kd * derivative
+        clamped = max(self.minimum, min(self.maximum, output))
+        self.prev_error_filtered = error
+        return int(clamped)
+```
+
+Start with a PI controller and add the derivative term only if oscillation is a
+problem.
+""";
+
 
     /// <summary>A Markdown sample covering every block the renderer handles.</summary>
     public const string SampleMarkdown = """

@@ -448,23 +448,22 @@
               <components:DatabaseWorkspaceView
                   DataContext="{Binding DatabasePreview}"
                   IsVisible="{Binding $parent[UserControl].DataContext.HasDatabasePreview}" />
-              <!-- Fitted rather than scrolled: a preview shows the whole
-                   picture, and a small image is not blown up to fill space it
-                   does not have the pixels for. -->
-              <Image
+              <!-- Fitted to start with, then zoomed, panned and turned: a
+                   preview opens showing the whole picture, and detail is
+                   reached without leaving the panel. PDF pages share it. -->
+              <components:ZoomableImageView
                   Margin="{controls:Inset Md}"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  Stretch="Uniform"
-                  StretchDirection="DownOnly"
                   Source="{Binding PreviewImage}"
                   IsVisible="{Binding HasImagePreview}" />
 
               <!-- A PDF is paged through rather than scrolled as one image: the
                    page being looked at is the only one rendered. -->
+              <!-- Left, because the zoom controls own the bottom-right corner:
+                   the two bars sit side by side instead of on top of each
+                   other when the preview column is narrow. -->
               <Border
                   VerticalAlignment="Bottom"
-                  HorizontalAlignment="Center"
+                  HorizontalAlignment="Left"
                   Margin="{controls:Inset Md}"
                   Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
                   Background="{DynamicResource ShellSurfaceBrush}"

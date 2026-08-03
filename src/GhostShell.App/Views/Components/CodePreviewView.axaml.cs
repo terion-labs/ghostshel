@@ -106,22 +106,18 @@ public sealed partial class CodePreviewView : UserControl
             return;
         }
 
-        // Measured from the view's own line height rather than guessed from the
-        // font size: the editor decides how tall a line is, and a guess that is
-        // a pixel short clips the last line.
+        // Taken from what the view actually laid out rather than from a line
+        // height read before the document had one: multiplying a placeholder
+        // line height by the line count produced a block several times too
+        // tall, with the code scrolled out of sight inside it.
         Dispatcher.UIThread.Post(
             () =>
             {
-                var lineHeight = Editor.TextArea.TextView.DefaultLineHeight;
-                if (lineHeight <= 0)
+                var height = Editor.TextArea.TextView.DocumentHeight;
+                if (height > 0)
                 {
-                    return;
+                    Editor.Height = height + 6;
                 }
-
-                Editor.Height = (Editor.Document.LineCount * lineHeight)
-                    + Editor.TextArea.TextView.Margin.Top
-                    + Editor.TextArea.TextView.Margin.Bottom
-                    + 8;
             },
             DispatcherPriority.Loaded);
     }

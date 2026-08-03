@@ -489,6 +489,18 @@ internal sealed class QaApplication : Avalonia.Application
                 },
             };
         }, null),
+        // The picture viewer as the panel shows it: fitted on open, with the
+        // zoom and rotation controls to hand.
+        ("image-preview-zoom", () => CreateZoomableImageProbe(_ => { }), null),
+        // And after three zoom steps and a quarter turn clockwise, so the
+        // transform is proven by what it draws rather than by its arithmetic.
+        ("image-preview-zoomed", () => CreateZoomableImageProbe(view =>
+        {
+            view.RotateRight();
+            view.ZoomIn();
+            view.ZoomIn();
+            view.ZoomIn();
+        }), null),
         ("image-preview-fit", () =>
         {
             var decoder = new GhostShell.Previews.MagickImagePreviewDecoder();
@@ -618,6 +630,42 @@ internal sealed class QaApplication : Avalonia.Application
         }, null),
         // The file preview's syntax highlighting over a C# sample, so token
         // colouring is reviewable rather than assumed from the grammar name.
+        // A source file in a narrow panel: long lines wrap rather than run off
+        // the side of a preview nobody can scroll sideways.
+        ("code-preview-wrap", () => new Window
+        {
+            Width = 380,
+            Height = 300,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Padding = new Thickness(12),
+                Child = new GhostShell.App.Views.Components.CodePreviewView
+                {
+                    FileName = "LaunchPlanner.cs",
+                    Text = QaData.LongLinedCSharp,
+                },
+            },
+        }, null),
+        // A long fenced block inside Markdown: the fence is exactly as tall as
+        // its code, with no dead space under it and nothing scrolled away.
+        ("markdown-preview-long-fence", () => new Window
+        {
+            Width = 560,
+            Height = 640,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Child = new GhostShell.App.Views.Components.MarkdownPreviewView
+                {
+                    Text = QaData.MarkdownWithLongFence,
+                },
+            },
+        }, null),
         ("code-preview", () => new Window
         {
             Width = 720,
@@ -1035,6 +1083,43 @@ internal sealed class QaApplication : Avalonia.Application
     }
 
     /// <summary>
+    /// The zoomable picture viewer over the JPEG probe. The adjustment runs on
+    /// the first real layout pass — before the view has bounds there is no
+    /// "fitted" to zoom relative to.
+    /// </summary>
+    private static Window CreateZoomableImageProbe(
+        Action<GhostShell.App.Views.Components.ZoomableImageView> adjust)
+    {
+        using var file = File.OpenRead(Program.JpegProbePath);
+        var view = new GhostShell.App.Views.Components.ZoomableImageView
+        {
+            Margin = new Thickness(12),
+            Source = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(file, 2400),
+        };
+
+        var adjusted = false;
+        view.LayoutUpdated += (_, _) =>
+        {
+            if (adjusted || view.Bounds.Width < 1)
+            {
+                return;
+            }
+
+            adjusted = true;
+            adjust(view);
+        };
+
+        return new Window
+        {
+            Width = 460,
+            Height = 340,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border { Classes = { "FloatingSidebar" }, Child = view },
+        };
+    }
+
+    /// <summary>
     /// A file panel whose selected remote file is waiting to be downloaded,
     /// with Space raised on the file list exactly as the platform would deliver
     /// it. If the shortcut regresses to bubbling, the ListBox consumes the key
@@ -1201,10 +1286,11 @@ internal sealed class QaApplication : Avalonia.Application
                     Spacing = 8,
                     Children =
                     {
-                        new Image
+                        // Through the same viewer the panel uses, so a page is
+                        // fitted, zoomable and turnable like any other picture.
+                        new GhostShell.App.Views.Components.ZoomableImageView
                         {
                             Source = new Avalonia.Media.Imaging.Bitmap(stream),
-                            Stretch = Stretch.Uniform,
                             Height = 520,
                         },
                         new TextBlock

@@ -10,9 +10,9 @@
       Background="Transparent"
       FontFamily="{DynamicResource ShellDataFontFamily}"
       FontSize="{DynamicResource ShellFontSize11}"
-      HorizontalScrollBarVisibility="Auto"
+      HorizontalScrollBarVisibility="Disabled"
       VerticalScrollBarVisibility="Auto"
       IsReadOnly="True"
       ShowLineNumbers="True"
-      WordWrap="False" />
+      WordWrap="True" />
 </UserControl>
