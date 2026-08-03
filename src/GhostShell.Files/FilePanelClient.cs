@@ -530,6 +530,11 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             return (FilePanelPreviewKind.Image, "image/gif");
         }
 
+        if (IsSqlite(content))
+        {
+            return (FilePanelPreviewKind.Database, "application/vnd.sqlite3");
+        }
+
         if (TryDecodeText(content, out var text))
         {
             if (LooksLikeJson(location, text))
@@ -579,6 +584,15 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             return false;
         }
     }
+
+    /// <summary>
+    /// Every SQLite database begins with this exact 16-byte string, including
+    /// its terminating null. Matching the header rather than the file extension
+    /// means a database is recognized whatever it is called — ".db", ".sqlite",
+    /// ".sqlite3", or no extension at all.
+    /// </summary>
+    private static bool IsSqlite(ReadOnlySpan<byte> content) =>
+        content.StartsWith("SQLite format 3\u0000"u8);
 
     private static bool IsPng(ReadOnlySpan<byte> content) =>
         content.StartsWith(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });

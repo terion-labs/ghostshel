@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/GhostShell.App/GhostShell.App.csproj" />
+    <ProjectReference Include="../../src/GhostShell.Databases/GhostShell.Databases.csproj" />
   </ItemGroup>
 
   <ItemGroup>

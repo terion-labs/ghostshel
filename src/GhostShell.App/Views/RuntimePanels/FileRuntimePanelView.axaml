@@ -428,6 +428,11 @@
                   IsVisible="{Binding HasTextPreview}"
                   Text="{Binding PreviewText}"
                   FileName="{Binding PreviewTitle}" />
+              <!-- A database file previews as the database viewer itself,
+                   sharing the docked panel's workspace component. -->
+              <components:DatabaseWorkspaceView
+                  DataContext="{Binding DatabasePreview}"
+                  IsVisible="{Binding $parent[UserControl].DataContext.HasDatabasePreview}" />
               <ScrollViewer Margin="{controls:Inset Md}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasImagePreview}">
                 <Image MaxWidth="900" MaxHeight="900" Stretch="Uniform" Source="{Binding PreviewImage}" />
               </ScrollViewer>

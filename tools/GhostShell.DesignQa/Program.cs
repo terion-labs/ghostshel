@@ -31,6 +31,12 @@ internal static class Program
 {
     public static string OutputDirectory { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// A real SQLite database written beside the captures, so the database
+    /// preview is exercised against an actual file rather than a mock.
+    /// </summary>
+    public static string SqliteProbePath { get; private set; } = string.Empty;
+
     public static string[] RequestedRoutes { get; private set; } = [];
 
     public static bool IsTerminalFontVerification { get; private set; }
@@ -48,6 +54,8 @@ internal static class Program
 
         OutputDirectory = Path.GetFullPath(
             args.FirstOrDefault() ?? Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "design-qa", "current"));
+
+        SqliteProbePath = Path.Combine(OutputDirectory, "probe.sqlite");
         RequestedRoutes = args.Skip(1).ToArray();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
@@ -412,6 +420,33 @@ internal sealed class QaApplication : Avalonia.Application
             {
                 DataContext = new QaStatisticsPreview(),
             },
+        }, null),
+        // The database viewer opened on a real SQLite file through the shared
+        // workspace component — the same one the file preview embeds.
+        ("database-preview", () =>
+        {
+            var viewer = new DatabaseRuntimePanelViewModel(
+                PanelInstanceId.New(),
+                "probe.db",
+                new GhostShell.Databases.DatabasePanelClient(),
+                "sqlite",
+                Program.SqliteProbePath);
+            _ = viewer.ConnectAsync();
+            return new Window
+            {
+                Width = 820,
+                Height = 460,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = new Border
+                {
+                    Classes = { "FloatingSidebar" },
+                    Child = new GhostShell.App.Views.Components.DatabaseWorkspaceView
+                    {
+                        DataContext = viewer,
+                    },
+                },
+            };
         }, null),
         // The file preview's syntax highlighting over a C# sample, so token
         // colouring is reviewable rather than assumed from the grammar name.
@@ -798,6 +833,39 @@ internal sealed class QaApplication : Avalonia.Application
     /// Shows a modal editor off-screen, lets it settle, then renders it at its
     /// own arranged size so the capture reflects the dialog's real geometry.
     /// </summary>
+    /// <summary>
+    /// Writes a small real SQLite database by hand — the harness references no
+    /// SQLite package of its own, and the file format's header plus a couple of
+    /// tables is exactly what the viewer needs to be exercised honestly.
+    /// </summary>
+    private static void WriteSqliteProbe()
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            $"Data Source={Program.SqliteProbePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            DROP TABLE IF EXISTS deployments;
+            DROP TABLE IF EXISTS environments;
+            CREATE TABLE deployments (
+                id INTEGER PRIMARY KEY,
+                service TEXT,
+                region TEXT,
+                status TEXT,
+                deployed_at TEXT);
+            INSERT INTO deployments VALUES
+                (184, 'billing-api', 'eu-central-1', 'healthy', '2026-08-02T21:14:09Z'),
+                (183, 'billing-api', 'us-east-1', 'healthy', '2026-08-02T21:12:44Z'),
+                (182, 'checkout-web', 'eu-central-1', 'rolled-back', '2026-08-02T19:03:18Z'),
+                (181, 'ledger-worker', 'eu-central-1', 'healthy', '2026-08-02T17:40:51Z');
+            CREATE TABLE environments (name TEXT, tier TEXT);
+            INSERT INTO environments VALUES ('production', 'tier-1'), ('staging', 'tier-2');
+            CREATE VIEW IF NOT EXISTS recent_failures AS
+                SELECT * FROM deployments WHERE status <> 'healthy';
+            """;
+        command.ExecuteNonQuery();
+    }
+
     private static async Task CaptureDialogAsync(string name, Window dialog)
     {
         dialog.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -836,6 +904,7 @@ internal sealed class QaApplication : Avalonia.Application
         try
         {
             Directory.CreateDirectory(Program.OutputDirectory);
+            WriteSqliteProbe();
             await Task.Delay(800);
 
             var requested = Program.RequestedRoutes;

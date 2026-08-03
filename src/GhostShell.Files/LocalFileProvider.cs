@@ -7,7 +7,7 @@ namespace GhostShell.Files;
 /// Confines local filesystem operations to one configured root. Locations are resolved from
 /// validated path segments, and reparse points are metadata only: operations never follow them.
 /// </summary>
-public abstract partial class LocalFileProvider : IFileProvider
+public abstract partial class LocalFileProvider : IFileProvider, ILocalFilePathSource
 {
     private const long MaximumReadBytes = 64L * 1024 * 1024;
     private const int MaximumBufferSize = 1024 * 1024;
@@ -64,6 +64,18 @@ public abstract partial class LocalFileProvider : IFileProvider
     public FileProviderCapabilities Capabilities { get; }
 
     protected string RootPath { get; }
+
+    /// <summary>
+    /// The confined path for a location, or null when it does not resolve
+    /// inside this provider's root. Links are allowed at the leaf because the
+    /// caller wants the file the user selected, exactly as a bounded read of
+    /// the same location would return it.
+    /// </summary>
+    string? ILocalFilePathSource.TryGetLocalPath(FileLocation location)
+    {
+        var resolved = ResolveLocation(location, allowLeafLink: true);
+        return resolved.IsSuccess ? resolved.Value!.Path : null;
+    }
 
     public static LocalFileProvider CreateForCurrentPlatform(LocalFileProviderOptions options)
     {

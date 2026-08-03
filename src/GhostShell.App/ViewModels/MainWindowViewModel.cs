@@ -10221,7 +10221,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             initialLocation,
             initialLocationText,
             deferInitialization,
-            connection);
+            connection,
+            _databasePanelClient);
     }
 
     private FileProviderProfileDescriptor? ResolveFileProfile(

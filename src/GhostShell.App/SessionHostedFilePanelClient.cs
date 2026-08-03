@@ -12,6 +12,7 @@ public sealed class SessionHostedFilePanelClient :
     IFilePanelClient,
     IFileTransferQueueClient,
     IHostedFilePanelClient,
+    IFileContentMaterializer,
     IDisposable
 {
     private readonly object _profileGate = new();
@@ -76,6 +77,25 @@ public sealed class SessionHostedFilePanelClient :
             return revision < 0 ? null : revision;
         }
     }
+
+    /// <summary>
+    /// Materialization is not a session operation: it produces a path on this
+    /// machine, so it goes straight to the provider client rather than through
+    /// the session host. A client that cannot materialize refuses here, exactly
+    /// as it would if the panel had asked it directly.
+    /// </summary>
+    public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+        FilePanelLocation location,
+        long maximumBytes,
+        CancellationToken cancellationToken) =>
+        _profileSource is IFileContentMaterializer materializer
+            ? materializer.MaterializeAsync(location, maximumBytes, cancellationToken)
+            : ValueTask.FromResult(FilePanelResult<MaterializedFile>.Failure(
+                new FilePanelError(
+                    FilePanelErrorCode.UnsupportedCapability,
+                    "file_materialize_unsupported",
+                    "This file client cannot open files by path.",
+                    false)));
 
     public IReadOnlyList<FileProviderProfileDescriptor> Profiles
     {

@@ -111,6 +111,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private volatile bool _initializationStarted;
     private bool _disposed;
 
+    private readonly IDatabasePanelClient? _databaseClient;
+    private readonly IFileContentMaterializer? _materializer;
+    private DatabaseRuntimePanelViewModel? _databasePreview;
+    private MaterializedFile? _databasePreviewFile;
+
     public FileRuntimePanelViewModel(
         PanelInstanceId id,
         string title,
@@ -120,10 +125,15 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         FilePanelLocation? initialLocation = null,
         string? initialLocationText = null,
         bool deferInitialization = false,
-        ConnectionProfile? connection = null)
+        ConnectionProfile? connection = null,
+        IDatabasePanelClient? databaseClient = null)
         : base(id, PanelKind.FileViewer, title, "Files")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
+        // Both are optional: a build without database drivers, or a client that
+        // cannot hand out a real path, simply previews databases as bytes.
+        _databaseClient = databaseClient;
+        _materializer = client as IFileContentMaterializer;
         _connection = connection ?? BuiltInConnections.Local;
         _retryCommand = new AsyncActionCommand(
             () => RetryAsync(),
@@ -587,11 +597,20 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasError => CurrentIssue is not null;
 
+    /// <summary>
+    /// The database viewer bound to the selected file, when that file is a
+    /// database. It is the same view model the docked database panel uses, so
+    /// the preview is the product's database viewer rather than a second one.
+    /// </summary>
+    public DatabaseRuntimePanelViewModel? DatabasePreview => _databasePreview;
+
+    public bool HasDatabasePreview => _databasePreview is not null;
+
     public bool HasTextPreview => !string.IsNullOrEmpty(PreviewText);
 
     public bool HasImagePreview => PreviewImage is not null;
 
-    public bool HasPreview => HasTextPreview || HasImagePreview;
+    public bool HasPreview => HasTextPreview || HasImagePreview || HasDatabasePreview;
 
     public bool ShowPreviewPlaceholder => !HasPreview && !IsPreviewLoading;
 
@@ -1185,6 +1204,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _metadata?.Dispose();
         _lifetime.Dispose();
         PreviewImage = null;
+        ClearDatabasePreview();
         if (_hostedClient is IDisposable disposable)
         {
             disposable.Dispose();
@@ -1711,6 +1731,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 PreviewText = Encoding.UTF8.GetString(preview.Content.Span)
                     + (preview.IsTruncated ? "\n\n[preview truncated]" : string.Empty);
                 break;
+            case FilePanelPreviewKind.Database:
+                _ = OpenDatabasePreviewAsync(preview.Location);
+                break;
             case FilePanelPreviewKind.Hex:
                 PreviewText = FormatHex(preview.Content.Span, preview.IsTruncated);
                 break;
@@ -1845,6 +1868,119 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewText = null;
         PreviewIssue = null;
         PreviewTitle = "Preview";
+        ClearDatabasePreview();
+    }
+
+    /// <summary>
+    /// Disposes the previewed database and the temporary copy behind it. The
+    /// copy is deleted as soon as the selection moves on, so browsing a folder
+    /// of databases never accumulates them.
+    /// </summary>
+    /// <summary>
+    /// The ceiling on a database opened through the file preview. A remote
+    /// database is copied in full before it can be opened — a partial copy is a
+    /// corrupt database — so the limit is what we are willing to pull, not what
+    /// we are willing to render.
+    /// </summary>
+    private const long MaximumDatabasePreviewBytes = 256L * 1024 * 1024;
+
+    /// <summary>
+    /// Opens the selected file with the database viewer. Local files open where
+    /// they are; a file on any other provider is copied to a private temporary
+    /// file first, because a database engine opens a path, not a byte stream.
+    /// </summary>
+    private async Task OpenDatabasePreviewAsync(FilePanelLocation location)
+    {
+        if (_databaseClient is null || _materializer is null)
+        {
+            PreviewText = "This build cannot open database files in the preview.";
+            return;
+        }
+
+        var operation = _preview;
+        if (operation is null)
+        {
+            return;
+        }
+
+        IsPreviewLoading = true;
+        FilePanelResult<MaterializedFile> result;
+        try
+        {
+            result = await _materializer.MaterializeAsync(
+                location,
+                MaximumDatabasePreviewBytes,
+                operation.Token);
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                PreviewText = "The database could not be opened.";
+            }
+
+            return;
+        }
+        finally
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                IsPreviewLoading = false;
+            }
+        }
+
+        // The selection moved while the copy was in flight: the lease belongs
+        // to a preview nobody is looking at any more.
+        if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+        {
+            result.Value?.Dispose();
+            return;
+        }
+
+        if (!result.IsSuccess)
+        {
+            var error = result.Error!;
+            PreviewText = error.Message;
+            PreviewIssue = FileOperationIssue.FromProvider(error);
+            return;
+        }
+
+        var file = result.Value!;
+        var viewer = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            PreviewTitle,
+            _databaseClient,
+            SqliteDriverId,
+            file.Path);
+        _databasePreviewFile = file;
+        _databasePreview = viewer;
+        OnPropertyChanged(nameof(DatabasePreview));
+        OnPropertyChanged(nameof(HasDatabasePreview));
+        OnPropertyChanged(nameof(HasPreview));
+        OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+        await viewer.ConnectAsync();
+    }
+
+    private const string SqliteDriverId = "sqlite";
+
+    private void ClearDatabasePreview()
+    {
+        var preview = _databasePreview;
+        var file = _databasePreviewFile;
+        _databasePreview = null;
+        _databasePreviewFile = null;
+        if (preview is not null)
+        {
+            OnPropertyChanged(nameof(DatabasePreview));
+            OnPropertyChanged(nameof(HasDatabasePreview));
+        }
+
+        preview?.Dispose();
+        file?.Dispose();
     }
 
     private void ClearMetadata()

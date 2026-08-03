@@ -197,6 +197,13 @@ public enum FilePanelPreviewKind
     StructuredText,
     Image,
     Hex,
+
+    /// <summary>
+    /// A database file. Its bytes are not the preview: the presentation opens
+    /// it with a database engine, which needs the whole file by path rather
+    /// than the bounded head this preview carries.
+    /// </summary>
+    Database,
 }
 
 public sealed record FilePanelPreview
