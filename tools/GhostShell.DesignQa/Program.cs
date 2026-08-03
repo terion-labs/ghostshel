@@ -413,6 +413,19 @@ internal sealed class QaApplication : Avalonia.Application
                 DataContext = new QaStatisticsPreview(),
             },
         }, null),
+        // And wide, where the two-column cap keeps the cards sharing the full
+        // width instead of packing at minimum width in a corner.
+        ("stats-wide", () => new Window
+        {
+            Width = 1100,
+            Height = 720,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new GhostShell.App.Views.RuntimePanels.StatisticsRuntimePanelView
+            {
+                DataContext = new QaStatisticsPreview(),
+            },
+        }, null),
         // The same chooser the placeholder panel embeds, at a split-panel width,
         // so the adaptive tile grid is reviewable at the size that used to crush
         // its labels to one letter.

@@ -16,9 +16,12 @@ public sealed class CardGridPanel : Panel
     public static readonly StyledProperty<double> SpacingProperty =
         AvaloniaProperty.Register<CardGridPanel, double>(nameof(Spacing), 14);
 
+    public static readonly StyledProperty<int> MaxColumnsProperty =
+        AvaloniaProperty.Register<CardGridPanel, int>(nameof(MaxColumns), int.MaxValue);
+
     static CardGridPanel()
     {
-        AffectsMeasure<CardGridPanel>(MinItemWidthProperty, SpacingProperty);
+        AffectsMeasure<CardGridPanel>(MinItemWidthProperty, SpacingProperty, MaxColumnsProperty);
     }
 
     /// <summary>The narrowest a card may become before a column is dropped.</summary>
@@ -33,6 +36,18 @@ public sealed class CardGridPanel : Panel
     {
         get => GetValue(SpacingProperty);
         set => SetValue(SpacingProperty, value);
+    }
+
+    /// <summary>
+    /// The most columns a row may hold. A fixed small set of cards — a stat
+    /// row of two — caps its columns so the cards share the full width on wide
+    /// panels instead of packing at minimum width; open-ended card grids leave
+    /// this unset and let the width decide alone.
+    /// </summary>
+    public int MaxColumns
+    {
+        get => GetValue(MaxColumnsProperty);
+        set => SetValue(MaxColumnsProperty, value);
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -104,7 +119,10 @@ public sealed class CardGridPanel : Panel
             : MinItemWidth;
         var spacing = Math.Max(0, Spacing);
         var minimum = Math.Max(1, MinItemWidth);
-        var columns = Math.Max(1, (int)Math.Floor((width + spacing) / (minimum + spacing)));
+        var columns = Math.Clamp(
+            (int)Math.Floor((width + spacing) / (minimum + spacing)),
+            1,
+            Math.Max(1, MaxColumns));
 
         // Column count follows the available width, never the number of cards. It
         // used to be clamped to the child count, which made a single card stretch
