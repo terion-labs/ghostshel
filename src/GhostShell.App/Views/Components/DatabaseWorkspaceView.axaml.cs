@@ -24,6 +24,12 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     /// </summary>
     private const double ObjectsListMinimumWorkspaceWidth = 520;
 
+    /// <summary>The narrowest the objects list may be dragged while shown.</summary>
+    private const double ObjectsListMinimumWidth = 120;
+
+    /// <summary>The width the results keep while the objects list is shown.</summary>
+    private const double ResultsMinimumWidth = 240;
+
     /// <summary>
     /// The width the objects list had while it was shown, so folding and
     /// unfolding does not discard a width the user chose with the splitter.
@@ -53,13 +59,22 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         if (folded)
         {
             _objectsWidth = columns[0].Width;
+            // A zero width alone is not enough: a column is clamped to its own
+            // MinWidth, so the folded list would keep reserving an invisible
+            // gutter and push the results off the edge. The results column's
+            // minimum goes too — once it is the only column, it must be free to
+            // be as narrow as the panel is.
+            columns[0].MinWidth = 0;
             columns[0].Width = new GridLength(0);
             columns[1].Width = new GridLength(0);
+            columns[2].MinWidth = 0;
         }
         else
         {
+            columns[0].MinWidth = ObjectsListMinimumWidth;
             columns[0].Width = _objectsWidth;
             columns[1].Width = new GridLength(5);
+            columns[2].MinWidth = ResultsMinimumWidth;
         }
 
         _objectsFolded = folded;

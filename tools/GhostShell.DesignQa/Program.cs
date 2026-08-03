@@ -461,7 +461,7 @@ internal sealed class QaApplication : Avalonia.Application
             _ = viewer.ConnectAsync();
             return new Window
             {
-                Width = 430,
+                Width = 340,
                 Height = 460,
                 CanResize = false,
                 ShowInTaskbar = false,
