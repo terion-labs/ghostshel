@@ -27,6 +27,21 @@
     <Style Selector="Border.ResultRow.selected">
       <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
     </Style>
+
+    <!-- The editor is a flat writing surface: the hairline under the row is
+         the only chrome, so the field must not draw its own well or halo. -->
+    <Style Selector="TextBox.QueryEditor">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="TextBox.QueryEditor /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="TextBox.QueryEditor:focus /template/ Border#PART_BorderElement">
+      <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    </Style>
   </UserControl.Styles>
   <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
@@ -140,27 +155,30 @@
         </Border>
 
         <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*">
-          <Grid Margin="{controls:Inset Sm}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <TextBox
-                MinHeight="64"
-                MaxHeight="140"
-                AcceptsReturn="True"
-                FontFamily="{DynamicResource ShellDataFontFamily}"
-                Text="{Binding QueryText, Mode=TwoWay}"
-                TextWrapping="NoWrap"
-                PlaceholderText="SELECT …"
-                KeyDown="OnQueryKeyDown"
-                AutomationProperties.Name="SQL statement" />
-            <Button
-                Grid.Column="1"
-                MinWidth="70"
-                VerticalAlignment="Top"
-                Classes="PrimaryButton"
-                Command="{Binding RunQueryCommand}"
-                Content="Run"
-                ToolTip.Tip="Run the statement (Cmd+Enter)"
-                AutomationProperties.Name="Run the SQL statement" />
-          </Grid>
+          <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <TextBox
+                  Classes="QueryEditor"
+                  MinHeight="64"
+                  MaxHeight="140"
+                  AcceptsReturn="True"
+                  FontFamily="{DynamicResource ShellDataFontFamily}"
+                  Text="{Binding QueryText, Mode=TwoWay}"
+                  TextWrapping="NoWrap"
+                  PlaceholderText="SELECT …"
+                  KeyDown="OnQueryKeyDown"
+                  AutomationProperties.Name="SQL statement" />
+              <Button
+                  Grid.Column="1"
+                  MinWidth="70"
+                  VerticalAlignment="Top"
+                  Classes="PrimaryButton"
+                  Command="{Binding RunQueryCommand}"
+                  Content="Run"
+                  ToolTip.Tip="Run the statement (Cmd+Enter)"
+                  AutomationProperties.Name="Run the SQL statement" />
+            </Grid>
+          </Border>
 
           <controls:SurfaceCard Grid.Row="1" Tone="Notice" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Padding="{controls:Inset Sm}" IsVisible="{Binding HasError}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Database error">
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Foreground="{DynamicResource ShellDangerBrush}" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
