@@ -423,9 +423,11 @@
               </Grid>
             </controls:SurfaceCard>
             <Grid Grid.Row="2">
-              <ScrollViewer Margin="{controls:Inset Md}" IsVisible="{Binding HasTextPreview}">
-                <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding PreviewText}" TextWrapping="NoWrap" />
-              </ScrollViewer>
+              <components:CodePreviewView
+                  Margin="{controls:Inset Md}"
+                  IsVisible="{Binding HasTextPreview}"
+                  Text="{Binding PreviewText}"
+                  FileName="{Binding PreviewTitle}" />
               <ScrollViewer Margin="{controls:Inset Md}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasImagePreview}">
                 <Image MaxWidth="900" MaxHeight="900" Stretch="Uniform" Source="{Binding PreviewImage}" />
               </ScrollViewer>

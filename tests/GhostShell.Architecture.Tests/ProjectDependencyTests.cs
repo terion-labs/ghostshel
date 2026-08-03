@@ -246,9 +246,7 @@ public sealed class ProjectDependencyTests
                 "src/GhostShell.Desktop/GhostShell.Desktop.csproj",
             }
             .SelectMany(path => LoadProject(path).Descendants("PackageReference"))
-            .Where(element => ((string?)element.Attribute("Include"))?.StartsWith(
-                "Avalonia",
-                StringComparison.Ordinal) is true)
+            .Where(element => IsAvaloniaFrameworkPackage((string?)element.Attribute("Include")))
             .Select(element => (string?)element.Attribute("Version"))
             .Where(version => version is not null)
             .Cast<string>()
@@ -260,6 +258,23 @@ public sealed class ProjectDependencyTests
             version >= new Version(12, 0, 1),
             $"Avalonia {version} predates the DBus security fix shipped in 12.0.1.");
     }
+
+    /// <summary>
+    /// The rule is about the Avalonia framework's own packages, which ship as
+    /// one version. Third-party control libraries whose names merely begin with
+    /// "Avalonia" — the source editor's packages — track the framework's major
+    /// on their own release cadence and would break the single-version rule
+    /// without saying anything about the DBus fix.
+    /// </summary>
+    private static readonly string[] NonFrameworkAvaloniaPackages =
+    [
+        "Avalonia.AvaloniaEdit",
+        "AvaloniaEdit.TextMate",
+    ];
+
+    private static bool IsAvaloniaFrameworkPackage(string? include) =>
+        include?.StartsWith("Avalonia", StringComparison.Ordinal) is true
+        && !NonFrameworkAvaloniaPackages.Contains(include, StringComparer.Ordinal);
 
     [Fact]
     public void DesktopUsesAvaloniasDbusProtocolVersionForItsPortalClient()

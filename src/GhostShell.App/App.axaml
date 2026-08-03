@@ -188,6 +188,9 @@
     <!-- The colour picker ships its own theme; without it the swatches render
          at zero size and the palette cards lose their colour wells. -->
     <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+    <!-- The source-preview editor ships its own control theme; without it the
+         TextEditor has no template and renders nothing. -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/DesignSystem.axaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellTheme.axaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellDockTheme.axaml" />

@@ -413,6 +413,25 @@ internal sealed class QaApplication : Avalonia.Application
                 DataContext = new QaStatisticsPreview(),
             },
         }, null),
+        // The file preview's syntax highlighting over a C# sample, so token
+        // colouring is reviewable rather than assumed from the grammar name.
+        ("code-preview", () => new Window
+        {
+            Width = 720,
+            Height = 520,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Padding = new Thickness(12),
+                Child = new GhostShell.App.Views.Components.CodePreviewView
+                {
+                    FileName = "ConnectionStartup.cs",
+                    Text = QaData.SampleCSharp,
+                },
+            },
+        }, null),
         // The process monitor at both widths: wide proves the name column trims
         // instead of overlapping CPU, narrow proves the Started column folds.
         ("procs-wide", () => new Window

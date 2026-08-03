@@ -299,6 +299,39 @@ internal static class QaData
             "/Users/terion/metrics.db")),
     ];
 
+
+    /// <summary>A C# sample for the syntax-highlight capture.</summary>
+    public const string SampleCSharp = """
+using System.Text;
+
+namespace GhostShell.Core;
+
+/// <summary>How a terminal session begins.</summary>
+public sealed record ConnectionStartup
+{
+    public ConnectionStartup(string? directory = null, string? command = null)
+    {
+        Directory = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim();
+        Command = command;
+    }
+
+    public string? Directory { get; }
+
+    public string? Command { get; }
+
+    public override string ToString()
+    {
+        var builder = new StringBuilder("startup");
+        if (Directory is { } directory)
+        {
+            builder.Append($" in {directory}");
+        }
+
+        return builder.ToString(); // 2 + 2 == 4
+    }
+}
+""";
+
     public static DefinitionCatalogSnapshot Snapshot { get; } = new(
         Connections,
         Layouts,
