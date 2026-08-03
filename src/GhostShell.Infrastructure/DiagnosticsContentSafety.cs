@@ -18,7 +18,12 @@ internal enum DiagnosticsSafetyFailure
 internal static class DiagnosticsContentSafety
 {
     private const string RedactionMarker = "[REDACTED]";
-    private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(250);
+
+    // A ReDoS bound, not a latency budget: a timeout still fails closed as
+    // unsafe, so it must sit far above scheduler noise — at 250ms, first-use
+    // regex compilation on a saturated machine produced spurious rejections
+    // of safe static content.
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(10);
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     private static readonly string SensitiveNamePattern =
