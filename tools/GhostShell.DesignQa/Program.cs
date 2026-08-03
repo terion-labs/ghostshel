@@ -413,6 +413,30 @@ internal sealed class QaApplication : Avalonia.Application
                 DataContext = new QaStatisticsPreview(),
             },
         }, null),
+        // The process monitor at both widths: wide proves the name column trims
+        // instead of overlapping CPU, narrow proves the Started column folds.
+        ("procs-wide", () => new Window
+        {
+            Width = 900,
+            Height = 620,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new GhostShell.App.Views.RuntimePanels.ProcessMonitorRuntimePanelView
+            {
+                DataContext = new QaProcessMonitorPreview(),
+            },
+        }, null),
+        ("procs-narrow", () => new Window
+        {
+            Width = 430,
+            Height = 620,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new GhostShell.App.Views.RuntimePanels.ProcessMonitorRuntimePanelView
+            {
+                DataContext = new QaProcessMonitorPreview(),
+            },
+        }, null),
         // And wide, where the two-column cap keeps the cards sharing the full
         // width instead of packing at minimum width in a corner.
         ("stats-wide", () => new Window

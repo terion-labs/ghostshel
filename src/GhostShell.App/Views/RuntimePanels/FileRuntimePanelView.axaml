@@ -188,11 +188,11 @@
           <ColumnDefinition Width="5" />
           <ColumnDefinition Width="2*" MinWidth="220" />
         </Grid.ColumnDefinitions>
-        <Grid Background="{DynamicResource ShellSurfaceBrush}">
+        <Grid>
           <Grid RowDefinitions="Auto,*">
             <Border
                 Height="29"
-                Background="{DynamicResource ShellBackgroundBrush}"
+                Background="{DynamicResource ShellSurfaceBrush}"
                 IsVisible="{Binding IsDetailsView}">
               <Grid Margin="{controls:Inset Horizontal=Md}">
                 <Grid.ColumnDefinitions>
@@ -336,7 +336,7 @@
           </Grid>
 
           <Border
-              Background="{DynamicResource ShellBackgroundBrush}"
+              Background="{DynamicResource ShellSidebarBrush}"
               IsVisible="{Binding ShowLoadingState}"
               AutomationProperties.LiveSetting="Polite"
               AutomationProperties.Name="File Viewer loading">
@@ -406,10 +406,9 @@
 
         <Border
             Grid.Column="2"
-            Background="{DynamicResource ShellSurfaceBrush}"
             IsVisible="{Binding IsPreviewVisible}">
           <Grid RowDefinitions="29,Auto,*">
-            <Border Background="{DynamicResource ShellBackgroundBrush}">
+            <Border Background="{DynamicResource ShellSurfaceBrush}">
               <Grid Margin="{controls:Inset Horizontal=Md}">
                 <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding PreviewTitle}" TextTrimming="CharacterEllipsis" />
               </Grid>

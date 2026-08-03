@@ -538,3 +538,67 @@ internal sealed class QaStatisticsPreview
     public IReadOnlyList<double> MemoryHistory { get; } =
         [101.2, 101.4, 101.3, 101.6, 101.5, 101.8, 101.7, 101.9];
 }
+
+/// <summary>
+/// Layout-only stand-in for the process monitor view model, with names long
+/// enough to prove the name column trims instead of overlapping its neighbours.
+/// </summary>
+internal sealed class QaProcessMonitorPreview
+{
+    public sealed record Row(
+        int ProcessId,
+        string Name,
+        string Cpu,
+        string Memory,
+        string Started,
+        bool IsGhostShell)
+    {
+        public string AccessibleSummary =>
+            $"PID {ProcessId}, {Name}, CPU {Cpu}, memory {Memory}, started {Started}.";
+    }
+
+    public bool IsActive => false;
+
+    public bool IsVisibleInLayout => true;
+
+    public bool ShowContent => true;
+
+    public bool ShowLoading => false;
+
+    public bool ShowTerminalError => false;
+
+    public bool ShowInlineIssue => false;
+
+    public string StatusText => "Live · Local";
+
+    public IBrush StatusColor => Brushes.MediumSeaGreen;
+
+    public string ConnectionDisplayName => "Local";
+
+    public string Filter => string.Empty;
+
+    public IReadOnlyList<string> SortOptions { get; } = ["Cpu descending"];
+
+    public string Sort => "Cpu descending";
+
+    public string IssueTitle => string.Empty;
+
+    public string IssueMessage => string.Empty;
+
+    public string ShowingText => "Showing 250 processes · bounded sample of 1 179";
+
+    public string CapturedAtText => "Captured 18:30:53";
+
+    public IReadOnlyList<Row> Processes { get; } =
+    [
+        new(96971, "GhostShell", "0.8%", "562.4 MiB", "03.08.2026 18:26", true),
+        new(61335, "Brave Browser Helper (Renderer)", "0.2%", "214.5 MiB", "01.08.2026 22:55", false),
+        new(37330, "AMSUIPaymentsViewService_macOS", "0.0%", "15.0 MiB", "31.07.2026 14:09", false),
+        new(49345, "BackgroundTaskManagementAgent", "0.0%", "28.1 MiB", "01.08.2026 22:46", false),
+        new(51129, "sysmond", "0.2%", "5.3 MiB", "01.08.2026 22:48", false),
+        new(17880, "Signal", "0.0%", "269.1 MiB", "31.07.2026 11:39", false),
+        new(908, "bridge-gui", "0.0%", "90.7 MiB", "25.07.2026 12:52", false),
+    ];
+
+    public Row? SelectedProcess { get; set; }
+}

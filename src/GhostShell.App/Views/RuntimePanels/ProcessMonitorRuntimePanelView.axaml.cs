@@ -8,9 +8,21 @@ namespace GhostShell.App.Views.RuntimePanels;
 
 public sealed partial class ProcessMonitorRuntimePanelView : UserControl
 {
+    /// <summary>
+    /// Below this width the five columns cannot all hold their minimums, so the
+    /// Started column folds away rather than colliding with its neighbours.
+    /// </summary>
+    private const double StartedColumnMinimumWidth = 560;
+
     public ProcessMonitorRuntimePanelView()
     {
         InitializeComponent();
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        Classes.Set("narrowPanel", e.NewSize.Width < StartedColumnMinimumWidth);
     }
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;
