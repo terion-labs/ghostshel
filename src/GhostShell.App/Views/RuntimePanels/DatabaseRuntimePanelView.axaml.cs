@@ -26,12 +26,14 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         if (_observedPanel is not null)
         {
             _observedPanel.PropertyChanged -= OnPanelPropertyChanged;
+            _observedPanel.PasswordRequested -= OnPasswordRequested;
         }
 
         _observedPanel = Panel;
         if (_observedPanel is not null)
         {
             _observedPanel.PropertyChanged += OnPanelPropertyChanged;
+            _observedPanel.PasswordRequested += OnPasswordRequested;
         }
 
         SyncConnectionStringBox();
@@ -40,7 +42,9 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.PropertyName is nameof(DatabaseRuntimePanelViewModel.MaskedConnectionString))
+        if (e.PropertyName is nameof(DatabaseRuntimePanelViewModel.MaskedConnectionString)
+            or nameof(DatabaseRuntimePanelViewModel.AddressBarText)
+            or nameof(DatabaseRuntimePanelViewModel.IsSavedConnection))
         {
             SyncConnectionStringBox();
         }
@@ -48,9 +52,32 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
 
     private void SyncConnectionStringBox()
     {
-        if (!ConnectionStringBox.IsFocused)
+        // A saved connection shows its name and is not editable in place; the
+        // details dialog is the editor.
+        ConnectionStringBox.IsReadOnly = Panel?.IsSavedConnection == true;
+        if (!ConnectionStringBox.IsFocused || ConnectionStringBox.IsReadOnly)
         {
-            ConnectionStringBox.Text = Panel?.MaskedConnectionString ?? string.Empty;
+            ConnectionStringBox.Text = Panel?.AddressBarText ?? string.Empty;
+        }
+    }
+
+    private async void OnPasswordRequested(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Panel is not { } panel
+            || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        var dialog = new DatabasePasswordPromptDialog(
+            panel.SavedConnectionName ?? "Database");
+        var password = await dialog.ShowDialog<string?>(owner);
+        if (password is not null)
+        {
+            panel.SetSessionPassword(password);
+            await panel.ConnectAsync();
         }
     }
 
@@ -58,7 +85,7 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
     {
         _ = sender;
         _ = e;
-        if (Panel is { } panel)
+        if (Panel is { IsSavedConnection: false } panel)
         {
             ConnectionStringBox.Text = panel.ConnectionString;
         }
@@ -74,7 +101,7 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
 
     private void CommitConnectionString()
     {
-        if (Panel is { } panel && ConnectionStringBox.IsFocused)
+        if (Panel is { IsSavedConnection: false } panel && ConnectionStringBox.IsFocused)
         {
             panel.ConnectionString = ConnectionStringBox.Text ?? string.Empty;
         }
@@ -94,12 +121,32 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         var dialog = new DatabaseConnectionDetailsDialog(
             panel.SelectedDriver.DisplayName,
             panel.SelectedDriver.IsFileBased,
-            panel.ParseConnectionDetails());
-        var details = await dialog.ShowDialog<GhostShell.Application.DatabaseConnectionDetails?>(owner);
-        if (details is not null)
+            panel.ParseConnectionDetails(),
+            panel.SavedConnectionName);
+        var result = await dialog.ShowDialog<DatabaseConnectionDialogResult?>(owner);
+        if (result is null)
         {
-            await panel.ApplyConnectionDetailsAsync(details);
+            return;
         }
+
+        if (result.SaveName is { } saveName
+            && owner.DataContext is MainWindowViewModel shell)
+        {
+            var profile = await shell.SaveDatabaseConnectionAsync(
+                panel.SavedConnectionId,
+                saveName,
+                panel.SelectedDriver.Id,
+                result.Details,
+                result.StorePassword,
+                panel.TunnelConnectionId);
+            if (profile is not null)
+            {
+                panel.ApplySavedConnection(profile, result.Details.Password);
+                return;
+            }
+        }
+
+        await panel.ApplyConnectionDetailsAsync(result.Details);
     }
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;

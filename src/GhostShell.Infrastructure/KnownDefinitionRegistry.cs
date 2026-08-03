@@ -27,6 +27,7 @@ internal static class KnownDefinitionRegistry
         || kind == DefinitionKind.FileProviderProfile
         || kind == DefinitionKind.AiProviderProfile
         || kind == DefinitionKind.McpServerProfile
+        || kind == DefinitionKind.DatabaseConnection
         || kind == DefinitionKind.QuickTerminalSettings;
 
     public static bool TryParse(
@@ -218,6 +219,8 @@ internal static class KnownDefinitionRegistry
                 JsonSerializer.Deserialize<AiProviderProfile>(payloadJson, DefinitionJson.Options),
             var value when value == DefinitionKind.McpServerProfile =>
                 JsonSerializer.Deserialize<McpServerProfile>(payloadJson, DefinitionJson.Options),
+            var value when value == DefinitionKind.DatabaseConnection =>
+                JsonSerializer.Deserialize<DatabaseConnectionProfile>(payloadJson, DefinitionJson.Options),
             var value when value == DefinitionKind.QuickTerminalSettings =>
                 JsonSerializer.Deserialize<QuickTerminalSettings>(payloadJson, DefinitionJson.Options),
             _ => null,
@@ -361,6 +364,8 @@ internal static class KnownDefinitionRegistry
                 AiProviderProfile.CurrentSchemaVersion,
             var value when value == DefinitionKind.McpServerProfile =>
                 McpServerProfile.CurrentSchemaVersion,
+            var value when value == DefinitionKind.DatabaseConnection =>
+                DatabaseConnectionProfile.CurrentSchemaVersion,
             var value when value == DefinitionKind.QuickTerminalSettings =>
                 QuickTerminalSettings.CurrentSchemaVersion,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
@@ -382,6 +387,8 @@ internal static class KnownDefinitionRegistry
                 type == typeof(AiProviderProfile),
             var value when value == DefinitionKind.McpServerProfile =>
                 type == typeof(McpServerProfile),
+            var value when value == DefinitionKind.DatabaseConnection =>
+                type == typeof(DatabaseConnectionProfile),
             var value when value == DefinitionKind.QuickTerminalSettings =>
                 type == typeof(QuickTerminalSettings),
             _ => false,

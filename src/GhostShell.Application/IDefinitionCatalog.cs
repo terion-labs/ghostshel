@@ -29,6 +29,21 @@ public interface IDefinitionCatalog
         long? expectedRevision,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Saves one database connection profile. The default fails for catalogs
+    /// without database-connection support; <see cref="DefinitionCatalog"/>
+    /// implements it.
+    /// </summary>
+    ValueTask<DefinitionStoreResult<StoredDefinition<DatabaseConnectionProfile>>>
+        SaveDatabaseConnectionAsync(
+            DatabaseConnectionProfile definition,
+            long? expectedRevision,
+            CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            DefinitionStoreResult<StoredDefinition<DatabaseConnectionProfile>>.Failure(new(
+                DefinitionStoreErrorCode.UnsupportedKind,
+                "This catalog cannot store database connections.")));
+
     ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>> SaveWorkspaceAsync(
         WorkspaceDefinition definition,
         long? expectedRevision,

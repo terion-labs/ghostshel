@@ -51,6 +51,27 @@
       </StackPanel>
     </StackPanel>
 
+    <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+      <StackPanel Margin="{controls:Inset Top=Md}" Spacing="{DynamicResource ShellSpaceSm}">
+        <CheckBox x:Name="SaveConnectionCheck" Content="Save connection" AutomationProperties.Name="Save this connection" />
+        <TextBox
+            x:Name="SaveNameInput"
+            IsEnabled="{Binding #SaveConnectionCheck.IsChecked}"
+            PlaceholderText="Connection name"
+            AutomationProperties.Name="Saved connection name" />
+        <CheckBox
+            x:Name="StorePasswordCheck"
+            IsEnabled="{Binding #SaveConnectionCheck.IsChecked}"
+            Content="Store password in the OS keychain"
+            AutomationProperties.Name="Store the password in the OS keychain" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize9}"
+            Text="The saved connection string never contains the password. Without the keychain, it is asked for on connect."
+            TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
       <Button Grid.Column="1" MinWidth="88" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" AutomationProperties.Name="Cancel connection details" />
       <Button Grid.Column="2" MinWidth="110" Classes="PrimaryButton" Click="OnConnectClick" Content="Connect" AutomationProperties.Name="Apply connection details and connect" />

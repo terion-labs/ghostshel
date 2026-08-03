@@ -30,6 +30,12 @@ internal static class DefinitionReferenceExtractor
                     new DefinitionKey(DefinitionKind.Connection, sftp.ConnectionId.Value),
                     "sftp-connection"),
             ],
+            DatabaseConnectionProfile { TunnelConnectionId: { } tunnelId } =>
+            [
+                new(
+                    new DefinitionKey(DefinitionKind.Connection, tunnelId.Value),
+                    "database-tunnel"),
+            ],
             // Vault references are not durable definitions and deliberately do
             // not create rows in the definition dependency graph.
             McpServerProfile => [],

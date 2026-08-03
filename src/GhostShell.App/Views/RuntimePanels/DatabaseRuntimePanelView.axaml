@@ -101,6 +101,7 @@
           <ComboBox
               MinWidth="128"
               VerticalAlignment="Center"
+              IsEnabled="{Binding !IsSavedConnection}"
               ItemsSource="{Binding DriverOptions}"
               SelectedItem="{Binding SelectedDriver, Mode=TwoWay}"
               AutomationProperties.Name="Database driver">

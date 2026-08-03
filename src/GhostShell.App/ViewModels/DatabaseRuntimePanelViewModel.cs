@@ -100,9 +100,12 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private const int PreviewRows = 200;
 
     private readonly IDatabasePanelClient _client;
+    private readonly Func<SecretRef, CancellationToken, Task<string?>>? _passwordResolver;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _disposed;
     private ConnectionProfile? _tunnelConnection;
+    private DatabaseConnectionProfile? _savedConnection;
+    private string? _sessionPassword;
     private DatabaseDriverOptionViewModel _selectedDriver;
     private string _connectionString = string.Empty;
     private string _queryText = string.Empty;
@@ -124,13 +127,16 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         IDatabasePanelClient client,
         string? driverId = null,
         string? connectionString = null,
-        ConnectionProfile? tunnelConnection = null)
+        ConnectionProfile? tunnelConnection = null,
+        DatabaseConnectionProfile? savedConnection = null,
+        Func<SecretRef, CancellationToken, Task<string?>>? passwordResolver = null)
         : base(id, PanelKind.DatabaseViewer, title, "Database")
     {
         _tunnelConnection = tunnelConnection?.Endpoint is ConnectionEndpoint.Ssh
             ? tunnelConnection
             : null;
         _client = client ?? throw new ArgumentNullException(nameof(client));
+        _passwordResolver = passwordResolver;
         DriverOptions = client.Drivers
             .Select(descriptor => new DatabaseDriverOptionViewModel(descriptor))
             .ToArray();
@@ -141,17 +147,105 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 nameof(client));
         }
 
+        _savedConnection = savedConnection;
+        var effectiveDriverId = savedConnection?.DriverId ?? driverId;
         _selectedDriver = DriverOptions.FirstOrDefault(option =>
-                string.Equals(option.Id, driverId, StringComparison.Ordinal))
+                string.Equals(option.Id, effectiveDriverId, StringComparison.Ordinal))
             ?? DriverOptions[0];
-        _connectionString = connectionString ?? string.Empty;
+        _connectionString = savedConnection?.ConnectionString ?? connectionString ?? string.Empty;
         ConnectCommand = new AsyncActionCommand(ConnectAsync, () => !IsBusy);
         RunQueryCommand = new AsyncActionCommand(RunQueryAsync, () => !IsBusy && IsConnected);
         // A restored panel reconnects on its own: the saved target is the whole
-        // point of persisting it.
-        Initialization = driverId is not null && !string.IsNullOrWhiteSpace(connectionString)
+        // point of persisting it. A saved connection that must ask for its
+        // password waits for the user instead — the prompt needs a view.
+        Initialization = !string.IsNullOrWhiteSpace(_connectionString)
+            && (savedConnection is not null || driverId is not null)
+            && !NeedsPasswordPrompt
             ? ConnectAsync()
             : Task.CompletedTask;
+    }
+
+    /// <summary>Raised when connecting needs a password only the user can supply.</summary>
+    public event EventHandler? PasswordRequested;
+
+    public bool IsSavedConnection => _savedConnection is not null;
+
+    public DatabaseConnectionProfileId? SavedConnectionId => _savedConnection?.Id;
+
+    public string? SavedConnectionName => _savedConnection?.Name;
+
+    /// <summary>What the address bar shows: the saved name, or the masked string.</summary>
+    public string AddressBarText => _savedConnection?.Name ?? MaskedConnectionString;
+
+    /// <summary>
+    /// Binds this panel to a saved connection: driver and address become the
+    /// profile's, the address bar shows its name, and connecting resolves the
+    /// stored password — or asks for one. A session password supplied by the
+    /// save flow avoids re-asking for what the user just typed.
+    /// </summary>
+    public void ApplySavedConnection(
+        DatabaseConnectionProfile profile,
+        string? sessionPassword = null)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _savedConnection = profile;
+        _sessionPassword = string.IsNullOrEmpty(sessionPassword) ? null : sessionPassword;
+        var driver = DriverOptions.FirstOrDefault(option =>
+            string.Equals(option.Id, profile.DriverId, StringComparison.Ordinal));
+        if (driver is not null)
+        {
+            _selectedDriver = driver;
+            OnPropertyChanged(nameof(SelectedDriver));
+        }
+
+        ConnectionString = profile.ConnectionString;
+        OnPropertyChanged(nameof(IsSavedConnection));
+        OnPropertyChanged(nameof(SavedConnectionName));
+        OnPropertyChanged(nameof(AddressBarText));
+        OnPropertyChanged(nameof(RecoveryTarget));
+        _ = ConnectAsync();
+    }
+
+    /// <summary>The prompt's answer; an empty value means connect without one.</summary>
+    public void SetSessionPassword(string password) =>
+        _sessionPassword = password ?? string.Empty;
+
+    private bool NeedsPasswordPrompt =>
+        _savedConnection is not null
+        && !SelectedDriver.IsFileBased
+        && _savedConnection.PasswordSecret is null
+        && _sessionPassword is null
+        && _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString).Password is null;
+
+    /// <summary>
+    /// The string handed to the engine: a saved connection gets its password
+    /// injected from the session or the vault; everything else passes through.
+    /// </summary>
+    private async Task<string> ResolveEffectiveConnectionStringAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_savedConnection is null || SelectedDriver.IsFileBased)
+        {
+            return ConnectionString;
+        }
+
+        var password = _sessionPassword;
+        if (string.IsNullOrEmpty(password)
+            && _savedConnection.PasswordSecret is { } secret
+            && _passwordResolver is not null)
+        {
+            password = await _passwordResolver(secret, cancellationToken);
+        }
+
+        if (string.IsNullOrEmpty(password))
+        {
+            return ConnectionString;
+        }
+
+        var details = _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString);
+        return details.Password is null
+            ? _client.BuildConnectionString(SelectedDriver.Id, details with { Password = password })
+            : ConnectionString;
     }
 
     public IReadOnlyList<DatabaseDriverOptionViewModel> DriverOptions { get; }
@@ -188,6 +282,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             {
                 SetConnected(false);
                 OnPropertyChanged(nameof(MaskedConnectionString));
+                OnPropertyChanged(nameof(AddressBarText));
             }
         }
     }
@@ -210,11 +305,20 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     public DatabaseConnectionDetails ParseConnectionDetails() =>
         _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString);
 
-    /// <summary>Applies dialog fields and probes the connection right away.</summary>
+    /// <summary>
+    /// Applies dialog fields and probes the connection right away. Editing raw
+    /// fields detaches the panel from any saved connection.
+    /// </summary>
     public Task ApplyConnectionDetailsAsync(DatabaseConnectionDetails details)
     {
         ArgumentNullException.ThrowIfNull(details);
+        _savedConnection = null;
+        _sessionPassword = null;
+        OnPropertyChanged(nameof(IsSavedConnection));
+        OnPropertyChanged(nameof(SavedConnectionName));
         ConnectionString = _client.BuildConnectionString(SelectedDriver.Id, details);
+        OnPropertyChanged(nameof(AddressBarText));
+        OnPropertyChanged(nameof(RecoveryTarget));
         return string.IsNullOrWhiteSpace(ConnectionString)
             ? Task.CompletedTask
             : ConnectAsync();
@@ -354,9 +458,11 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     /// The durable "driverId:connection string" address, or null while the
     /// panel has no usable target. Recovery and workspace autosave persist it.
     /// </summary>
-    public string? RecoveryTarget => string.IsNullOrWhiteSpace(ConnectionString)
-        ? null
-        : new DatabasePanelTarget(SelectedDriver.Id, ConnectionString).Serialize();
+    public string? RecoveryTarget => _savedConnection is { } saved
+        ? $"saved:{saved.Id.Value}"
+        : string.IsNullOrWhiteSpace(ConnectionString)
+            ? null
+            : new DatabasePanelTarget(SelectedDriver.Id, ConnectionString).Serialize();
 
     /// <summary>The SSH connection queries tunnel through, or null for direct.</summary>
     public ConnectionId? TunnelConnectionId => _tunnelConnection?.Id;
@@ -395,11 +501,17 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
+        if (NeedsPasswordPrompt)
+        {
+            PasswordRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         await RunGuardedAsync(async cancellationToken =>
         {
             var tables = await _client.ListTablesAsync(
                 SelectedDriver.Id,
-                ConnectionString,
+                await ResolveEffectiveConnectionStringAsync(cancellationToken),
                 _tunnelConnection,
                 cancellationToken);
             _allTables = tables
@@ -453,7 +565,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         {
             var page = await _client.QueryAsync(
                 SelectedDriver.Id,
-                ConnectionString,
+                await ResolveEffectiveConnectionStringAsync(cancellationToken),
                 _tunnelConnection,
                 sql,
                 MaxRows,

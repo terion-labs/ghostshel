@@ -33,6 +33,8 @@ public readonly record struct DefinitionKind
 
     public static DefinitionKind McpServerProfile { get; } = new("mcp-server-profile");
 
+    public static DefinitionKind DatabaseConnection { get; } = new("database-connection");
+
     public static DefinitionKind QuickTerminalSettings { get; } = new("quick-terminal-settings");
 
     public override string ToString() => Value;

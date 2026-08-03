@@ -5,6 +5,12 @@ using GhostShell.Application;
 
 namespace GhostShell.App.Views;
 
+/// <summary>What the details dialog closes with when not cancelled.</summary>
+public sealed record DatabaseConnectionDialogResult(
+    DatabaseConnectionDetails Details,
+    string? SaveName,
+    bool StorePassword);
+
 /// <summary>
 /// The structural view of a database connection string: host, port, user,
 /// password, database, and pass-through options — or just the file path for
@@ -20,7 +26,8 @@ public sealed partial class DatabaseConnectionDetailsDialog : Window
     public DatabaseConnectionDetailsDialog(
         string driverDisplayName,
         bool isFileBased,
-        DatabaseConnectionDetails details)
+        DatabaseConnectionDetails details,
+        string? savedName = null)
         : this()
     {
         ArgumentNullException.ThrowIfNull(details);
@@ -28,6 +35,9 @@ public sealed partial class DatabaseConnectionDetailsDialog : Window
         DialogTitle.Text = $"{driverDisplayName} connection";
         FileSection.IsVisible = isFileBased;
         ServerSection.IsVisible = !isFileBased;
+        SaveConnectionCheck.IsChecked = savedName is not null;
+        SaveNameInput.Text = savedName ?? string.Empty;
+        StorePasswordCheck.IsVisible = !isFileBased;
         FilePathInput.Text = details.FilePath ?? string.Empty;
         HostInput.Text = details.Host ?? string.Empty;
         PortInput.Text = details.Port?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
@@ -52,14 +62,17 @@ public sealed partial class DatabaseConnectionDetailsDialog : Window
     {
         _ = sender;
         _ = e;
-        Close(new DatabaseConnectionDetails(
-            NullIfBlank(HostInput.Text),
-            int.TryParse(PortInput.Text, out var port) ? port : null,
-            NullIfBlank(DatabaseInput.Text),
-            NullIfBlank(UserInput.Text),
-            NullIfBlank(PasswordInput.Text),
-            NullIfBlank(FilePathInput.Text),
-            NullIfBlank(OptionsInput.Text)));
+        Close(new DatabaseConnectionDialogResult(
+            new DatabaseConnectionDetails(
+                NullIfBlank(HostInput.Text),
+                int.TryParse(PortInput.Text, out var port) ? port : null,
+                NullIfBlank(DatabaseInput.Text),
+                NullIfBlank(UserInput.Text),
+                NullIfBlank(PasswordInput.Text),
+                NullIfBlank(FilePathInput.Text),
+                NullIfBlank(OptionsInput.Text)),
+            SaveConnectionCheck.IsChecked == true ? NullIfBlank(SaveNameInput.Text) : null,
+            StorePasswordCheck.IsChecked == true));
     }
 
     private static string? NullIfBlank(string? value) =>

@@ -190,6 +190,99 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Saved_connection_shows_its_name_and_injects_the_vault_password()
+    {
+        var client = new FakeDatabasePanelClient();
+        var secret = SecretRef.New();
+        var profile = new DatabaseConnectionProfile(
+            DatabaseConnectionProfileId.New(),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "prod-core",
+            "postgres",
+            "Host=db.internal;Database=app",
+            secret);
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            savedConnection: profile,
+            passwordResolver: (reference, _) => Task.FromResult<string?>(
+                reference == secret ? "vaulted" : null));
+        await panel.Initialization;
+
+        Assert.True(panel.IsSavedConnection);
+        Assert.Equal("prod-core", panel.AddressBarText);
+        Assert.Equal("postgres", panel.SelectedDriver.Id);
+        Assert.Equal($"saved:{profile.Id.Value}", panel.RecoveryTarget);
+        Assert.True(panel.IsConnected);
+        Assert.Equal(
+            "Host=db.internal;Database=app;Password=vaulted",
+            client.LastConnectionString);
+    }
+
+    [Fact]
+    public async Task Saved_connection_without_password_asks_before_connecting()
+    {
+        var client = new FakeDatabasePanelClient();
+        var profile = new DatabaseConnectionProfile(
+            DatabaseConnectionProfileId.New(),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "prod-core",
+            "postgres",
+            "Host=db.internal;Database=app");
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            savedConnection: profile);
+        var prompts = 0;
+        panel.PasswordRequested += (_, _) => prompts++;
+        await panel.Initialization;
+
+        // Construction must not connect: the prompt needs a view first.
+        Assert.False(panel.IsConnected);
+
+        await panel.ConnectAsync();
+        Assert.Equal(1, prompts);
+        Assert.False(panel.IsConnected);
+
+        panel.SetSessionPassword("typed");
+        await panel.ConnectAsync();
+        Assert.True(panel.IsConnected);
+        Assert.Equal(
+            "Host=db.internal;Database=app;Password=typed",
+            client.LastConnectionString);
+    }
+
+    [Fact]
+    public async Task Editing_details_detaches_the_panel_from_the_saved_connection()
+    {
+        var client = new FakeDatabasePanelClient();
+        var profile = new DatabaseConnectionProfile(
+            DatabaseConnectionProfileId.New(),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "prod-core",
+            "postgres",
+            "Host=db.internal;Database=app",
+            SecretRef.New());
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            savedConnection: profile,
+            passwordResolver: (_, _) => Task.FromResult<string?>("vaulted"));
+        await panel.Initialization;
+        Assert.True(panel.IsSavedConnection);
+
+        await panel.ApplyConnectionDetailsAsync(
+            new DatabaseConnectionDetails(Options: "Host=other;Database=app"));
+
+        Assert.False(panel.IsSavedConnection);
+        Assert.StartsWith("postgres:", panel.RecoveryTarget, StringComparison.Ordinal);
+        Assert.Equal("Host=other;Database=app", client.LastConnectionString);
+    }
+
+    [Fact]
     public async Task Copy_builders_render_json_csv_and_sql_insert()
     {
         var client = new FakeDatabasePanelClient();
@@ -287,6 +380,8 @@ public sealed class DatabaseRuntimePanelViewModelTests
             new("postgres", "PostgreSQL", "Host=…"),
         ];
 
+        public string? LastConnectionString { get; private set; }
+
         public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
             string driverId,
             string connectionString,
@@ -294,6 +389,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             CancellationToken cancellationToken)
         {
             LastTunnel = tunnel;
+            LastConnectionString = connectionString;
             ThrowIfConfigured();
             return Task.FromResult<IReadOnlyList<DatabaseTableDescriptor>>(
             [
@@ -312,6 +408,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         {
             ThrowIfConfigured();
             LastTunnel = tunnel;
+            LastConnectionString = connectionString;
             LastSql = sql;
             return Task.FromResult(new DatabaseQueryPage(
                 [new("id", "INTEGER"), new("name", "TEXT")],
@@ -330,10 +427,14 @@ public sealed class DatabaseRuntimePanelViewModelTests
         public DatabaseConnectionDetails ParseConnectionDetails(
             string driverId,
             string connectionString) =>
-            new(FilePath: connectionString);
+            connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase)
+                ? new(Options: connectionString, Password: "present")
+                : new(Options: connectionString);
 
         public string BuildConnectionString(string driverId, DatabaseConnectionDetails details) =>
-            details.FilePath ?? details.Options ?? string.Empty;
+            details.Password is { } password
+                ? $"{details.FilePath ?? details.Options};Password={password}"
+                : details.FilePath ?? details.Options ?? string.Empty;
 
         private void ThrowIfConfigured()
         {

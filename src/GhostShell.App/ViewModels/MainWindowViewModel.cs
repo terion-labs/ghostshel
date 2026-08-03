@@ -9608,12 +9608,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (recovered.Kind == RuntimePanelRecoveryKind.DatabaseViewer)
         {
-            var target = DatabasePanelTarget.TryParse(recovered.StartupLocation);
-            return CreateDatabasePanel(
+            return CreateDatabasePanelFromTarget(
                 PanelInstanceId.New(),
                 recovered.Title,
-                target?.DriverId,
-                target?.ConnectionString,
+                recovered.StartupLocation,
                 recovered.ConnectionId is { } tunnelId
                     ? FindConnection(new ConnectionId(tunnelId))
                     : null);
@@ -9838,12 +9836,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (panel.Kind == ScreenPanelKind.DatabaseViewer)
         {
-            var target = DatabasePanelTarget.TryParse(panel.Startup.Location);
-            return CreateDatabasePanel(
+            return CreateDatabasePanelFromTarget(
                 PanelInstanceId.New(),
                 title,
-                target?.DriverId,
-                target?.ConnectionString,
+                panel.Startup.Location,
                 panel.ConnectionId is { } tunnelId ? FindConnection(tunnelId) : null);
         }
 
@@ -10081,7 +10077,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string title,
         string? driverId = null,
         string? connectionString = null,
-        ConnectionProfile? tunnelConnection = null) =>
+        ConnectionProfile? tunnelConnection = null,
+        DatabaseConnectionProfile? savedConnection = null) =>
         _databasePanelClient is null
             ? new UnavailableRuntimePanelViewModel(
                 panelId,
@@ -10095,7 +10092,180 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 _databasePanelClient,
                 driverId,
                 connectionString,
-                tunnelConnection);
+                tunnelConnection,
+                savedConnection,
+                ResolveDatabasePasswordAsync);
+
+    private const string SavedDatabaseTargetPrefix = "saved:";
+
+    /// <summary>
+    /// Builds a database panel from a durable target: "saved:{profile id}"
+    /// binds a saved connection (its own tunnel wins over the recovered one),
+    /// anything else is a raw "driver:connection string" address.
+    /// </summary>
+    private RuntimePanelViewModel CreateDatabasePanelFromTarget(
+        PanelInstanceId panelId,
+        string title,
+        string? target,
+        ConnectionProfile? recoveredTunnel)
+    {
+        if (target?.StartsWith(SavedDatabaseTargetPrefix, StringComparison.Ordinal) == true)
+        {
+            var profileId = target[SavedDatabaseTargetPrefix.Length..];
+            var stored = _catalog.Snapshot.DatabaseConnections
+                .SingleOrDefault(item => item.Value.Id.Value == profileId);
+            if (stored is null)
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    panelId,
+                    PanelKind.DatabaseViewer,
+                    title,
+                    "Database",
+                    "The saved database connection no longer exists.");
+            }
+
+            var profile = stored.Value;
+            var tunnel = profile.TunnelConnectionId is { } tunnelId
+                ? FindConnection(tunnelId)
+                : recoveredTunnel;
+            return CreateDatabasePanel(
+                panelId,
+                title,
+                tunnelConnection: tunnel,
+                savedConnection: profile);
+        }
+
+        var parsed = DatabasePanelTarget.TryParse(target);
+        return CreateDatabasePanel(
+            panelId,
+            title,
+            parsed?.DriverId,
+            parsed?.ConnectionString,
+            recoveredTunnel);
+    }
+
+    /// <summary>Every saved database connection, for panel pickers.</summary>
+    public IReadOnlyList<DatabaseConnectionProfile> DatabaseConnectionOptions =>
+        _catalog.Snapshot.DatabaseConnections.Select(item => item.Value).ToArray();
+
+    public DatabaseConnectionProfile? FindDatabaseConnection(DatabaseConnectionProfileId id) =>
+        _catalog.Snapshot.DatabaseConnections
+            .SingleOrDefault(item => item.Value.Id == id)?.Value;
+
+    /// <summary>
+    /// Persists a database connection, optionally moving the typed password
+    /// into the OS vault. The stored connection string never carries the
+    /// password. Updates keep the existing profile id and its stored secret
+    /// unless a new password is being stored.
+    /// </summary>
+    public async Task<DatabaseConnectionProfile?> SaveDatabaseConnectionAsync(
+        DatabaseConnectionProfileId? existingId,
+        string name,
+        string driverId,
+        DatabaseConnectionDetails details,
+        bool storePassword,
+        ConnectionId? tunnelConnectionId,
+        CancellationToken cancellationToken = default)
+    {
+        ClearError();
+        if (_databasePanelClient is null || string.IsNullOrWhiteSpace(name))
+        {
+            SetError("A saved database connection needs a name.");
+            return null;
+        }
+
+        var existing = existingId is { } id
+            ? _catalog.Snapshot.DatabaseConnections
+                .SingleOrDefault(item => item.Value.Id == id)
+            : null;
+        var profileId = existing?.Value.Id ?? DatabaseConnectionProfileId.New();
+        var secret = existing?.Value.PasswordSecret;
+        if (storePassword && !string.IsNullOrEmpty(details.Password))
+        {
+            var reference = SecretRef.New();
+            var bytes = Encoding.UTF8.GetBytes(details.Password);
+            using var material = SecretMaterial.TakeOwnership(bytes);
+            var created = await _secretVault.CreateAsync(
+                new CreateSecretRequest(
+                    reference,
+                    $"{name.Trim()} database password",
+                    SecretKind.Password,
+                    new SecretScope(SecretScopeKind.DatabaseConnection, profileId.Value),
+                    new SecretUsePurpose(
+                        SecretUseKind.ConnectionAuthentication,
+                        profileId.Value)),
+                material,
+                cancellationToken);
+            if (created is SecretVaultResult<SecretMetadata>.Failure failure)
+            {
+                SetError(failure.Error.Message);
+                return null;
+            }
+
+            secret = reference;
+        }
+
+        var profile = new DatabaseConnectionProfile(
+            profileId,
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            name.Trim(),
+            driverId,
+            _databasePanelClient.BuildConnectionString(
+                driverId,
+                details with { Password = null }),
+            secret,
+            tunnelConnectionId);
+        var saved = await _catalog.SaveDatabaseConnectionAsync(
+            profile,
+            existing?.Revision,
+            cancellationToken);
+        if (!saved.IsSuccess)
+        {
+            SetError(saved.Error!.Message);
+            return null;
+        }
+
+        OnPropertyChanged(nameof(DatabaseConnectionOptions));
+        return saved.Value!.Value;
+    }
+
+    /// <summary>Resolves a stored database password from the OS vault.</summary>
+    private async Task<string?> ResolveDatabasePasswordAsync(
+        SecretRef secret,
+        CancellationToken cancellationToken)
+    {
+        var owner = _catalog.Snapshot.DatabaseConnections
+            .FirstOrDefault(item => item.Value.PasswordSecret == secret)?.Value;
+        if (owner is null)
+        {
+            return null;
+        }
+
+        var result = await _secretVault.ResolveAsync(
+            new ResolveSecretRequest(
+                secret,
+                new SecretScope(SecretScopeKind.DatabaseConnection, owner.Id.Value),
+                new SecretUsePurpose(
+                    SecretUseKind.ConnectionAuthentication,
+                    owner.Id.Value)),
+            cancellationToken);
+        if (result is SecretVaultResult<SecretMaterial>.Failure)
+        {
+            return null;
+        }
+
+        using var material = ((SecretVaultResult<SecretMaterial>.Success)result).Value;
+        var bytes = new byte[material.Length];
+        material.CopyTo(bytes);
+        try
+        {
+            return Encoding.UTF8.GetString(bytes);
+        }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+        }
+    }
 
     private void StartAcceptedRuntimePanels(RuntimeWorkspaceViewModel runtime)
     {

@@ -40,6 +40,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
     private readonly IDefinitionRepository<FileProviderProfile> _fileProviderProfiles;
     private readonly IDefinitionRepository<AiProviderProfile> _aiProviderProfiles;
     private readonly IDefinitionRepository<McpServerProfile> _mcpServerProfiles;
+    private readonly IDefinitionRepository<DatabaseConnectionProfile> _databaseConnections;
     private readonly IDefinitionRepository<QuickTerminalSettings> _quickTerminalSettings;
     private readonly ILayoutGraphStore? _layoutGraph;
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
@@ -58,7 +59,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
         IDefinitionRepository<AiProviderProfile> aiProviderProfiles,
         IDefinitionRepository<McpServerProfile> mcpServerProfiles,
         IDefinitionRepository<QuickTerminalSettings> quickTerminalSettings,
-        ILayoutGraphStore? layoutGraph = null)
+        ILayoutGraphStore? layoutGraph = null,
+        IDefinitionRepository<DatabaseConnectionProfile>? databaseConnections = null)
     {
         _layoutGraph = layoutGraph;
         _connections = connections ?? throw new ArgumentNullException(nameof(connections));
@@ -77,6 +79,95 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             ?? throw new ArgumentNullException(nameof(mcpServerProfiles));
         _quickTerminalSettings = quickTerminalSettings
             ?? throw new ArgumentNullException(nameof(quickTerminalSettings));
+        _databaseConnections = databaseConnections
+            ?? new EphemeralRepository<DatabaseConnectionProfile>();
+    }
+
+    /// <summary>
+    /// Keeps hosts without persistent database-connection storage working:
+    /// saved connections live for the process only. The desktop composition
+    /// always supplies the SQLite repository instead.
+    /// </summary>
+    private sealed class EphemeralRepository<TDefinition> : IDefinitionRepository<TDefinition>
+        where TDefinition : IDurableDefinition
+    {
+        private readonly object _gate = new();
+        private readonly Dictionary<string, StoredDefinition<TDefinition>> _items = [];
+
+        public ValueTask<DefinitionStoreResult<StoredDefinition<TDefinition>>> GetAsync(
+            DefinitionKey key,
+            CancellationToken cancellationToken)
+        {
+            lock (_gate)
+            {
+                return ValueTask.FromResult(_items.TryGetValue(key.Value, out var stored)
+                    ? DefinitionStoreResult<StoredDefinition<TDefinition>>.Success(stored)
+                    : DefinitionStoreResult<StoredDefinition<TDefinition>>.Failure(new(
+                        DefinitionStoreErrorCode.NotFound,
+                        "The requested definition does not exist.")));
+            }
+        }
+
+        public ValueTask<DefinitionStoreResult<IReadOnlyList<StoredDefinition<TDefinition>>>> ListAsync(
+            CancellationToken cancellationToken)
+        {
+            lock (_gate)
+            {
+                return ValueTask.FromResult(
+                    DefinitionStoreResult<IReadOnlyList<StoredDefinition<TDefinition>>>.Success(
+                        _items.Values.OrderBy(item => item.Value.Name).ToArray()));
+            }
+        }
+
+        public ValueTask<DefinitionStoreResult<StoredDefinition<TDefinition>>> SaveAsync(
+            TDefinition definition,
+            long? expectedRevision,
+            CancellationToken cancellationToken)
+        {
+            lock (_gate)
+            {
+                var existing = _items.TryGetValue(definition.Key.Value, out var stored)
+                    ? stored
+                    : null;
+                if (expectedRevision is null && existing is not null
+                    || expectedRevision is { } expected
+                        && existing?.Revision != expected)
+                {
+                    return ValueTask.FromResult(
+                        DefinitionStoreResult<StoredDefinition<TDefinition>>.Failure(new(
+                            DefinitionStoreErrorCode.RevisionConflict,
+                            "The definition changed before it could be saved.")));
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                var next = new StoredDefinition<TDefinition>(
+                    definition,
+                    (existing?.Revision ?? 0) + 1,
+                    existing?.CreatedAt ?? now,
+                    now);
+                _items[definition.Key.Value] = next;
+                return ValueTask.FromResult(
+                    DefinitionStoreResult<StoredDefinition<TDefinition>>.Success(next));
+            }
+        }
+
+        public ValueTask<DefinitionStoreResult<Unit>> DeleteAsync(
+            DefinitionKey key,
+            long expectedRevision,
+            CancellationToken cancellationToken)
+        {
+            lock (_gate)
+            {
+                return ValueTask.FromResult(
+                    _items.TryGetValue(key.Value, out var stored)
+                        && stored.Revision == expectedRevision
+                        && _items.Remove(key.Value)
+                        ? DefinitionStoreResult<Unit>.Success(Unit.Value)
+                        : DefinitionStoreResult<Unit>.Failure(new(
+                            DefinitionStoreErrorCode.RevisionConflict,
+                            "The definition changed before it could be deleted.")));
+            }
+        }
     }
 
     public DefinitionCatalogSnapshot Snapshot => Volatile.Read(ref _snapshot);
@@ -507,6 +598,18 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             ValidateQuickTerminalSettings,
             cancellationToken);
 
+    public ValueTask<DefinitionStoreResult<StoredDefinition<DatabaseConnectionProfile>>>
+        SaveDatabaseConnectionAsync(
+            DatabaseConnectionProfile definition,
+            long? expectedRevision,
+            CancellationToken cancellationToken) =>
+        SaveValidatedAsync(
+            definition,
+            expectedRevision,
+            _databaseConnections,
+            ValidateDatabaseConnection,
+            cancellationToken);
+
     public async ValueTask<DefinitionStoreResult<Unit>> DeleteAsync(
         DefinitionKey key,
         long expectedRevision,
@@ -570,6 +673,9 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                         .ConfigureAwait(false),
                 var kind when kind == QuickTerminalSettings.Kind =>
                     await _quickTerminalSettings.DeleteAsync(key, expectedRevision, cancellationToken)
+                        .ConfigureAwait(false),
+                var kind when kind == DatabaseConnectionProfile.Kind =>
+                    await _databaseConnections.DeleteAsync(key, expectedRevision, cancellationToken)
                         .ConfigureAwait(false),
                 _ => DefinitionStoreResult<Unit>.Failure(new DefinitionStoreError(
                     DefinitionStoreErrorCode.UnsupportedKind,
@@ -926,6 +1032,29 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
     private DefinitionStoreError? ValidateMcpServerProfile(McpServerProfile definition) =>
         ValidateName(Snapshot.McpServerProfiles, definition);
 
+    private DefinitionStoreError? ValidateDatabaseConnection(
+        DatabaseConnectionProfile definition)
+    {
+        var duplicate = ValidateName(Snapshot.DatabaseConnections, definition);
+        if (duplicate is not null)
+        {
+            return duplicate;
+        }
+
+        var validation = definition.Validate();
+        if (!validation.IsValid)
+        {
+            return Invalid(validation);
+        }
+
+        return definition.TunnelConnectionId is { } tunnelId
+            && Snapshot.Connections.All(item => item.Value.Id != tunnelId)
+            ? new DefinitionStoreError(
+                DefinitionStoreErrorCode.DependencyConflict,
+                "The tunnel connection no longer exists.")
+            : null;
+    }
+
     private static DefinitionStoreError? ValidateName<TDefinition>(
         IReadOnlyList<StoredDefinition<TDefinition>> definitions,
         TDefinition candidate)
@@ -950,6 +1079,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
         var aiProvidersTask = _aiProviderProfiles.ListAsync(cancellationToken).AsTask();
         var mcpServersTask = _mcpServerProfiles.ListAsync(cancellationToken).AsTask();
         var quickTerminalTask = _quickTerminalSettings.ListAsync(cancellationToken).AsTask();
+        var databaseConnectionsTask = _databaseConnections.ListAsync(cancellationToken).AsTask();
         await Task.WhenAll(
                 connectionsTask,
                 layoutsTask,
@@ -961,7 +1091,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                 fileProvidersTask,
                 aiProvidersTask,
                 mcpServersTask,
-                quickTerminalTask)
+                quickTerminalTask,
+                databaseConnectionsTask)
             .ConfigureAwait(false);
 
         var errors = new DefinitionStoreError?[]
@@ -977,6 +1108,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             aiProvidersTask.Result.Error,
             mcpServersTask.Result.Error,
             quickTerminalTask.Result.Error,
+            databaseConnectionsTask.Result.Error,
         };
         var error = errors.FirstOrDefault(item => item is not null);
         if (error is not null)
@@ -997,6 +1129,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
         {
             AiProviderProfiles = aiProvidersTask.Result.Value!,
             McpServerProfiles = mcpServersTask.Result.Value!,
+            DatabaseConnections = databaseConnectionsTask.Result.Value!,
         };
         Volatile.Write(ref _snapshot, snapshot);
         return DefinitionStoreResult<DefinitionCatalogSnapshot>.Success(snapshot);
