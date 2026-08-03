@@ -21,7 +21,10 @@ public sealed partial class MarkdownPreviewView : UserControl
     /// Heading sizes, largest first. Markdown allows six levels; the shell's
     /// type scale is what decides how big each one is here.
     /// </summary>
-    private static readonly double[] HeadingSizes = [22, 18, 16, 14, 13, 12];
+    private static readonly double[] HeadingSizes = [23, 19, 16, 14, 13, 13];
+
+    /// <summary>Body size for prose, a step above the shell's dense UI text.</summary>
+    private const double BodyFontSize = 13;
 
     public MarkdownPreviewView()
     {
@@ -79,9 +82,13 @@ public sealed partial class MarkdownPreviewView : UserControl
     private Control Heading(MarkdownBlock block)
     {
         var text = Prose(block.Runs);
-        text.FontSize = HeadingSizes[Math.Clamp(block.Level, 1, HeadingSizes.Length) - 1];
+        var size = HeadingSizes[Math.Clamp(block.Level, 1, HeadingSizes.Length) - 1];
+        text.FontSize = size;
+        text.LineHeight = Math.Round(size * 1.3);
         text.FontWeight = FontWeight.SemiBold;
-        text.Margin = new Thickness(0, block.Level == 1 ? 0 : 8, 0, 0);
+        // Space above a heading, not below: a heading belongs to what follows
+        // it, and an even gap on both sides makes it float between sections.
+        text.Margin = new Thickness(0, block.Level == 1 ? 2 : 14, 0, 2);
         return text;
     }
 
@@ -94,12 +101,16 @@ public sealed partial class MarkdownPreviewView : UserControl
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,*"),
-            Margin = new Thickness(Math.Max(0, block.Level - 1) * 16, 0, 0, 0),
+            Margin = new Thickness((Math.Max(0, block.Level - 1) * 18) + 2, 0, 0, 0),
         };
         var bullet = new SelectableTextBlock
         {
-            Text = string.IsNullOrEmpty(block.Bullet) ? string.Empty : block.Bullet + " ",
-            MinWidth = 18,
+            Text = string.IsNullOrEmpty(block.Bullet) ? string.Empty : block.Bullet,
+            MinWidth = 20,
+            // The same size and line height as the text beside it, or the
+            // marker rides above the first line instead of sitting on it.
+            FontSize = BodyFontSize,
+            LineHeight = Math.Round(BodyFontSize * 1.55),
         };
         Paint(bullet, "ShellMutedBrush");
         var content = Prose(block.Runs);
@@ -113,7 +124,7 @@ public sealed partial class MarkdownPreviewView : UserControl
     {
         var content = Prose(block.Runs);
         Paint(content, "ShellMutedBrush");
-        content.Margin = new Thickness(10, 2, 0, 2);
+        content.Margin = new Thickness(12, 4, 0, 4);
         var quote = new Border
         {
             BorderThickness = new Thickness(2, 0, 0, 0),
@@ -131,20 +142,20 @@ public sealed partial class MarkdownPreviewView : UserControl
     {
         // The same source view the file preview uses, so a fenced block is
         // highlighted exactly like the file it was copied from.
-        var lines = 1 + (block.Text?.Count(character => character == '\n') ?? 0);
         var editor = new CodePreviewView
         {
             Text = block.Text,
             FileName = block.Language is null ? null : $"fenced.{block.Language}",
-            // Sized to the code it holds: an editor left to fill its allowance
-            // leaves a screen of empty gutter under three lines of code.
-            Height = Math.Min(320, (lines * 17) + 12),
+            // Sized by the editor's own line height: a guessed height clips the
+            // last line or leaves a screen of empty gutter under three lines.
+            FitsContent = true,
         };
         var frame = new Border
         {
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(4),
+            Margin = new Thickness(0, 4, 0, 4),
+            Padding = new Thickness(6, 4),
             Child = editor,
         };
         if (Brush("ShellBackgroundBrush") is { } fill)
@@ -220,6 +231,7 @@ public sealed partial class MarkdownPreviewView : UserControl
         {
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
+            Margin = new Thickness(0, 4, 0, 4),
             HorizontalAlignment = HorizontalAlignment.Left,
             Child = grid,
         };
@@ -261,7 +273,10 @@ public sealed partial class MarkdownPreviewView : UserControl
     {
         var text = new SelectableTextBlock
         {
-            FontSize = 12,
+            FontSize = BodyFontSize,
+            // Prose at a terminal's line spacing reads as a wall; 1.55 is the
+            // ratio the shell's own documentation surfaces use.
+            LineHeight = Math.Round(BodyFontSize * 1.55),
             TextWrapping = TextWrapping.Wrap,
         };
         foreach (var run in runs)

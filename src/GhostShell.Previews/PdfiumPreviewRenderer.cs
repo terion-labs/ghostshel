@@ -73,7 +73,12 @@ public sealed class PdfiumPreviewRenderer : IPdfPreviewRenderer
                         leaveOpen: true,
                         password: null,
                         page: pageIndex,
-                        options: new RenderOptions(Width: targetWidth));
+                        // Aspect ratio is off by default: given only a width,
+                        // PDFium stretches the page to a default height, which
+                        // renders every document distorted.
+                        options: new RenderOptions(
+                            Width: targetWidth,
+                            WithAspectRatio: true));
                     using var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100);
                     return new PdfPageImage(encoded.ToArray(), pageIndex + 1, pageCount);
                 }

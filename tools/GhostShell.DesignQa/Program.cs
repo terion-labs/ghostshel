@@ -455,6 +455,39 @@ internal sealed class QaApplication : Avalonia.Application
         }, null),
         // A TIFF decoded through the image decoder and drawn by the panel, so
         // the format the drawing stack cannot open is proven end to end.
+        ("image-preview-fit", () =>
+        {
+            var decoder = new GhostShell.Previews.MagickImagePreviewDecoder();
+            var decoded = decoder
+                .DecodeAsync(Program.TiffProbePath, 8_000_000, CancellationToken.None)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult()
+                ?? throw new InvalidOperationException("The TIFF probe did not decode.");
+            using var stream = new MemoryStream(decoded.PngBytes.ToArray(), writable: false);
+            // A zone narrower than the image: the picture must fit inside it
+            // rather than overflow and demand scrolling.
+            return new Window
+            {
+                Width = 220,
+                Height = 260,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = new Border
+                {
+                    Classes = { "FloatingSidebar" },
+                    Child = new Image
+                    {
+                        Margin = new Thickness(12),
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                        Stretch = Stretch.Uniform,
+                        StretchDirection = StretchDirection.DownOnly,
+                        Source = new Avalonia.Media.Imaging.Bitmap(stream),
+                    },
+                },
+            };
+        }, null),
         ("image-preview-tiff", () =>
         {
             var decoder = new GhostShell.Previews.MagickImagePreviewDecoder();

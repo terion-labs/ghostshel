@@ -448,9 +448,17 @@
               <components:DatabaseWorkspaceView
                   DataContext="{Binding DatabasePreview}"
                   IsVisible="{Binding $parent[UserControl].DataContext.HasDatabasePreview}" />
-              <ScrollViewer Margin="{controls:Inset Md}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasImagePreview}">
-                <Image MaxWidth="900" MaxHeight="900" Stretch="Uniform" Source="{Binding PreviewImage}" />
-              </ScrollViewer>
+              <!-- Fitted rather than scrolled: a preview shows the whole
+                   picture, and a small image is not blown up to fill space it
+                   does not have the pixels for. -->
+              <Image
+                  Margin="{controls:Inset Md}"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Stretch="Uniform"
+                  StretchDirection="DownOnly"
+                  Source="{Binding PreviewImage}"
+                  IsVisible="{Binding HasImagePreview}" />
 
               <!-- A PDF is paged through rather than scrolled as one image: the
                    page being looked at is the only one rendered. -->

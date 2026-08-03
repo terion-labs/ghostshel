@@ -65,6 +65,21 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
     }
 
     [Fact]
+    public async Task A_page_keeps_its_shape()
+    {
+        var path = await WriteProbeAsync("shape.pdf");
+
+        var page = await _renderer.RenderPageAsync(path, 0, 600, CancellationToken.None);
+
+        Assert.NotNull(page);
+        // The probe's pages are US Letter, 612x792 points. Rendering to a width
+        // alone must not stretch the page to some default height.
+        var (width, height) = PngSize(page!.PngBytes.Span);
+        Assert.Equal(600, width);
+        Assert.InRange(height, (int)(600 * 792d / 612 * 0.98), (int)(600 * 792d / 612 * 1.02));
+    }
+
+    [Fact]
     public async Task Paging_past_the_end_renders_nothing_rather_than_wrapping()
     {
         var path = await WriteProbeAsync("bounds.pdf");
@@ -90,6 +105,9 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
         return path;
     }
 
-    private static int PngWidth(ReadOnlySpan<byte> png) =>
-        System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png[16..]);
+    private static int PngWidth(ReadOnlySpan<byte> png) => PngSize(png).Width;
+
+    private static (int Width, int Height) PngSize(ReadOnlySpan<byte> png) =>
+        (System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png[16..]),
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png[20..]));
 }

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using AvaloniaEdit.TextMate;
 using TextMateSharp.Grammars;
 
@@ -18,6 +19,15 @@ public sealed partial class CodePreviewView : UserControl
 
     public static readonly StyledProperty<string?> FileNameProperty =
         AvaloniaProperty.Register<CodePreviewView, string?>(nameof(FileName));
+
+    /// <summary>
+    /// Whether the editor is exactly as tall as the code it holds. A fenced
+    /// block inside a document has no scroll of its own — the document scrolls
+    /// — so an editor left at its default height would show a few lines
+    /// through a window and hide the rest.
+    /// </summary>
+    public static readonly StyledProperty<bool> FitsContentProperty =
+        AvaloniaProperty.Register<CodePreviewView, bool>(nameof(FitsContent));
 
     private RegistryOptions? _registryOptions;
     private TextMate.Installation? _textMate;
@@ -38,6 +48,12 @@ public sealed partial class CodePreviewView : UserControl
     {
         get => GetValue(FileNameProperty);
         set => SetValue(FileNameProperty, value);
+    }
+
+    public bool FitsContent
+    {
+        get => GetValue(FitsContentProperty);
+        set => SetValue(FitsContentProperty, value);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -80,6 +96,34 @@ public sealed partial class CodePreviewView : UserControl
         // A new preview starts at the top; a stale scroll offset from the
         // previous file would show the middle of the next one.
         Editor.ScrollToHome();
+        FitHeightToContent();
+    }
+
+    private void FitHeightToContent()
+    {
+        if (!FitsContent)
+        {
+            return;
+        }
+
+        // Measured from the view's own line height rather than guessed from the
+        // font size: the editor decides how tall a line is, and a guess that is
+        // a pixel short clips the last line.
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                var lineHeight = Editor.TextArea.TextView.DefaultLineHeight;
+                if (lineHeight <= 0)
+                {
+                    return;
+                }
+
+                Editor.Height = (Editor.Document.LineCount * lineHeight)
+                    + Editor.TextArea.TextView.Margin.Top
+                    + Editor.TextArea.TextView.Margin.Bottom
+                    + 8;
+            },
+            DispatcherPriority.Loaded);
     }
 
     private void SyncGrammar()

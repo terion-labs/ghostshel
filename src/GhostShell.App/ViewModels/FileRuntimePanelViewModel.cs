@@ -2306,8 +2306,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
     }
 
-    /// <summary>The width a PDF page is rasterized at.</summary>
-    private const int PdfPageWidth = 1400;
+    /// <summary>
+    /// The width a PDF page is rasterized at. Generous so the fitted page stays
+    /// sharp on a large panel; the view scales it down to fit.
+    /// </summary>
+    private const int PdfPageWidth = 1600;
 
     public bool HasPdfPreview => _pdfPageCount > 0;
 

@@ -16,7 +16,9 @@
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
     <StackPanel
         x:Name="Blocks"
-        Margin="{controls:Inset Md}"
+        Margin="{controls:Inset Lg}"
+        MaxWidth="820"
+        HorizontalAlignment="Left"
         Spacing="{DynamicResource ShellSpaceSm}" />
   </ScrollViewer>
 </UserControl>
