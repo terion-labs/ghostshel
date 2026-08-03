@@ -15,6 +15,12 @@ public interface IDatabaseDriver
     DbConnection CreateConnection(string connectionString);
 
     /// <summary>
+    /// Maps friendly input onto the provider's syntax before anything parses
+    /// it — file engines accept a bare path here. The default keeps the input.
+    /// </summary>
+    string NormalizeConnectionString(string connectionString) => connectionString;
+
+    /// <summary>
     /// A statement returning (name, kind) rows for tables and views, ordered by
     /// name, where kind is the literal 'table' or 'view'.
     /// </summary>

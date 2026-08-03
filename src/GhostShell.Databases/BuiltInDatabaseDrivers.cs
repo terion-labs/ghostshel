@@ -50,15 +50,44 @@ public static class BuiltInDatabaseDrivers
     ];
 }
 
+/// <summary>
+/// File-based engines take a bare path in the viewer: "/data/app.db" (or
+/// "~/app.db") becomes "Data Source=…" before the provider parses it. Anything
+/// containing '=' is already a connection string and passes through.
+/// </summary>
+internal static class FileConnectionStrings
+{
+    public static string Normalize(string connectionString)
+    {
+        var value = connectionString.Trim();
+        if (value.Length == 0 || value.Contains('='))
+        {
+            return connectionString;
+        }
+
+        if (value.StartsWith("~/", StringComparison.Ordinal))
+        {
+            value = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                value[2..]);
+        }
+
+        return $"Data Source={value}";
+    }
+}
+
 internal sealed class SqliteDatabaseDriver : IDatabaseDriver
 {
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "sqlite",
         "SQLite",
-        "Data Source=/path/to/database.db");
+        "/path/to/database.db");
 
     public DbConnection CreateConnection(string connectionString) =>
         new SqliteConnection(connectionString);
+
+    public string NormalizeConnectionString(string connectionString) =>
+        FileConnectionStrings.Normalize(connectionString);
 
     public string ListTablesSql => """
         SELECT name, type FROM sqlite_master
@@ -217,10 +246,13 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "duckdb",
         "DuckDB",
-        "Data Source=/path/to/analytics.duckdb");
+        "/path/to/analytics.duckdb");
 
     public DbConnection CreateConnection(string connectionString) =>
         new DuckDBConnection(connectionString);
+
+    public string NormalizeConnectionString(string connectionString) =>
+        FileConnectionStrings.Normalize(connectionString);
 
     public string ListTablesSql => """
         SELECT table_name,

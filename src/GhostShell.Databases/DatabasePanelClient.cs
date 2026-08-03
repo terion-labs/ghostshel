@@ -52,7 +52,7 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
         var driver = Resolve(driverId);
         return await ExecuteThroughTunnelAsync(
             driver,
-            connectionString,
+            driver.NormalizeConnectionString(connectionString),
             tunnel,
             async (effectiveConnectionString, token) =>
             {
@@ -93,7 +93,7 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
         var driver = Resolve(driverId);
         return await ExecuteThroughTunnelAsync(
             driver,
-            connectionString,
+            driver.NormalizeConnectionString(connectionString),
             tunnel,
             async (effectiveConnectionString, token) =>
             {

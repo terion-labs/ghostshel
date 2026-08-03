@@ -104,6 +104,59 @@ public sealed class DatabasePanelClientTests : IDisposable
     }
 
     [Fact]
+    public async Task File_engines_accept_a_bare_path_as_the_connection_string()
+    {
+        var client = new DatabasePanelClient();
+        _ = await client.QueryAsync(
+            "sqlite",
+            _databasePath,
+            tunnel: null,
+            "CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);",
+            maxRows: 10,
+            CancellationToken.None);
+
+        var tables = await client.ListTablesAsync(
+            "sqlite",
+            _databasePath,
+            tunnel: null,
+            CancellationToken.None);
+
+        Assert.Equal("notes", Assert.Single(tables).Name);
+    }
+
+    [Fact]
+    public void Bare_paths_normalize_and_connection_strings_pass_through()
+    {
+        var sqlite = BuiltInDatabaseDrivers.All.Single(driver =>
+            driver.Descriptor.Id == "sqlite");
+        var duckdb = BuiltInDatabaseDrivers.All.Single(driver =>
+            driver.Descriptor.Id == "duckdb");
+        var postgres = BuiltInDatabaseDrivers.All.Single(driver =>
+            driver.Descriptor.Id == "postgres");
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        Assert.Equal(
+            "Data Source=/data/app.db",
+            sqlite.NormalizeConnectionString("/data/app.db"));
+        Assert.Equal(
+            "Data Source=/data/app.db",
+            sqlite.NormalizeConnectionString("  /data/app.db  "));
+        Assert.Equal(
+            $"Data Source={Path.Combine(home, "app.db")}",
+            sqlite.NormalizeConnectionString("~/app.db"));
+        Assert.Equal(
+            "Data Source=/data/app.db;Mode=ReadOnly",
+            sqlite.NormalizeConnectionString("Data Source=/data/app.db;Mode=ReadOnly"));
+        Assert.Equal(
+            "Data Source=/data/analytics.duckdb",
+            duckdb.NormalizeConnectionString("/data/analytics.duckdb"));
+        // Server engines keep their input untouched.
+        Assert.Equal(
+            "Host=localhost;Database=app",
+            postgres.NormalizeConnectionString("Host=localhost;Database=app"));
+    }
+
+    [Fact]
     public async Task Unknown_driver_is_rejected_before_any_connection_attempt()
     {
         var client = new DatabasePanelClient();
