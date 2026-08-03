@@ -149,7 +149,7 @@
               <Button Classes="IconButton FileToolbarAction" Click="OnUploadClick" IsEnabled="{Binding CanUpload}" IsVisible="{Binding CanUpload}" ToolTip.Tip="Upload a file from Home" AutomationProperties.Name="Upload file">
                 <icons:SymbolIcon Symbol="ArrowUpload" FontSize="14" />
               </Button>
-              <Button Classes="IconButton FileToolbarAction" Click="OnDownloadClick" IsEnabled="{Binding CanDownload}" ToolTip.Tip="Download selected file to Home" AutomationProperties.Name="Download selected file">
+              <Button Classes="IconButton FileToolbarAction" Click="OnDownloadClick" IsEnabled="{Binding CanDownload}" ToolTip.Tip="{Binding DownloadLabel}" AutomationProperties.Name="{Binding DownloadLabel}">
                 <icons:SymbolIcon Symbol="DocumentArrowDown" FontSize="14" />
               </Button>
               <Border Width="1" Margin="{DynamicResource ShellToolbarSeparatorMargin}" Background="{DynamicResource ShellBorderBrush}" />
@@ -413,14 +413,22 @@
                 <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding PreviewTitle}" TextTrimming="CharacterEllipsis" />
                 <!-- Only remote providers download anything, so the choice is
                      offered only where it costs something. -->
-                <CheckBox
+                <StackPanel
                     Grid.Column="1"
+                    Orientation="Horizontal"
                     VerticalAlignment="Center"
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    IsChecked="{Binding AutoDownloadPreviews, Mode=TwoWay}"
-                    IsVisible="{Binding IsRemoteProvider}"
-                    Content="Auto-download &lt;2 MB files for preview"
-                    AutomationProperties.Name="Automatically download files under two megabytes to preview them" />
+                    Spacing="{DynamicResource ShellSpaceSm}"
+                    IsVisible="{Binding IsRemoteProvider}">
+                  <TextBlock
+                      VerticalAlignment="Center"
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize9}"
+                      Text="Auto-download &lt;2 MB files for preview" />
+                  <ToggleSwitch
+                      VerticalAlignment="Center"
+                      IsChecked="{Binding AutoDownloadPreviews, Mode=TwoWay}"
+                      AutomationProperties.Name="Automatically download files under two megabytes to preview them" />
+                </StackPanel>
               </Grid>
             </Border>
             <controls:SurfaceCard Padding="0" Grid.Row="1" Margin="{controls:Inset Sm}" IsVisible="{Binding HasSelectedMetadata}">
@@ -461,6 +469,33 @@
                   Margin="{controls:Inset Sm}"
                   DataContext="{Binding PreviewTable}"
                   IsVisible="{Binding $parent[UserControl].DataContext.HasTablePreview}" />
+              <!-- A format the shell cannot show is named and given a symbol,
+                   rather than answered with a wall of hex nobody asked for. -->
+              <StackPanel
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Spacing="{DynamicResource ShellSpaceSm}"
+                  IsVisible="{Binding HasBinaryPreview}">
+                <icons:SymbolIcon
+                    HorizontalAlignment="Center"
+                    FontSize="40"
+                    Foreground="{DynamicResource ShellMutedBrush}"
+                    Symbol="{Binding PreviewBinary.Symbol}" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontWeight="SemiBold"
+                    Text="{Binding PreviewBinary.FormatName}" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="{Binding PreviewBinary.Detail}" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="{Binding SelectedMetadata.Size}" />
+              </StackPanel>
               <!-- An archive is listed, never unpacked. -->
               <components:PreviewTreeView
                   Margin="{controls:Inset Sm}"

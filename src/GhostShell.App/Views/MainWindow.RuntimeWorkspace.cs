@@ -1375,8 +1375,14 @@ public sealed partial class MainWindow
     private async void OnFileEntrySelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         _ = e;
-        if (sender is ListBox { DataContext: FileRuntimePanelViewModel panel })
+        if (sender is ListBox { DataContext: FileRuntimePanelViewModel panel } list)
         {
+            // The whole selection, not just the item whose preview is shown:
+            // downloading and transferring act on everything picked.
+            panel.SetSelectedEntries(list.SelectedItems?
+                .OfType<FileEntryViewModel>()
+                .Select(item => item.Entry)
+                .ToArray() ?? []);
             await panel.PreviewSelectedAsync(_lifetime.Token);
         }
     }
@@ -1512,9 +1518,19 @@ public sealed partial class MainWindow
             return;
         }
 
-        var request = await new FileTransferDialog(panel.CreateDownloadEditor())
-            .ShowDialog<FilePanelTransferRequest?>(this);
-        if (request is not null)
+        // A folder on this machine, chosen the way the system chooses folders,
+        // rather than a path typed into a dialog.
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Download to folder",
+            AllowMultiple = false,
+        });
+        if (folders.Count != 1 || folders[0].TryGetLocalPath() is not { } destination)
+        {
+            return;
+        }
+
+        foreach (var request in panel.CreateDownloadRequests(destination))
         {
             _ = await panel.QueueTransferAsync(request, _lifetime.Token);
         }

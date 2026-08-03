@@ -83,6 +83,9 @@ public sealed partial class CodePreviewView : UserControl
         {
             _registryOptions = new RegistryOptions(CurrentThemeName());
             _textMate = Editor.InstallTextMate(_registryOptions);
+            // Text set hard against the line-number column reads as one
+            // run-on column; a few pixels separate the two.
+            Editor.TextArea.TextView.Margin = new Thickness(8, 0, 0, 0);
         }
 
         SyncDocument();

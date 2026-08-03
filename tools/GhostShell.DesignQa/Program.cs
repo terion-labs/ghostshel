@@ -670,6 +670,10 @@ internal sealed class QaApplication : Avalonia.Application
         }, null),
         // The real file panel over a real local provider: what a reader sees,
         // including the switches the claiming previewer offers.
+        // A format the shell cannot show: named and given a symbol, with the
+        // bytes one switch away rather than dumped unasked.
+        ("file-preview-binary", () => CreateFilePanelProbe("libghost.dylib"), null),
+        ("file-preview-binary-hex", () => CreateFilePanelProbe("libghost.dylib", "hex"), null),
         ("file-preview-markdown", () => CreateFilePanelProbe("notes.md"), null),
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
@@ -1291,12 +1295,15 @@ internal sealed class QaApplication : Avalonia.Application
     /// the disk, the previewers claim by name, and the archive is listed by the
     /// same reader the product uses.
     /// </summary>
-    private static Window CreateFilePanelProbe(string fileName)
+    private static Window CreateFilePanelProbe(string fileName, string? toggleId = null)
     {
         var root = Path.Combine(Program.OutputDirectory, "preview-samples");
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, "notes.md"), QaData.MarkdownWithLongFence);
         File.WriteAllText(Path.Combine(root, "deployments.csv"), QaData.SampleCsv);
+        File.WriteAllBytes(
+            Path.Combine(root, "libghost.dylib"),
+            [0xCF, 0xFA, 0xED, 0xFE, .. Enumerable.Range(0, 220).Select(value => (byte)value)]);
         File.WriteAllText(
             Path.Combine(root, "settings.json"),
             """{"telemetry":{"enabled":false,"endpoint":"https://example.test"},"panels":[1,2,3]}""");
@@ -1348,6 +1355,10 @@ internal sealed class QaApplication : Avalonia.Application
         Settle(panel.Initialization);
         panel.SelectedEntry = panel.Entries.First(entry => entry.Name == fileName);
         Settle(panel.PreviewSelectedAsync());
+        if (toggleId is not null)
+        {
+            panel.PreviewToggles.Single(toggle => toggle.Id == toggleId).IsOn = true;
+        }
 
         return new Window
         {

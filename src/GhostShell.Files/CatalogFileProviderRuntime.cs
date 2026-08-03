@@ -662,10 +662,19 @@ public sealed class CatalogFileProviderRuntime :
 
     private static OwnedFileProviderRegistration CreateBuiltInHome()
     {
-        var rootPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(homePath) || !Directory.Exists(homePath))
+        {
+            homePath = AppContext.BaseDirectory;
+        }
+
+        // The filesystem's own root, not the user's folder: a file browser that
+        // cannot leave one directory is not a file browser. It still opens at
+        // home, because that is where a person's files are.
+        var rootPath = Path.GetPathRoot(Path.GetFullPath(homePath));
         if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
         {
-            rootPath = AppContext.BaseDirectory;
+            rootPath = homePath;
         }
 
         var provider = LocalFileProvider.CreateForCurrentPlatform(new LocalFileProviderOptions(
@@ -673,14 +682,39 @@ public sealed class CatalogFileProviderRuntime :
             new FileAuthority("local"),
             rootPath));
         var registration = new FileProviderRegistration(
-            "Home",
+            "Local",
             OperatingSystem.IsWindows() ? FileProviderFamily.Windows : FileProviderFamily.Posix,
             provider,
-            new FileLocation(provider.ProfileId, provider.Authority, FilePath.Root));
+            new FileLocation(provider.ProfileId, provider.Authority, FilePath.Root),
+            FilePanelCapability.None,
+            LocalStart(provider, rootPath, homePath));
         return new OwnedFileProviderRegistration(
             new GhostShell.Core.FileProviderProfileId("builtin.files.home"),
             registration,
             []);
+    }
+
+    /// <summary>
+    /// The home folder as a location inside the whole-filesystem provider.
+    /// </summary>
+    private static FileLocation LocalStart(
+        LocalFileProvider provider,
+        string rootPath,
+        string homePath)
+    {
+        var path = FilePath.Root;
+        var relative = Path.GetRelativePath(rootPath, homePath);
+        if (relative is not ("." or ".."))
+        {
+            foreach (var segment in relative.Split(
+                         [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                path = path.Append(new FilePathSegment(segment));
+            }
+        }
+
+        return new FileLocation(provider.ProfileId, provider.Authority, path);
     }
 
     private static IReadOnlyDictionary<ConnectionId, ConnectionProfile> ConnectionsById(

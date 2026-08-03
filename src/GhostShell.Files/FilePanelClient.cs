@@ -327,7 +327,8 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             MapCapabilities(registration.Provider.Capabilities.Supported)
                 | registration.GovernedMutationCapabilities,
             limits.MaximumListPageSize,
-            Math.Min(limits.MaximumReadBytes, MaximumPreviewLength));
+            Math.Min(limits.MaximumReadBytes, MaximumPreviewLength),
+            FromProviderLocation(registration.Start));
     }
 
     private static FilePanelCapability MapCapabilities(FileProviderCapability capabilities)

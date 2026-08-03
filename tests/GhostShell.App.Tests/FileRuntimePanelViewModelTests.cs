@@ -967,7 +967,7 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
-    public async Task UploadEditorRejectsPathOutsideBuiltInHomeBeforeReadingIt()
+    public async Task UploadEditorRejectsAFileThatIsNotThereBeforeReadingIt()
     {
         var client = new StubFilePanelClient();
         var remote = client.AddProfile(
@@ -981,14 +981,13 @@ public sealed class FileRuntimePanelViewModelTests
             new StubTransferQueue());
         await panel.Initialization;
         await panel.SelectProfileAsync(remote);
-        var outsideHome = Path.Combine(
-            HomePath(),
-            "..",
-            $"ghostshell-outside-{Guid.NewGuid():N}.txt");
+        var missing = Path.Combine(HomePath(), $"ghostshell-missing-{Guid.NewGuid():N}.txt");
 
-        var error = Assert.Throws<ArgumentException>(() => panel.CreateUploadEditor(outsideHome));
+        // The local provider reaches the whole filesystem, so where a file sits
+        // is no longer the question — whether it is there still is.
+        var error = Assert.Throws<ArgumentException>(() => panel.CreateUploadEditor(missing));
 
-        Assert.Contains("Home folder", error.Message, StringComparison.Ordinal);
+        Assert.Contains("no longer exists", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1007,13 +1006,15 @@ public sealed class FileRuntimePanelViewModelTests
         var resolved = panel.GetSelectedLocalPath();
 
         Assert.True(panel.CanOpenExternally);
+        // Provider paths are relative to the filesystem root the local
+        // provider is rooted at, not to the user's home folder.
         Assert.Equal(
-            Path.GetFullPath(Path.Combine(HomePath(), "documents", "notes.txt")),
+            Path.GetFullPath(Path.Combine(LocalRootPath(), "documents", "notes.txt")),
             resolved);
     }
 
     [Fact]
-    public async Task WindowsShapedProviderSegmentCannotResolveOutsideHome()
+    public async Task WindowsShapedProviderSegmentCannotResolveOutsideTheProviderRoot()
     {
         const string windowsTraversal = @"..\outside.txt";
         var client = new StubFilePanelClient();
@@ -1038,7 +1039,7 @@ public sealed class FileRuntimePanelViewModelTests
 
         // Backslash is a legal filename character on POSIX, not a path separator.
         Assert.Equal(
-            Path.GetFullPath(Path.Combine(HomePath(), windowsTraversal)),
+            Path.GetFullPath(Path.Combine(LocalRootPath(), windowsTraversal)),
             panel.GetSelectedLocalPath());
     }
 
@@ -1257,6 +1258,13 @@ public sealed class FileRuntimePanelViewModelTests
         new DateTimeOffset(2026, 7, 22, 10, 0, 0, TimeSpan.Zero),
         false);
 
+    /// <summary>
+    /// The filesystem root the local provider is rooted at — the base its
+    /// paths resolve against.
+    /// </summary>
+    private static string LocalRootPath() =>
+        Path.GetPathRoot(HomePath()) is { Length: > 0 } root ? root : HomePath();
+
     private static string HomePath()
     {
         var path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -1325,16 +1333,42 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
-    public async Task A_hex_preview_does_not_wrap_and_a_text_one_does()
+    public async Task A_binary_file_is_named_rather_than_dumped_as_hex()
     {
-        var binary = await PreviewOf(
+        var panel = await PreviewOf(
+            "libghost.dylib",
+            "\u0000\u0001",
+            kind: FilePanelPreviewKind.Hex);
+
+        Assert.True(panel.HasBinaryPreview);
+        Assert.False(panel.HasSourcePreview);
+        Assert.Equal("DYLIB binary", panel.PreviewBinary!.FormatName);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task The_bytes_are_there_for_whoever_asks_and_do_not_wrap()
+    {
+        var panel = await PreviewOf(
             "payload.bin",
             "\u0000\u0001",
             kind: FilePanelPreviewKind.Hex);
-        Assert.False(binary.WrapPreviewText);
-        binary.Dispose();
 
+        panel.PreviewToggles.Single().IsOn = true;
+
+        Assert.False(panel.HasBinaryPreview);
+        Assert.True(panel.HasSourcePreview);
+        // A hex dump is a fixed-width grid; wrapping it destroys the columns.
+        Assert.False(panel.WrapPreviewText);
+        Assert.Contains("00000000", panel.PreviewText!, StringComparison.Ordinal);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task Ordinary_text_wraps()
+    {
         var text = await PreviewOf("readme.txt", "hello");
+
         Assert.True(text.WrapPreviewText);
         text.Dispose();
     }
@@ -1359,6 +1393,129 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Empty(panel.PreviewToggles);
         Assert.Equal("plain", panel.PreviewText);
         panel.Dispose();
+    }
+
+    [Fact]
+    public async Task Everything_selected_is_downloaded_into_the_chosen_folder()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "report.pdf", FilePanelEntryKind.File, 12));
+        client.Entries.Add(Entry(client.Root, "logs", FilePanelEntryKind.Directory, null));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+
+        panel.SetSelectedEntries(panel.Entries.Select(entry => entry.Entry).ToArray());
+        var requests = panel.CreateDownloadRequests(
+            Path.Combine(Path.GetTempPath(), "downloads"));
+
+        // Folders come too: the transfer queue copies a tree, so the panel does
+        // not have to walk one.
+        Assert.Equal(2, requests.Count);
+        Assert.All(requests, request =>
+        {
+            Assert.Equal("builtin.files.home", request.Destination.ProviderProfileId);
+            Assert.Equal(FilePanelConflictPolicy.Replace, request.ConflictPolicy);
+        });
+        Assert.Contains(requests, request => request.Source.ToString().Contains("logs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_download_lands_at_the_path_that_was_chosen()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "report.pdf", FilePanelEntryKind.File, 12));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+        panel.SetSelectedEntries([panel.Entries.Single().Entry]);
+
+        var request = Assert.Single(panel.CreateDownloadRequests(
+            Path.Combine(Path.GetTempPath(), "ghost", "downloads")));
+
+        // The local provider is rooted at the filesystem root, so the chosen
+        // folder addresses straight through as the path it is.
+        var address = Assert.IsType<FilePanelAddress.Hierarchical>(request.Destination.Address);
+        var segments = address.Path.Segments.Select(segment => segment.Value).ToArray();
+        Assert.Equal("report.pdf", segments[^1]);
+        Assert.Equal("downloads", segments[^2]);
+        Assert.Equal("ghost", segments[^3]);
+    }
+
+    [Fact]
+    public async Task Nothing_selected_is_nothing_to_download()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "report.pdf", FilePanelEntryKind.File, 12));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+
+        panel.SetSelectedEntries([]);
+
+        Assert.False(panel.CanDownload);
+        Assert.Throws<InvalidOperationException>(() => panel.CreateDownloadRequests("/tmp"));
+    }
+
+    [Fact]
+    public async Task A_panel_opens_where_its_provider_says_it_opens()
+    {
+        var client = new StubFilePanelClient();
+        var start = client.Root.Child(new FilePanelPathSegment("home"))
+            .Child(new FilePanelPathSegment("terion"));
+        client.SetStartLocation(start);
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client);
+
+        await panel.Initialization;
+
+        // The provider reaches its whole root; it just does not open there.
+        Assert.Equal(start.ToString(), panel.CurrentLocation?.ToString());
+    }
+
+    [Fact]
+    public async Task A_file_anywhere_on_this_machine_can_be_uploaded()
+    {
+        var client = new StubFilePanelClient();
+        var remote = client.AddProfile(
+            "sftp.host",
+            "dev.example",
+            capabilities: FilePanelCapability.List | FilePanelCapability.StreamingWrite,
+            family: FileProviderFamily.Sftp);
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue());
+        await panel.Initialization;
+        await panel.SelectProfileAsync(remote);
+
+        var source = Path.Combine(Path.GetTempPath(), $"ghostshell-upload-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(source, "payload");
+        try
+        {
+            // The local provider reaches the whole filesystem now, so a file
+            // outside the user's home folder is no longer out of bounds.
+            var editor = panel.CreateUploadEditor(source);
+
+            Assert.Equal(Path.GetFileName(source), editor.Source.Name);
+            Assert.Equal("builtin.files.home", editor.Source.Location.ProviderProfileId);
+        }
+        finally
+        {
+            File.Delete(source);
+        }
     }
 
     private static Task<FileRuntimePanelViewModel> PreviewOf(
@@ -1427,6 +1584,29 @@ public sealed class FileRuntimePanelViewModelTests
         }
 
         public FilePanelLocation Root { get; }
+
+        /// <summary>
+        /// Re-declares the only profile with a start location away from its
+        /// root, the shape the local provider now has.
+        /// </summary>
+        public void SetStartLocation(FilePanelLocation start)
+        {
+            var existing = Profiles[0];
+            Profiles =
+            [
+                new FileProviderProfileDescriptor(
+                    existing.Id,
+                    existing.Name,
+                    existing.Family,
+                    existing.Root,
+                    existing.Capabilities,
+                    existing.MaximumPageSize,
+                    existing.MaximumPreviewBytes,
+                    start),
+                .. Profiles.Skip(1),
+            ];
+            ProfilesChanged?.Invoke(this, EventArgs.Empty);
+        }
 
         public List<FilePanelEntry> Entries { get; } = [];
 

@@ -136,6 +136,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private bool _wrapPreviewText = true;
     private PreviewTableViewModel? _previewTable;
     private PreviewTreeViewModel? _previewTree;
+    private BinaryPreviewRendering? _previewBinary;
     private DatabaseRuntimePanelViewModel? _databasePreview;
     private MaterializedFile? _databasePreviewFile;
 
@@ -757,11 +758,31 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasTreePreview => _previewTree is not null;
 
+    /// <summary>
+    /// What is known about a file the shell cannot show: its format and a
+    /// symbol for it, rather than a wall of hex nobody asked for.
+    /// </summary>
+    public BinaryPreviewRendering? PreviewBinary
+    {
+        get => _previewBinary;
+        private set
+        {
+            if (SetProperty(ref _previewBinary, value))
+            {
+                OnPropertyChanged(nameof(HasBinaryPreview));
+                OnPropertyChanged(nameof(HasPreview));
+                OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+            }
+        }
+    }
+
+    public bool HasBinaryPreview => _previewBinary is not null;
+
     public bool HasImagePreview => PreviewImage is not null;
 
     public bool HasPreview =>
         HasTextPreview || HasImagePreview || HasDatabasePreview || HasHtmlPreview
-        || HasTablePreview || HasTreePreview;
+        || HasTablePreview || HasTreePreview || HasBinaryPreview;
 
     public bool ShowPreviewPlaceholder =>
         !HasPreview && !IsPreviewLoading && !ShowPreviewDownloadPrompt;
@@ -831,7 +852,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         && SelectedEntry?.Entry.Kind is
             FilePanelEntryKind.File or FilePanelEntryKind.Directory;
 
-    public bool CanDownload => CanTransfer
+    public bool CanDownload => !IsLoading
+        && _transferQueue is not null
+        && DownloadableEntries().Count > 0
         && Profiles.Any(profile => profile.Id == "builtin.files.home");
 
     public bool CanUpload => !IsLoading
@@ -879,7 +902,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         SelectedProfile = profile;
-        await NavigateAsync(profile.Root, cancellationToken);
+        // Where the provider says it opens, which need not be its root: the
+        // local provider reaches the whole filesystem and opens at home.
+        await NavigateAsync(profile.StartLocation, cancellationToken);
     }
 
     public Task RefreshAsync(CancellationToken cancellationToken = default) =>
@@ -1256,6 +1281,113 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             "builtin.files.home");
     }
 
+    /// <summary>
+    /// Everything selected, which may be several files and folders at once.
+    /// Kept beside <see cref="SelectedEntry"/>, which stays the one whose
+    /// details and preview are shown.
+    /// </summary>
+    public IReadOnlyList<FilePanelEntry> SelectedEntries => _selectedEntries;
+
+    private IReadOnlyList<FilePanelEntry> _selectedEntries = [];
+
+    public void SetSelectedEntries(IReadOnlyList<FilePanelEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        _selectedEntries = entries;
+        OnPropertyChanged(nameof(SelectedEntries));
+        OnPropertyChanged(nameof(CanDownload));
+        OnPropertyChanged(nameof(DownloadLabel));
+    }
+
+    /// <summary>
+    /// What the download action will do, said plainly: a person about to pull
+    /// a folder tree over a network should be told that is what this is.
+    /// </summary>
+    public string DownloadLabel
+    {
+        get
+        {
+            var entries = DownloadableEntries();
+            if (entries.Count == 0)
+            {
+                return "Download selected items";
+            }
+
+            var name = entries.Count == 1 ? $"\u201c{entries[0].Name}\u201d" : $"{entries.Count} items";
+            return $"Download {name} to a folder";
+        }
+    }
+
+    /// <summary>
+    /// Copies everything selected — files and folders alike — into a folder on
+    /// this machine. Folders are copied whole by the transfer queue; nothing
+    /// here walks a remote tree by hand.
+    /// </summary>
+    public IReadOnlyList<FilePanelTransferRequest> CreateDownloadRequests(
+        string destinationFolderPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationFolderPath);
+        var entries = DownloadableEntries();
+        if (entries.Count == 0)
+        {
+            throw new InvalidOperationException("Select a file or folder to download.");
+        }
+
+        var localProfile = Profiles.SingleOrDefault(profile =>
+            profile.Id == BuiltInFileProviders.HomeId.Value)
+            ?? throw new InvalidOperationException(
+                "This session has no local provider to download into.");
+        var folder = LocalLocation(localProfile, destinationFolderPath);
+        return entries
+            .Select(entry => new FilePanelTransferRequest(
+                entry.Location,
+                FileLocationPresentation.Child(folder, entry.Name),
+                FilePanelTransferOperation.Copy,
+                // A second download of the same file replaces the first rather
+                // than failing: the reader asked for it again on purpose.
+                FilePanelConflictPolicy.Replace))
+            .ToArray();
+    }
+
+    private IReadOnlyList<FilePanelEntry> DownloadableEntries()
+    {
+        if (_selectedEntries.Count > 0)
+        {
+            return _selectedEntries
+                .Where(entry => entry.Kind is
+                    FilePanelEntryKind.File or FilePanelEntryKind.Directory)
+                .ToArray();
+        }
+
+        return SelectedEntry?.Entry is { Kind: FilePanelEntryKind.File or FilePanelEntryKind.Directory } single
+            ? [single]
+            : [];
+    }
+
+    /// <summary>
+    /// A path on this machine as a location in the local provider, which is
+    /// rooted at the filesystem root and so can address any of it.
+    /// </summary>
+    private static FilePanelLocation LocalLocation(
+        FileProviderProfileDescriptor localProfile,
+        string path)
+    {
+        var full = Path.GetFullPath(path.Trim());
+        var root = Path.GetPathRoot(full);
+        var relative = string.IsNullOrEmpty(root) ? full : Path.GetRelativePath(root, full);
+        var segments = relative is "." or ".."
+            ? []
+            : relative
+                .Split(
+                    [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                    StringSplitOptions.RemoveEmptyEntries)
+                .Select(segment => new FilePanelPathSegment(segment));
+        return new FilePanelLocation(
+            localProfile.Id,
+            localProfile.Root.Authority,
+            new FilePanelAddress.Hierarchical(FilePanelPath.FromSegments(segments)));
+    }
+
     public FileTransferEditorViewModel CreateUploadEditor(string localPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(localPath);
@@ -1267,31 +1399,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
         var homeProfile = Profiles.Single(profile => profile.Id == "builtin.files.home");
         var sourcePath = Path.GetFullPath(localPath.Trim());
-        var homePath = BuiltInHomePath();
-        if (!IsWithinDirectory(homePath, sourcePath))
-        {
-            throw new ArgumentException(
-                "Choose a file inside your Home folder so the local provider can read it safely.",
-                nameof(localPath));
-        }
-
-        var relativePath = Path.GetRelativePath(homePath, sourcePath);
         var file = new FileInfo(sourcePath);
         if (!file.Exists)
         {
             throw new ArgumentException("The selected local file no longer exists.", nameof(localPath));
         }
 
-        var segments = relativePath
-            .Split(
-                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                StringSplitOptions.RemoveEmptyEntries)
-            .Select(segment => new FilePanelPathSegment(segment));
+        // The local provider is rooted at the filesystem root, so any file the
+        // operating system let the user pick is addressable.
         var source = new FilePanelEntry(
-            new FilePanelLocation(
-                homeProfile.Id,
-                homeProfile.Root.Authority,
-                new FilePanelAddress.Hierarchical(FilePanelPath.FromSegments(segments))),
+            LocalLocation(homeProfile, sourcePath),
             file.Name,
             FilePanelEntryKind.File,
             file.Length,
@@ -1314,12 +1431,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         var segments = path.Path.Segments.Select(segment => segment.Value).ToArray();
-        var homePath = BuiltInHomePath();
-        var resolvedPath = Path.GetFullPath(Path.Combine([homePath, .. segments]));
-        if (!IsWithinDirectory(homePath, resolvedPath))
+        var rootPath = LocalRootPath();
+        var resolvedPath = Path.GetFullPath(Path.Combine([rootPath, .. segments]));
+        if (!IsWithinDirectory(rootPath, resolvedPath))
         {
             throw new InvalidOperationException(
-                "The selected file resolves outside the built-in Home provider.");
+                "The selected file resolves outside the local provider.");
         }
 
         return resolvedPath;
@@ -1586,7 +1703,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
         else if (_initialLocationText is null)
         {
-            initialLocation = profile.Root;
+            initialLocation = profile.StartLocation;
         }
         else
         {
@@ -1955,6 +2072,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 _markdownRendering = true;
                 PreviewText = markdown.Text;
                 break;
+            case BinaryPreviewRendering binary:
+                PreviewBinary = binary;
+                break;
             case TablePreviewRendering table:
                 PreviewTable = new PreviewTableViewModel(table);
                 break;
@@ -2005,6 +2125,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewImage = null;
         PreviewTable = null;
         PreviewTree = null;
+        PreviewBinary = null;
         _markdownRendering = false;
         _wrapPreviewText = true;
         ClearHtmlPreview();
@@ -2136,6 +2257,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewText = null;
         PreviewTable = null;
         PreviewTree = null;
+        PreviewBinary = null;
         PreviewIssue = null;
         PreviewTitle = "Preview";
         _requestedPreviewEntry = null;
@@ -2794,6 +2916,15 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             _ => name,
         };
     }
+
+    /// <summary>
+    /// The filesystem root the local provider is rooted at, which is what its
+    /// paths are relative to.
+    /// </summary>
+    private static string LocalRootPath() =>
+        Path.GetPathRoot(BuiltInHomePath()) is { Length: > 0 } root
+            ? root
+            : BuiltInHomePath();
 
     private static string BuiltInHomePath()
     {

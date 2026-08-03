@@ -51,7 +51,8 @@ public sealed record FileProviderProfileDescriptor
         FilePanelLocation Root,
         FilePanelCapability Capabilities,
         int MaximumPageSize,
-        long MaximumPreviewBytes)
+        long MaximumPreviewBytes,
+        FilePanelLocation? StartLocation = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Id);
         ArgumentException.ThrowIfNullOrWhiteSpace(Name);
@@ -82,6 +83,14 @@ public sealed record FileProviderProfileDescriptor
         this.Capabilities = Capabilities;
         this.MaximumPageSize = MaximumPageSize;
         this.MaximumPreviewBytes = MaximumPreviewBytes;
+        if (StartLocation is not null && StartLocation.ProviderProfileId != Id)
+        {
+            throw new ArgumentException(
+                "The profile descriptor and start location must use the same profile ID.",
+                nameof(StartLocation));
+        }
+
+        this.StartLocation = StartLocation ?? Root;
     }
 
     public string Id { get; }
@@ -91,6 +100,13 @@ public sealed record FileProviderProfileDescriptor
     public FileProviderFamily Family { get; }
 
     public FilePanelLocation Root { get; }
+
+    /// <summary>
+    /// Where a panel opens on this provider, which need not be its root. The
+    /// local provider reaches the whole filesystem but opens at the user's
+    /// home folder, because that is where their files are.
+    /// </summary>
+    public FilePanelLocation StartLocation { get; }
 
     public FilePanelCapability Capabilities { get; }
 

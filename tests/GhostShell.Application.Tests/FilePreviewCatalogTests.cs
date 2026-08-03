@@ -29,15 +29,23 @@ public sealed class FilePreviewCatalogTests
     }
 
     [Fact]
+    public void A_binary_file_is_named_rather_than_dumped()
+    {
+        var outcome = Catalog.Create(Binary("payload.bin"));
+
+        // A wall of hex tells almost nobody anything; the format and a symbol
+        // for it do, and the bytes are one switch away.
+        var binary = Assert.IsType<BinaryPreviewRendering>(outcome.Rendering);
+        Assert.Equal("BIN binary", binary.FormatName);
+        Assert.Equal("Show hex", Assert.Single(outcome.Toggles).Label);
+    }
+
+    [Fact]
     public void A_hex_dump_does_not_wrap()
     {
         var outcome = Catalog.Create(
-            new FilePreviewSource(
-                "payload.bin",
-                FilePanelPreviewKind.Hex,
-                "application/octet-stream",
-                new byte[] { 1, 2, 3 },
-                IsTruncated: false));
+            Binary("payload.bin"),
+            new Dictionary<string, bool> { [BinaryPreviewer.HexToggle] = true });
 
         // A hex dump is a fixed-width grid: wrapping folds every row and the
         // columns stop lining up.
@@ -45,6 +53,14 @@ public sealed class FilePreviewCatalogTests
         Assert.False(source.Wrap);
         Assert.Contains("00000000", source.Text, StringComparison.Ordinal);
     }
+
+    private static FilePreviewSource Binary(string name) =>
+        new(
+            name,
+            FilePanelPreviewKind.Hex,
+            "application/octet-stream",
+            new byte[] { 1, 2, 3 },
+            IsTruncated: false);
 
     [Fact]
     public void Ordinary_text_wraps()

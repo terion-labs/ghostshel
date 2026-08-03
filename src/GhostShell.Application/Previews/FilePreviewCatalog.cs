@@ -26,6 +26,7 @@ public sealed class FilePreviewCatalog
         new MarkdownPreviewer(),
         new WebPagePreviewer(),
         new StructuredDataPreviewer(),
+        new BinaryPreviewer(),
         new ClassifiedFilePreviewer(),
     ];
 

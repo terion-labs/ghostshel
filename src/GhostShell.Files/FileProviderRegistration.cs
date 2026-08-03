@@ -23,7 +23,8 @@ public sealed record FileProviderRegistration
         FileProviderFamily family,
         IFileProvider provider,
         FileLocation root,
-        FilePanelCapability governedMutationCapabilities)
+        FilePanelCapability governedMutationCapabilities,
+        FileLocation? start = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(provider);
@@ -72,6 +73,14 @@ public sealed record FileProviderRegistration
         Family = family;
         Provider = provider;
         Root = root;
+        if (start is not null && start.ProviderProfileId != provider.ProfileId)
+        {
+            throw new ArgumentException(
+                "A registered provider and its start location must use the same profile ID.",
+                nameof(start));
+        }
+
+        Start = start ?? root;
         GovernedMutationCapabilities = governedMutationCapabilities;
     }
 
@@ -82,6 +91,12 @@ public sealed record FileProviderRegistration
     public IFileProvider Provider { get; }
 
     public FileLocation Root { get; }
+
+    /// <summary>
+    /// Where a panel opens on this provider. Defaults to the root; the local
+    /// provider reaches the whole filesystem but opens at the user's home.
+    /// </summary>
+    public FileLocation Start { get; }
 
     /// <summary>
     /// Capabilities asserted only by trusted production composition after verifying that the
