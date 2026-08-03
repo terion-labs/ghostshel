@@ -448,6 +448,33 @@ internal sealed class QaApplication : Avalonia.Application
                 },
             };
         }, null),
+        // And narrow, where the objects list folds into a picker beside the
+        // statement editor rather than squeezing the results.
+        ("database-preview-narrow", () =>
+        {
+            var viewer = new DatabaseRuntimePanelViewModel(
+                PanelInstanceId.New(),
+                "probe.db",
+                new GhostShell.Databases.DatabasePanelClient(),
+                "sqlite",
+                Program.SqliteProbePath);
+            _ = viewer.ConnectAsync();
+            return new Window
+            {
+                Width = 430,
+                Height = 460,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = new Border
+                {
+                    Classes = { "FloatingSidebar" },
+                    Child = new GhostShell.App.Views.Components.DatabaseWorkspaceView
+                    {
+                        DataContext = viewer,
+                    },
+                },
+            };
+        }, null),
         // The file preview's syntax highlighting over a C# sample, so token
         // colouring is reviewable rather than assumed from the grammar name.
         ("code-preview", () => new Window

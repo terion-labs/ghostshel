@@ -17,9 +17,66 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     private double _resizeOriginX;
     private double _resizeOriginWidth;
 
+    /// <summary>
+    /// Below this width the objects list and the result grid cannot both hold a
+    /// usable width, so the list folds into a picker beside the statement
+    /// editor and gives its space to the results.
+    /// </summary>
+    private const double ObjectsListMinimumWorkspaceWidth = 520;
+
+    /// <summary>
+    /// The width the objects list had while it was shown, so folding and
+    /// unfolding does not discard a width the user chose with the splitter.
+    /// </summary>
+    private GridLength _objectsWidth = new(196);
+    private bool _objectsFolded;
+
     public DatabaseWorkspaceView()
     {
         InitializeComponent();
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        SetObjectsFolded(e.NewSize.Width < ObjectsListMinimumWorkspaceWidth);
+    }
+
+    private void SetObjectsFolded(bool folded)
+    {
+        if (folded == _objectsFolded)
+        {
+            return;
+        }
+
+        var columns = WorkspaceGrid.ColumnDefinitions;
+        if (folded)
+        {
+            _objectsWidth = columns[0].Width;
+            columns[0].Width = new GridLength(0);
+            columns[1].Width = new GridLength(0);
+        }
+        else
+        {
+            columns[0].Width = _objectsWidth;
+            columns[1].Width = new GridLength(5);
+        }
+
+        _objectsFolded = folded;
+        ObjectsSidebar.IsVisible = !folded;
+        ObjectsSplitter.IsVisible = !folded;
+        ObjectsPicker.IsVisible = folded;
+    }
+
+    private void OnPickedTableClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control { DataContext: DatabaseTableItemViewModel table }
+            && Panel is { } panel)
+        {
+            ObjectsPicker.Flyout?.Hide();
+            _ = panel.PreviewTableAsync(table);
+        }
     }
 
     private DatabaseRuntimePanelViewModel? Panel => DataContext as DatabaseRuntimePanelViewModel;

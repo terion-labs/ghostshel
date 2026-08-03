@@ -38,13 +38,13 @@
     </Style>
   </UserControl.Styles>
   <Grid RowDefinitions="*,25">
-    <Grid>
+    <Grid x:Name="WorkspaceGrid">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="196" MinWidth="120" MaxWidth="480" />
         <ColumnDefinition Width="5" />
         <ColumnDefinition Width="*" MinWidth="240" />
       </Grid.ColumnDefinitions>
-      <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
+      <Border x:Name="ObjectsSidebar" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*">
           <TextBox
               Margin="{controls:Inset Sm}"
@@ -74,6 +74,7 @@
       </Border>
 
       <GridSplitter
+          x:Name="ObjectsSplitter"
           Grid.Column="1"
           Width="5"
           HorizontalAlignment="Stretch"
@@ -84,8 +85,62 @@
 
       <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*">
         <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-          <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <Button
+                x:Name="ObjectsPicker"
+                Height="26"
+                MinWidth="86"
+                MaxWidth="180"
+                VerticalAlignment="Top"
+                Padding="{controls:Inset Horizontal=Sm}"
+                HorizontalContentAlignment="Stretch"
+                Background="{DynamicResource ShellSurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource ShellBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource ShellControlCornerRadius}"
+                IsVisible="False"
+                AutomationProperties.Name="Choose a database object">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    FontWeight="SemiBold"
+                    Text="Objects"
+                    TextTrimming="CharacterEllipsis" />
+                <icons:SymbolIcon Grid.Column="1" VerticalAlignment="Center" FontSize="10" Symbol="ChevronDown" />
+              </Grid>
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedLeft">
+                  <Grid Width="280" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceSm}">
+                    <TextBox
+                        Text="{Binding TableFilter, Mode=TwoWay}"
+                        PlaceholderText="Filter objects…"
+                        AutomationProperties.Name="Filter database objects" />
+                    <ScrollViewer Grid.Row="1" MaxHeight="260" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                      <ItemsControl ItemsSource="{Binding Tables}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Button
+                                Classes="ListRow"
+                                Click="OnPickedTableClick"
+                                ToolTip.Tip="{Binding KindLabel}"
+                                AutomationProperties.Name="{Binding Name, StringFormat=Preview rows from {0}}">
+                              <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                                <icons:SymbolIcon VerticalAlignment="Center" Symbol="Table" FontSize="12" Foreground="{DynamicResource ShellAccentBrush}" IsVisible="{Binding !IsView}" />
+                                <icons:SymbolIcon VerticalAlignment="Center" Symbol="Eye" FontSize="12" Foreground="{DynamicResource ShellMutedBrush}" IsVisible="{Binding IsView}" />
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                              </Grid>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                  </Grid>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
             <TextBox
+                Grid.Column="1"
                 Classes="QueryEditor"
                 MinHeight="64"
                 MaxHeight="140"
@@ -97,7 +152,7 @@
                 KeyDown="OnQueryKeyDown"
                 AutomationProperties.Name="SQL statement" />
             <Button
-                Grid.Column="1"
+                Grid.Column="2"
                 MinWidth="70"
                 VerticalAlignment="Bottom"
                 Classes="PrimaryButton"

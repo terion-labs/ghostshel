@@ -413,7 +413,7 @@
                 <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding PreviewTitle}" TextTrimming="CharacterEllipsis" />
               </Grid>
             </Border>
-            <controls:SurfaceCard Padding="0" Grid.Row="1" Margin="{controls:Inset Horizontal=Sm, Bottom=Sm}" IsVisible="{Binding HasSelectedMetadata}">
+            <controls:SurfaceCard Padding="0" Grid.Row="1" Margin="{controls:Inset Sm}" IsVisible="{Binding HasSelectedMetadata}">
               <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Kind" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Kind}" /></StackPanel>
                 <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Size" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Size}" /></StackPanel>
