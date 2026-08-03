@@ -66,6 +66,10 @@
       <Style Selector="^:tone-sunken">
         <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
       </Style>
+      <Style Selector="^:tone-panel">
+        <Setter Property="Background" Value="{DynamicResource ShellSidebarBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellSidebarBorderBrush}" />
+      </Style>
       <Style Selector="^:tone-notice">
         <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource ShellNoticeBorderBrush}" />

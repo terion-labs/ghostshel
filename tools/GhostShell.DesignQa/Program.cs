@@ -348,6 +348,7 @@ internal sealed class QaApplication : Avalonia.Application
             ShowInTaskbar = false,
             Content = new Border
             {
+                Classes = { "FloatingSidebar" },
                 Padding = new Thickness(16),
                 Child = new GhostShell.App.Views.Components.NewItemChooserView
                 {

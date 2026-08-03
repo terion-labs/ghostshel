@@ -18,6 +18,12 @@ internal enum SurfaceTone
     /// <summary>A well: a region the page recedes into, such as a panel canvas.</summary>
     Sunken,
 
+    /// <summary>
+    /// A floating panel region on the window canvas — the surface the workspaces
+    /// sidebar uses. Cards sit on it with their own fills.
+    /// </summary>
+    Panel,
+
     /// <summary>Something worth reading before acting on the rest of the page.</summary>
     Notice,
 
@@ -144,6 +150,7 @@ internal sealed class SurfaceCard : ContentControl
         SurfaceTone.Default => "default",
         SurfaceTone.Raised => "raised",
         SurfaceTone.Sunken => "sunken",
+        SurfaceTone.Panel => "panel",
         SurfaceTone.Notice => "notice",
         SurfaceTone.Danger => "danger",
         SurfaceTone.Warning => "warning",

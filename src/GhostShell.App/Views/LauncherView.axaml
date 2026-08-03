@@ -197,7 +197,12 @@
         </Grid>
       </Border>
   
-      <ScrollViewer x:Name="LauncherScrollViewer" Grid.Column="1" IsVisible="{Binding IsLauncherOverviewVisible}">
+      <!-- The pages float on the same panel surface the workspaces sidebar
+           uses, so the cards inside them sit on a panel rather than directly on
+           the window background. -->
+      <Border Grid.Column="1" Classes="FloatingSidebar routeContent">
+        <Panel>
+      <ScrollViewer x:Name="LauncherScrollViewer" IsVisible="{Binding IsLauncherOverviewVisible}">
         <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceXl}">
           <Grid
               x:Name="LauncherHomeSection"
@@ -419,7 +424,6 @@
            full list it adds to. -->
       <ScrollViewer
           x:Name="LauncherConnectionsScrollViewer"
-          Grid.Column="1"
           IsVisible="{Binding IsLauncherConnectionsVisible}">
         <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceLg}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
@@ -484,7 +488,6 @@
 
       <ScrollViewer
           x:Name="LauncherScreensScrollViewer"
-          Grid.Column="1"
           IsVisible="{Binding IsLauncherScreensVisible}">
         <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceLg}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
@@ -526,7 +529,6 @@
       </ScrollViewer>
 
       <Grid
-          Grid.Column="1"
           Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}"
           RowDefinitions="Auto,*,Auto"
           RowSpacing="{DynamicResource ShellSpaceLg}"
@@ -677,6 +679,8 @@
           </Grid>
         </controls:SurfaceCard>
       </Grid>
+        </Panel>
+      </Border>
     </Grid>
   </Grid>
 </UserControl>

@@ -631,6 +631,12 @@
     <Setter Property="Margin" Value="{controls:Inset Horizontal=Sm, Bottom=Sm}" />
   </Style>
 
+  <!-- The route's content panel: the same floating surface as the sidebar next
+       to it, minus the left margin the sidebar's right margin already provides. -->
+  <Style Selector="Border.FloatingSidebar.routeContent">
+    <Setter Property="Margin" Value="{controls:Inset Right=Sm, Bottom=Sm}" />
+  </Style>
+
   <!-- The workspace canvas already contributes the gutter on the facing edge.
        The top matches the canvas gutter, so the rails and the panels start on
        the same line rather than the rails riding a step higher. -->
