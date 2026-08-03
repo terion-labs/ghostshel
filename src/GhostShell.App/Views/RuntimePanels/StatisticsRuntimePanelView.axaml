@@ -170,7 +170,6 @@
 
       <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
-          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="POSIX process counters · no environment or terminal content" TextTrimming="CharacterEllipsis" Margin="{controls:Inset Right=Sm}" />
           <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
         </Grid>
       </Border>
