@@ -1101,9 +1101,11 @@
     <Setter Property="CornerRadius" Value="0" />
   </Style>
 
+  <!-- The agent panel is a panel like any other: it shares the workspaces-panel
+       surface so cards and messages float on it. -->
   <Style Selector="Border.AgentPanel">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellSidebarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellSidebarBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
   </Style>

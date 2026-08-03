@@ -130,14 +130,15 @@ public sealed class RuntimePanelViewContractTests
             accessibleName,
             AttributeValue(root, "AutomationProperties.Name"));
 
-        // A panel's chrome is the shell's card control, sunk into the page and
-        // clipping what it holds, rather than a Border wearing a "PanelCard" class.
+        // A panel's chrome is the shell's card control on the shared panel
+        // surface — the same one the workspaces sidebar uses — clipping what it
+        // holds, rather than a Border wearing a "PanelCard" class.
         var card = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "SurfaceCard"
                 && string.Equals(
                     AttributeValue(element, "Tone"),
-                    "Sunken",
+                    "Panel",
                     StringComparison.Ordinal));
         Assert.Equal(
             "{Binding IsActive}",

@@ -12,7 +12,7 @@
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
     AutomationProperties.Name="Statistics panel">
-  <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0"
+  <controls:SurfaceCard Tone="Panel" ClipsContent="True" Padding="0"
       Classes.active="{Binding IsActive}">
     <Grid RowDefinitions="36,*,25">
       <Border Classes="PanelHeader">

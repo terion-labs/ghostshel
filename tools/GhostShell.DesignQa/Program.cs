@@ -872,6 +872,20 @@ internal sealed class QaApplication : Avalonia.Application
                 }
 
                 Console.WriteLine($"CAPTURE {route.Name} -> {path}");
+
+                // The workspace route again at Retina density: the rail and panel
+                // chrome are the surfaces users judge at 2x, so pixel snapping
+                // there must be reviewable at the density they actually see.
+                if (route.Name == "workspace")
+                {
+                    var retinaPath = Path.Combine(Program.OutputDirectory, "workspace-2x.png");
+                    using var retina = new RenderTargetBitmap(
+                        new PixelSize(2880, route.Height * 2),
+                        new Vector(192, 192));
+                    retina.Render(window);
+                    retina.Save(retinaPath);
+                    Console.WriteLine($"CAPTURE workspace-2x -> {retinaPath}");
+                }
             }
 
             foreach (var dialog in selectedDialogs)
