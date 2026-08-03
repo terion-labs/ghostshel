@@ -400,6 +400,19 @@ internal sealed class QaApplication : Avalonia.Application
         // The workspaces-rail tiles at Retina density: every icon the rail can
         // draw, so glyph centering is measurable at the scale users run at.
         ("rail-tiles-2x", CreateRailTileProbe, null),
+        // The statistics panel at a split-panel width, so the stat-card wrap is
+        // reviewable at the size that used to clip every value.
+        ("stats-narrow", () => new Window
+        {
+            Width = 330,
+            Height = 940,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new GhostShell.App.Views.RuntimePanels.StatisticsRuntimePanelView
+            {
+                DataContext = new QaStatisticsPreview(),
+            },
+        }, null),
         // The same chooser the placeholder panel embeds, at a split-panel width,
         // so the adaptive tile grid is reviewable at the size that used to crush
         // its labels to one letter.

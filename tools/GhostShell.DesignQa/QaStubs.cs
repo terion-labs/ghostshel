@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using Avalonia.Media;
 using GhostShell.App;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -486,4 +487,54 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
             }
         }
     }
+}
+
+/// <summary>
+/// Layout-only stand-in for the statistics view model: real presentation values
+/// with no monitoring runtime behind them, so the panel's card layout is
+/// capturable at any width.
+/// </summary>
+internal sealed class QaStatisticsPreview
+{
+    public bool IsActive => false;
+
+    public bool ShowContent => true;
+
+    public bool IsVisibleInLayout => true;
+
+    public string StatusText => "Live · Local";
+
+    public IBrush StatusColor => Brushes.MediumSeaGreen;
+
+    public string ConnectionDisplayName => "Local";
+
+    public string CpuText => "3.8%";
+
+    public string MemoryText => "101.9 GiB";
+
+    public string ProcessCountText => "1 180";
+
+    public string ProcessDetailText => "Resource details available for all processes";
+
+    public string UptimeText => "9d 5h 30m";
+
+    public int ProcessorCountText => 16;
+
+    public bool HasIssue => false;
+
+    public bool ShowLoading => false;
+
+    public bool ShowTerminalError => false;
+
+    public string CapturedAtText => "Captured 09:30:00";
+
+    public string IssueTitle => string.Empty;
+
+    public string IssueMessage => string.Empty;
+
+    public IReadOnlyList<double> CpuHistory { get; } =
+        [4.1, 3.6, 5.2, 3.9, 4.4, 3.2, 3.8, 4.9, 3.5, 3.8];
+
+    public IReadOnlyList<double> MemoryHistory { get; } =
+        [101.2, 101.4, 101.3, 101.6, 101.5, 101.8, 101.7, 101.9];
 }

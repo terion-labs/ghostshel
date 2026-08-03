@@ -80,7 +80,7 @@
       <Grid Grid.Row="1">
         <ScrollViewer Margin="{controls:Inset Lg}" IsVisible="{Binding ShowContent}">
           <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+            <controls:CardGridPanel MinItemWidth="236" Spacing="{DynamicResource ShellSpaceMd}">
               <controls:SurfaceCard Padding="0">
                 <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" RowDefinitions="Auto,Auto,Auto,108,Auto">
                   <TextBlock Classes="Eyebrow" Text="CPU usage" />
@@ -101,7 +101,7 @@
                   </Grid>
                 </Grid>
               </controls:SurfaceCard>
-              <controls:SurfaceCard Padding="0" Grid.Column="1">
+              <controls:SurfaceCard Padding="0">
                 <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" RowDefinitions="Auto,Auto,Auto,108,Auto">
                   <TextBlock Classes="Eyebrow" Text="Process memory" />
                   <TextBlock Grid.Row="1" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding MemoryText}" />
@@ -120,9 +120,9 @@
                   </Grid>
                 </Grid>
               </controls:SurfaceCard>
-            </Grid>
+            </controls:CardGridPanel>
 
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+            <controls:CardGridPanel MinItemWidth="236" Spacing="{DynamicResource ShellSpaceMd}">
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock Classes="Eyebrow" Text="Running processes" />
@@ -130,14 +130,14 @@
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessDetailText}" TextWrapping="Wrap" />
                 </StackPanel>
               </controls:SurfaceCard>
-              <controls:SurfaceCard Padding="0" Grid.Column="1">
+              <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock Classes="Eyebrow" Text="Host uptime" />
                   <TextBlock FontSize="{DynamicResource ShellFontSize20}" FontWeight="SemiBold" Text="{Binding UptimeText}" />
                   <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProcessorCountText, StringFormat={}{0} logical processors}" TextWrapping="Wrap" />
                 </StackPanel>
               </controls:SurfaceCard>
-            </Grid>
+            </controls:CardGridPanel>
 
             <controls:SurfaceCard Tone="Notice" Padding="{controls:Inset Md}" IsVisible="{Binding HasIssue}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Statistics refresh status">
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -170,7 +170,7 @@
 
       <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
-          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="POSIX process counters · no environment or terminal content" />
+          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="POSIX process counters · no environment or terminal content" TextTrimming="CharacterEllipsis" Margin="{controls:Inset Right=Sm}" />
           <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
         </Grid>
       </Border>
