@@ -35,6 +35,11 @@
     <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
     <Setter Property="Padding" Value="{DynamicResource ShellButtonPadding}" />
     <Setter Property="MinHeight" Value="{DynamicResource ShellControlMinHeight}" />
+    <!-- A label centers in its button, as the host draws push buttons; a
+         MinWidth wider than the content must not leave the label leaning
+         into a corner. Row-like buttons opt back out with Stretch. -->
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
 
   <Style Selector="Button:pointerover /template/ ContentPresenter">
