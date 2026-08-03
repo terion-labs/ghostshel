@@ -451,6 +451,50 @@
               <ScrollViewer Margin="{controls:Inset Md}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasImagePreview}">
                 <Image MaxWidth="900" MaxHeight="900" Stretch="Uniform" Source="{Binding PreviewImage}" />
               </ScrollViewer>
+
+              <!-- A PDF is paged through rather than scrolled as one image: the
+                   page being looked at is the only one rendered. -->
+              <Border
+                  VerticalAlignment="Bottom"
+                  HorizontalAlignment="Center"
+                  Margin="{controls:Inset Md}"
+                  Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                  Background="{DynamicResource ShellSurfaceBrush}"
+                  BorderBrush="{DynamicResource ShellBorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="{DynamicResource ShellControlCornerRadius}"
+                  IsVisible="{Binding HasPdfPreview}">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                  <Button
+                      Classes="IconButton"
+                      Click="OnPdfPageBackClick"
+                      IsEnabled="{Binding CanTurnPdfPageBack}"
+                      ToolTip.Tip="Previous page"
+                      AutomationProperties.Name="Previous PDF page">
+                    <icons:SymbolIcon Symbol="ChevronLeft" FontSize="12" />
+                  </Button>
+                  <TextBlock
+                      VerticalAlignment="Center"
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize10}"
+                      Text="{Binding PdfPageStatus}"
+                      AutomationProperties.LiveSetting="Polite" />
+                  <Button
+                      Classes="IconButton"
+                      Click="OnPdfPageForwardClick"
+                      IsEnabled="{Binding CanTurnPdfPageForward}"
+                      ToolTip.Tip="Next page"
+                      AutomationProperties.Name="Next PDF page">
+                    <icons:SymbolIcon Symbol="ChevronRight" FontSize="12" />
+                  </Button>
+                </StackPanel>
+              </Border>
+
+              <!-- HTML renders in the operating system's webview, the same
+                   engine the browser panel uses. -->
+              <ContentControl
+                  x:Name="HtmlPreviewHost"
+                  IsVisible="{Binding HasHtmlPreview}" />
               <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding IsPreviewLoading}">
                 <ProgressBar Width="140" IsIndeterminate="True" />
                 <TextBlock Classes="Muted" Text="Reading preview…" />

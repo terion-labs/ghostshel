@@ -535,6 +535,11 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             return (FilePanelPreviewKind.Database, "application/vnd.sqlite3");
         }
 
+        if (content.AsSpan().StartsWith("%PDF-"u8))
+        {
+            return (FilePanelPreviewKind.Pdf, "application/pdf");
+        }
+
         if (IsTiff(content))
         {
             return (FilePanelPreviewKind.Image, "image/tiff");
@@ -567,6 +572,14 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
                 return (FilePanelPreviewKind.StructuredText, "application/json");
             }
 
+            // HTML is judged by name rather than by sniffing markup: a snippet
+            // of HTML pasted into a note is text, and a page is a page because
+            // its author called it one.
+            if (HasExtension(location, ".html") || HasExtension(location, ".htm"))
+            {
+                return (FilePanelPreviewKind.Html, "text/html; charset=utf-8");
+            }
+
             return (FilePanelPreviewKind.Text, "text/plain; charset=utf-8");
         }
 
@@ -588,6 +601,10 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             return false;
         }
     }
+
+    private static bool HasExtension(FilePanelLocation location, string extension) =>
+        location.Address is FilePanelAddress.Hierarchical hierarchical
+        && hierarchical.Path.Name?.Value.EndsWith(extension, StringComparison.OrdinalIgnoreCase) == true;
 
     private static bool LooksLikeJson(FilePanelLocation location, string text)
     {

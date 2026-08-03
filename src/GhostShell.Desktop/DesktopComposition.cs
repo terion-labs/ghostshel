@@ -91,6 +91,13 @@ public static class DesktopComposition
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();
         services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();
+        // PDFium ships native binaries for the desktop platforms only, and the
+        // preview treats a missing renderer as "this build cannot open PDFs"
+        // rather than failing at the moment a user selects one.
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+        {
+            services.AddSingleton<IPdfPreviewRenderer, PdfiumPreviewRenderer>();
+        }
         services.AddSingleton<IFileProviderProfileRuntime>(provider =>
             provider.GetRequiredService<CatalogFileProviderRuntime>());
         services.AddSingleton<CatalogAiProviderRuntime>();

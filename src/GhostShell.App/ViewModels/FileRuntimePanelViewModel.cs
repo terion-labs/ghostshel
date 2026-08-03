@@ -124,6 +124,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private readonly HashSet<string> _grantedPreviews = new(StringComparer.Ordinal);
     private readonly IDatabasePanelClient? _databaseClient;
     private readonly IImagePreviewDecoder? _imageDecoder;
+    private readonly IPdfPreviewRenderer? _pdfRenderer;
+    private string? _pdfPath;
+    private BrowserAddress? _htmlAddress;
+    private int _pdfPageIndex;
+    private int _pdfPageCount;
     private readonly IFileContentMaterializer? _materializer;
     private DatabaseRuntimePanelViewModel? _databasePreview;
     private MaterializedFile? _databasePreviewFile;
@@ -139,7 +144,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         bool deferInitialization = false,
         ConnectionProfile? connection = null,
         IDatabasePanelClient? databaseClient = null,
-        IImagePreviewDecoder? imageDecoder = null)
+        IImagePreviewDecoder? imageDecoder = null,
+        IPdfPreviewRenderer? pdfRenderer = null)
         : base(id, PanelKind.FileViewer, title, "Files")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -147,6 +153,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         // cannot hand out a real path, simply previews databases as bytes.
         _databaseClient = databaseClient;
         _imageDecoder = imageDecoder;
+        _pdfRenderer = pdfRenderer;
         _materializer = client as IFileContentMaterializer;
         _connection = connection ?? BuiltInConnections.Local;
         _retryCommand = new AsyncActionCommand(
@@ -691,7 +698,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasImagePreview => PreviewImage is not null;
 
-    public bool HasPreview => HasTextPreview || HasImagePreview || HasDatabasePreview;
+    public bool HasPreview =>
+        HasTextPreview || HasImagePreview || HasDatabasePreview || HasHtmlPreview;
 
     public bool ShowPreviewPlaceholder =>
         !HasPreview && !IsPreviewLoading && !ShowPreviewDownloadPrompt;
@@ -1859,6 +1867,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 PreviewText = Encoding.UTF8.GetString(preview.Content.Span)
                     + (preview.IsTruncated ? "\n\n[preview truncated]" : string.Empty);
                 break;
+            case FilePanelPreviewKind.Html:
+                _ = OpenHtmlPreviewAsync(preview.Location);
+                break;
+            case FilePanelPreviewKind.Pdf:
+                _ = OpenPdfPreviewAsync(preview.Location);
+                break;
             case FilePanelPreviewKind.Database:
                 _ = OpenDatabasePreviewAsync(preview.Location);
                 break;
@@ -1997,6 +2011,17 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewIssue = null;
         PreviewTitle = "Preview";
         _requestedPreviewEntry = null;
+        _pdfPath = null;
+        if (_htmlAddress is not null)
+        {
+            _htmlAddress = null;
+            OnPropertyChanged(nameof(HtmlAddress));
+            OnPropertyChanged(nameof(HasHtmlPreview));
+        }
+
+        _pdfPageIndex = 0;
+        _pdfPageCount = 0;
+        NotifyPdfChanged();
         SetDeferredPreview(null);
         ClearDatabasePreview();
     }
@@ -2207,6 +2232,208 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// far short of what a scanner or camera can produce.
     /// </summary>
     private const long MaximumImagePreviewBytes = 128L * 1024 * 1024;
+
+    /// <summary>
+    /// The page a webview should show, once the file is on disk. Null until a
+    /// web page is being previewed.
+    /// </summary>
+    public BrowserAddress? HtmlAddress => _htmlAddress;
+
+    public bool HasHtmlPreview => _htmlAddress is not null;
+
+    /// <summary>
+    /// Opens a previewed web page from disk. The page is materialized first —
+    /// a webview loads a URL, and a remote file has no URL this machine can
+    /// open — and then handed to the same webview the browser panel uses, so
+    /// it renders as the page its author wrote, subresources and scripts
+    /// included.
+    /// </summary>
+    private async Task OpenHtmlPreviewAsync(FilePanelLocation location)
+    {
+        if (_materializer is null)
+        {
+            PreviewText = "This client cannot open web pages by path.";
+            return;
+        }
+
+        var operation = _preview;
+        if (operation is null)
+        {
+            return;
+        }
+
+        IsPreviewLoading = true;
+        try
+        {
+            var materialized = await _materializer.MaterializeAsync(
+                location,
+                MaximumImagePreviewBytes,
+                operation.Token);
+            if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!materialized.IsSuccess)
+            {
+                PreviewText = materialized.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                return;
+            }
+
+            _htmlAddress = BrowserAddress.ForLocalFile(materialized.Value!.Path);
+            OnPropertyChanged(nameof(HtmlAddress));
+            OnPropertyChanged(nameof(HasHtmlPreview));
+            OnPropertyChanged(nameof(HasPreview));
+            OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is UriFormatException or IOException)
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                PreviewText = "The web page could not be opened.";
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                IsPreviewLoading = false;
+            }
+        }
+    }
+
+    /// <summary>The width a PDF page is rasterized at.</summary>
+    private const int PdfPageWidth = 1400;
+
+    public bool HasPdfPreview => _pdfPageCount > 0;
+
+    public string PdfPageStatus => _pdfPageCount == 0
+        ? string.Empty
+        : $"Page {_pdfPageIndex + 1} of {_pdfPageCount}";
+
+    public bool CanTurnPdfPageBack => _pdfPageCount > 0 && _pdfPageIndex > 0;
+
+    public bool CanTurnPdfPageForward => _pdfPageIndex + 1 < _pdfPageCount;
+
+    public Task TurnPdfPageAsync(int delta)
+    {
+        var target = _pdfPageIndex + delta;
+        if (_pdfPath is null || target < 0 || target >= _pdfPageCount)
+        {
+            return Task.CompletedTask;
+        }
+
+        _pdfPageIndex = target;
+        return RenderPdfPageAsync(_preview);
+    }
+
+    /// <summary>
+    /// Opens a PDF and shows its first page. The document is materialized once
+    /// and paged through from there, so turning a page costs a render rather
+    /// than another download.
+    /// </summary>
+    private async Task OpenPdfPreviewAsync(FilePanelLocation location)
+    {
+        if (_pdfRenderer is null || _materializer is null)
+        {
+            PreviewText = "This build cannot open PDF files in the preview.";
+            return;
+        }
+
+        var operation = _preview;
+        if (operation is null)
+        {
+            return;
+        }
+
+        IsPreviewLoading = true;
+        try
+        {
+            var materialized = await _materializer.MaterializeAsync(
+                location,
+                MaximumImagePreviewBytes,
+                operation.Token);
+            if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!materialized.IsSuccess)
+            {
+                PreviewText = materialized.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                return;
+            }
+
+            _pdfPath = materialized.Value!.Path;
+            _pdfPageIndex = 0;
+            _pdfPageCount = await _pdfRenderer.CountPagesAsync(_pdfPath, operation.Token);
+            if (_pdfPageCount == 0)
+            {
+                PreviewText = "This PDF could not be opened; it may be damaged or encrypted.";
+                return;
+            }
+
+            await RenderPdfPageAsync(operation);
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                PreviewText = "The PDF could not be opened.";
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                IsPreviewLoading = false;
+            }
+        }
+    }
+
+    private async Task RenderPdfPageAsync(CancellationTokenSource? operation)
+    {
+        if (_pdfRenderer is null || _pdfPath is null || operation is null)
+        {
+            return;
+        }
+
+        var page = await _pdfRenderer.RenderPageAsync(
+            _pdfPath,
+            _pdfPageIndex,
+            PdfPageWidth,
+            operation.Token);
+        if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (page is null)
+        {
+            PreviewText = "That page could not be rendered.";
+            return;
+        }
+
+        using var stream = new MemoryStream(page.PngBytes.ToArray(), writable: false);
+        PreviewImage = new Bitmap(stream);
+        NotifyPdfChanged();
+    }
+
+    private void NotifyPdfChanged()
+    {
+        OnPropertyChanged(nameof(HasPdfPreview));
+        OnPropertyChanged(nameof(PdfPageStatus));
+        OnPropertyChanged(nameof(CanTurnPdfPageBack));
+        OnPropertyChanged(nameof(CanTurnPdfPageForward));
+    }
 
     private const string SqliteDriverId = "sqlite";
 

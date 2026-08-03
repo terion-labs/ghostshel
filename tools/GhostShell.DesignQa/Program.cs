@@ -40,6 +40,9 @@ internal static class Program
     /// <summary>A real TIFF, so the image decoder is exercised on a real file.</summary>
     public static string TiffProbePath { get; private set; } = string.Empty;
 
+    /// <summary>A real two-page PDF, so the renderer is exercised on a document.</summary>
+    public static string PdfProbePath { get; private set; } = string.Empty;
+
     public static string[] RequestedRoutes { get; private set; } = [];
 
     public static bool IsTerminalFontVerification { get; private set; }
@@ -60,6 +63,7 @@ internal static class Program
 
         SqliteProbePath = Path.Combine(OutputDirectory, "probe.sqlite");
         TiffProbePath = Path.Combine(OutputDirectory, "probe.tiff");
+        PdfProbePath = Path.Combine(OutputDirectory, "probe.pdf");
         RequestedRoutes = args.Skip(1).ToArray();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
@@ -429,6 +433,9 @@ internal sealed class QaApplication : Avalonia.Application
         // selection key. The route raises a real tunneled key event through a
         // real control tree and captures what the panel did with it.
         ("preview-space-shortcut", CreateSpaceShortcutProbe, null),
+        // A real PDF rendered by PDFium and drawn by the panel, with the page
+        // indicator the preview shows.
+        ("pdf-preview", CreatePdfProbeWindow, null),
         // Markdown rendered as native controls, so headings, emphasis, lists,
         // quotes, tables, and a highlighted fence are reviewable together.
         ("markdown-preview", () => new Window
@@ -1035,6 +1042,115 @@ internal sealed class QaApplication : Avalonia.Application
         image.Write(Program.TiffProbePath);
     }
 
+    /// <summary>
+    /// Writes a real two-page PDF with visible text on each page, built by hand
+    /// so the probe is exactly a PDF and nothing else.
+    /// </summary>
+    private static void WritePdfProbe()
+    {
+        const string firstPage =
+            "BT /F1 26 Tf 60 700 Td (GhostSHELL preview) Tj ET\n"
+            + "BT /F1 13 Tf 60 660 Td (Page one of two) Tj ET";
+        const string secondPage = "BT /F1 26 Tf 60 700 Td (Second page) Tj ET";
+        var objects = new List<string>
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                + "/Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                + "/Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        };
+        var builder = new System.Text.StringBuilder("%PDF-1.4\n");
+        var offsets = new List<int>();
+        for (var index = 0; index < objects.Count; index++)
+        {
+            offsets.Add(builder.Length);
+            builder.Append($"{index + 1} 0 obj\n{objects[index]}\nendobj\n");
+        }
+
+        foreach (var (number, content) in new[] { (6, firstPage), (7, secondPage) })
+        {
+            offsets.Add(builder.Length);
+            builder.Append(
+                $"{number} 0 obj\n<< /Length {content.Length} >>\nstream\n{content}\nendstream\nendobj\n");
+        }
+
+        var startXref = builder.Length;
+        builder.Append($"xref\n0 {offsets.Count + 1}\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+        {
+            builder.Append($"{offset:D10} 00000 n \n");
+        }
+
+        builder.Append(
+            $"trailer\n<< /Size {offsets.Count + 1} /Root 1 0 R >>\nstartxref\n{startXref}\n%%EOF\n");
+        File.WriteAllText(Program.PdfProbePath, builder.ToString());
+    }
+
+    /// <summary>
+    /// The PDF probe rendered by PDFium, behind the same platform guard the
+    /// composition uses: the route table is static, so the check has to live
+    /// where the engine is actually touched.
+    /// </summary>
+    private static Window CreatePdfProbeWindow()
+    {
+        // The positive form is the shape the platform analyzer understands.
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+        {
+            return RenderPdfProbeWindow();
+        }
+
+        throw new PlatformNotSupportedException(
+            "PDFium ships binaries for the desktop platforms only.");
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    [System.Runtime.Versioning.SupportedOSPlatform("macOS")]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static Window RenderPdfProbeWindow()
+    {
+        var renderer = new GhostShell.Previews.PdfiumPreviewRenderer();
+        var page = renderer
+            .RenderPageAsync(Program.PdfProbePath, 0, 700, CancellationToken.None)
+            .AsTask()
+            .GetAwaiter()
+            .GetResult()
+            ?? throw new InvalidOperationException("The PDF probe did not render.");
+        using var stream = new MemoryStream(page.PngBytes.ToArray(), writable: false);
+        return new Window
+        {
+            Width = 480,
+            Height = 640,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Padding = new Thickness(10),
+                Child = new StackPanel
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        new Image
+                        {
+                            Source = new Avalonia.Media.Imaging.Bitmap(stream),
+                            Stretch = Stretch.Uniform,
+                            Height = 520,
+                        },
+                        new TextBlock
+                        {
+                            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                            Text = $"Page {page.PageNumber} of {page.PageCount}",
+                        },
+                    },
+                },
+            },
+        };
+    }
+
     private static async Task CaptureDialogAsync(string name, Window dialog)
     {
         dialog.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -1075,6 +1191,7 @@ internal sealed class QaApplication : Avalonia.Application
             Directory.CreateDirectory(Program.OutputDirectory);
             WriteSqliteProbe();
             WriteTiffProbe();
+            WritePdfProbe();
             await Task.Delay(800);
 
             var requested = Program.RequestedRoutes;

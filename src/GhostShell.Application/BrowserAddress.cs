@@ -41,6 +41,46 @@ public sealed record BrowserAddress
 
     public static BrowserAddress Blank { get; } = new(BlankUri);
 
+    /// <summary>
+    /// The address of a local file the shell itself decided to show — a
+    /// previewed page that has already been materialized.
+    ///
+    /// Deliberately not reachable through <see cref="TryParse"/>: navigation
+    /// requested by a person or an agent arrives as a string, and a string must
+    /// never be able to name a file on this machine. Only code holding a real
+    /// path can build one of these.
+    /// </summary>
+    public static BrowserAddress ForLocalFile(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (!Path.IsPathFullyQualified(path))
+        {
+            throw new ArgumentException(
+                "A local page address needs a fully qualified path.",
+                nameof(path));
+        }
+
+        var uri = new Uri(path, UriKind.Absolute);
+        if (!uri.IsFile || !string.IsNullOrEmpty(uri.UserInfo)
+            || !(string.IsNullOrEmpty(uri.Host)
+                || uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)))
+        {
+            // A UNC-style host would make "local file" mean a fetch from
+            // somewhere else entirely.
+            throw new ArgumentException(
+                "A local page address must name a path on this machine.",
+                nameof(path));
+        }
+
+        return new BrowserAddress(uri, localFile: true);
+    }
+
+    private BrowserAddress(Uri value, bool localFile)
+    {
+        _ = localFile;
+        Value = value;
+    }
+
     public static bool TryParse(
         string? text,
         [NotNullWhen(true)] out BrowserAddress? address)

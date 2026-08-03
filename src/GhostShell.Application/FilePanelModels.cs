@@ -204,6 +204,12 @@ public enum FilePanelPreviewKind
     /// than the bounded head this preview carries.
     /// </summary>
     Database,
+
+    /// <summary>A PDF document, rendered a page at a time from the whole file.</summary>
+    Pdf,
+
+    /// <summary>A web page, rendered by the operating system's webview.</summary>
+    Html,
 }
 
 public sealed record FilePanelPreview

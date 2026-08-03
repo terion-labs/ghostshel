@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -29,6 +30,7 @@ public sealed partial class FileRuntimePanelView : UserControl
     public FileRuntimePanelView()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) => ObserveHtmlPreview();
         AddHandler(
             KeyDownEvent,
             OnPanelKeyDownTunnel,
@@ -134,6 +136,74 @@ public sealed partial class FileRuntimePanelView : UserControl
 
     private void OnEntryDoubleTapped(object? sender, TappedEventArgs e) =>
         EntryDoubleTapped?.Invoke(sender, e);
+
+    /// <summary>
+    /// The webview showing the previewed page, created on first use and reused
+    /// for later pages: a webview is an expensive native surface, and creating
+    /// one per selection would be visible.
+    /// </summary>
+    private BrowserRendererView? _htmlPreview;
+
+    private void ObserveHtmlPreview()
+    {
+        if (DataContext is FileRuntimePanelViewModel panel)
+        {
+            panel.PropertyChanged -= OnPanelPropertyChanged;
+            panel.PropertyChanged += OnPanelPropertyChanged;
+        }
+    }
+
+    private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        if (e.PropertyName == nameof(FileRuntimePanelViewModel.HtmlAddress))
+        {
+            ShowHtmlPreview();
+        }
+    }
+
+    private void ShowHtmlPreview()
+    {
+        if (DataContext is not FileRuntimePanelViewModel { HtmlAddress: { } address })
+        {
+            return;
+        }
+
+        if (_htmlPreview is null)
+        {
+            var factory = (TopLevel.GetTopLevel(this)?.DataContext as MainWindowViewModel)
+                ?.BrowserRendererViewFactory;
+            if (factory is null)
+            {
+                return;
+            }
+
+            _htmlPreview = factory.Create();
+            HtmlPreviewHost.Content = _htmlPreview.View;
+        }
+
+        _ = _htmlPreview.Renderer.NavigateAsync(address, CancellationToken.None);
+    }
+
+    private void OnPdfPageBackClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is FileRuntimePanelViewModel panel)
+        {
+            _ = panel.TurnPdfPageAsync(-1);
+        }
+    }
+
+    private void OnPdfPageForwardClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is FileRuntimePanelViewModel panel)
+        {
+            _ = panel.TurnPdfPageAsync(1);
+        }
+    }
 
     private void OnPreviewDownloadClick(object? sender, RoutedEventArgs e)
     {

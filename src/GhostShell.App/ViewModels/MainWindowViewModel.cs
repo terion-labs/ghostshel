@@ -69,6 +69,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
     private readonly IDatabasePanelClient? _databasePanelClient;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
+    private readonly IPdfPreviewRenderer? _pdfPreviewRenderer;
     private readonly TerminalStartupCommandDispatcher _startupCommandDispatcher;
     private readonly IFileProviderProfileRuntime? _fileProviderRuntime;
     private readonly IAiProviderProfileRuntime? _aiProviderRuntime;
@@ -179,6 +180,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IBrowserRendererViewFactory? browserRendererViewFactory = null,
         IDatabasePanelClient? databasePanelClient = null,
         IImagePreviewDecoder? imagePreviewDecoder = null,
+        IPdfPreviewRenderer? pdfPreviewRenderer = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
@@ -196,6 +198,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _browserRendererViewFactory = browserRendererViewFactory;
         _databasePanelClient = databasePanelClient;
         _imagePreviewDecoder = imagePreviewDecoder;
+        _pdfPreviewRenderer = pdfPreviewRenderer;
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
@@ -365,6 +368,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public ObservableCollection<SecretMetadataViewModel> Secrets { get; } = [];
 
     public bool HasNoSecrets => Secrets.Count == 0;
+
+    /// <summary>
+    /// The webview factory, for surfaces that host a page of their own — the
+    /// file preview of an HTML document uses the same engine the browser panel
+    /// does rather than a second one.
+    /// </summary>
+    public IBrowserRendererViewFactory? BrowserRendererViewFactory =>
+        _browserRendererViewFactory;
 
     public ObservableCollection<FileTransferItemViewModel> FileTransfers { get; } = [];
 
@@ -10226,7 +10237,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             deferInitialization,
             connection,
             _databasePanelClient,
-            _imagePreviewDecoder);
+            _imagePreviewDecoder,
+            _pdfPreviewRenderer);
     }
 
     private FileProviderProfileDescriptor? ResolveFileProfile(

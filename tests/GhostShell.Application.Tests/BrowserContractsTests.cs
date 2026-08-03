@@ -7,6 +7,36 @@ namespace GhostShell.Application.Tests;
 public sealed class BrowserContractsTests
 {
     [Theory]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("file://localhost/etc/passwd")]
+    [InlineData("FILE:///C:/Windows/win.ini")]
+    public void A_parsed_address_can_never_name_a_local_file(string candidate)
+    {
+        // Navigation asked for by a person or an agent arrives as a string.
+        // Local files are reachable only by code that already holds the path.
+        Assert.False(BrowserAddress.TryParse(candidate, out _));
+    }
+
+    [Fact]
+    public void The_shell_can_address_a_local_page_it_materialized_itself()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "ghostshell-preview-page.html");
+
+        var address = BrowserAddress.ForLocalFile(path);
+
+        Assert.True(address.Value.IsFile);
+        Assert.Equal(path, address.Value.LocalPath);
+    }
+
+    [Theory]
+    [InlineData("relative/page.html")]
+    [InlineData("")]
+    public void A_local_page_address_needs_a_real_path(string candidate)
+    {
+        Assert.Throws<ArgumentException>(() => BrowserAddress.ForLocalFile(candidate));
+    }
+
+    [Theory]
     [InlineData("https://example.test/path?q=one#result")]
     [InlineData("http://localhost:8080/")]
     [InlineData("about:blank")]
