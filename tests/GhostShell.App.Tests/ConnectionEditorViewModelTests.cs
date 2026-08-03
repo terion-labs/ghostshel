@@ -40,6 +40,7 @@ public sealed class ConnectionEditorViewModelTests
             Authentication = ConnectionAuthenticationChoice.SshAgent,
             HostKeyPolicy = SshHostKeyPolicy.AcceptNew,
             StartupDirectory = "/srv/app",
+            StartupCommand = "tail -f logs/app.log",
             KeepAliveEnabled = true,
             KeepAliveSeconds = 20,
             KeepAliveFailures = 4,
@@ -56,6 +57,7 @@ public sealed class ConnectionEditorViewModelTests
         Assert.IsType<ConnectionAuthentication.SshAgent>(request.Profile.Authentication);
         Assert.Equal(SshHostKeyPolicy.AcceptNew, request.Profile.HostKeyPolicy);
         Assert.Equal("/srv/app", request.Profile.Startup.Directory);
+        Assert.Equal("tail -f logs/app.log", request.Profile.Startup.Command);
         Assert.Equal(TimeSpan.FromSeconds(20), request.Profile.KeepAlive.Interval);
         Assert.Equal(4, request.Profile.KeepAlive.MaximumFailures);
     }

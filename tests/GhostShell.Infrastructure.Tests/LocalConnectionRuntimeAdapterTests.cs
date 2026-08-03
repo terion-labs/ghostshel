@@ -30,7 +30,8 @@ public sealed class LocalConnectionRuntimeAdapterTests
                     new ConnectionEnvironmentVariable(
                         "SECRET_VALUE",
                         new ConnectionEnvironmentValue.Secret(secret)),
-                ]),
+                ],
+                command: "npm run dev"),
             id: "local-test");
         var progress = new RecordingConnectionProgress();
 
@@ -49,6 +50,7 @@ public sealed class LocalConnectionRuntimeAdapterTests
             "/work tree",
             plan.Launch.ConnectionMetadata?.InitialWorkingDirectory);
         Assert.Empty(plan.Launch.Arguments);
+        Assert.Equal("npm run dev", plan.Launch.InitialCommand);
         Assert.Equal("amber value", Assert.Single(plan.Launch.Environment).Value);
         Assert.DoesNotContain("SECRET_VALUE", plan.Launch.Environment.Keys);
         var requirement = Assert.Single(plan.SecretRequirements);

@@ -120,6 +120,17 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
             _pty.ProcessExited += OnProcessExited;
             _readerTask = ReadLoopAsync(_lifetime.Token);
             _writerTask = WriteLoopAsync(_lifetime.Token);
+            if (launch.InitialCommand is { } initialCommand)
+            {
+                // Queued before any user input can arrive, so the command is the
+                // first line the shell reads. The PTY buffers it until the shell
+                // is ready, which keeps the mechanism uniform across local and
+                // remote endpoints.
+                _writes.Writer.TryWrite(new QueuedTerminalInput(
+                    System.Text.Encoding.UTF8.GetBytes(initialCommand + "\n"),
+                    _lifetime.Token));
+            }
+
             TryMarkKnownProcessExit();
         }
         catch (Exception exception)

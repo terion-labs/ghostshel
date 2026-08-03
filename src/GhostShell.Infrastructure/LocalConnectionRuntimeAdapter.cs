@@ -125,7 +125,8 @@ public sealed class LocalConnectionRuntimeAdapter : ConnectionRuntimeAdapterBase
                 [],
                 PlainEnvironment(profile),
                 connectionId: profile.Id,
-                connectionMetadata: ConnectionMetadata(profile));
+                connectionMetadata: ConnectionMetadata(profile),
+                initialCommand: profile.Startup.Command);
             var plan = new ConnectionOpenPlan(
                 profile.Id,
                 Kind,

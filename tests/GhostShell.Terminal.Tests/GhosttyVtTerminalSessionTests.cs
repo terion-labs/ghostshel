@@ -570,6 +570,25 @@ public sealed class GhosttyVtTerminalSessionTests
             (await session.SnapshotAsync(default)).Lifecycle == SessionLifecycle.Closed);
     }
 
+    [Fact]
+    public async Task Initial_command_is_typed_into_the_pty_before_any_user_input()
+    {
+        _ = GhosttyVtTestRuntime.RequireStagedRuntime();
+        var ptyFactory = new FakePortablePtyFactory();
+        var factory = new GhosttyVtTerminalSessionFactory(ptyFactory);
+        await using var session = await factory.CreateAsync(
+            SessionId.New(),
+            new TerminalLaunchRequest(
+                Environment.CurrentDirectory,
+                initialCommand: "htop"),
+            default);
+
+        await session.WriteAsync("q", default);
+
+        Assert.StartsWith("htop\n", ptyFactory.Connection.WrittenText, StringComparison.Ordinal);
+        Assert.EndsWith("q", ptyFactory.Connection.WrittenText, StringComparison.Ordinal);
+    }
+
     private static async Task<GhosttyVtHarness> CreateAsync()
     {
         _ = GhosttyVtTestRuntime.RequireStagedRuntime();

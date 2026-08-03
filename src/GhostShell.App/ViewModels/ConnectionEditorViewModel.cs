@@ -38,6 +38,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
     private string _dockerContext = string.Empty;
     private string _distribution = string.Empty;
     private string _startupDirectory = string.Empty;
+    private string _startupCommand = string.Empty;
     private ConnectionAuthenticationChoice _authentication;
     private string _secretReference = string.Empty;
     private string _passphraseSecretReference = string.Empty;
@@ -84,6 +85,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
         _name = existing.Name;
         _kind = existing.ConnectionKind;
         _startupDirectory = existing.Startup.Directory ?? string.Empty;
+        _startupCommand = existing.Startup.Command ?? string.Empty;
         _keepAliveEnabled = existing.KeepAlive.Enabled;
         if (_keepAliveEnabled)
         {
@@ -179,6 +181,12 @@ public sealed class ConnectionEditorViewModel : ObservableObject
     {
         get => _startupDirectory;
         set => SetProperty(ref _startupDirectory, value);
+    }
+
+    public string StartupCommand
+    {
+        get => _startupCommand;
+        set => SetProperty(ref _startupCommand, value);
     }
 
     public ConnectionAuthenticationChoice Authentication
@@ -517,7 +525,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
             Required(Name, "Connection name"),
             endpoint,
             authentication,
-            new ConnectionStartup(Optional(StartupDirectory), _environment),
+            new ConnectionStartup(Optional(StartupDirectory), _environment, Optional(StartupCommand)),
             keepAlive,
             Kind == ConnectionKind.Ssh ? HostKeyPolicy : SshHostKeyPolicy.NotApplicable,
             _tags);

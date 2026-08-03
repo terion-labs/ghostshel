@@ -46,7 +46,8 @@ internal sealed record ConnectionCredentialSessionInvocation(
             request.Launch.RenderProfile,
             request.Launch.Keymap,
             request.ConnectionId,
-            request.Launch.ConnectionMetadata);
+            request.Launch.ConnectionMetadata,
+            request.Launch.InitialCommand);
     }
 
     public static ConnectionCredentialSessionInvocation? Parse(IReadOnlyList<string> arguments)

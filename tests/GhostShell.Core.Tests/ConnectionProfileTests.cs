@@ -65,6 +65,14 @@ public sealed class ConnectionProfileTests
     }
 
     [Fact]
+    public void Startup_command_is_trimmed_and_rejects_multiline_input()
+    {
+        Assert.Equal("npm run dev", new ConnectionStartup(command: "  npm run dev  ").Command);
+        Assert.Null(new ConnectionStartup(command: "   ").Command);
+        Assert.Throws<ArgumentException>(() => new ConnectionStartup(command: "ls\nrm -rf /"));
+    }
+
+    [Fact]
     public void Enabled_keepalive_requires_positive_timing()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>

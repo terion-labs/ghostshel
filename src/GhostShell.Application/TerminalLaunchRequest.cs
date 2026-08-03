@@ -21,10 +21,19 @@ public sealed record TerminalLaunchRequest
         TerminalRenderProfileSnapshot? renderProfile = null,
         TerminalKeymapSnapshot? keymap = null,
         ConnectionId? connectionId = null,
-        TerminalConnectionMetadata? connectionMetadata = null)
+        TerminalConnectionMetadata? connectionMetadata = null,
+        string? initialCommand = null)
     {
         ValidateText(workingDirectory, nameof(workingDirectory));
         ValidateText(executable, nameof(executable));
+        if (initialCommand is not null
+            && (string.IsNullOrWhiteSpace(initialCommand)
+                || initialCommand.Any(char.IsControl)))
+        {
+            throw new ArgumentException(
+                "An initial command must be a single non-empty line without control characters.",
+                nameof(initialCommand));
+        }
         TerminalConnectionMetadata.ValidateConnectionId(
             connectionId,
             nameof(connectionId));
@@ -50,6 +59,7 @@ public sealed record TerminalLaunchRequest
         Keymap = keymap;
         ConnectionId = connectionId;
         ConnectionMetadata = connectionMetadata;
+        InitialCommand = initialCommand;
     }
 
     public string? WorkingDirectory { get; }
@@ -75,6 +85,13 @@ public sealed record TerminalLaunchRequest
     /// </summary>
     public TerminalConnectionMetadata? ConnectionMetadata { get; }
 
+    /// <summary>
+    /// A single line the session types into the terminal (followed by Enter)
+    /// once the shell starts. It executes inside the interactive shell, so the
+    /// shell remains open after it finishes.
+    /// </summary>
+    public string? InitialCommand { get; }
+
     public TerminalLaunchRequest WithPresentationProfiles(
         TerminalRenderProfileSnapshot? renderProfile,
         TerminalKeymapSnapshot? keymap) =>
@@ -86,7 +103,8 @@ public sealed record TerminalLaunchRequest
             renderProfile,
             keymap,
             ConnectionId,
-            ConnectionMetadata);
+            ConnectionMetadata,
+            InitialCommand);
 
     private static IReadOnlyList<string> SnapshotArguments(IReadOnlyList<string>? arguments)
     {

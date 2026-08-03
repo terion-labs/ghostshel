@@ -96,10 +96,16 @@
 
         <controls:SurfaceCard Padding="0">
           <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" Text="Startup directory" />
-              <TextBox Text="{Binding StartupDirectory}" PlaceholderText="Optional working directory" />
-            </StackPanel>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock FontWeight="SemiBold" Text="Startup directory" />
+                <TextBox Text="{Binding StartupDirectory}" PlaceholderText="Optional working directory" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock FontWeight="SemiBold" Text="Startup command" />
+                <TextBox Text="{Binding StartupCommand}" PlaceholderText="Optional command run in the shell" />
+              </StackPanel>
+            </Grid>
             <Grid ColumnDefinitions="*,140,140" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
