@@ -333,6 +333,10 @@ public abstract record LauncherSearchTarget
 
     public sealed record Connection(ConnectionId Id) : LauncherSearchTarget;
 
+    public sealed record FileConnection(FileProviderProfileId Id) : LauncherSearchTarget;
+
+    public sealed record DatabaseConnection(DatabaseConnectionProfileId Id) : LauncherSearchTarget;
+
     public sealed record Screen(ScreenId Id) : LauncherSearchTarget;
 
     public sealed record Workspace(WorkspaceId Id) : LauncherSearchTarget;
@@ -376,6 +380,8 @@ public sealed record LauncherSearchResultViewModel(
         LauncherSearchTarget.CreatePanel => LauncherSearchResultKind.CreatePanel,
         LauncherSearchTarget.Command => LauncherSearchResultKind.Command,
         LauncherSearchTarget.Connection => LauncherSearchResultKind.Connection,
+        LauncherSearchTarget.FileConnection => LauncherSearchResultKind.Connection,
+        LauncherSearchTarget.DatabaseConnection => LauncherSearchResultKind.Connection,
         LauncherSearchTarget.Screen => LauncherSearchResultKind.Screen,
         LauncherSearchTarget.Workspace => LauncherSearchResultKind.Workspace,
         LauncherSearchTarget.RecentSession => LauncherSearchResultKind.RecentSession,

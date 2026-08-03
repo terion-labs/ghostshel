@@ -117,6 +117,10 @@ internal static class LauncherSearchProjection
         LauncherSearchTarget.Command command =>
             $"command:{command.Id.Value}{command.InvocationKey}",
         LauncherSearchTarget.Connection connection => $"connection:{connection.Id.Value}",
+        LauncherSearchTarget.FileConnection fileConnection =>
+            $"file-connection:{fileConnection.Id.Value}",
+        LauncherSearchTarget.DatabaseConnection databaseConnection =>
+            $"database-connection:{databaseConnection.Id.Value}",
         LauncherSearchTarget.Screen screen => $"screen:{screen.Id.Value}",
         LauncherSearchTarget.Workspace workspace => $"workspace:{workspace.Id.Value}",
         LauncherSearchTarget.RecentSession recent => $"recent:{recent.Id.Value}",

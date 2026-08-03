@@ -1278,6 +1278,14 @@ public sealed partial class MainWindow : Window
             case LauncherSearchTarget.Connection connection:
                 await LaunchConnectionTargetAsync(connection.Id);
                 break;
+            case LauncherSearchTarget.FileConnection fileConnection:
+                await LaunchTargetAsync(token =>
+                    ViewModel.LaunchFileProviderAsync(fileConnection.Id, token));
+                break;
+            case LauncherSearchTarget.DatabaseConnection databaseConnection:
+                await LaunchTargetAsync(token =>
+                    ViewModel.LaunchSavedDatabaseAsync(databaseConnection.Id, token));
+                break;
             case LauncherSearchTarget.Screen screen:
                 await LaunchScreenTargetAsync(screen.Id);
                 break;

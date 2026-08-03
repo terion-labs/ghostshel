@@ -9366,6 +9366,40 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 connection.Detail,
                 connection.Status,
             ])));
+        candidates.AddRange(FileConnections.Select(connection => new LauncherSearchResultViewModel(
+            new LauncherSearchTarget.FileConnection(
+                new FileProviderProfileId(connection.TargetId)),
+            Symbol.Folder,
+            $"CONNECTION · {connection.Kind}",
+            connection.Name,
+            connection.Detail,
+            connection.CanOpen ? savedDefinitionAction : "Unavailable",
+            connection.CanOpen,
+            connection.CanOpen ? null : connection.Status,
+            [
+                "connection",
+                "files",
+                connection.TargetId,
+                connection.Kind,
+                connection.Detail,
+            ])));
+        candidates.AddRange(DatabaseConnections.Select(connection => new LauncherSearchResultViewModel(
+            new LauncherSearchTarget.DatabaseConnection(
+                new DatabaseConnectionProfileId(connection.TargetId)),
+            Symbol.Database,
+            $"CONNECTION · {connection.Kind}",
+            connection.Name,
+            connection.Detail,
+            connection.CanOpen ? savedDefinitionAction : "Unavailable",
+            connection.CanOpen,
+            connection.CanOpen ? null : connection.Status,
+            [
+                "connection",
+                "database",
+                connection.TargetId,
+                connection.Kind,
+                connection.Detail,
+            ])));
         candidates.AddRange(Screens.Select(screen => new LauncherSearchResultViewModel(
             new LauncherSearchTarget.Screen(screen.Id),
             Symbol.Grid,
