@@ -625,6 +625,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             {
                 previous?.Dispose();
                 OnPropertyChanged(nameof(HasImagePreview));
+                OnPropertyChanged(nameof(HasSourcePreview));
                 OnPropertyChanged(nameof(HasPreview));
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
             }
@@ -694,7 +695,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public bool HasMarkdownPreview =>
         HasTextPreview && MarkdownPreviewDocument.IsMarkdown(PreviewTitle);
 
-    public bool HasSourcePreview => HasTextPreview && !HasMarkdownPreview;
+    public bool HasSourcePreview =>
+        HasTextPreview && !HasMarkdownPreview && !HasImagePreview && !HasPdfPreview;
 
     public bool HasImagePreview => PreviewImage is not null;
 
@@ -2130,36 +2132,36 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private const long MaximumPreviewPixels = 8_000_000;
 
     /// <summary>
+    /// The width an ordinary image is decoded to. Decoding at the source
+    /// resolution would hold a camera photograph's full bitmap in memory for a
+    /// preview a fraction of that size.
+    /// </summary>
+    private const int MaximumPreviewImageWidth = 2400;
+
+    /// <summary>
     /// Shows an image, decoding it first when the drawing stack cannot read the
     /// format. Formats it can read are drawn from the preview bytes already in
     /// hand; the rest need the whole file, which is fetched the same way a
     /// database is — cached, and gated on remote providers.
     /// </summary>
+    /// <summary>
+    /// Shows an image from the whole file, always.
+    ///
+    /// The bounded preview read is a head of the file, and a head of a JPEG is
+    /// not a smaller JPEG — it decodes to noise or not at all. Any image large
+    /// enough to be cut off was therefore being drawn as garbage, so every
+    /// image is materialized and read from disk.
+    /// </summary>
     private void PresentImagePreview(FilePanelPreview preview)
     {
-        if (_imageDecoder?.Claims(PreviewTitle) == true)
-        {
-            _ = DecodeImagePreviewAsync(preview.Location);
-            return;
-        }
-
-        try
-        {
-            using var stream = new MemoryStream(preview.Content.ToArray(), writable: false);
-            PreviewImage = new Bitmap(stream);
-            PreviewText = preview.IsTruncated ? "Image preview was truncated." : null;
-        }
-        catch (Exception exception) when (exception is ArgumentException or InvalidDataException)
-        {
-            PreviewText = "The image data could not be decoded safely.";
-        }
+        _ = DecodeImagePreviewAsync(preview.Location);
     }
 
     private async Task DecodeImagePreviewAsync(FilePanelLocation location)
     {
         if (_materializer is null)
         {
-            PreviewText = "This image format needs the whole file, which this client cannot open.";
+            PreviewText = "This client cannot open images by path.";
             return;
         }
 
@@ -2188,23 +2190,49 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 return;
             }
 
-            var decoded = await _imageDecoder!.DecodeAsync(
-                materialized.Value!.Path,
-                MaximumPreviewPixels,
+            var path = materialized.Value!.Path;
+            if (_imageDecoder?.Claims(PreviewTitle) == true)
+            {
+                var decoded = await _imageDecoder.DecodeAsync(
+                    path,
+                    MaximumPreviewPixels,
+                    operation.Token);
+                if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (decoded is null)
+                {
+                    PreviewText = "The image data could not be decoded safely.";
+                    return;
+                }
+
+                using var decodedStream = new MemoryStream(
+                    decoded.PngBytes.ToArray(),
+                    writable: false);
+                PreviewImage = new Bitmap(decodedStream);
+                PreviewText = null;
+                return;
+            }
+
+            // A format the drawing stack reads itself, decoded straight from
+            // disk and scaled down as it is read: a full-size bitmap of a
+            // camera photograph costs far more memory than the preview needs.
+            var bitmap = await Task.Run(
+                () =>
+                {
+                    using var file = File.OpenRead(path);
+                    return Bitmap.DecodeToWidth(file, MaximumPreviewImageWidth);
+                },
                 operation.Token);
             if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
             {
+                bitmap.Dispose();
                 return;
             }
 
-            if (decoded is null)
-            {
-                PreviewText = "The image data could not be decoded safely.";
-                return;
-            }
-
-            using var stream = new MemoryStream(decoded.PngBytes.ToArray(), writable: false);
-            PreviewImage = new Bitmap(stream);
+            PreviewImage = bitmap;
             PreviewText = null;
         }
         catch (OperationCanceledException) when (operation.IsCancellationRequested)

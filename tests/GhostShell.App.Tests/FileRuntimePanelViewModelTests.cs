@@ -1064,6 +1064,68 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task An_image_is_read_whole_rather_than_from_the_bounded_preview()
+    {
+        // A head of a JPEG is not a smaller JPEG: drawing the bounded preview
+        // bytes produced noise for any image past the read limit.
+        var path = Path.Combine(Path.GetTempPath(), $"ghostshell-image-{Guid.NewGuid():N}.png");
+        await File.WriteAllBytesAsync(path, TinyPng());
+        try
+        {
+            var client = new StubFilePanelClient { MaterializedPath = path };
+            client.Entries.Add(Entry(client.Root, "photo.png", FilePanelEntryKind.File, 4_700_000));
+            client.Preview = new FilePanelPreview(
+                client.Root.Child(new FilePanelPathSegment("photo.png")),
+                FilePanelPreviewKind.Image,
+                "image/png",
+                // A truncated head, exactly as a bounded read of a large
+                // photograph returns.
+                TinyPng().AsSpan(0, 20),
+                isTruncated: true);
+            using var panel = new FileRuntimePanelViewModel(
+                PanelInstanceId.New(),
+                "Files",
+                client);
+            await panel.Initialization;
+
+            panel.SelectedEntry = Assert.Single(panel.Entries);
+            await panel.PreviewSelectedAsync();
+            await WaitUntilAsync(() => client.MaterializeCallCount > 0);
+
+            // The whole file was asked for. Decoding it needs a rendering
+            // platform, which a view-model test has no business starting, so
+            // the drawing itself is proven by the harness capture instead.
+            Assert.Equal(1, client.MaterializeCallCount);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 100 && !condition(); attempt++)
+        {
+            await Task.Delay(20);
+        }
+    }
+
+    /// <summary>A 1x1 PNG, small enough to embed and real enough to decode.</summary>
+    private static byte[] TinyPng() =>
+    [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+        0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+        0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+        0x00, 0x03, 0x01, 0x01, 0x00, 0x18, 0xDD, 0x8D,
+        0xB0, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+        0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+
+    [Fact]
     public async Task A_small_remote_file_previews_without_asking()
     {
         var (panel, client) = await RemotePanelAsync(sizeBytes: 64 * 1024);
@@ -1203,7 +1265,10 @@ public sealed class FileRuntimePanelViewModelTests
             : Path.GetFullPath(path);
     }
 
-    private sealed class StubFilePanelClient : IFilePanelClient, IFileProviderProfileRuntime
+    private sealed class StubFilePanelClient :
+        IFilePanelClient,
+        IFileProviderProfileRuntime,
+        IFileContentMaterializer
     {
         public StubFilePanelClient()
         {
@@ -1321,6 +1386,30 @@ public sealed class FileRuntimePanelViewModelTests
                 ? FilePanelResult<FilePanelEntry>.Failure(StatError)
                 : FilePanelResult<FilePanelEntry>.Success(StatEntry ?? Entries.Single(
                     item => item.Location == location)));
+        }
+
+        /// <summary>The file a materialize call hands back, when one is set.</summary>
+        public string? MaterializedPath { get; set; }
+
+        public int MaterializeCallCount { get; private set; }
+
+        public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+            FilePanelLocation location,
+            long maximumBytes,
+            CancellationToken cancellationToken)
+        {
+            _ = location;
+            _ = maximumBytes;
+            _ = cancellationToken;
+            MaterializeCallCount++;
+            return ValueTask.FromResult(MaterializedPath is null
+                ? FilePanelResult<MaterializedFile>.Failure(new FilePanelError(
+                    FilePanelErrorCode.NotFound,
+                    "file_absent",
+                    "No file.",
+                    false))
+                : FilePanelResult<MaterializedFile>.Success(
+                    new MaterializedFile(MaterializedPath, IsCachedCopy: false)));
         }
 
         public async ValueTask<FilePanelResult<FilePanelPreview>> PreviewAsync(

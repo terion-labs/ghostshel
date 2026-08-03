@@ -43,6 +43,12 @@ internal static class Program
     /// <summary>A real two-page PDF, so the renderer is exercised on a document.</summary>
     public static string PdfProbePath { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// A JPEG far larger than the bounded preview read, so the whole-file image
+    /// path is exercised on a photograph rather than a thumbnail.
+    /// </summary>
+    public static string JpegProbePath { get; private set; } = string.Empty;
+
     public static string[] RequestedRoutes { get; private set; } = [];
 
     public static bool IsTerminalFontVerification { get; private set; }
@@ -64,6 +70,7 @@ internal static class Program
         SqliteProbePath = Path.Combine(OutputDirectory, "probe.sqlite");
         TiffProbePath = Path.Combine(OutputDirectory, "probe.tiff");
         PdfProbePath = Path.Combine(OutputDirectory, "probe.pdf");
+        JpegProbePath = Path.Combine(OutputDirectory, "probe.jpg");
         RequestedRoutes = args.Skip(1).ToArray();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
@@ -455,6 +462,33 @@ internal sealed class QaApplication : Avalonia.Application
         }, null),
         // A TIFF decoded through the image decoder and drawn by the panel, so
         // the format the drawing stack cannot open is proven end to end.
+        // A large JPEG read from disk exactly as the panel reads one: scaled
+        // down while decoding, never from the bounded preview head.
+        ("image-preview-photo", () =>
+        {
+            using var file = File.OpenRead(Program.JpegProbePath);
+            var bitmap = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(file, 2400);
+            return new Window
+            {
+                Width = 420,
+                Height = 320,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = new Border
+                {
+                    Classes = { "FloatingSidebar" },
+                    Child = new Image
+                    {
+                        Margin = new Thickness(12),
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                        Stretch = Stretch.Uniform,
+                        StretchDirection = StretchDirection.DownOnly,
+                        Source = bitmap,
+                    },
+                },
+            };
+        }, null),
         ("image-preview-fit", () =>
         {
             var decoder = new GhostShell.Previews.MagickImagePreviewDecoder();
@@ -1184,6 +1218,21 @@ internal sealed class QaApplication : Avalonia.Application
         };
     }
 
+    /// <summary>
+    /// Writes a JPEG comfortably larger than the 256 KB bounded preview read,
+    /// so the capture proves the panel reads the file rather than its head.
+    /// </summary>
+    private static void WriteJpegProbe()
+    {
+        using var image = new ImageMagick.MagickImage(
+            "gradient:#FF8400-#1A1A1A",
+            new ImageMagick.MagickReadSettings { Width = 2200, Height = 1500 });
+        image.AddNoise(ImageMagick.NoiseType.Gaussian);
+        image.Quality = 92;
+        image.Format = ImageMagick.MagickFormat.Jpeg;
+        image.Write(Program.JpegProbePath);
+    }
+
     private static async Task CaptureDialogAsync(string name, Window dialog)
     {
         dialog.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -1225,6 +1274,7 @@ internal sealed class QaApplication : Avalonia.Application
             WriteSqliteProbe();
             WriteTiffProbe();
             WritePdfProbe();
+            WriteJpegProbe();
             await Task.Delay(800);
 
             var requested = Program.RequestedRoutes;
