@@ -106,7 +106,7 @@
         ColumnSpacing="{DynamicResource ShellSpaceMd}"
         IsVisible="{Binding ShowWorkspaces, ElementName=Root}">
       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Workspaces" />
+        <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Workspaces" />
         <components:CountPill Value="{Binding Workspaces.Count}" />
       </StackPanel>
       <ScrollViewer
@@ -138,7 +138,7 @@
           </StackPanel>
           <Button Grid.Column="1" VerticalAlignment="Center" MinHeight="0" Padding="0" Classes="TextButton" Click="OnAddConnectionClick" Content="Add" />
         </Grid>
-        <controls:SurfaceCard Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
+        <controls:SurfaceCard Tone="Sunken" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
           <ScrollViewer HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding Connections}">
               <ItemsControl.ItemTemplate>
@@ -172,7 +172,7 @@
           </StackPanel>
           <Button Grid.Column="1" VerticalAlignment="Center" MinHeight="0" Padding="0" Classes="TextButton" Click="OnShowLayoutDesignerClick" Content="Layouts" />
         </Grid>
-        <controls:SurfaceCard Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
+        <controls:SurfaceCard Tone="Sunken" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
           <ScrollViewer HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding Screens}">
               <ItemsControl.ItemTemplate>

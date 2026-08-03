@@ -143,14 +143,14 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <Button Width="40" Height="40" Margin="{controls:Inset Bottom=Sm}" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
-                  <icons:SymbolIcon Symbol="{Binding IconSymbol}" FontSize="16" />
+                  <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="16" />
                 </Button>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
           <!-- A ghost tile, not a push button: the rail's add affordance sits
                beside filled workspace tiles and must read as an empty slot. -->
-          <Button Width="40" Height="40" Padding="0" Background="Transparent" BorderBrush="{DynamicResource ShellBorderBrush}" Foreground="{DynamicResource ShellMutedBrush}" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon Symbol="Add" FontSize="14" /></Button>
+          <Button Width="40" Height="40" Padding="0" Background="Transparent" BorderBrush="{DynamicResource ShellBorderBrush}" Foreground="{DynamicResource ShellMutedBrush}" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Add" FontSize="14" /></Button>
         </StackPanel>
       </Border>
 

@@ -11,7 +11,7 @@
     <!-- One card definition per kind, shared by the Home summary and the
          dedicated page, so the two can never drift apart. -->
     <DataTemplate x:Key="ConnectionCardTemplate">
-      <controls:SurfaceCard Classes="LaunchCard" Tone="Raised" Padding="0">
+      <controls:SurfaceCard Classes="LaunchCard" Tone="Sunken" Padding="0">
         <Grid>
           <Button
               Classes="CardSurface"
@@ -66,7 +66,7 @@
     </DataTemplate>
 
     <DataTemplate x:Key="ScreenCardTemplate">
-      <controls:SurfaceCard Classes="LaunchCard" Tone="Raised" Padding="0">
+      <controls:SurfaceCard Classes="LaunchCard" Tone="Sunken" Padding="0">
         <Grid>
           <Button
               Classes="CardSurface"
@@ -303,12 +303,13 @@
               Focusable="True"
               Spacing="{DynamicResource ShellSpaceMd}"
               AutomationProperties.Name="Saved connections section">
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Connections" />
+                <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Connections" />
                 <components:CountPill Value="{Binding TotalConnectionCount}" />
               </StackPanel>
-              <Button Grid.Column="1" Classes="TextButton" Click="OnLauncherConnectionsClick" AutomationProperties.Name="View all saved connections">
+              <Button Grid.Column="1" Classes="TextButton Accent" Click="OnAddConnectionClick" Content="New connection" AutomationProperties.Name="Create a saved connection" />
+              <Button Grid.Column="2" Classes="TextButton" Click="OnLauncherConnectionsClick" AutomationProperties.Name="View all saved connections">
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock VerticalAlignment="Center" Text="View all" />
                   <icons:SymbolIcon VerticalAlignment="Center" Symbol="ChevronRight" FontSize="12" />
@@ -332,12 +333,13 @@
               Focusable="True"
               Spacing="{DynamicResource ShellSpaceMd}"
               AutomationProperties.Name="Saved screens section">
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Screens" />
+                <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Saved Screens" />
                 <components:CountPill Value="{Binding Screens.Count}" />
               </StackPanel>
-              <Button Grid.Column="1" Classes="TextButton" Click="OnLauncherScreensClick" AutomationProperties.Name="View all saved screens">
+              <Button Grid.Column="1" Classes="TextButton Accent" Click="OnCreateScreenClick" Content="New screen" AutomationProperties.Name="Create a saved screen" />
+              <Button Grid.Column="2" Classes="TextButton" Click="OnLauncherScreensClick" AutomationProperties.Name="View all saved screens">
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                   <TextBlock VerticalAlignment="Center" Text="View all" />
                   <icons:SymbolIcon VerticalAlignment="Center" Symbol="ChevronRight" FontSize="12" />
@@ -423,7 +425,7 @@
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Saved Connections" />
+                <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Saved Connections" />
                 <components:CountPill VerticalAlignment="Center" Value="{Binding TotalConnectionCount}" />
               </StackPanel>
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Terminals, file transfer, and databases in one place" />
@@ -488,7 +490,7 @@
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Saved Screens" />
+                <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize22}" FontWeight="Bold" Text="Saved Screens" />
                 <components:CountPill VerticalAlignment="Center" Value="{Binding Screens.Count}" />
               </StackPanel>
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Reusable panel arrangements you can open as a tab" />
