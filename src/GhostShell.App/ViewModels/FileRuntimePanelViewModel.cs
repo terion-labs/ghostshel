@@ -114,6 +114,14 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private bool _autoDownloadPreviews = true;
     private FileEntryViewModel? _deferredPreviewEntry;
     private FileEntryViewModel? _requestedPreviewEntry;
+
+    /// <summary>
+    /// Files whose preview the user has already asked for, keyed by the
+    /// location's full identity — profile, address, and version. Asking again
+    /// for a file you just previewed is the shortcut wearing out its welcome,
+    /// and a version in the key means an edited file is asked about afresh.
+    /// </summary>
+    private readonly HashSet<string> _grantedPreviews = new(StringComparer.Ordinal);
     private readonly IDatabasePanelClient? _databaseClient;
     private readonly IFileContentMaterializer? _materializer;
     private DatabaseRuntimePanelViewModel? _databasePreview;
@@ -847,8 +855,17 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         _requestedPreviewEntry = entry;
+        _grantedPreviews.Add(PreviewGrantKey(entry));
         return LoadPreviewAsync(entry, cancellationToken);
     }
+
+    /// <summary>
+    /// The identity a grant is remembered against. The location already carries
+    /// profile, address, and version, so two files cannot share a key and one
+    /// file cannot keep a grant across an edit.
+    /// </summary>
+    private static string PreviewGrantKey(FileEntryViewModel entry) =>
+        entry.Entry.Location.ToString();
 
     private void SetDeferredPreview(FileEntryViewModel? entry)
     {
@@ -1743,6 +1760,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         // scrolling past.
         if (IsRemoteProvider
             && !ReferenceEquals(entry, requested)
+            && !_grantedPreviews.Contains(PreviewGrantKey(entry))
             && (!AutoDownloadPreviews
                 || entry.Entry.Size is null
                 || entry.Entry.Size > AutoDownloadPreviewBytes))

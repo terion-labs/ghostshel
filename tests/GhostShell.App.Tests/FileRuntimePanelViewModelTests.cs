@@ -1100,6 +1100,29 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task A_file_previewed_once_is_not_asked_about_again()
+    {
+        var (panel, client) = await RemotePanelAsync(
+            sizeBytes: FileRuntimePanelViewModel.AutoDownloadPreviewBytes + 1);
+        var file = Assert.Single(panel.Entries);
+
+        panel.SelectedEntry = file;
+        await panel.PreviewSelectedAsync();
+        await panel.PreviewDeferredAsync();
+        Assert.False(panel.ShowPreviewDownloadPrompt);
+
+        // Away and back again: the answer given a moment ago still stands.
+        panel.SelectedEntry = null;
+        await panel.PreviewSelectedAsync();
+        panel.SelectedEntry = file;
+        await panel.PreviewSelectedAsync();
+
+        Assert.False(panel.ShowPreviewDownloadPrompt);
+        Assert.NotNull(client.LastPreviewRequest);
+        panel.Dispose();
+    }
+
+    [Fact]
     public async Task Auto_download_off_defers_even_a_small_remote_file()
     {
         var (panel, client) = await RemotePanelAsync(sizeBytes: 1024);
