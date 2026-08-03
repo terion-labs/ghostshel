@@ -111,6 +111,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private volatile bool _initializationStarted;
     private bool _disposed;
 
+    private bool _autoDownloadPreviews = true;
+    private FileEntryViewModel? _deferredPreviewEntry;
+    private FileEntryViewModel? _requestedPreviewEntry;
     private readonly IDatabasePanelClient? _databaseClient;
     private readonly IFileContentMaterializer? _materializer;
     private DatabaseRuntimePanelViewModel? _databasePreview;
@@ -242,6 +245,10 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(CanDownload));
                 OnPropertyChanged(nameof(CanUpload));
                 OnPropertyChanged(nameof(CanOpenExternally));
+                // Switching to a remote provider is what makes the
+                // auto-download choice relevant, and to a local one what makes
+                // it disappear.
+                OnPropertyChanged(nameof(IsRemoteProvider));
                 OnContentPresentationChanged();
             }
         }
@@ -598,6 +605,48 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public bool HasError => CurrentIssue is not null;
 
     /// <summary>
+    /// The size at or below which a remote file is fetched for preview without
+    /// asking. Previewing a remote file costs the user's bandwidth, so above
+    /// this the preview waits to be asked for.
+    /// </summary>
+    public const long AutoDownloadPreviewBytes = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// Whether this provider's files are fetched over a network. Local
+    /// providers read from disk, so nothing is downloaded and the whole
+    /// question does not arise.
+    /// </summary>
+    public bool IsRemoteProvider => SelectedProfile?.Family
+        is FileProviderFamily.S3
+        or FileProviderFamily.Sftp
+        or FileProviderFamily.Ftp
+        or FileProviderFamily.Smb
+        or FileProviderFamily.WebDav;
+
+    public bool AutoDownloadPreviews
+    {
+        get => _autoDownloadPreviews;
+        set
+        {
+            if (SetProperty(ref _autoDownloadPreviews, value) && value)
+            {
+                // Turning it on is itself the answer to the waiting question.
+                _ = PreviewDeferredAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// A remote file is selected and its preview is waiting to be asked for,
+    /// because auto-download is off or the file is over the threshold.
+    /// </summary>
+    public bool ShowPreviewDownloadPrompt => _deferredPreviewEntry is not null;
+
+    public string PreviewDownloadPromptDetail => _deferredPreviewEntry?.Entry.Size is { } size
+        ? $"Preview will download {FileEntryViewModel.FormatSize(size)} to a temporary location."
+        : "Preview will download this file to a temporary location.";
+
+    /// <summary>
     /// The database viewer bound to the selected file, when that file is a
     /// database. It is the same view model the docked database panel uses, so
     /// the preview is the product's database viewer rather than a second one.
@@ -612,7 +661,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasPreview => HasTextPreview || HasImagePreview || HasDatabasePreview;
 
-    public bool ShowPreviewPlaceholder => !HasPreview && !IsPreviewLoading;
+    public bool ShowPreviewPlaceholder =>
+        !HasPreview && !IsPreviewLoading && !ShowPreviewDownloadPrompt;
 
     public FileBrowserContentPresentation ContentPresentation =>
         FileBrowserContentPresentation.Resolve(
@@ -782,6 +832,35 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             SelectedEntry = entry;
             await PreviewSelectedAsync(cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Fetches the preview the user just asked for, from the button or the
+    /// space bar. The request is remembered for exactly this entry, so the gate
+    /// lets it through once without turning auto-download on for everything.
+    /// </summary>
+    public Task PreviewDeferredAsync(CancellationToken cancellationToken = default)
+    {
+        if (_deferredPreviewEntry is not { } entry)
+        {
+            return Task.CompletedTask;
+        }
+
+        _requestedPreviewEntry = entry;
+        return LoadPreviewAsync(entry, cancellationToken);
+    }
+
+    private void SetDeferredPreview(FileEntryViewModel? entry)
+    {
+        if (ReferenceEquals(_deferredPreviewEntry, entry))
+        {
+            return;
+        }
+
+        _deferredPreviewEntry = entry;
+        OnPropertyChanged(nameof(ShowPreviewDownloadPrompt));
+        OnPropertyChanged(nameof(PreviewDownloadPromptDetail));
+        OnPropertyChanged(nameof(ShowPreviewPlaceholder));
     }
 
     public Task PreviewSelectedAsync(CancellationToken cancellationToken = default)
@@ -1647,6 +1726,10 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             _lifetime.Token,
             cancellationToken);
         var operation = _preview;
+        // Captured before ClearPreview resets it: an explicit request is about
+        // this exact entry, and clearing the previous preview must not throw it
+        // away before the gate below has read it.
+        var requested = _requestedPreviewEntry;
         ClearPreview();
         IsPreviewLoading = false;
         if (entry is null || entry.IsDirectory || entry.IsLink)
@@ -1654,6 +1737,22 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
+        // A remote preview is a download. Above the threshold, or with
+        // auto-download off, the file waits to be asked for rather than
+        // spending the user's bandwidth on a selection they may just be
+        // scrolling past.
+        if (IsRemoteProvider
+            && !ReferenceEquals(entry, requested)
+            && (!AutoDownloadPreviews
+                || entry.Entry.Size is null
+                || entry.Entry.Size > AutoDownloadPreviewBytes))
+        {
+            PreviewTitle = entry.Name;
+            SetDeferredPreview(entry);
+            return;
+        }
+
+        SetDeferredPreview(null);
         IsPreviewLoading = true;
         PreviewTitle = entry.Name;
         var maximum = Math.Min(
@@ -1868,6 +1967,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewText = null;
         PreviewIssue = null;
         PreviewTitle = "Preview";
+        _requestedPreviewEntry = null;
+        SetDeferredPreview(null);
         ClearDatabasePreview();
     }
 

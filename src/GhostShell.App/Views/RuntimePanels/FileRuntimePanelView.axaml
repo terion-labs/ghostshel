@@ -409,8 +409,18 @@
             IsVisible="{Binding IsPreviewVisible}">
           <Grid RowDefinitions="29,Auto,*">
             <Border Background="{DynamicResource ShellSurfaceBrush}">
-              <Grid Margin="{controls:Inset Horizontal=Md}">
+              <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding PreviewTitle}" TextTrimming="CharacterEllipsis" />
+                <!-- Only remote providers download anything, so the choice is
+                     offered only where it costs something. -->
+                <CheckBox
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    IsChecked="{Binding AutoDownloadPreviews, Mode=TwoWay}"
+                    IsVisible="{Binding IsRemoteProvider}"
+                    Content="Auto-download &lt;2 MB files for preview"
+                    AutomationProperties.Name="Automatically download files under two megabytes to preview them" />
               </Grid>
             </Border>
             <controls:SurfaceCard Padding="0" Grid.Row="1" Margin="{controls:Inset Sm}" IsVisible="{Binding HasSelectedMetadata}">
@@ -443,6 +453,41 @@
               <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowPreviewPlaceholder}">
                 <icons:SymbolIcon Symbol="Info" FontSize="22" Foreground="{DynamicResource ShellMutedBrush}" />
                 <TextBlock Classes="Muted" Text="Select a file to preview it." />
+              </StackPanel>
+
+              <!-- The preview of a remote file is a download, so it is offered
+                   rather than taken. Space activates it because the file list
+                   keeps focus while browsing. -->
+              <StackPanel
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Spacing="{DynamicResource ShellSpaceSm}"
+                  IsVisible="{Binding ShowPreviewDownloadPrompt}">
+                <Button
+                    x:Name="PreviewDownloadButton"
+                    Width="52"
+                    Height="52"
+                    HorizontalAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Padding="0"
+                    Click="OnPreviewDownloadClick"
+                    ToolTip.Tip="Download and preview (Space)"
+                    AutomationProperties.Name="Download this file and preview it">
+                  <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Eye" FontSize="22" />
+                </Button>
+                <TextBlock
+                    MaxWidth="260"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Text="{Binding PreviewDownloadPromptDetail}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="Press Space to preview" />
               </StackPanel>
               <controls:SurfaceCard Tone="Notice" Margin="{controls:Inset Md}" Padding="{controls:Inset Md}" VerticalAlignment="Bottom" IsVisible="{Binding HasMetadataIssue}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="File metadata status">
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}">

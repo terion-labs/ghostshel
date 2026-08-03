@@ -131,6 +131,41 @@ public sealed partial class FileRuntimePanelView : UserControl
     private void OnEntryDoubleTapped(object? sender, TappedEventArgs e) =>
         EntryDoubleTapped?.Invoke(sender, e);
 
+    private void OnPreviewDownloadClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RequestDeferredPreview();
+    }
+
+    /// <summary>
+    /// Space asks for a waiting preview from anywhere in the panel: the file
+    /// list keeps focus while browsing, so requiring the button to be focused
+    /// would make the shortcut useless exactly when it is wanted.
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Space
+            && !e.Handled
+            && DataContext is FileRuntimePanelViewModel { ShowPreviewDownloadPrompt: true }
+            && e.Source is not TextBox)
+        {
+            e.Handled = true;
+            RequestDeferredPreview();
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    private void RequestDeferredPreview()
+    {
+        if (DataContext is FileRuntimePanelViewModel panel)
+        {
+            _ = panel.PreviewDeferredAsync();
+        }
+    }
+
     private void OnEntrySelectionChanged(object? sender, SelectionChangedEventArgs e) =>
         EntrySelectionChanged?.Invoke(sender, e);
 

@@ -1063,6 +1063,103 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal("files.saved", panel.CurrentLocation?.ProviderProfileId);
     }
 
+    [Fact]
+    public async Task A_small_remote_file_previews_without_asking()
+    {
+        var (panel, client) = await RemotePanelAsync(sizeBytes: 64 * 1024);
+
+        panel.SelectedEntry = Assert.Single(panel.Entries);
+        await panel.PreviewSelectedAsync();
+
+        Assert.False(panel.ShowPreviewDownloadPrompt);
+        Assert.NotNull(client.LastPreviewRequest);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task A_large_remote_file_waits_to_be_asked_for()
+    {
+        var (panel, client) = await RemotePanelAsync(
+            sizeBytes: FileRuntimePanelViewModel.AutoDownloadPreviewBytes + 1);
+
+        panel.SelectedEntry = Assert.Single(panel.Entries);
+        await panel.PreviewSelectedAsync();
+
+        Assert.True(panel.ShowPreviewDownloadPrompt);
+        Assert.False(panel.ShowPreviewPlaceholder);
+        // Nothing was fetched: the point of the gate is that the bytes stay on
+        // the far side of the connection until asked for.
+        Assert.Null(client.LastPreviewRequest);
+        Assert.Contains("download", panel.PreviewDownloadPromptDetail, StringComparison.OrdinalIgnoreCase);
+
+        await panel.PreviewDeferredAsync();
+
+        Assert.False(panel.ShowPreviewDownloadPrompt);
+        Assert.NotNull(client.LastPreviewRequest);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task Auto_download_off_defers_even_a_small_remote_file()
+    {
+        var (panel, client) = await RemotePanelAsync(sizeBytes: 1024);
+        panel.AutoDownloadPreviews = false;
+
+        panel.SelectedEntry = Assert.Single(panel.Entries);
+        await panel.PreviewSelectedAsync();
+
+        Assert.True(panel.ShowPreviewDownloadPrompt);
+        Assert.Null(client.LastPreviewRequest);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task A_local_file_never_waits_however_large_it_is()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(
+            client.Root,
+            "huge.bin",
+            FilePanelEntryKind.File,
+            FileRuntimePanelViewModel.AutoDownloadPreviewBytes * 4));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client);
+        await panel.Initialization;
+
+        panel.SelectedEntry = Assert.Single(panel.Entries);
+        await panel.PreviewSelectedAsync();
+
+        Assert.False(panel.IsRemoteProvider);
+        Assert.False(panel.ShowPreviewDownloadPrompt);
+        Assert.NotNull(client.LastPreviewRequest);
+    }
+
+    private static async Task<(FileRuntimePanelViewModel Panel, StubFilePanelClient Client)>
+        RemotePanelAsync(long sizeBytes)
+    {
+        var client = new StubFilePanelClient();
+        var remote = client.AddProfile(
+            "remote.sftp",
+            "Remote",
+            prepend: true,
+            capabilities: FilePanelCapability.List
+                | FilePanelCapability.Stat
+                | FilePanelCapability.RangedRead,
+            family: FileProviderFamily.Sftp);
+        client.Entries.Clear();
+        client.Entries.Add(Entry(remote.Root, "payload.bin", FilePanelEntryKind.File, sizeBytes));
+        var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            initialProfileId: new FileProviderProfileId(remote.Id));
+        await panel.Initialization;
+        Assert.True(panel.IsRemoteProvider);
+        return (panel, client);
+    }
+
     private static FilePanelEntry Entry(
         FilePanelLocation parent,
         string name,
@@ -1147,7 +1244,8 @@ public sealed class FileRuntimePanelViewModelTests
             string name,
             bool prepend = false,
             FilePanelCapability capabilities = FilePanelCapability.List,
-            long maximumPreviewBytes = 1024 * 1024)
+            long maximumPreviewBytes = 1024 * 1024,
+            FileProviderFamily family = FileProviderFamily.Posix)
         {
             var root = new FilePanelLocation(
                 id,
@@ -1156,7 +1254,7 @@ public sealed class FileRuntimePanelViewModelTests
             var profile = new FileProviderProfileDescriptor(
                 id,
                 name,
-                FileProviderFamily.Posix,
+                family,
                 root,
                 capabilities,
                 500,
