@@ -123,6 +123,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// </summary>
     private readonly HashSet<string> _grantedPreviews = new(StringComparer.Ordinal);
     private readonly IDatabasePanelClient? _databaseClient;
+    private readonly IImagePreviewDecoder? _imageDecoder;
     private readonly IFileContentMaterializer? _materializer;
     private DatabaseRuntimePanelViewModel? _databasePreview;
     private MaterializedFile? _databasePreviewFile;
@@ -137,13 +138,15 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         string? initialLocationText = null,
         bool deferInitialization = false,
         ConnectionProfile? connection = null,
-        IDatabasePanelClient? databaseClient = null)
+        IDatabasePanelClient? databaseClient = null,
+        IImagePreviewDecoder? imageDecoder = null)
         : base(id, PanelKind.FileViewer, title, "Files")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         // Both are optional: a build without database drivers, or a client that
         // cannot hand out a real path, simply previews databases as bytes.
         _databaseClient = databaseClient;
+        _imageDecoder = imageDecoder;
         _materializer = client as IFileContentMaterializer;
         _connection = connection ?? BuiltInConnections.Local;
         _retryCommand = new AsyncActionCommand(
@@ -1826,20 +1829,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         switch (preview.Kind)
         {
             case FilePanelPreviewKind.Image:
-                try
-                {
-                    using (var stream = new MemoryStream(preview.Content.ToArray(), writable: false))
-                    {
-                        PreviewImage = new Bitmap(stream);
-                    }
-
-                    PreviewText = preview.IsTruncated ? "Image preview was truncated." : null;
-                }
-                catch (Exception exception) when (exception is ArgumentException or InvalidDataException)
-                {
-                    PreviewText = "The image data could not be decoded safely.";
-                }
-
+                PresentImagePreview(preview);
                 break;
             case FilePanelPreviewKind.StructuredText:
                 PreviewText = FormatJson(preview.Content.Span, preview.IsTruncated);
@@ -2086,6 +2076,116 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(ShowPreviewPlaceholder));
         await viewer.ConnectAsync();
     }
+
+    /// <summary>
+    /// The pixel budget a preview image is scaled into. It bounds the memory a
+    /// single preview can cost regardless of what the file claims to be.
+    /// </summary>
+    private const long MaximumPreviewPixels = 8_000_000;
+
+    /// <summary>
+    /// Shows an image, decoding it first when the drawing stack cannot read the
+    /// format. Formats it can read are drawn from the preview bytes already in
+    /// hand; the rest need the whole file, which is fetched the same way a
+    /// database is — cached, and gated on remote providers.
+    /// </summary>
+    private void PresentImagePreview(FilePanelPreview preview)
+    {
+        if (_imageDecoder?.Claims(PreviewTitle) == true)
+        {
+            _ = DecodeImagePreviewAsync(preview.Location);
+            return;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream(preview.Content.ToArray(), writable: false);
+            PreviewImage = new Bitmap(stream);
+            PreviewText = preview.IsTruncated ? "Image preview was truncated." : null;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidDataException)
+        {
+            PreviewText = "The image data could not be decoded safely.";
+        }
+    }
+
+    private async Task DecodeImagePreviewAsync(FilePanelLocation location)
+    {
+        if (_materializer is null)
+        {
+            PreviewText = "This image format needs the whole file, which this client cannot open.";
+            return;
+        }
+
+        var operation = _preview;
+        if (operation is null)
+        {
+            return;
+        }
+
+        IsPreviewLoading = true;
+        try
+        {
+            var materialized = await _materializer.MaterializeAsync(
+                location,
+                MaximumImagePreviewBytes,
+                operation.Token);
+            if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!materialized.IsSuccess)
+            {
+                PreviewText = materialized.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                return;
+            }
+
+            var decoded = await _imageDecoder!.DecodeAsync(
+                materialized.Value!.Path,
+                MaximumPreviewPixels,
+                operation.Token);
+            if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (decoded is null)
+            {
+                PreviewText = "The image data could not be decoded safely.";
+                return;
+            }
+
+            using var stream = new MemoryStream(decoded.PngBytes.ToArray(), writable: false);
+            PreviewImage = new Bitmap(stream);
+            PreviewText = null;
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                PreviewText = "The image could not be opened.";
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                IsPreviewLoading = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The ceiling on an image opened through the preview. Generous next to a
+    /// bounded read because a partial image is not a smaller image, but still
+    /// far short of what a scanner or camera can produce.
+    /// </summary>
+    private const long MaximumImagePreviewBytes = 128L * 1024 * 1024;
 
     private const string SqliteDriverId = "sqlite";
 

@@ -68,6 +68,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IFileTransferQueueClient _fileTransferQueue;
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
     private readonly IDatabasePanelClient? _databasePanelClient;
+    private readonly IImagePreviewDecoder? _imagePreviewDecoder;
     private readonly TerminalStartupCommandDispatcher _startupCommandDispatcher;
     private readonly IFileProviderProfileRuntime? _fileProviderRuntime;
     private readonly IAiProviderProfileRuntime? _aiProviderRuntime;
@@ -177,6 +178,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IAgentApprovalPrincipal? agentApprovalPrincipal = null,
         IBrowserRendererViewFactory? browserRendererViewFactory = null,
         IDatabasePanelClient? databasePanelClient = null,
+        IImagePreviewDecoder? imagePreviewDecoder = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
@@ -193,6 +195,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
         _browserRendererViewFactory = browserRendererViewFactory;
         _databasePanelClient = databasePanelClient;
+        _imagePreviewDecoder = imagePreviewDecoder;
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
@@ -10222,7 +10225,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             initialLocationText,
             deferInitialization,
             connection,
-            _databasePanelClient);
+            _databasePanelClient,
+            _imagePreviewDecoder);
     }
 
     private FileProviderProfileDescriptor? ResolveFileProfile(

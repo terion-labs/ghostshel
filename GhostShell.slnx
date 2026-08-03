@@ -14,6 +14,7 @@
     <Project Path="src/GhostShell.Infrastructure/GhostShell.Infrastructure.csproj" />
     <Project Path="src/GhostShell.Mcp/GhostShell.Mcp.csproj" />
     <Project Path="src/GhostShell.Monitoring/GhostShell.Monitoring.csproj" />
+    <Project Path="src/GhostShell.Previews/GhostShell.Previews.csproj" />
     <Project Path="src/GhostShell.Protocol/GhostShell.Protocol.csproj" />
     <Project Path="src/GhostShell.SessionHost/GhostShell.SessionHost.csproj" />
     <Project Path="src/GhostShell.Terminal/GhostShell.Terminal.csproj" />
@@ -33,6 +34,7 @@
     <Project Path="tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj" />
     <Project Path="tests/GhostShell.Mcp.Tests/GhostShell.Mcp.Tests.csproj" />
     <Project Path="tests/GhostShell.Monitoring.Tests/GhostShell.Monitoring.Tests.csproj" />
+    <Project Path="tests/GhostShell.Previews.Tests/GhostShell.Previews.Tests.csproj" />
     <Project Path="tests/GhostShell.Protocol.Tests/GhostShell.Protocol.Tests.csproj" />
     <Project Path="tests/GhostShell.SessionHost.Tests/GhostShell.SessionHost.Tests.csproj" />
     <Project Path="tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj" />

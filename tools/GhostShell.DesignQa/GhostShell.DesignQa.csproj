@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/GhostShell.App/GhostShell.App.csproj" />
     <ProjectReference Include="../../src/GhostShell.Databases/GhostShell.Databases.csproj" />
+    <ProjectReference Include="../../src/GhostShell.Previews/GhostShell.Previews.csproj" />
   </ItemGroup>
 
   <ItemGroup>

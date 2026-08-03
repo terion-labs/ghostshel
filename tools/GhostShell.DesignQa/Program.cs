@@ -37,6 +37,9 @@ internal static class Program
     /// </summary>
     public static string SqliteProbePath { get; private set; } = string.Empty;
 
+    /// <summary>A real TIFF, so the image decoder is exercised on a real file.</summary>
+    public static string TiffProbePath { get; private set; } = string.Empty;
+
     public static string[] RequestedRoutes { get; private set; } = [];
 
     public static bool IsTerminalFontVerification { get; private set; }
@@ -56,6 +59,7 @@ internal static class Program
             args.FirstOrDefault() ?? Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "design-qa", "current"));
 
         SqliteProbePath = Path.Combine(OutputDirectory, "probe.sqlite");
+        TiffProbePath = Path.Combine(OutputDirectory, "probe.tiff");
         RequestedRoutes = args.Skip(1).ToArray();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
@@ -425,6 +429,48 @@ internal sealed class QaApplication : Avalonia.Application
         // selection key. The route raises a real tunneled key event through a
         // real control tree and captures what the panel did with it.
         ("preview-space-shortcut", CreateSpaceShortcutProbe, null),
+        // A TIFF decoded through the image decoder and drawn by the panel, so
+        // the format the drawing stack cannot open is proven end to end.
+        ("image-preview-tiff", () =>
+        {
+            var decoder = new GhostShell.Previews.MagickImagePreviewDecoder();
+            var decoded = decoder
+                .DecodeAsync(Program.TiffProbePath, 8_000_000, CancellationToken.None)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult()
+                ?? throw new InvalidOperationException("The TIFF probe did not decode.");
+            using var stream = new MemoryStream(decoded.PngBytes.ToArray(), writable: false);
+            return new Window
+            {
+                Width = 420,
+                Height = 320,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = new Border
+                {
+                    Classes = { "FloatingSidebar" },
+                    Padding = new Thickness(12),
+                    Child = new StackPanel
+                    {
+                        Spacing = 8,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = $"{decoded.FormatName} · {decoded.Width}×{decoded.Height}",
+                            },
+                            new Image
+                            {
+                                Source = new Avalonia.Media.Imaging.Bitmap(stream),
+                                Stretch = Stretch.Uniform,
+                                Height = 220,
+                            },
+                        },
+                    },
+                },
+            };
+        }, null),
         // The database viewer opened on a real SQLite file through the shared
         // workspace component — the same one the file preview embeds.
         ("database-preview", () =>
@@ -953,6 +999,25 @@ internal sealed class QaApplication : Avalonia.Application
         return window;
     }
 
+    /// <summary>
+    /// Writes a small real TIFF: uncompressed RGB with a gradient, enough for
+    /// the decoder to be exercised on an actual file of a format the drawing
+    /// stack cannot open.
+    /// </summary>
+    private static void WriteTiffProbe()
+    {
+        using var image = new ImageMagick.MagickImage(
+            new ImageMagick.MagickColor("#1A1A1A"),
+            240,
+            180);
+        using var gradient = new ImageMagick.MagickImage(
+            "gradient:#FF8400-#77D797",
+            new ImageMagick.MagickReadSettings { Width = 240, Height = 180 });
+        image.Composite(gradient, ImageMagick.CompositeOperator.Over);
+        image.Format = ImageMagick.MagickFormat.Tiff;
+        image.Write(Program.TiffProbePath);
+    }
+
     private static async Task CaptureDialogAsync(string name, Window dialog)
     {
         dialog.WindowStartupLocation = WindowStartupLocation.Manual;
@@ -992,6 +1057,7 @@ internal sealed class QaApplication : Avalonia.Application
         {
             Directory.CreateDirectory(Program.OutputDirectory);
             WriteSqliteProbe();
+            WriteTiffProbe();
             await Task.Delay(800);
 
             var requested = Program.RequestedRoutes;

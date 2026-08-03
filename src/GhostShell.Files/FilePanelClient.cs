@@ -535,6 +535,31 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             return (FilePanelPreviewKind.Database, "application/vnd.sqlite3");
         }
 
+        if (IsTiff(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/tiff");
+        }
+
+        if (IsHeif(content) is { } heifType)
+        {
+            return (FilePanelPreviewKind.Image, heifType);
+        }
+
+        if (IsWebp(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/webp");
+        }
+
+        if (IsBmp(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/bmp");
+        }
+
+        if (IsPsd(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/vnd.adobe.photoshop");
+        }
+
         if (TryDecodeText(content, out var text))
         {
             if (LooksLikeJson(location, text))
@@ -602,6 +627,41 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
 
     private static bool IsGif(ReadOnlySpan<byte> content) =>
         content.StartsWith("GIF87a"u8) || content.StartsWith("GIF89a"u8);
+
+    private static bool IsTiff(ReadOnlySpan<byte> content) =>
+        content.StartsWith("II\u002a\u0000"u8) || content.StartsWith("MM\u0000\u002a"u8);
+
+    /// <summary>
+    /// HEIF-family files declare their brand in the ISO base-media box that
+    /// follows the box length, which is why the marker starts at byte four.
+    /// </summary>
+    private static string? IsHeif(ReadOnlySpan<byte> content)
+    {
+        if (content.Length < 12 || !content[4..].StartsWith("ftyp"u8))
+        {
+            return null;
+        }
+
+        var brand = content.Slice(8, 4);
+        if (brand.StartsWith("heic"u8) || brand.StartsWith("heix"u8)
+            || brand.StartsWith("hevc"u8) || brand.StartsWith("mif1"u8))
+        {
+            return "image/heic";
+        }
+
+        return brand.StartsWith("avif"u8) || brand.StartsWith("avis"u8)
+            ? "image/avif"
+            : null;
+    }
+
+    private static bool IsWebp(ReadOnlySpan<byte> content) =>
+        content.Length >= 12
+        && content.StartsWith("RIFF"u8)
+        && content[8..].StartsWith("WEBP"u8);
+
+    private static bool IsBmp(ReadOnlySpan<byte> content) => content.StartsWith("BM"u8);
+
+    private static bool IsPsd(ReadOnlySpan<byte> content) => content.StartsWith("8BPS"u8);
 
     private static FilePanelResult<T> Invalid<T>(string message) =>
         Failure<T>(FilePanelErrorCode.InvalidLocation, "file_request_invalid", message);

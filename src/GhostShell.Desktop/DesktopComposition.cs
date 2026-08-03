@@ -5,6 +5,7 @@ using GhostShell.Agent.Runtime;
 using GhostShell.Application;
 using GhostShell.Browser;
 using GhostShell.Databases;
+using GhostShell.Previews;
 using GhostShell.Files;
 using GhostShell.Infrastructure;
 using GhostShell.Mcp;
@@ -89,6 +90,7 @@ public static class DesktopComposition
         services.AddSingleton<ISystemMonitorPanelSessionFactory, SystemMonitorPanelSessionFactory>();
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();
+        services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();
         services.AddSingleton<IFileProviderProfileRuntime>(provider =>
             provider.GetRequiredService<CatalogFileProviderRuntime>());
         services.AddSingleton<CatalogAiProviderRuntime>();
