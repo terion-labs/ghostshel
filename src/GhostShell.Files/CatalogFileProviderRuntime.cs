@@ -11,7 +11,8 @@ public sealed class CatalogFileProviderRuntime :
     IFilePanelClient,
     IFileTransferQueueClient,
     IFileProviderProfileRuntime,
-    IFileProviderHostKeyRepair
+    IFileProviderHostKeyRepair,
+    IFileContentMaterializer
 {
     private readonly object _gate = new();
     private readonly IDefinitionCatalog _catalog;
@@ -97,6 +98,19 @@ public sealed class CatalogFileProviderRuntime :
         FilePanelPreviewRequest request,
         CancellationToken cancellationToken) =>
         UseActiveAsync((client, token) => client.PreviewAsync(request, token), cancellationToken);
+
+    /// <summary>
+    /// Materializing runs against the generation that is active when it starts,
+    /// exactly like every other operation here: a profile reload mid-copy must
+    /// not swap the provider under a half-written file.
+    /// </summary>
+    public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+        FilePanelLocation location,
+        long maximumBytes,
+        CancellationToken cancellationToken) =>
+        UseActiveAsync(
+            (client, token) => client.MaterializeAsync(location, maximumBytes, token),
+            cancellationToken);
 
     public ValueTask<FilePanelResult<FilePanelEntry>> CreateDirectoryAsync(
         FilePanelCreateDirectoryRequest request,
@@ -858,6 +872,7 @@ internal sealed class GenerationLease(ProviderGeneration generation) : IDisposab
 internal sealed class GenerationBoundFilePanelClient :
     IFilePanelClient,
     IFileTransferQueueClient,
+    IFileContentMaterializer,
     IDisposable
 {
     private readonly object _gate = new();
@@ -897,6 +912,14 @@ internal sealed class GenerationBoundFilePanelClient :
         CancellationToken cancellationToken) =>
         UseAsync(
             (client, token) => client.StatAsync(location, token),
+            cancellationToken);
+
+    public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+        FilePanelLocation location,
+        long maximumBytes,
+        CancellationToken cancellationToken) =>
+        UseAsync(
+            (client, token) => client.MaterializeAsync(location, maximumBytes, token),
             cancellationToken);
 
     public ValueTask<FilePanelResult<FilePanelPreview>> PreviewAsync(

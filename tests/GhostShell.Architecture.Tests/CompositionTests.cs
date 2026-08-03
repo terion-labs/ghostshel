@@ -13,6 +13,23 @@ namespace GhostShell.Architecture.Tests;
 
 public sealed class CompositionTests
 {
+    /// <summary>
+    /// The file preview opens databases by path, and the path comes from the
+    /// composed file client rather than the one the Files tests construct
+    /// directly. A wrapper that forgets to forward materialization compiles
+    /// perfectly and fails only at the moment a user selects a database, so the
+    /// composed chain is asserted here.
+    /// </summary>
+    [Fact]
+    public async Task ComposedFileClientCanMaterializeFilesByPath()
+    {
+        await using var services = DesktopComposition.CreateServiceProvider();
+
+        var filePanel = services.GetRequiredService<IFilePanelClient>();
+
+        Assert.IsAssignableFrom<IFileContentMaterializer>(filePanel);
+    }
+
     [Fact]
     public async Task DesktopGraphResolvesOneSessionHostClientAndPresentationRoot()
     {

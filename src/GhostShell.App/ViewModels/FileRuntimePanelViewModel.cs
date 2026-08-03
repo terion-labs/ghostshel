@@ -1955,7 +1955,10 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             PreviewTitle,
             _databaseClient,
             SqliteDriverId,
-            file.Path);
+            // Read-only: previewing a file must not write a journal beside the
+            // user's database, and for a local file this is their real database
+            // rather than a copy.
+            $"Data Source={file.Path};Mode=ReadOnly");
         _databasePreviewFile = file;
         _databasePreview = viewer;
         OnPropertyChanged(nameof(DatabasePreview));
