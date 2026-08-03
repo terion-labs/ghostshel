@@ -77,9 +77,16 @@ public sealed record BrowserAddress
 
     private BrowserAddress(Uri value, bool localFile)
     {
-        _ = localFile;
+        IsLocalFile = localFile;
         Value = value;
     }
+
+    /// <summary>
+    /// Whether this names a file on this machine that the shell itself chose to
+    /// show. Only <see cref="ForLocalFile"/> can set it, so it marks an address
+    /// the application built from a real path rather than one parsed from text.
+    /// </summary>
+    public bool IsLocalFile { get; }
 
     public static bool TryParse(
         string? text,

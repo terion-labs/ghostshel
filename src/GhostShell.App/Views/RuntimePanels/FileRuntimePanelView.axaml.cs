@@ -175,6 +175,15 @@ public sealed partial class FileRuntimePanelView : UserControl
                 ?.BrowserRendererViewFactory;
             if (factory is null)
             {
+                // Said rather than shown as an empty panel: without a webview
+                // there is nothing to render, and silence reads as a bug.
+                HtmlPreviewHost.Content = new TextBlock
+                {
+                    Classes = { "Muted" },
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Text = "Web pages cannot be previewed on this system.",
+                };
                 return;
             }
 

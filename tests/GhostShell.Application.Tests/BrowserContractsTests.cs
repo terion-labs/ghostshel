@@ -26,6 +26,18 @@ public sealed class BrowserContractsTests
 
         Assert.True(address.Value.IsFile);
         Assert.Equal(path, address.Value.LocalPath);
+        // The marker is what lets the webview recognise the one page the shell
+        // asked for; a parsed address never carries it.
+        Assert.True(address.IsLocalFile);
+    }
+
+    [Theory]
+    [InlineData("https://example.test/")]
+    [InlineData("about:blank")]
+    public void A_parsed_address_is_never_a_local_page(string text)
+    {
+        Assert.True(BrowserAddress.TryParse(text, out var address));
+        Assert.False(address!.IsLocalFile);
     }
 
     [Theory]

@@ -1001,6 +1001,7 @@ internal sealed class AvaloniaNativeBrowserView : INativeBrowserView
     private readonly string _registrySecret;
     private ActiveNativeNavigation? _activeNavigation;
     private long _lastNavigationGeneration;
+    private BrowserAddress? _permittedLocalPage;
 
     public AvaloniaNativeBrowserView()
     {
@@ -1031,6 +1032,12 @@ internal sealed class AvaloniaNativeBrowserView : INativeBrowserView
     public void Navigate(BrowserAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
+
+        // A local page is admitted for exactly as long as it is the page being
+        // asked for. Addresses arrive here already parsed, and the parser will
+        // not produce a file address from text, so the only way one reaches
+        // this line is the shell itself having a real path in hand.
+        _permittedLocalPage = address.IsLocalFile ? address : null;
         var navigation = BeginExplicitNavigation(address);
         try
         {
@@ -1419,10 +1426,40 @@ internal sealed class AvaloniaNativeBrowserView : INativeBrowserView
         args.Handled = true;
     }
 
-    private static bool TryGetAddress(
+    private bool TryGetAddress(
         Uri? request,
         [NotNullWhen(true)] out BrowserAddress? address) =>
-        BrowserAddress.TryParse(request?.AbsoluteUri, out address);
+        TryResolveNavigation(request, _permittedLocalPage, out address);
+
+    /// <summary>
+    /// The address a navigation is allowed to proceed to. Ordinarily whatever
+    /// the parser accepts; additionally the one local page the shell asked for,
+    /// matched whole so a redirect or a subframe cannot reach a second file.
+    /// </summary>
+    internal static bool TryResolveNavigation(
+        Uri? request,
+        BrowserAddress? permittedLocalPage,
+        [NotNullWhen(true)] out BrowserAddress? address)
+    {
+        if (BrowserAddress.TryParse(request?.AbsoluteUri, out address))
+        {
+            return true;
+        }
+
+        if (request is not null
+            && permittedLocalPage is { IsLocalFile: true } permitted
+            && string.Equals(
+                request.AbsoluteUri,
+                permitted.Value.AbsoluteUri,
+                StringComparison.Ordinal))
+        {
+            address = permitted;
+            return true;
+        }
+
+        address = null;
+        return false;
+    }
 
     internal static NativeBrowserSnapshotResult ParseSnapshot(
         string? raw,
