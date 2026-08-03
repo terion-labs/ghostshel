@@ -120,7 +120,7 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <Button Width="38" Height="38" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
-                <icons:SymbolIcon Symbol="{Binding IconSymbol}" FontSize="15" />
+                <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="15" />
               </Button>
             </DataTemplate>
           </ItemsControl.ItemTemplate>

@@ -384,13 +384,19 @@
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
 
+  <!-- Chooser tiles sit on overlay surfaces and read as sunken cards, the
+       same fill the workspace panels use — not as raised light controls. -->
   <Style Selector="Button.ChooserButton">
     <Setter Property="MinHeight" Value="116" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="16" />
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+  </Style>
+
+  <Style Selector="Button.ChooserButton:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
   </Style>
 
   <Style Selector="Button.ChooserButton.LauncherChooser">
