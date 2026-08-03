@@ -1,0 +1,139 @@
+using GhostShell.App;
+
+namespace GhostShell.App.Tests;
+
+public sealed class MarkdownPreviewDocumentTests
+{
+    [Theory]
+    [InlineData("README.md")]
+    [InlineData("notes.MARKDOWN")]
+    [InlineData("design.mdown")]
+    public void Markdown_files_are_recognized(string fileName) =>
+        Assert.True(MarkdownPreviewDocument.IsMarkdown(fileName));
+
+    [Theory]
+    [InlineData("Program.cs")]
+    [InlineData("readme")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Other_files_are_not(string? fileName) =>
+        Assert.False(MarkdownPreviewDocument.IsMarkdown(fileName));
+
+    [Fact]
+    public void Headings_keep_their_level_and_text()
+    {
+        var blocks = MarkdownPreviewDocument.Parse("# Title\n\n### Third");
+
+        Assert.Collection(
+            blocks,
+            block =>
+            {
+                Assert.Equal(MarkdownBlockKind.Heading, block.Kind);
+                Assert.Equal(1, block.Level);
+                Assert.Equal("Title", Assert.Single(block.Runs).Text);
+            },
+            block =>
+            {
+                Assert.Equal(MarkdownBlockKind.Heading, block.Kind);
+                Assert.Equal(3, block.Level);
+                Assert.Equal("Third", Assert.Single(block.Runs).Text);
+            });
+    }
+
+    [Fact]
+    public void Emphasis_code_and_links_become_styled_runs()
+    {
+        var blocks = MarkdownPreviewDocument.Parse(
+            "Plain **bold** *italic* `code` [link](https://example.com).");
+
+        var runs = Assert.Single(blocks).Runs;
+        Assert.Contains(runs, run => run.Text == "bold" && run.Style == MarkdownRunStyle.Bold);
+        Assert.Contains(runs, run => run.Text == "italic" && run.Style == MarkdownRunStyle.Italic);
+        Assert.Contains(runs, run => run.Text == "code" && run.Style == MarkdownRunStyle.Code);
+        Assert.Contains(
+            runs,
+            run => run.Text == "link" && run.LinkTarget == "https://example.com");
+        // Adjacent plain text is one run, not one per parsed literal.
+        Assert.Equal("Plain ", runs[0].Text);
+    }
+
+    [Fact]
+    public void A_fence_keeps_its_language_and_body()
+    {
+        var blocks = MarkdownPreviewDocument.Parse("```csharp\nvar x = 1;\nvar y = 2;\n```");
+
+        var block = Assert.Single(blocks);
+        Assert.Equal(MarkdownBlockKind.Code, block.Kind);
+        Assert.Equal("csharp", block.Language);
+        Assert.Equal("var x = 1;\nvar y = 2;", block.Text?.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public void Lists_carry_a_bullet_and_a_depth()
+    {
+        var blocks = MarkdownPreviewDocument.Parse("- one\n- two\n\n1. first\n2. second");
+
+        var items = blocks.Where(block => block.Kind == MarkdownBlockKind.ListItem).ToArray();
+        Assert.Equal(4, items.Length);
+        Assert.Equal("•", items[0].Bullet);
+        Assert.Equal("one", items[0].Runs[0].Text);
+        Assert.All(items, item => Assert.True(item.Level > 0));
+        // An ordered list counts rather than repeating one marker.
+        Assert.Equal("1.", items[2].Bullet);
+        Assert.Equal("2.", items[3].Bullet);
+    }
+
+    [Fact]
+    public void A_quote_is_marked_as_one()
+    {
+        var blocks = MarkdownPreviewDocument.Parse("> quoted words");
+
+        var block = Assert.Single(blocks);
+        Assert.Equal(MarkdownBlockKind.Quote, block.Kind);
+        Assert.Equal("quoted words", block.Runs[0].Text);
+    }
+
+    [Fact]
+    public void A_table_keeps_its_header_and_rows()
+    {
+        var blocks = MarkdownPreviewDocument.Parse(
+            "| Name | Size |\n| --- | --- |\n| a.txt | 1 KB |\n| b.txt | 2 KB |");
+
+        var table = Assert.Single(blocks);
+        Assert.Equal(MarkdownBlockKind.Table, table.Kind);
+        Assert.Equal(["Name", "Size"], table.HeaderCells.Select(cell => cell[0].Text));
+        Assert.Equal(2, table.Rows.Length);
+        Assert.Equal("b.txt", table.Rows[1][0][0].Text);
+    }
+
+    [Fact]
+    public void Embedded_html_is_shown_as_text_rather_than_interpreted()
+    {
+        var blocks = MarkdownPreviewDocument.Parse("Before <b>bold?</b> after");
+
+        var runs = Assert.Single(blocks).Runs;
+        // The tag itself is visible: a Markdown preview renders Markdown, and
+        // silently honouring embedded HTML would make the preview a renderer
+        // for something the file never declared.
+        Assert.Contains(runs, run => run.Text.Contains("<b>", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_image_is_described_rather_than_fetched()
+    {
+        var blocks = MarkdownPreviewDocument.Parse("![a diagram](https://example.com/x.png)");
+
+        var runs = Assert.Single(blocks).Runs;
+        var run = Assert.Single(runs);
+        Assert.Equal("a diagram", run.Text);
+        // No link target: nothing in the preview should invite a fetch.
+        Assert.Null(run.LinkTarget);
+    }
+
+    [Fact]
+    public void An_empty_document_parses_to_nothing()
+    {
+        Assert.Empty(MarkdownPreviewDocument.Parse(string.Empty));
+        Assert.Empty(MarkdownPreviewDocument.Parse(null));
+    }
+}

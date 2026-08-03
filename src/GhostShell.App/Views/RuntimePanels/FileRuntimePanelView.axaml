@@ -435,9 +435,14 @@
             <Grid Grid.Row="2">
               <components:CodePreviewView
                   Margin="{controls:Inset Md}"
-                  IsVisible="{Binding HasTextPreview}"
+                  IsVisible="{Binding HasSourcePreview}"
                   Text="{Binding PreviewText}"
                   FileName="{Binding PreviewTitle}" />
+              <!-- Markdown is laid out as native controls, so its text stays
+                   selectable and copyable like any other text in the shell. -->
+              <components:MarkdownPreviewView
+                  IsVisible="{Binding HasMarkdownPreview}"
+                  Text="{Binding PreviewText}" />
               <!-- A database file previews as the database viewer itself,
                    sharing the docked panel's workspace component. -->
               <components:DatabaseWorkspaceView

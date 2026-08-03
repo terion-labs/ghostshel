@@ -332,6 +332,44 @@ public sealed record ConnectionStartup
 }
 """;
 
+
+    /// <summary>A Markdown sample covering every block the renderer handles.</summary>
+    public const string SampleMarkdown = """
+        # Connection profiles
+
+        Profiles store **secret references**, never secret values. A profile is
+        *durable*: it survives restarts, and `ConnectionStartup` decides what
+        happens when a session opens. See [the design notes](https://example.com).
+
+        ## What a profile carries
+
+        - An endpoint — local, SSH, Docker, or WSL
+        - An authentication choice, as an opaque reference
+        - An optional startup directory and ~~command line~~ command
+
+        1. Validate the profile
+        2. Resolve credentials
+        3. Build the launch plan
+
+        > A terminal claims its stored credential through a one-use helper when
+        > it starts, never before.
+
+        ```csharp
+        var startup = new ConnectionStartup(
+            directory: "/srv/app",
+            command: "npm run dev");
+        ```
+
+        | Field | Meaning |
+        | --- | --- |
+        | Directory | Where the shell begins |
+        | Command | Typed once the shell is ready |
+
+        ---
+
+        Trailing prose, so the last block is not a rule.
+        """;
+
     public static DefinitionCatalogSnapshot Snapshot { get; } = new(
         Connections,
         Layouts,

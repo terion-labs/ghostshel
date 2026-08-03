@@ -580,7 +580,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public string PreviewTitle
     {
         get => _previewTitle;
-        private set => SetProperty(ref _previewTitle, value);
+        private set
+        {
+            if (SetProperty(ref _previewTitle, value))
+            {
+                // Which view the text gets is decided by the file's name, so
+                // the choice has to follow the name changing.
+                OnPropertyChanged(nameof(HasMarkdownPreview));
+                OnPropertyChanged(nameof(HasSourcePreview));
+            }
+        }
     }
 
     public string? PreviewText
@@ -591,6 +600,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             if (SetProperty(ref _previewText, value))
             {
                 OnPropertyChanged(nameof(HasTextPreview));
+                OnPropertyChanged(nameof(HasMarkdownPreview));
+                OnPropertyChanged(nameof(HasSourcePreview));
                 OnPropertyChanged(nameof(HasPreview));
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
             }
@@ -667,6 +678,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public bool HasDatabasePreview => _databasePreview is not null;
 
     public bool HasTextPreview => !string.IsNullOrEmpty(PreviewText);
+
+    /// <summary>
+    /// Whether the text in hand should be laid out as Markdown rather than
+    /// shown as source. Judged by the file's name: a Markdown file is Markdown
+    /// whether or not it happens to contain any markup.
+    /// </summary>
+    public bool HasMarkdownPreview =>
+        HasTextPreview && MarkdownPreviewDocument.IsMarkdown(PreviewTitle);
+
+    public bool HasSourcePreview => HasTextPreview && !HasMarkdownPreview;
 
     public bool HasImagePreview => PreviewImage is not null;
 

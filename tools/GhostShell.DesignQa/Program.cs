@@ -429,6 +429,23 @@ internal sealed class QaApplication : Avalonia.Application
         // selection key. The route raises a real tunneled key event through a
         // real control tree and captures what the panel did with it.
         ("preview-space-shortcut", CreateSpaceShortcutProbe, null),
+        // Markdown rendered as native controls, so headings, emphasis, lists,
+        // quotes, tables, and a highlighted fence are reviewable together.
+        ("markdown-preview", () => new Window
+        {
+            Width = 560,
+            Height = 720,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Child = new GhostShell.App.Views.Components.MarkdownPreviewView
+                {
+                    Text = QaData.SampleMarkdown,
+                },
+            },
+        }, null),
         // A TIFF decoded through the image decoder and drawn by the panel, so
         // the format the drawing stack cannot open is proven end to end.
         ("image-preview-tiff", () =>
