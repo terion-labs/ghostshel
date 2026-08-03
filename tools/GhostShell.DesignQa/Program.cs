@@ -303,6 +303,66 @@ internal sealed class QaApplication : Avalonia.Application
                 $"Expected one value but found {values.Count}.");
 
     /// <summary>
+    /// Replicas of the workspaces-rail buttons, one per representative symbol,
+    /// built exactly like WorkspaceView's rail tiles so glyph placement in the
+    /// capture is the product's.
+    /// </summary>
+    private static Window CreateRailTileProbe()
+    {
+        var symbols = new[]
+        {
+            FluentIcons.Common.Symbol.Window,
+            FluentIcons.Common.Symbol.WindowConsole,
+            FluentIcons.Common.Symbol.Code,
+            FluentIcons.Common.Symbol.Rocket,
+            FluentIcons.Common.Symbol.Database,
+        };
+        var stack = new StackPanel
+        {
+            Margin = new Thickness(8),
+            Spacing = 8,
+        };
+        foreach (var symbol in symbols)
+        {
+            stack.Children.Add(new Button
+            {
+                Width = 40,
+                Height = 40,
+                Padding = new Thickness(0),
+                Background = new SolidColorBrush(Color.Parse("#C77828")),
+                Content = new FluentIcons.Avalonia.SymbolIcon
+                {
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    Symbol = symbol,
+                    FontSize = 16,
+                },
+            });
+        }
+
+        stack.Children.Add(new Button
+        {
+            Width = 40,
+            Height = 40,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            Content = new FluentIcons.Avalonia.SymbolIcon
+            {
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Symbol = FluentIcons.Common.Symbol.Add,
+                FontSize = 14,
+            },
+        });
+        return new Window
+        {
+            SizeToContent = SizeToContent.WidthAndHeight,
+            CanResize = false,
+            Content = stack,
+        };
+    }
+
+    /// <summary>
     /// The unified editor with all three families available, matching the shell's
     /// launcher composition. An existing terminal connection pins the editor to
     /// the terminal family, like editing from the launcher does.
@@ -337,6 +397,9 @@ internal sealed class QaApplication : Avalonia.Application
     /// </summary>
     private static readonly (string Name, Func<Window> Create, ThemePreference? Theme)[] Dialogs =
     [
+        // The workspaces-rail tiles at Retina density: every icon the rail can
+        // draw, so glyph centering is measurable at the scale users run at.
+        ("rail-tiles-2x", CreateRailTileProbe, null),
         // The same chooser the placeholder panel embeds, at a split-panel width,
         // so the adaptive tile grid is reviewable at the size that used to crush
         // its labels to one letter.
@@ -677,10 +740,15 @@ internal sealed class QaApplication : Avalonia.Application
         dialog.UpdateLayout();
         await Task.Delay(140);
 
-        var width = (int)Math.Ceiling(Math.Max(dialog.Bounds.Width, 1));
-        var height = (int)Math.Ceiling(Math.Max(dialog.Bounds.Height, 1));
+        // A "-2x" suffix renders at Retina density, so glyph-placement issues
+        // that only appear under fractional-scale pixel snapping are capturable.
+        var scale = name.EndsWith("-2x", StringComparison.Ordinal) ? 2 : 1;
+        var width = (int)Math.Ceiling(Math.Max(dialog.Bounds.Width, 1)) * scale;
+        var height = (int)Math.Ceiling(Math.Max(dialog.Bounds.Height, 1)) * scale;
         var path = Path.Combine(Program.OutputDirectory, $"{name}.png");
-        using (var bitmap = new RenderTargetBitmap(new PixelSize(width, height), new Vector(96, 96)))
+        using (var bitmap = new RenderTargetBitmap(
+                   new PixelSize(width, height),
+                   new Vector(96 * scale, 96 * scale)))
         {
             bitmap.Render(dialog);
             bitmap.Save(path);
