@@ -78,6 +78,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
     private readonly IDatabasePanelClient _client;
     private readonly CancellationTokenSource _lifetime = new();
+    private bool _disposed;
     private ConnectionProfile? _tunnelConnection;
     private DatabaseDriverOptionViewModel _selectedDriver;
     private string _connectionString = string.Empty;
@@ -365,8 +366,15 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
     public override void Dispose()
     {
-        _lifetime.Cancel();
-        _lifetime.Dispose();
+        // Both the closing tab and the disposing window sweep panels, so a
+        // second call must be a no-op.
+        if (!_disposed)
+        {
+            _disposed = true;
+            _lifetime.Cancel();
+            _lifetime.Dispose();
+        }
+
         base.Dispose();
     }
 

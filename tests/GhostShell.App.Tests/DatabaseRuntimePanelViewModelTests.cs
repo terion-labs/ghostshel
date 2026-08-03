@@ -190,6 +190,18 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public void Dispose_is_idempotent_across_tab_and_window_teardown()
+    {
+        var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            new FakeDatabasePanelClient());
+
+        panel.Dispose();
+        panel.Dispose();
+    }
+
+    [Fact]
     public async Task Table_preview_fills_the_editor_with_the_driver_query()
     {
         var client = new FakeDatabasePanelClient();
