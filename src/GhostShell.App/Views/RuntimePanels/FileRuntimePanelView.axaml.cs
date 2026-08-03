@@ -29,6 +29,10 @@ public sealed partial class FileRuntimePanelView : UserControl
     public FileRuntimePanelView()
     {
         InitializeComponent();
+        AddHandler(
+            KeyDownEvent,
+            OnPanelKeyDownTunnel,
+            RoutingStrategies.Tunnel);
         DragDrop.SetAllowDrop(this, true);
         AddHandler(KeyDownEvent, OnFilePanelKeyDown, RoutingStrategies.Tunnel);
         AddHandler(
@@ -142,20 +146,43 @@ public sealed partial class FileRuntimePanelView : UserControl
     /// Space asks for a waiting preview from anywhere in the panel: the file
     /// list keeps focus while browsing, so requiring the button to be focused
     /// would make the shortcut useless exactly when it is wanted.
+    ///
+    /// It must tunnel rather than bubble. A ListBox treats Space as a selection
+    /// key and marks it handled, so by the time the event would reach this
+    /// panel on the way up, it is already spent.
     /// </summary>
-    protected override void OnKeyDown(KeyEventArgs e)
+    private void OnPanelKeyDownTunnel(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Space
-            && !e.Handled
-            && DataContext is FileRuntimePanelViewModel { ShowPreviewDownloadPrompt: true }
-            && e.Source is not TextBox)
+        _ = sender;
+        if (e.Key != Key.Space
+            || e.Handled
+            || DataContext is not FileRuntimePanelViewModel { ShowPreviewDownloadPrompt: true })
         {
-            e.Handled = true;
-            RequestDeferredPreview();
             return;
         }
 
-        base.OnKeyDown(e);
+        // Space is a character wherever text is being typed, and a shortcut
+        // only outside those.
+        if (e.Source is TextBox || IsWithinTextInput(e.Source as Visual))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        RequestDeferredPreview();
+    }
+
+    private static bool IsWithinTextInput(Visual? source)
+    {
+        for (var visual = source; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is TextBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void RequestDeferredPreview()

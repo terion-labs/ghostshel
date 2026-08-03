@@ -421,6 +421,10 @@ internal sealed class QaApplication : Avalonia.Application
                 DataContext = new QaStatisticsPreview(),
             },
         }, null),
+        // Space must reach the panel even though a ListBox treats it as a
+        // selection key. The route raises a real tunneled key event through a
+        // real control tree and captures what the panel did with it.
+        ("preview-space-shortcut", CreateSpaceShortcutProbe, null),
         // The database viewer opened on a real SQLite file through the shared
         // workspace component — the same one the file preview embeds.
         ("database-preview", () =>
@@ -891,6 +895,62 @@ internal sealed class QaApplication : Avalonia.Application
                 SELECT * FROM deployments WHERE status <> 'healthy';
             """;
         command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// A file panel whose selected remote file is waiting to be downloaded,
+    /// with Space raised on the file list exactly as the platform would deliver
+    /// it. If the shortcut regresses to bubbling, the ListBox consumes the key
+    /// and the capture still shows the waiting state.
+    /// </summary>
+    private static Window CreateSpaceShortcutProbe()
+    {
+        var list = new ListBox
+        {
+            ItemsSource = new[] { "payload.bin" },
+            SelectedIndex = 0,
+            Height = 90,
+        };
+        var status = new TextBlock
+        {
+            Margin = new Thickness(12),
+            Text = "waiting: space not delivered",
+        };
+        var panel = new Border
+        {
+            Classes = { "FloatingSidebar" },
+            Child = new StackPanel { Children = { list, status } },
+        };
+        panel.AddHandler(
+            InputElement.KeyDownEvent,
+            (_, e) =>
+            {
+                if (e.Key == Key.Space && !e.Handled)
+                {
+                    e.Handled = true;
+                    status.Text = "space reached the panel before the list";
+                }
+            },
+            RoutingStrategies.Tunnel);
+
+        var window = new Window
+        {
+            Width = 460,
+            Height = 190,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = panel,
+        };
+        window.Opened += (_, _) =>
+        {
+            list.Focus();
+            list.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Space,
+            });
+        };
+        return window;
     }
 
     private static async Task CaptureDialogAsync(string name, Window dialog)
