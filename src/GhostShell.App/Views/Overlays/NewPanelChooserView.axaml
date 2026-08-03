@@ -21,7 +21,7 @@
           <icons:SymbolIcon Symbol="Dismiss" FontSize="14" />
         </Button>
       </Grid>
-      <Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <controls:CardGridPanel MinItemWidth="128" Spacing="{DynamicResource ShellSpaceSm}">
         <Button x:Name="NewPanelTerminalButton" Classes="ChooserButton PanelChooser" Click="OnAddTerminalPanelClick">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
@@ -31,7 +31,7 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Local PTY" />
           </StackPanel>
         </Button>
-        <Button Grid.Column="1" Classes="ChooserButton PanelChooser" AutomationProperties.Name="Add native browser panel" Click="OnAddBrowserPanelClick" IsEnabled="{Binding CanCreateBrowserPanel}">
+        <Button Classes="ChooserButton PanelChooser" AutomationProperties.Name="Add native browser panel" Click="OnAddBrowserPanelClick" IsEnabled="{Binding CanCreateBrowserPanel}">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="18" />
@@ -40,7 +40,7 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Native webview" />
           </StackPanel>
         </Button>
-        <Button Grid.Column="2" Classes="ChooserButton PanelChooser" Click="OnAddStatisticsPanelClick" AutomationProperties.Name="Add Statistics panel">
+        <Button Classes="ChooserButton PanelChooser" Click="OnAddStatisticsPanelClick" AutomationProperties.Name="Add Statistics panel">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="PulseSquare" FontSize="18" />
@@ -49,7 +49,7 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Live metrics" />
           </StackPanel>
         </Button>
-        <Button Grid.Column="3" Classes="ChooserButton PanelChooser" Click="OnAddFilePanelClick">
+        <Button Classes="ChooserButton PanelChooser" Click="OnAddFilePanelClick">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="18" />
@@ -58,7 +58,7 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Saved providers" />
           </StackPanel>
         </Button>
-        <Button Grid.Column="4" Classes="ChooserButton PanelChooser" Click="OnAddProcessMonitorPanelClick" AutomationProperties.Name="Add Process Monitor panel">
+        <Button Classes="ChooserButton PanelChooser" Click="OnAddProcessMonitorPanelClick" AutomationProperties.Name="Add Process Monitor panel">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="18" />
@@ -67,7 +67,7 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Running processes" />
           </StackPanel>
         </Button>
-        <Button Grid.Column="5" Classes="ChooserButton PanelChooser" Click="OnAddDatabasePanelClick" AutomationProperties.Name="Add database panel">
+        <Button Classes="ChooserButton PanelChooser" Click="OnAddDatabasePanelClick" AutomationProperties.Name="Add database panel">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Database" FontSize="18" />
@@ -76,7 +76,7 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="SQL viewer" />
           </StackPanel>
         </Button>
-      </Grid>
+      </controls:CardGridPanel>
       <!-- A new panel is not only a blank adapter: a saved connection or screen
            is just as likely to be what belongs here, so both are offered
            alongside the adapters rather than behind another navigation step. -->

@@ -337,6 +337,24 @@ internal sealed class QaApplication : Avalonia.Application
     /// </summary>
     private static readonly (string Name, Func<Window> Create, ThemePreference? Theme)[] Dialogs =
     [
+        // The same chooser the placeholder panel embeds, at a split-panel width,
+        // so the adaptive tile grid is reviewable at the size that used to crush
+        // its labels to one letter.
+        ("chooser-narrow", () => new Window
+        {
+            Width = 480,
+            Height = 820,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Padding = new Thickness(16),
+                Child = new GhostShell.App.Views.Components.NewItemChooserView
+                {
+                    DataContext = CreateViewModel(),
+                },
+            },
+        }, null),
         ("dialog-connection-editor", () => new ConnectionEditorDialog(
             CreateQaConnectionEditor()), null),
         ("dialog-connection-editor-existing", () => new ConnectionEditorDialog(
