@@ -3,6 +3,7 @@ using GhostShell.App.ViewModels;
 using GhostShell.Agent.Providers;
 using GhostShell.Agent.Runtime;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using GhostShell.Browser;
 using GhostShell.Databases;
 using GhostShell.Previews;
@@ -91,6 +92,7 @@ public static class DesktopComposition
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();
         services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();
+        services.AddSingleton<IArchiveTableOfContents, ArchiveTableOfContents>();
         // PDFium ships native binaries for the desktop platforms only, and the
         // preview treats a missing renderer as "this build cannot open PDFs"
         // rather than failing at the moment a user selects one.

@@ -6,6 +6,7 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
@@ -40,18 +41,7 @@ public sealed class FileEntryViewModel
             return "Unknown";
         }
 
-        string[] units = ["B", "KB", "MB", "GB", "TB"];
-        var value = (double)size.Value;
-        var unit = 0;
-        while (value >= 1024 && unit < units.Length - 1)
-        {
-            value /= 1024;
-            unit++;
-        }
-
-        return unit == 0
-            ? $"{size.Value.ToString(CultureInfo.InvariantCulture)} {units[unit]}"
-            : $"{value.ToString("0.#", CultureInfo.InvariantCulture)} {units[unit]}";
+        return ByteSize.Format(size.Value);
     }
 }
 
@@ -130,6 +120,22 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private int _pdfPageIndex;
     private int _pdfPageCount;
     private readonly IFileContentMaterializer? _materializer;
+    private readonly IArchiveTableOfContents? _archiveReader;
+    private readonly FilePreviewCatalog _previewers;
+
+    /// <summary>
+    /// The preview last read, kept so a switch can be flipped without asking
+    /// the provider — or the network — for the same bytes again.
+    /// </summary>
+    private FilePanelPreview? _lastPreview;
+
+    private readonly Dictionary<string, bool> _previewToggleState =
+        new(StringComparer.Ordinal);
+
+    private bool _markdownRendering;
+    private bool _wrapPreviewText = true;
+    private PreviewTableViewModel? _previewTable;
+    private PreviewTreeViewModel? _previewTree;
     private DatabaseRuntimePanelViewModel? _databasePreview;
     private MaterializedFile? _databasePreviewFile;
 
@@ -145,7 +151,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         ConnectionProfile? connection = null,
         IDatabasePanelClient? databaseClient = null,
         IImagePreviewDecoder? imageDecoder = null,
-        IPdfPreviewRenderer? pdfRenderer = null)
+        IPdfPreviewRenderer? pdfRenderer = null,
+        IArchiveTableOfContents? archiveReader = null,
+        FilePreviewCatalog? previewers = null)
         : base(id, PanelKind.FileViewer, title, "Files")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -153,6 +161,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         // cannot hand out a real path, simply previews databases as bytes.
         _databaseClient = databaseClient;
         _imageDecoder = imageDecoder;
+        _archiveReader = archiveReader;
+        _previewers = previewers ?? new FilePreviewCatalog();
         _pdfRenderer = pdfRenderer;
         _materializer = client as IFileContentMaterializer;
         _connection = connection ?? BuiltInConnections.Local;
@@ -689,19 +699,69 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     /// <summary>
     /// Whether the text in hand should be laid out as Markdown rather than
-    /// shown as source. Judged by the file's name: a Markdown file is Markdown
-    /// whether or not it happens to contain any markup.
+    /// shown as source. Decided by the previewer that claimed the file, so
+    /// "Show raw" turns it off without changing what the file is.
     /// </summary>
-    public bool HasMarkdownPreview =>
-        HasTextPreview && MarkdownPreviewDocument.IsMarkdown(PreviewTitle);
+    public bool HasMarkdownPreview => HasTextPreview && _markdownRendering;
 
     public bool HasSourcePreview =>
         HasTextPreview && !HasMarkdownPreview && !HasImagePreview && !HasPdfPreview;
 
+    /// <summary>
+    /// Whether source text wraps. A hex dump is a fixed-width grid and must
+    /// not: wrapping folds every row and the columns stop lining up.
+    /// </summary>
+    public bool WrapPreviewText
+    {
+        get => _wrapPreviewText;
+        private set => SetProperty(ref _wrapPreviewText, value);
+    }
+
+    /// <summary>
+    /// The switches the current format offers — "Show raw", "Prettify" —
+    /// shown beside the file's details.
+    /// </summary>
+    public ObservableCollection<PreviewToggleViewModel> PreviewToggles { get; } = [];
+
+    public bool HasPreviewToggles => PreviewToggles.Count > 0;
+
+    public PreviewTableViewModel? PreviewTable
+    {
+        get => _previewTable;
+        private set
+        {
+            if (SetProperty(ref _previewTable, value))
+            {
+                OnPropertyChanged(nameof(HasTablePreview));
+                OnPropertyChanged(nameof(HasPreview));
+                OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+            }
+        }
+    }
+
+    public bool HasTablePreview => _previewTable is not null;
+
+    public PreviewTreeViewModel? PreviewTree
+    {
+        get => _previewTree;
+        private set
+        {
+            if (SetProperty(ref _previewTree, value))
+            {
+                OnPropertyChanged(nameof(HasTreePreview));
+                OnPropertyChanged(nameof(HasPreview));
+                OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+            }
+        }
+    }
+
+    public bool HasTreePreview => _previewTree is not null;
+
     public bool HasImagePreview => PreviewImage is not null;
 
     public bool HasPreview =>
-        HasTextPreview || HasImagePreview || HasDatabasePreview || HasHtmlPreview;
+        HasTextPreview || HasImagePreview || HasDatabasePreview || HasHtmlPreview
+        || HasTablePreview || HasTreePreview;
 
     public bool ShowPreviewPlaceholder =>
         !HasPreview && !IsPreviewLoading && !ShowPreviewDownloadPrompt;
@@ -1855,35 +1915,99 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PresentPreview(result.Value!);
     }
 
+    /// <summary>
+    /// Hands the preview to whichever previewer claims the format and draws
+    /// what comes back. The panel knows the renderings, not the formats: a new
+    /// format is a new previewer, not another arm of this method.
+    /// </summary>
     private void PresentPreview(FilePanelPreview preview)
     {
-        switch (preview.Kind)
+        _lastPreview = preview;
+        _previewToggleState.Clear();
+        ApplyPreviewers(preview);
+    }
+
+    private void ApplyPreviewers(FilePanelPreview preview)
+    {
+        var outcome = _previewers.Create(
+            new FilePreviewSource(
+                PreviewTitle ?? string.Empty,
+                preview.Kind,
+                preview.MediaType,
+                preview.Content,
+                preview.IsTruncated),
+            _previewToggleState);
+
+        Replace(
+            PreviewToggles,
+            outcome.Toggles.Select(toggle => new PreviewToggleViewModel(
+                toggle,
+                OnPreviewToggled)));
+
+        switch (outcome.Rendering)
         {
-            case FilePanelPreviewKind.Image:
+            case SourcePreviewRendering source:
+                WrapPreviewText = source.Wrap;
+                _markdownRendering = false;
+                PreviewText = source.Text;
+                break;
+            case MarkdownPreviewRendering markdown:
+                _markdownRendering = true;
+                PreviewText = markdown.Text;
+                break;
+            case TablePreviewRendering table:
+                PreviewTable = new PreviewTableViewModel(table);
+                break;
+            case ArchivePreviewRendering:
+                _ = OpenArchivePreviewAsync(preview.Location);
+                break;
+            case ImagePreviewRendering:
                 PresentImagePreview(preview);
                 break;
-            case FilePanelPreviewKind.StructuredText:
-                PreviewText = FormatJson(preview.Content.Span, preview.IsTruncated);
-                break;
-            case FilePanelPreviewKind.Text:
-                PreviewText = Encoding.UTF8.GetString(preview.Content.Span)
-                    + (preview.IsTruncated ? "\n\n[preview truncated]" : string.Empty);
-                break;
-            case FilePanelPreviewKind.Html:
-                _ = OpenHtmlPreviewAsync(preview.Location);
-                break;
-            case FilePanelPreviewKind.Pdf:
+            case PdfPreviewRendering:
                 _ = OpenPdfPreviewAsync(preview.Location);
                 break;
-            case FilePanelPreviewKind.Database:
+            case WebPagePreviewRendering:
+                _ = OpenHtmlPreviewAsync(preview.Location);
+                break;
+            case DatabasePreviewRendering:
                 _ = OpenDatabasePreviewAsync(preview.Location);
                 break;
-            case FilePanelPreviewKind.Hex:
-                PreviewText = FormatHex(preview.Content.Span, preview.IsTruncated);
-                break;
             default:
-                throw new ArgumentOutOfRangeException(nameof(preview), preview.Kind, null);
+                throw new ArgumentOutOfRangeException(
+                    nameof(preview),
+                    outcome.Rendering,
+                    "The panel has no way to draw this rendering.");
         }
+    }
+
+    /// <summary>
+    /// A switch was flipped. The bytes are already in hand, so the format is
+    /// simply read again the other way — no provider call, no download.
+    /// </summary>
+    private void OnPreviewToggled(string id, bool isOn)
+    {
+        _previewToggleState[id] = isOn;
+        if (_lastPreview is { } preview)
+        {
+            ClearRenderedPreview();
+            ApplyPreviewers(preview);
+        }
+    }
+
+    /// <summary>
+    /// Clears what was drawn, keeping the file, its details and the chosen
+    /// switches: this is a change of reading, not a change of file.
+    /// </summary>
+    private void ClearRenderedPreview()
+    {
+        PreviewText = null;
+        PreviewImage = null;
+        PreviewTable = null;
+        PreviewTree = null;
+        _markdownRendering = false;
+        _wrapPreviewText = true;
+        ClearHtmlPreview();
     }
 
     private void ApplyFilter()
@@ -2010,22 +2134,135 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     {
         PreviewImage = null;
         PreviewText = null;
+        PreviewTable = null;
+        PreviewTree = null;
         PreviewIssue = null;
         PreviewTitle = "Preview";
         _requestedPreviewEntry = null;
         _pdfPath = null;
-        if (_htmlAddress is not null)
-        {
-            _htmlAddress = null;
-            OnPropertyChanged(nameof(HtmlAddress));
-            OnPropertyChanged(nameof(HasHtmlPreview));
-        }
+        _lastPreview = null;
+        _markdownRendering = false;
+        _wrapPreviewText = true;
+        _previewToggleState.Clear();
+        PreviewToggles.Clear();
+        ClearHtmlPreview();
 
         _pdfPageIndex = 0;
         _pdfPageCount = 0;
         NotifyPdfChanged();
         SetDeferredPreview(null);
         ClearDatabasePreview();
+    }
+
+    private void ClearHtmlPreview()
+    {
+        if (_htmlAddress is null)
+        {
+            return;
+        }
+
+        _htmlAddress = null;
+        OnPropertyChanged(nameof(HtmlAddress));
+        OnPropertyChanged(nameof(HasHtmlPreview));
+    }
+
+    /// <summary>
+    /// The most entries listed from an archive. A listing is a look inside;
+    /// an archive of a hundred thousand files must not become a hundred
+    /// thousand rows in a preview panel.
+    /// </summary>
+    private const int MaximumArchiveEntries = 5_000;
+
+    /// <summary>
+    /// The ceiling on an archive read for its listing. Nothing is unpacked —
+    /// a zip is answered from the index at its end — but the file still has to
+    /// be reachable on disk, so a remote one is copied first.
+    /// </summary>
+    private const long MaximumArchivePreviewBytes = 512L * 1024 * 1024;
+
+    /// <summary>
+    /// Lists an archive's contents without extracting any of it.
+    /// </summary>
+    private async Task OpenArchivePreviewAsync(FilePanelLocation location)
+    {
+        if (_archiveReader is null || _materializer is null)
+        {
+            PreviewText = "Archives cannot be listed on this system.";
+            return;
+        }
+
+        var operation = _preview;
+        if (operation is null)
+        {
+            return;
+        }
+
+        IsPreviewLoading = true;
+        try
+        {
+            var materialized = await _materializer.MaterializeAsync(
+                location,
+                MaximumArchivePreviewBytes,
+                operation.Token);
+            if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!materialized.IsSuccess)
+            {
+                PreviewText = materialized.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                return;
+            }
+
+            var entries = await _archiveReader.ReadAsync(
+                materialized.Value!.Path,
+                MaximumArchiveEntries,
+                operation.Token);
+            if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (entries is null)
+            {
+                PreviewText = "This file could not be read as an archive.";
+                return;
+            }
+
+            PreviewTree = new PreviewTreeViewModel(
+                PreviewTreeBuilder.FromPaths(entries),
+                SummarizeArchive(entries));
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                PreviewText = exception.Message;
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_preview, operation))
+            {
+                IsPreviewLoading = false;
+            }
+        }
+    }
+
+    private static string SummarizeArchive(IReadOnlyList<ArchiveEntryDescriptor> entries)
+    {
+        var files = entries.Count(entry => !entry.IsDirectory);
+        var bytes = entries.Sum(entry => entry.Size ?? 0);
+        var counted = files == 1 ? "1 file" : $"{files} files";
+        var capped = entries.Count >= MaximumArchiveEntries ? " (listing capped)" : string.Empty;
+        return bytes > 0
+            ? $"{counted}, {PreviewTreeBuilder.FormatSize(bytes)} unpacked{capped}"
+            : $"{counted}{capped}";
     }
 
     /// <summary>

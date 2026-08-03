@@ -1,0 +1,206 @@
+using System.Text;
+using GhostShell.Application.Previews;
+
+namespace GhostShell.Application.Tests;
+
+/// <summary>
+/// Which previewer claims a file, and what each one does with the switches it
+/// offers. The panel draws renderings, so these are the whole of the decision
+/// about how a format is shown.
+/// </summary>
+public sealed class FilePreviewCatalogTests
+{
+    private static readonly FilePreviewCatalog Catalog = new();
+
+    [Theory]
+    [InlineData("notes.md", typeof(MarkdownPreviewRendering))]
+    [InlineData("NOTES.MARKDOWN", typeof(MarkdownPreviewRendering))]
+    [InlineData("data.csv", typeof(TablePreviewRendering))]
+    [InlineData("data.tsv", typeof(TablePreviewRendering))]
+    [InlineData("bundle.zip", typeof(ArchivePreviewRendering))]
+    [InlineData("bundle.tar.gz", typeof(ArchivePreviewRendering))]
+    [InlineData("settings.json", typeof(SourcePreviewRendering))]
+    [InlineData("page.html", typeof(WebPagePreviewRendering))]
+    public void A_file_is_read_by_the_previewer_its_name_names(string name, Type rendering)
+    {
+        var outcome = Catalog.Create(Source(name, "a,b\n1,2\n"));
+
+        Assert.IsType(rendering, outcome.Rendering);
+    }
+
+    [Fact]
+    public void A_hex_dump_does_not_wrap()
+    {
+        var outcome = Catalog.Create(
+            new FilePreviewSource(
+                "payload.bin",
+                FilePanelPreviewKind.Hex,
+                "application/octet-stream",
+                new byte[] { 1, 2, 3 },
+                IsTruncated: false));
+
+        // A hex dump is a fixed-width grid: wrapping folds every row and the
+        // columns stop lining up.
+        var source = Assert.IsType<SourcePreviewRendering>(outcome.Rendering);
+        Assert.False(source.Wrap);
+        Assert.Contains("00000000", source.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Ordinary_text_wraps()
+    {
+        var outcome = Catalog.Create(Source("readme.txt", "hello"));
+
+        Assert.True(Assert.IsType<SourcePreviewRendering>(outcome.Rendering).Wrap);
+    }
+
+    [Fact]
+    public void Markdown_can_be_shown_as_its_source()
+    {
+        var raw = Catalog.Create(
+            Source("notes.md", "# Title"),
+            new Dictionary<string, bool> { [MarkdownPreviewer.RawToggle] = true });
+
+        Assert.IsType<SourcePreviewRendering>(raw.Rendering);
+        var toggle = Assert.Single(raw.Toggles);
+        Assert.Equal("Show raw", toggle.Label);
+        Assert.True(toggle.IsOn);
+    }
+
+    [Fact]
+    public void A_web_page_can_be_shown_as_its_markup()
+    {
+        var source = Source("page.html", "<h1>hi</h1>");
+
+        Assert.IsType<WebPagePreviewRendering>(Catalog.Create(source).Rendering);
+        Assert.IsType<SourcePreviewRendering>(Catalog.Create(
+            source,
+            new Dictionary<string, bool> { [WebPagePreviewer.RawToggle] = true }).Rendering);
+    }
+
+    [Fact]
+    public void Json_is_indented_by_default_and_left_alone_when_asked()
+    {
+        var source = Source("settings.json", """{"a":1,"b":[2,3]}""");
+
+        var prettified = Assert.IsType<SourcePreviewRendering>(
+            Catalog.Create(source).Rendering);
+        Assert.Contains("\n", prettified.Text, StringComparison.Ordinal);
+
+        var raw = Assert.IsType<SourcePreviewRendering>(Catalog.Create(
+            source,
+            new Dictionary<string, bool>
+            {
+                [StructuredDataPreviewer.PrettifyToggle] = false,
+            }).Rendering);
+        Assert.Equal("""{"a":1,"b":[2,3]}""", raw.Text);
+    }
+
+    [Fact]
+    public void Xml_is_indented_too()
+    {
+        var outcome = Catalog.Create(Source("app.xml", "<a><b>1</b></a>"));
+
+        var rendering = Assert.IsType<SourcePreviewRendering>(outcome.Rendering);
+        Assert.Contains("\n  <b>", rendering.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Malformed_structured_data_is_shown_as_written_rather_than_as_an_error()
+    {
+        var outcome = Catalog.Create(Source("broken.json", "{not json"));
+
+        Assert.Equal(
+            "{not json",
+            Assert.IsType<SourcePreviewRendering>(outcome.Rendering).Text);
+    }
+
+    [Fact]
+    public void A_truncated_file_is_not_reformatted()
+    {
+        // Half a document cannot be parsed; showing it as it arrived is honest,
+        // and the notice says why it stops.
+        var outcome = Catalog.Create(
+            new FilePreviewSource(
+                "settings.json",
+                FilePanelPreviewKind.StructuredText,
+                "application/json",
+                Encoding.UTF8.GetBytes("""{"a":1,"""),
+                IsTruncated: true));
+
+        Assert.Contains(
+            PreviewText.TruncationNotice,
+            Assert.IsType<SourcePreviewRendering>(outcome.Rendering).Text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_delimited_file_becomes_its_header_and_rows()
+    {
+        var outcome = Catalog.Create(Source("people.csv", "name,city\nada,london\ngrace,york\n"));
+
+        var table = Assert.IsType<TablePreviewRendering>(outcome.Rendering);
+        Assert.Equal(["name", "city"], table.Columns);
+        Assert.Equal(2, table.Rows.Count);
+        Assert.Equal(["grace", "york"], table.Rows[1]);
+        Assert.Equal("2 rows", table.Summary);
+    }
+
+    [Fact]
+    public void A_delimited_file_can_be_read_as_text_instead()
+    {
+        var outcome = Catalog.Create(
+            Source("people.csv", "name,city\nada,london\n"),
+            new Dictionary<string, bool> { [DelimitedTextPreviewer.TableToggle] = false });
+
+        Assert.IsType<SourcePreviewRendering>(outcome.Rendering);
+    }
+
+    [Fact]
+    public void The_half_row_at_the_end_of_a_bounded_read_is_not_shown_as_data()
+    {
+        var outcome = Catalog.Create(
+            new FilePreviewSource(
+                "people.csv",
+                FilePanelPreviewKind.Text,
+                "text/plain",
+                Encoding.UTF8.GetBytes("name,city\nada,london\ngra"),
+                IsTruncated: true));
+
+        var table = Assert.IsType<TablePreviewRendering>(outcome.Rendering);
+        var row = Assert.Single(table.Rows);
+        Assert.Equal(["ada", "london"], row);
+        Assert.Contains("more follow", table.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_empty_delimited_file_falls_back_to_text()
+    {
+        Assert.IsType<SourcePreviewRendering>(
+            Catalog.Create(Source("empty.csv", string.Empty)).Rendering);
+    }
+
+    [Fact]
+    public void The_classification_decides_when_no_format_claims_the_file()
+    {
+        foreach (var (kind, rendering) in new (FilePanelPreviewKind, Type)[]
+                 {
+                     (FilePanelPreviewKind.Image, typeof(ImagePreviewRendering)),
+                     (FilePanelPreviewKind.Pdf, typeof(PdfPreviewRendering)),
+                     (FilePanelPreviewKind.Database, typeof(DatabasePreviewRendering)),
+                 })
+        {
+            var outcome = Catalog.Create(
+                new FilePreviewSource("file.bin", kind, "application/octet-stream", default, false));
+            Assert.IsType(rendering, outcome.Rendering);
+        }
+    }
+
+    private static FilePreviewSource Source(string name, string content) =>
+        new(
+            name,
+            FilePanelPreviewKind.Text,
+            "text/plain; charset=utf-8",
+            Encoding.UTF8.GetBytes(content),
+            IsTruncated: false);
+}

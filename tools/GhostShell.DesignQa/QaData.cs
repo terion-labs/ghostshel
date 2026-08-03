@@ -300,6 +300,16 @@ internal static class QaData
     ];
 
 
+    /// <summary>A delimited sample for the table capture, quoting and all.</summary>
+    public const string SampleCsv = """
+service,region,status,deployed_at,note
+billing-api,eu-central-1,healthy,2026-08-02T21:14:09Z,"rolled forward, no downtime"
+billing-api,us-east-1,healthy,2026-08-02T21:12:44Z,
+checkout-web,eu-central-1,rolled-back,2026-08-02T19:03:18Z,"failed health check twice"
+ledger-worker,eu-central-1,healthy,2026-08-02T17:40:51Z,
+search-index,ap-south-1,degraded,2026-08-02T16:22:03Z,"replica lag above threshold"
+""";
+
     /// <summary>A C# sample for the syntax-highlight capture.</summary>
     public const string SampleCSharp = """
 using System.Text;

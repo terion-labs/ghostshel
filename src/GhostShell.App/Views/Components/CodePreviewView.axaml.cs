@@ -1,7 +1,7 @@
+using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Styling;
-using Avalonia.Threading;
 using AvaloniaEdit.TextMate;
 using TextMateSharp.Grammars;
 
@@ -29,6 +29,14 @@ public sealed partial class CodePreviewView : UserControl
     public static readonly StyledProperty<bool> FitsContentProperty =
         AvaloniaProperty.Register<CodePreviewView, bool>(nameof(FitsContent));
 
+    /// <summary>
+    /// Whether long lines wrap. Prose and code read better wrapped in a narrow
+    /// preview column; a hex dump is a fixed-width grid and must not wrap, or
+    /// every row folds and the columns stop lining up.
+    /// </summary>
+    public static readonly StyledProperty<bool> WordWrapProperty =
+        AvaloniaProperty.Register<CodePreviewView, bool>(nameof(WordWrap), defaultValue: true);
+
     private RegistryOptions? _registryOptions;
     private TextMate.Installation? _textMate;
 
@@ -36,6 +44,12 @@ public sealed partial class CodePreviewView : UserControl
     {
         InitializeComponent();
         ActualThemeVariantChanged += (_, _) => ApplyTheme();
+
+        // Wrapped text is only as tall as its width allows, so a height
+        // measured once — before the panel had settled on a width — is wrong
+        // for the width it ends up at. Re-measuring on every layout pass is
+        // what keeps a fenced block exactly as tall as its code.
+        Editor.LayoutUpdated += (_, _) => FitHeightToContent();
     }
 
     public string? Text
@@ -54,6 +68,12 @@ public sealed partial class CodePreviewView : UserControl
     {
         get => GetValue(FitsContentProperty);
         set => SetValue(FitsContentProperty, value);
+    }
+
+    public bool WordWrap
+    {
+        get => GetValue(WordWrapProperty);
+        set => SetValue(WordWrapProperty, value);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -88,6 +108,15 @@ public sealed partial class CodePreviewView : UserControl
         {
             SyncGrammar();
         }
+        else if (change.Property == WordWrapProperty)
+        {
+            Editor.WordWrap = WordWrap;
+            // Without wrapping there has to be another way to reach the end of
+            // a long line.
+            Editor.HorizontalScrollBarVisibility = WordWrap
+                ? Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+                : Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
+        }
     }
 
     private void SyncDocument()
@@ -110,16 +139,24 @@ public sealed partial class CodePreviewView : UserControl
         // height read before the document had one: multiplying a placeholder
         // line height by the line count produced a block several times too
         // tall, with the code scrolled out of sight inside it.
-        Dispatcher.UIThread.Post(
-            () =>
-            {
-                var height = Editor.TextArea.TextView.DocumentHeight;
-                if (height > 0)
-                {
-                    Editor.Height = height + 6;
-                }
-            },
-            DispatcherPriority.Loaded);
+        var height = Editor.TextArea.TextView.DocumentHeight;
+        if (height <= 0)
+        {
+            return;
+        }
+
+        // A block sized to its content has nothing left to scroll, so the
+        // scrollbar track should not be drawn beside it either.
+        Editor.VerticalScrollBarVisibility =
+            Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled;
+        var target = Math.Ceiling(height) + 6;
+        if (double.IsNaN(Editor.Height) || Math.Abs(Editor.Height - target) > 0.5)
+        {
+            Editor.Height = target;
+            // A block that now fits has nothing to scroll; an offset left from
+            // the moment it did not fit would hide its first lines.
+            Editor.ScrollToHome();
+        }
     }
 
     private void SyncGrammar()

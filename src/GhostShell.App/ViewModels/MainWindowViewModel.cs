@@ -7,6 +7,7 @@ using System.Text;
 using FluentIcons.Common;
 using GhostShell.App;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
@@ -70,6 +71,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IDatabasePanelClient? _databasePanelClient;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
     private readonly IPdfPreviewRenderer? _pdfPreviewRenderer;
+    private readonly IArchiveTableOfContents? _archiveTableOfContents;
     private readonly TerminalStartupCommandDispatcher _startupCommandDispatcher;
     private readonly IFileProviderProfileRuntime? _fileProviderRuntime;
     private readonly IAiProviderProfileRuntime? _aiProviderRuntime;
@@ -181,6 +183,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IDatabasePanelClient? databasePanelClient = null,
         IImagePreviewDecoder? imagePreviewDecoder = null,
         IPdfPreviewRenderer? pdfPreviewRenderer = null,
+        IArchiveTableOfContents? archiveTableOfContents = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
@@ -199,6 +202,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _databasePanelClient = databasePanelClient;
         _imagePreviewDecoder = imagePreviewDecoder;
         _pdfPreviewRenderer = pdfPreviewRenderer;
+        _archiveTableOfContents = archiveTableOfContents;
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
@@ -10238,7 +10242,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             connection,
             _databasePanelClient,
             _imagePreviewDecoder,
-            _pdfPreviewRenderer);
+            _pdfPreviewRenderer,
+            _archiveTableOfContents);
     }
 
     private FileProviderProfileDescriptor? ResolveFileProfile(

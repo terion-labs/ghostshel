@@ -424,12 +424,29 @@
               </Grid>
             </Border>
             <controls:SurfaceCard Padding="0" Grid.Row="1" Margin="{controls:Inset Sm}" IsVisible="{Binding HasSelectedMetadata}">
-              <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Kind" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Kind}" /></StackPanel>
                 <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Size" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Size}" /></StackPanel>
                 <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Modified" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Modified}" /></StackPanel>
                 <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Version" /><TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SelectedMetadata.Version}" TextTrimming="CharacterEllipsis" /></StackPanel>
                 <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SelectedMetadata.Source}" />
+                <!-- What this particular format can be shown as. Offered by the
+                     previewer that claimed the file, so the panel gains no
+                     knowledge of formats by showing them. -->
+                <ItemsControl Grid.Row="3" Grid.ColumnSpan="2" ItemsSource="{Binding PreviewToggles}" IsVisible="{Binding HasPreviewToggles}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <CheckBox
+                          FontSize="{DynamicResource ShellFontSize9}"
+                          IsChecked="{Binding IsOn, Mode=TwoWay}"
+                          Content="{Binding Label}"
+                          AutomationProperties.Name="{Binding Label}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </Grid>
             </controls:SurfaceCard>
             <Grid Grid.Row="2">
@@ -437,7 +454,18 @@
                   Margin="{controls:Inset Md}"
                   IsVisible="{Binding HasSourcePreview}"
                   Text="{Binding PreviewText}"
+                  WordWrap="{Binding WrapPreviewText}"
                   FileName="{Binding PreviewTitle}" />
+              <!-- A delimited file is shown as the table it describes. -->
+              <components:PreviewTableView
+                  Margin="{controls:Inset Sm}"
+                  DataContext="{Binding PreviewTable}"
+                  IsVisible="{Binding $parent[UserControl].DataContext.HasTablePreview}" />
+              <!-- An archive is listed, never unpacked. -->
+              <components:PreviewTreeView
+                  Margin="{controls:Inset Sm}"
+                  DataContext="{Binding PreviewTree}"
+                  IsVisible="{Binding $parent[UserControl].DataContext.HasTreePreview}" />
               <!-- Markdown is laid out as native controls, so its text stays
                    selectable and copyable like any other text in the shell. -->
               <components:MarkdownPreviewView

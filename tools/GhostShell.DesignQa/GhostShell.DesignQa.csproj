@@ -4,6 +4,9 @@
     <ProjectReference Include="../../src/GhostShell.App/GhostShell.App.csproj" />
     <ProjectReference Include="../../src/GhostShell.Databases/GhostShell.Databases.csproj" />
     <ProjectReference Include="../../src/GhostShell.Previews/GhostShell.Previews.csproj" />
+    <!-- The harness renders the real file panel over a real local provider, so
+         a preview capture is the shipped path rather than a mock of it. -->
+    <ProjectReference Include="../../src/GhostShell.Files/GhostShell.Files.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -16,6 +16,7 @@ using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
 using GhostShell.App.Controls;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using GhostShell.Core;
 
 namespace GhostShell.DesignQa;
@@ -632,6 +633,110 @@ internal sealed class QaApplication : Avalonia.Application
         // colouring is reviewable rather than assumed from the grammar name.
         // A source file in a narrow panel: long lines wrap rather than run off
         // the side of a preview nobody can scroll sideways.
+        // The panel resized after its first layout, which is what the file
+        // panel does as the splitter and window settle. A fence measured once
+        // keeps the height of a width it no longer has.
+        ("markdown-preview-resized", () =>
+        {
+            var view = new GhostShell.App.Views.Components.MarkdownPreviewView
+            {
+                Text = QaData.MarkdownWithLongFence,
+            };
+            var host = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Width = 700,
+                Child = view,
+            };
+            var narrowed = false;
+            view.LayoutUpdated += (_, _) =>
+            {
+                if (narrowed || view.Bounds.Width < 1)
+                {
+                    return;
+                }
+
+                narrowed = true;
+                host.Width = 430;
+            };
+            return new Window
+            {
+                Width = 720,
+                Height = 700,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = host,
+            };
+        }, null),
+        // The real file panel over a real local provider: what a reader sees,
+        // including the switches the claiming previewer offers.
+        ("file-preview-markdown", () => CreateFilePanelProbe("notes.md"), null),
+        ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
+        ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
+        ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
+        // A hex dump must not wrap: the rows are a fixed-width grid, and a
+        // folded row stops lining up with the ones above it.
+        ("hex-preview", () => new Window
+        {
+            Width = 560,
+            Height = 260,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Padding = new Thickness(12),
+                Child = new GhostShell.App.Views.Components.CodePreviewView
+                {
+                    FileName = "payload.bin",
+                    WordWrap = false,
+                    Text = GhostShell.Application.Previews.PreviewText.Hex(
+                        Enumerable.Range(0, 96).Select(value => (byte)value).ToArray(),
+                        providerTruncated: false),
+                },
+            },
+        }, null),
+        // A delimited file as the table it describes.
+        ("csv-preview", () => new Window
+        {
+            Width = 620,
+            Height = 320,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Padding = new Thickness(8),
+                Child = new GhostShell.App.Views.Components.PreviewTableView
+                {
+                    DataContext = new PreviewTableViewModel(
+                        (TablePreviewRendering)new FilePreviewCatalog().Create(
+                            new FilePreviewSource(
+                                "deployments.csv",
+                                FilePanelPreviewKind.Text,
+                                "text/plain",
+                                System.Text.Encoding.UTF8.GetBytes(QaData.SampleCsv),
+                                IsTruncated: false)).Rendering),
+                },
+            },
+        }, null),
+        // An archive listed rather than unpacked.
+        ("archive-preview", () => new Window
+        {
+            Width = 460,
+            Height = 380,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Padding = new Thickness(8),
+                Child = new GhostShell.App.Views.Components.PreviewTreeView
+                {
+                    DataContext = CreateArchiveListing(),
+                },
+            },
+        }, null),
         ("code-preview-wrap", () => new Window
         {
             Width = 380,
@@ -1116,6 +1221,144 @@ internal sealed class QaApplication : Avalonia.Application
             CanResize = false,
             ShowInTaskbar = false,
             Content = new Border { Classes = { "FloatingSidebar" }, Child = view },
+        };
+    }
+
+    /// <summary>
+    /// A real zip, written beside the captures and listed through the shipped
+    /// reader — so the tree shown is one an archive actually produced.
+    /// </summary>
+    private static PreviewTreeViewModel CreateArchiveListing()
+    {
+        var path = Path.Combine(Program.OutputDirectory, "listing-probe.zip");
+        using (var file = File.Create(path))
+        using (var archive = new System.IO.Compression.ZipArchive(
+                   file,
+                   System.IO.Compression.ZipArchiveMode.Create))
+        {
+            foreach (var entry in new (string Name, string Content)[]
+                     {
+                         ("README.md", "# Release"),
+                         ("bin/ghostshell", new string('x', 4096)),
+                         ("share/icons/app.png", new string('x', 12_288)),
+                         ("share/locale/en.json", "{}"),
+                     })
+            {
+                using var stream = archive.CreateEntry(entry.Name).Open();
+                using var writer = new StreamWriter(stream);
+                writer.Write(entry.Content);
+            }
+        }
+
+        var entries = new GhostShell.Previews.ArchiveTableOfContents()
+            .ReadAsync(path, 500, CancellationToken.None)
+            .AsTask()
+            .GetAwaiter()
+            .GetResult()
+            ?? throw new InvalidOperationException("The archive probe did not list.");
+        return new PreviewTreeViewModel(
+            PreviewTreeBuilder.FromPaths(entries),
+            $"{entries.Count} files, "
+                + ByteSize.Format(entries.Sum(entry => entry.Size ?? 0))
+                + " unpacked");
+    }
+
+    /// <summary>
+    /// Runs the dispatcher until a task the panel started on this thread has
+    /// finished, so a capture can be set up from inside a route factory.
+    /// </summary>
+    private static void Settle(Task task)
+    {
+        var waited = TimeSpan.Zero;
+        var step = TimeSpan.FromMilliseconds(5);
+        while (!task.IsCompleted && waited < TimeSpan.FromSeconds(10))
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(step);
+            waited += step;
+        }
+
+        Dispatcher.UIThread.RunJobs();
+        if (task is { IsFaulted: true, Exception: { } failure })
+        {
+            throw failure;
+        }
+    }
+
+    /// <summary>
+    /// The shipped file panel, pointed at a directory of real sample files and
+    /// asked to preview one of them. Nothing here is a mock: the provider reads
+    /// the disk, the previewers claim by name, and the archive is listed by the
+    /// same reader the product uses.
+    /// </summary>
+    private static Window CreateFilePanelProbe(string fileName)
+    {
+        var root = Path.Combine(Program.OutputDirectory, "preview-samples");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "notes.md"), QaData.MarkdownWithLongFence);
+        File.WriteAllText(Path.Combine(root, "deployments.csv"), QaData.SampleCsv);
+        File.WriteAllText(
+            Path.Combine(root, "settings.json"),
+            """{"telemetry":{"enabled":false,"endpoint":"https://example.test"},"panels":[1,2,3]}""");
+        var archivePath = Path.Combine(root, "release.zip");
+        if (!File.Exists(archivePath))
+        {
+            using var file = File.Create(archivePath);
+            using var archive = new System.IO.Compression.ZipArchive(
+                file,
+                System.IO.Compression.ZipArchiveMode.Create);
+            foreach (var entry in new (string Name, string Content)[]
+                     {
+                         ("README.md", "# Release"),
+                         ("bin/ghostshell", new string('x', 4096)),
+                         ("share/icons/app.png", new string('x', 12_288)),
+                         ("share/locale/en.json", "{}"),
+                     })
+            {
+                using var stream = archive.CreateEntry(entry.Name).Open();
+                using var writer = new StreamWriter(stream);
+                writer.Write(entry.Content);
+            }
+        }
+
+        var provider = GhostShell.Files.LocalFileProvider.CreateForCurrentPlatform(
+            new GhostShell.Files.LocalFileProviderOptions(
+                new GhostShell.Files.FileProviderProfileId("qa.files"),
+                new GhostShell.Files.FileAuthority("local"),
+                root));
+        var client = new GhostShell.Files.FilePanelClient(
+        [
+            new GhostShell.Files.FileProviderRegistration(
+                "Samples",
+                FileProviderFamily.Posix,
+                provider,
+                new GhostShell.Files.FileLocation(
+                    provider.ProfileId,
+                    provider.Authority,
+                    GhostShell.Files.FilePath.Root)),
+        ]);
+
+        var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            archiveReader: new GhostShell.Previews.ArchiveTableOfContents());
+        // Pumped rather than blocked on: the panel finishes its work on this
+        // very thread, so waiting on it here would wait forever.
+        Settle(panel.Initialization);
+        panel.SelectedEntry = panel.Entries.First(entry => entry.Name == fileName);
+        Settle(panel.PreviewSelectedAsync());
+
+        return new Window
+        {
+            Width = 900,
+            Height = 620,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new GhostShell.App.Views.RuntimePanels.FileRuntimePanelView
+            {
+                DataContext = panel,
+            },
         };
     }
 

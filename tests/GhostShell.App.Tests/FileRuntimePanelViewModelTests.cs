@@ -1265,6 +1265,137 @@ public sealed class FileRuntimePanelViewModelTests
             : Path.GetFullPath(path);
     }
 
+    [Fact]
+    public async Task A_delimited_file_previews_as_a_table()
+    {
+        var panel = await PreviewOf(
+            "people.csv",
+            "name,city\nada,london\ngrace,york\n");
+
+        Assert.True(panel.HasTablePreview);
+        Assert.False(panel.HasSourcePreview);
+        var table = panel.PreviewTable!;
+        Assert.Equal(["name", "city"], table.Columns.Select(column => column.Name));
+        Assert.Equal(2, table.Rows.Count);
+        // Every cell in a column is as wide as its header, or they do not line up.
+        Assert.Equal(
+            table.Columns[0].Width,
+            table.Rows[0].Cells[0].Width);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task A_format_offers_its_own_switches()
+    {
+        var panel = await PreviewOf("notes.md", "# Title");
+
+        var toggle = Assert.Single(panel.PreviewToggles);
+        Assert.Equal("Show raw", toggle.Label);
+        Assert.True(panel.HasMarkdownPreview);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task Flipping_a_switch_re_reads_the_bytes_already_in_hand()
+    {
+        var panel = await PreviewOf("notes.md", "# Title", out var client);
+        var before = client.PreviewCallCount;
+
+        panel.PreviewToggles.Single().IsOn = true;
+
+        // Changing how a file is read must not cost another provider call —
+        // on a remote provider that would be another download.
+        Assert.Equal(before, client.PreviewCallCount);
+        Assert.False(panel.HasMarkdownPreview);
+        Assert.True(panel.HasSourcePreview);
+        Assert.Equal("# Title", panel.PreviewText);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task Turning_a_table_off_shows_the_file_as_written()
+    {
+        var panel = await PreviewOf("people.csv", "name,city\nada,london\n");
+
+        panel.PreviewToggles.Single().IsOn = false;
+
+        Assert.False(panel.HasTablePreview);
+        Assert.Equal("name,city\nada,london\n", panel.PreviewText);
+        panel.Dispose();
+    }
+
+    [Fact]
+    public async Task A_hex_preview_does_not_wrap_and_a_text_one_does()
+    {
+        var binary = await PreviewOf(
+            "payload.bin",
+            "\u0000\u0001",
+            kind: FilePanelPreviewKind.Hex);
+        Assert.False(binary.WrapPreviewText);
+        binary.Dispose();
+
+        var text = await PreviewOf("readme.txt", "hello");
+        Assert.True(text.WrapPreviewText);
+        text.Dispose();
+    }
+
+    [Fact]
+    public async Task Selecting_another_file_forgets_the_switches_of_the_last_one()
+    {
+        var panel = await PreviewOf("notes.md", "# Title", out var client);
+        panel.PreviewToggles.Single().IsOn = true;
+
+        client.Entries.Add(Entry(client.Root, "readme.txt", FilePanelEntryKind.File, 5));
+        client.Preview = new FilePanelPreview(
+            client.Root.Child(new FilePanelPathSegment("readme.txt")),
+            FilePanelPreviewKind.Text,
+            "text/plain; charset=utf-8",
+            Encoding.UTF8.GetBytes("plain"),
+            isTruncated: false);
+        await panel.RefreshAsync();
+        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "readme.txt");
+        await panel.PreviewSelectedAsync();
+
+        Assert.Empty(panel.PreviewToggles);
+        Assert.Equal("plain", panel.PreviewText);
+        panel.Dispose();
+    }
+
+    private static Task<FileRuntimePanelViewModel> PreviewOf(
+        string name,
+        string content,
+        FilePanelPreviewKind kind = FilePanelPreviewKind.Text) =>
+        PreviewOf(name, content, out _, kind);
+
+    private static Task<FileRuntimePanelViewModel> PreviewOf(
+        string name,
+        string content,
+        out StubFilePanelClient client,
+        FilePanelPreviewKind kind = FilePanelPreviewKind.Text)
+    {
+        var stub = new StubFilePanelClient();
+        client = stub;
+        stub.Entries.Add(Entry(stub.Root, name, FilePanelEntryKind.File, content.Length));
+        stub.Preview = new FilePanelPreview(
+            stub.Root.Child(new FilePanelPathSegment(name)),
+            kind,
+            "text/plain; charset=utf-8",
+            Encoding.UTF8.GetBytes(content),
+            isTruncated: false);
+        return Prepare(stub, name);
+
+        static async Task<FileRuntimePanelViewModel> Prepare(
+            StubFilePanelClient stub,
+            string name)
+        {
+            var panel = new FileRuntimePanelViewModel(PanelInstanceId.New(), "Files", stub);
+            await panel.Initialization;
+            panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == name);
+            await panel.PreviewSelectedAsync();
+            return panel;
+        }
+    }
+
     private sealed class StubFilePanelClient :
         IFilePanelClient,
         IFileProviderProfileRuntime,
@@ -1324,6 +1455,8 @@ public sealed class FileRuntimePanelViewModelTests
         public FilePanelLocation? LastStatLocation { get; private set; }
 
         public FilePanelPreviewRequest? LastPreviewRequest { get; private set; }
+
+        public int PreviewCallCount { get; private set; }
 
         public FilePanelDeleteRequest? LastDeleteRequest { get; private set; }
 
@@ -1417,6 +1550,7 @@ public sealed class FileRuntimePanelViewModelTests
             CancellationToken cancellationToken)
         {
             LastPreviewRequest = request;
+            PreviewCallCount++;
             if (PreviewCompletion is not null)
             {
                 return await PreviewCompletion.Task.WaitAsync(cancellationToken);
