@@ -1973,9 +1973,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     /// <summary>
-    /// Disposes the previewed database and the temporary copy behind it. The
-    /// copy is deleted as soon as the selection moves on, so browsing a folder
-    /// of databases never accumulates them.
+    /// Disposes the previewed database. Its file, when it was a downloaded
+    /// copy, stays in the materializer's cache so selecting the same database
+    /// again does not download it a second time.
     /// </summary>
     /// <summary>
     /// The ceiling on a database opened through the file preview. A remote
@@ -2034,11 +2034,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             }
         }
 
-        // The selection moved while the copy was in flight: the lease belongs
-        // to a preview nobody is looking at any more.
+        // The selection moved while the download was in flight. The copy stays
+        // in the cache: the work is done, and selecting this file again should
+        // find it there rather than fetch it twice.
         if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
         {
-            result.Value?.Dispose();
             return;
         }
 
@@ -2074,7 +2074,6 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private void ClearDatabasePreview()
     {
         var preview = _databasePreview;
-        var file = _databasePreviewFile;
         _databasePreview = null;
         _databasePreviewFile = null;
         if (preview is not null)
@@ -2084,7 +2083,6 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         preview?.Dispose();
-        file?.Dispose();
     }
 
     private void ClearMetadata()

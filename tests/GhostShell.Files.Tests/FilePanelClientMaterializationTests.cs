@@ -30,10 +30,8 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        using var lease = result.Value!;
-        Assert.Equal(path, lease.Path);
-        lease.Dispose();
-        // Disposing a lease over a local file must never delete the user's file.
+        Assert.Equal(path, result.Value!.Path);
+        Assert.False(result.Value.IsCachedCopy);
         Assert.True(File.Exists(path));
     }
 
@@ -54,8 +52,7 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        using var lease = result.Value!;
-        Assert.Equal(path, lease.Path);
+        Assert.Equal(path, result.Value!.Path);
     }
 
     [Fact]
@@ -75,7 +72,7 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.Equal(FilePanelErrorCode.LimitExceeded, result.Error!.Code);
-        Assert.Empty(TemporaryCopies());
+        Assert.Empty(PartialDownloads());
     }
 
     [Fact]
@@ -96,12 +93,70 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        var lease = result.Value!;
+        var copy = result.Value!;
+        Assert.True(copy.IsCachedCopy);
         // Whole, not the first chunk: the provider caps each read at 1 KiB, so a
         // single read would have produced a truncated — corrupt — database.
-        Assert.Equal(content, await File.ReadAllBytesAsync(lease.Path));
-        lease.Dispose();
-        Assert.False(File.Exists(lease.Path));
+        Assert.Equal(content, await File.ReadAllBytesAsync(copy.Path));
+        // The name gives nothing away about where the file came from.
+        var name = Path.GetFileName(copy.Path);
+        Assert.DoesNotContain("remote", name, StringComparison.OrdinalIgnoreCase);
+        Assert.Matches("^[0-9a-f]{32}$", name);
+        File.Delete(copy.Path);
+    }
+
+    [Fact]
+    public async Task A_file_already_downloaded_is_served_from_the_cache()
+    {
+        var provider = new RemoteBytesProvider(new byte[1500]);
+        var client = ClientFor(provider);
+        var location = RemoteLocation(provider, "cached.db");
+
+        var first = await ((IFileContentMaterializer)client).MaterializeAsync(
+            location,
+            maximumBytes: 1024 * 1024,
+            CancellationToken.None);
+        Assert.True(first.IsSuccess);
+        var reads = provider.ReadCount;
+
+        var second = await ((IFileContentMaterializer)client).MaterializeAsync(
+            location,
+            maximumBytes: 1024 * 1024,
+            CancellationToken.None);
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value!.Path, second.Value!.Path);
+        // The second selection cost nothing: the copy on disk is the record
+        // that this exact version was already fetched.
+        Assert.Equal(reads, provider.ReadCount);
+        File.Delete(first.Value.Path);
+    }
+
+    [Fact]
+    public async Task A_changed_file_is_downloaded_again_rather_than_served_stale()
+    {
+        var provider = new RemoteBytesProvider(new byte[1500]);
+        var client = ClientFor(provider);
+        var location = RemoteLocation(provider, "changing.db");
+
+        var first = await ((IFileContentMaterializer)client).MaterializeAsync(
+            location,
+            maximumBytes: 1024 * 1024,
+            CancellationToken.None);
+        Assert.True(first.IsSuccess);
+
+        // A new version of the same path: different content, different identity.
+        provider.Replace(new byte[2600], "version-2");
+        var second = await ((IFileContentMaterializer)client).MaterializeAsync(
+            location,
+            maximumBytes: 1024 * 1024,
+            CancellationToken.None);
+
+        Assert.True(second.IsSuccess);
+        Assert.NotEqual(first.Value!.Path, second.Value!.Path);
+        Assert.Equal(2600, new FileInfo(second.Value.Path).Length);
+        File.Delete(first.Value.Path);
+        File.Delete(second.Value.Path);
     }
 
     [Fact]
@@ -144,10 +199,12 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
             new FilePanelAddress.Hierarchical(
                 FilePanelPath.FromSegments([new FilePanelPathSegment(name)])));
 
-    private static IEnumerable<string> TemporaryCopies()
+    private static IEnumerable<string> PartialDownloads()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "ghostshell-file-materialized");
-        return Directory.Exists(directory) ? Directory.EnumerateFiles(directory) : [];
+        var directory = Path.Combine(Path.GetTempPath(), "ghostshell-file-cache");
+        return Directory.Exists(directory)
+            ? Directory.EnumerateFiles(directory, "*.partial")
+            : [];
     }
 
     private static FilePanelClient ClientFor(RemoteBytesProvider provider) =>
@@ -164,9 +221,27 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
     /// a whole-file copy must loop. Everything a materialization needs and
     /// nothing it does not.
     /// </summary>
+    private static FilePanelLocation RemoteLocation(RemoteBytesProvider provider, string name) =>
+        new(
+            provider.ProfileId.Value,
+            "fixture",
+            new FilePanelAddress.Hierarchical(
+                FilePanelPath.FromSegments([new FilePanelPathSegment(name)])));
+
     private sealed class RemoteBytesProvider(byte[] content) : IFileProvider
     {
         private static readonly FileAuthority Authority = new("fixture");
+
+        private byte[] _content = content;
+        private string _version = "fixture-version";
+
+        public int ReadCount { get; private set; }
+
+        public void Replace(byte[] replacement, string version)
+        {
+            _content = replacement;
+            _version = version;
+        }
 
         public FileProviderProfileId ProfileId { get; } = new("remote-materialize-test");
 
@@ -190,9 +265,9 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
             ValueTask.FromResult(FileProviderResult<FileEntry>.Success(new FileEntry(
                 request.Location,
                 FileEntryKind.File,
-                content.Length,
+                _content.Length,
                 LastModifiedAt: null,
-                new FileVersion("fixture-version"),
+                new FileVersion(_version),
                 IsHidden: false)));
 
         public async ValueTask<FileProviderResult<FileReadReceipt>> ReadAsync(
@@ -201,18 +276,19 @@ public sealed class FilePanelClientMaterializationTests : IDisposable
             IProgress<FileTransferProgress>? progress,
             CancellationToken cancellationToken)
         {
+            ReadCount++;
             var offset = checked((int)request.Offset);
-            var count = (int)Math.Min(request.MaximumBytes, Math.Max(0, content.Length - offset));
+            var count = (int)Math.Min(request.MaximumBytes, Math.Max(0, _content.Length - offset));
             if (count > 0)
             {
-                await destination.WriteAsync(content.AsMemory(offset, count), cancellationToken);
+                await destination.WriteAsync(_content.AsMemory(offset, count), cancellationToken);
             }
 
             return FileProviderResult<FileReadReceipt>.Success(new FileReadReceipt(
                 request.Location,
                 request.Offset,
                 count,
-                offset + count < content.Length));
+                offset + count < _content.Length));
         }
 
         public ValueTask<FileProviderResult<FileWriteReceipt>> WriteAsync(

@@ -465,6 +465,7 @@
                   IsVisible="{Binding ShowPreviewDownloadPrompt}">
                 <Button
                     x:Name="PreviewDownloadButton"
+                    Classes="PrimaryButton"
                     Width="52"
                     Height="52"
                     HorizontalAlignment="Center"

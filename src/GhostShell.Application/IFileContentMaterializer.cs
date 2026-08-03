@@ -1,52 +1,25 @@
 namespace GhostShell.Application;
 
 /// <summary>
-/// A file the operating system can open by path, for the lifetime of the lease.
+/// A file the operating system can open by path.
 ///
 /// A local provider hands back the file where it already lives; every other
-/// provider streams it into a private temporary copy that is deleted when the
-/// lease is disposed. Consumers must not assume which case they got, and must
-/// not write through the path: a temporary copy's writes go nowhere, and a
-/// local file's writes would bypass the provider's own mutation path.
+/// provider is served from a cache of downloaded copies. Consumers must not
+/// write through the path: a cached copy's writes go nowhere, and a local
+/// file's writes would bypass the provider's own mutation path.
 /// </summary>
-public sealed class MaterializedFile : IDisposable
+public sealed record MaterializedFile(string Path, bool IsCachedCopy)
 {
-    private readonly bool _isTemporary;
-    private bool _disposed;
+    /// <summary>An absolute path readable by the operating system.</summary>
+    public string Path { get; } = string.IsNullOrWhiteSpace(Path)
+        ? throw new ArgumentException("A materialized file needs a path.", nameof(Path))
+        : Path;
 
-    public MaterializedFile(string path, bool isTemporary)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        Path = path;
-        _isTemporary = isTemporary;
-    }
-
-    /// <summary>An absolute path readable until this lease is disposed.</summary>
-    public string Path { get; }
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
-        if (!_isTemporary)
-        {
-            return;
-        }
-
-        try
-        {
-            File.Delete(Path);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // A copy that outlives its lease is a temp-directory cleanup
-            // concern, never a reason to fail the caller's operation.
-        }
-    }
+    /// <summary>
+    /// Whether the path is a downloaded copy rather than the user's own file.
+    /// A copy is a snapshot: it does not follow later changes to the source.
+    /// </summary>
+    public bool IsCachedCopy { get; } = IsCachedCopy;
 }
 
 /// <summary>
@@ -58,6 +31,10 @@ public sealed class MaterializedFile : IDisposable
 /// pulls a whole file, so it is bounded by an explicit byte ceiling and is
 /// refused rather than truncated when the file exceeds it. A truncated database
 /// is not a smaller database; it is a corrupt one.
+///
+/// A downloaded copy is cached on disk and reused: the same file selected twice
+/// is fetched once. The cache has no index — the copy's own path is derived
+/// from the file's identity, so its presence on disk is the record.
 /// </summary>
 public interface IFileContentMaterializer
 {
