@@ -19,23 +19,40 @@ public sealed class DatabaseTableItemViewModel(DatabaseTableDescriptor table)
 {
     public string Name { get; } = table.Name;
 
+    public bool IsView { get; } = table.Kind == DatabaseTableKind.View;
+
     public string KindLabel { get; } = table.Kind == DatabaseTableKind.View ? "View" : "Table";
 }
 
-public sealed class DatabaseResultCellViewModel(string? text)
+public sealed class DatabaseResultCellViewModel(string? text, double width)
 {
     public bool IsNull { get; } = text is null;
 
     public string Text { get; } = text ?? "NULL";
+
+    /// <summary>The owning column's width, so header and cells stay aligned.</summary>
+    public double Width { get; } = width;
 }
 
-public sealed class DatabaseResultRowViewModel(int number, IReadOnlyList<string?> cells)
-    : ObservableObject
+public sealed class DatabaseResultRowViewModel : ObservableObject
 {
     private bool _isSelected;
 
+    public DatabaseResultRowViewModel(
+        int number,
+        IReadOnlyList<string?> cells,
+        IReadOnlyList<double> columnWidths)
+    {
+        Number = number;
+        Cells = cells
+            .Select((cell, index) => new DatabaseResultCellViewModel(
+                cell,
+                index < columnWidths.Count ? columnWidths[index] : 164))
+            .ToArray();
+    }
+
     /// <summary>The 1-based position inside the current result page.</summary>
-    public int Number { get; } = number;
+    public int Number { get; }
 
     public bool IsEven => Number % 2 == 0;
 
@@ -45,8 +62,7 @@ public sealed class DatabaseResultRowViewModel(int number, IReadOnlyList<string?
         internal set => SetProperty(ref _isSelected, value);
     }
 
-    public IReadOnlyList<DatabaseResultCellViewModel> Cells { get; } =
-        cells.Select(cell => new DatabaseResultCellViewModel(cell)).ToArray();
+    public IReadOnlyList<DatabaseResultCellViewModel> Cells { get; }
 }
 
 /// <summary>One field of the selected row, presented in the inspector column.</summary>
@@ -56,11 +72,15 @@ public sealed record DatabaseRowFieldViewModel(
     string Text,
     bool IsNull);
 
-public sealed class DatabaseResultColumnViewModel(DatabaseColumnDescriptor column)
+public sealed class DatabaseResultColumnViewModel(
+    DatabaseColumnDescriptor column,
+    double width)
 {
     public string Name { get; } = column.Name;
 
     public string DataTypeName { get; } = column.DataTypeName;
+
+    public double Width { get; } = width;
 }
 
 /// <summary>
@@ -87,6 +107,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private bool _isConnected;
     private string? _errorMessage;
     private string _resultSummary = string.Empty;
+    private IReadOnlyList<DatabaseTableItemViewModel> _allTables = [];
+    private string _tableFilter = string.Empty;
     private IReadOnlyList<DatabaseResultColumnViewModel> _resultColumns = [];
     private IReadOnlyList<DatabaseResultRowViewModel> _resultRows = [];
     private DatabaseResultRowViewModel? _selectedRow;
@@ -171,6 +193,19 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         set => SetProperty(ref _queryText, value ?? string.Empty);
     }
 
+    /// <summary>Filters the objects sidebar by substring, TablePlus-style.</summary>
+    public string TableFilter
+    {
+        get => _tableFilter;
+        set
+        {
+            if (SetProperty(ref _tableFilter, value ?? string.Empty))
+            {
+                RefreshTables();
+            }
+        }
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -238,6 +273,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasSelectedRow => _selectedRow is not null;
 
+    public string SelectedRowTitle => _selectedRow is { } row ? $"Row {row.Number}" : string.Empty;
+
     public IReadOnlyList<DatabaseRowFieldViewModel> SelectedRowFields
     {
         get => _selectedRowFields;
@@ -277,6 +314,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 .ToArray();
         OnPropertyChanged(nameof(SelectedRow));
         OnPropertyChanged(nameof(HasSelectedRow));
+        OnPropertyChanged(nameof(SelectedRowTitle));
     }
 
     /// <summary>
@@ -331,12 +369,10 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 ConnectionString,
                 _tunnelConnection,
                 cancellationToken);
-            Tables.Clear();
-            foreach (var table in tables)
-            {
-                Tables.Add(new DatabaseTableItemViewModel(table));
-            }
-
+            _allTables = tables
+                .Select(table => new DatabaseTableItemViewModel(table))
+                .ToArray();
+            RefreshTables();
             SetConnected(true);
             OnPropertyChanged(nameof(RecoveryTarget));
         });
@@ -389,11 +425,17 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 MaxRows,
                 cancellationToken);
             SelectRow(null);
+            var widths = ComputeColumnWidths(page);
             ResultColumns = page.Columns
-                .Select(column => new DatabaseResultColumnViewModel(column))
+                .Select((column, index) => new DatabaseResultColumnViewModel(
+                    column,
+                    widths[index]))
                 .ToArray();
             ResultRows = page.Rows
-                .Select((row, index) => new DatabaseResultRowViewModel(index + 1, row))
+                .Select((row, index) => new DatabaseResultRowViewModel(
+                    index + 1,
+                    row,
+                    widths))
                 .ToArray();
             var elapsed = page.Elapsed.TotalMilliseconds
                 .ToString("0", CultureInfo.InvariantCulture);
@@ -435,6 +477,48 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             IsBusy = false;
             OnPropertyChanged(nameof(StatusText));
         }
+    }
+
+    private void RefreshTables()
+    {
+        Tables.Clear();
+        foreach (var table in _allTables)
+        {
+            if (string.IsNullOrWhiteSpace(_tableFilter)
+                || table.Name.Contains(_tableFilter.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                Tables.Add(table);
+            }
+        }
+
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    /// <summary>
+    /// Content-fitted column widths, TablePlus-style: wide enough for the
+    /// header and the widest visible value, clamped so one long cell cannot
+    /// push every other column off screen.
+    /// </summary>
+    private static double[] ComputeColumnWidths(DatabaseQueryPage page)
+    {
+        const double CharacterWidth = 6.6;
+        const double CellPadding = 22;
+        var widths = new double[page.Columns.Count];
+        for (var index = 0; index < page.Columns.Count; index++)
+        {
+            var longest = page.Columns[index].Name.Length;
+            foreach (var row in page.Rows)
+            {
+                longest = Math.Max(longest, row[index]?.Length ?? 4);
+            }
+
+            widths[index] = Math.Clamp(
+                CellPadding + (CharacterWidth * longest),
+                76,
+                340);
+        }
+
+        return widths;
     }
 
     private void SetConnected(bool value)

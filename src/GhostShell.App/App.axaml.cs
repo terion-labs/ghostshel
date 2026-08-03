@@ -431,6 +431,10 @@ public sealed partial class App : Avalonia.Application
                 resources.Accent.B),
         });
         Resources["ShellUiFontFamily"] = resources.FontFamily;
+        // Data surfaces (result grids, SQL editors) read in a monospace stack;
+        // interface chrome stays on the UI family.
+        Resources["ShellDataFontFamily"] = new FontFamily(
+            "SF Mono,Menlo,Monaco,Cascadia Mono,Consolas,monospace");
         Resources["ShellBaseFontSize"] = resources.BaseFontSize;
         Resources["ShellPillFontSize"] = resources.PillFontSize;
         foreach (var baseFontSize in ScalableFontSizes)

@@ -71,6 +71,13 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         }
     }
 
+    private void OnDismissInspectorClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Panel?.SelectRow(null);
+    }
+
     private void OnResultRowPressed(object? sender, PointerPressedEventArgs e)
     {
         _ = e;

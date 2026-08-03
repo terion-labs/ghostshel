@@ -112,7 +112,11 @@
       <Grid Grid.Row="2" ColumnDefinitions="196,*">
         <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
           <Grid RowDefinitions="Auto,*">
-            <TextBlock Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" Classes="SectionHeading" Text="Objects" />
+            <TextBox
+                Margin="{controls:Inset Sm}"
+                Text="{Binding TableFilter, Mode=TwoWay}"
+                PlaceholderText="Filter objects…"
+                AutomationProperties.Name="Filter database objects" />
             <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
               <ItemsControl ItemsSource="{Binding Tables}">
                 <ItemsControl.ItemTemplate>
@@ -120,10 +124,12 @@
                     <Button
                         Classes="ListRow"
                         Click="OnTableClick"
+                        ToolTip.Tip="{Binding KindLabel}"
                         AutomationProperties.Name="{Binding Name, StringFormat=Preview rows from {0}}">
-                      <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                        <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding KindLabel}" />
+                      <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Xs}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                        <icons:SymbolIcon VerticalAlignment="Center" Symbol="Table" FontSize="12" Foreground="{DynamicResource ShellAccentBrush}" IsVisible="{Binding !IsView}" />
+                        <icons:SymbolIcon VerticalAlignment="Center" Symbol="Eye" FontSize="12" Foreground="{DynamicResource ShellMutedBrush}" IsVisible="{Binding IsView}" />
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                       </Grid>
                     </Button>
                   </DataTemplate>
@@ -139,6 +145,7 @@
                 MinHeight="64"
                 MaxHeight="140"
                 AcceptsReturn="True"
+                FontFamily="{DynamicResource ShellDataFontFamily}"
                 Text="{Binding QueryText, Mode=TwoWay}"
                 TextWrapping="NoWrap"
                 PlaceholderText="SELECT …"
@@ -164,15 +171,16 @@
               <Grid RowDefinitions="Auto,*">
                 <Border Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
                   <StackPanel Orientation="Horizontal">
-                    <TextBlock Width="40" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="#" TextAlignment="Right" />
+                    <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
+                      <TextBlock Width="40" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="#" TextAlignment="Right" />
+                    </Border>
                     <ItemsControl ItemsSource="{Binding ResultColumns}">
                       <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                          <StackPanel Width="164" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}">
-                            <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DataTypeName}" TextTrimming="CharacterEllipsis" />
-                          </StackPanel>
+                          <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
+                            <TextBlock Width="{Binding Width}" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DataTypeName}" />
+                          </Border>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -188,18 +196,23 @@
                             Classes.selected="{Binding IsSelected}"
                             PointerPressed="OnResultRowPressed">
                           <StackPanel Orientation="Horizontal">
-                            <TextBlock Width="40" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Number}" TextAlignment="Right" />
+                            <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
+                              <TextBlock Width="40" Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Number}" TextAlignment="Right" />
+                            </Border>
                             <ItemsControl ItemsSource="{Binding Cells}">
                               <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                               <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                  <TextBlock
-                                      Width="164"
-                                      Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-                                      Classes.Muted="{Binding IsNull}"
-                                      FontSize="{DynamicResource ShellFontSize10}"
-                                      Text="{Binding Text}"
-                                      TextTrimming="CharacterEllipsis" />
+                                  <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">
+                                    <TextBlock
+                                        Width="{Binding Width}"
+                                        Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                                        Classes.Muted="{Binding IsNull}"
+                                        FontFamily="{DynamicResource ShellDataFontFamily}"
+                                        FontSize="{DynamicResource ShellFontSize10}"
+                                        Text="{Binding Text}"
+                                        TextTrimming="CharacterEllipsis" />
+                                  </Border>
                                 </DataTemplate>
                               </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -214,26 +227,44 @@
 
             <!-- The TablePlus-style field inspector: every column of the selected
                  row readable in full, no matter how narrow the grid cells are. -->
-            <Border Grid.Column="1" Width="236" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1,0,0,0" IsVisible="{Binding HasSelectedRow}">
-              <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <ItemsControl Margin="{controls:Inset Sm}" ItemsSource="{Binding SelectedRowFields}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <StackPanel Margin="{controls:Inset Bottom=Sm}" Spacing="{DynamicResource ShellSpaceXs}">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                          <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                          <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DataTypeName}" />
-                        </Grid>
-                        <TextBlock
-                            Classes.Muted="{Binding IsNull}"
-                            FontSize="{DynamicResource ShellFontSize10}"
-                            Text="{Binding Text}"
-                            TextWrapping="Wrap" />
-                      </StackPanel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
+            <Border Grid.Column="1" Width="248" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1,0,0,0" IsVisible="{Binding HasSelectedRow}">
+              <Grid RowDefinitions="Auto,*">
+                <Border Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+                  <Grid Margin="{controls:Inset Left=Md, Right=Xs}" ColumnDefinitions="*,Auto">
+                    <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="{Binding SelectedRowTitle}" />
+                    <Button
+                        Grid.Column="1"
+                        Classes="IconButton"
+                        Click="OnDismissInspectorClick"
+                        ToolTip.Tip="Close row inspector"
+                        AutomationProperties.Name="Close the row inspector">
+                      <icons:SymbolIcon Symbol="Dismiss" FontSize="11" />
+                    </Button>
+                  </Grid>
+                </Border>
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding SelectedRowFields}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+                          <StackPanel Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" Spacing="{DynamicResource ShellSpaceXs}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                              <TextBlock FontSize="{DynamicResource ShellFontSize10}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DataTypeName}" />
+                            </Grid>
+                            <TextBlock
+                                Classes.Muted="{Binding IsNull}"
+                                FontFamily="{DynamicResource ShellDataFontFamily}"
+                                FontSize="{DynamicResource ShellFontSize10}"
+                                Text="{Binding Text}"
+                                TextWrapping="Wrap" />
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Grid>
             </Border>
           </Grid>
 
