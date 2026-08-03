@@ -114,6 +114,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private string _tableFilter = string.Empty;
     private IReadOnlyList<DatabaseResultColumnViewModel> _resultColumns = [];
     private IReadOnlyList<DatabaseResultRowViewModel> _resultRows = [];
+    private string? _lastPreviewedTable;
     private DatabaseResultRowViewModel? _selectedRow;
     private IReadOnlyList<DatabaseRowFieldViewModel> _selectedRowFields = [];
 
@@ -428,6 +429,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             SelectedDriver.Id,
             table.Name,
             PreviewRows);
+        _lastPreviewedTable = table.Name;
         QueryText = preview;
         await ExecuteQueryAsync(preview);
     }
@@ -509,6 +511,86 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             IsBusy = false;
             OnPropertyChanged(nameof(StatusText));
         }
+    }
+
+    /// <summary>One row as a JSON object, numbers and booleans unquoted.</summary>
+    public string BuildRowJson(DatabaseResultRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var fields = new Dictionary<string, object?>();
+        foreach (var (column, cell) in ResultColumns.Zip(row.Cells))
+        {
+            fields[column.Name] = cell.IsNull
+                ? null
+                : CoerceTypedValue(column.DataTypeName, cell.Text);
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(
+            fields,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+
+    /// <summary>One row as a two-line CSV: header and RFC-quoted values.</summary>
+    public string BuildRowCsv(DatabaseResultRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        static string Quote(string value) =>
+            value.Contains(',') || value.Contains('"') || value.Contains('\n')
+                ? $"\"{value.Replace("\"", "\"\"")}\""
+                : value;
+        var header = string.Join(",", ResultColumns.Select(column => Quote(column.Name)));
+        var values = string.Join(",", row.Cells.Select(cell =>
+            cell.IsNull ? string.Empty : Quote(cell.Text)));
+        return header + Environment.NewLine + values;
+    }
+
+    /// <summary>One row as an ANSI-quoted INSERT for the last previewed table.</summary>
+    public string BuildRowSqlInsert(DatabaseResultRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        static string QuoteIdentifier(string name) =>
+            $"\"{name.Replace("\"", "\"\"")}\"";
+        var table = QuoteIdentifier(_lastPreviewedTable ?? "table_name");
+        var columns = string.Join(", ", ResultColumns.Select(column =>
+            QuoteIdentifier(column.Name)));
+        var values = string.Join(", ", ResultColumns.Zip(row.Cells, (column, cell) =>
+            cell.IsNull
+                ? "NULL"
+                : CoerceTypedValue(column.DataTypeName, cell.Text) is bool or long or double or decimal
+                    ? cell.Text
+                    : $"'{cell.Text.Replace("'", "''")}'"));
+        return $"INSERT INTO {table} ({columns}) VALUES ({values});";
+    }
+
+    /// <summary>
+    /// Display text back to a typed value where the column type says the token
+    /// is numeric or boolean; everything else stays a string.
+    /// </summary>
+    private static object CoerceTypedValue(string dataTypeName, string text)
+    {
+        var type = dataTypeName.ToUpperInvariant();
+        if (type.Contains("BOOL") && bool.TryParse(text, out var flag))
+        {
+            return flag;
+        }
+
+        if (type.Contains("INT") && long.TryParse(text, out var integer))
+        {
+            return integer;
+        }
+
+        if ((type.Contains("REAL") || type.Contains("FLOAT") || type.Contains("DOUB")
+                || type.Contains("NUM") || type.Contains("DEC"))
+            && double.TryParse(
+                text,
+                System.Globalization.NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var number))
+        {
+            return number;
+        }
+
+        return text;
     }
 
     private void RefreshTables()

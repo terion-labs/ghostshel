@@ -257,8 +257,18 @@
 
             <!-- The TablePlus-style field inspector: every column of the selected
                  row readable in full, no matter how narrow the grid cells are. -->
-            <Border Grid.Column="1" Width="248" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1,0,0,0" IsVisible="{Binding HasSelectedRow}">
-              <Grid RowDefinitions="Auto,*">
+            <Border x:Name="InspectorColumn" Grid.Column="1" Width="248" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1,0,0,0" IsVisible="{Binding HasSelectedRow}">
+              <Grid ColumnDefinitions="Auto,*">
+                <!-- The drag handle that makes the inspector resizable. -->
+                <Border
+                    x:Name="InspectorResizeHandle"
+                    Width="5"
+                    Background="Transparent"
+                    Cursor="SizeWestEast"
+                    PointerPressed="OnInspectorResizePressed"
+                    PointerMoved="OnInspectorResizeMoved"
+                    PointerReleased="OnInspectorResizeReleased" />
+                <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*">
                 <Border Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
                   <Grid Margin="{controls:Inset Left=Md, Right=Xs}" ColumnDefinitions="*,Auto">
                     <TextBlock VerticalAlignment="Center" Classes="SectionHeading" Text="{Binding SelectedRowTitle}" />
@@ -272,7 +282,15 @@
                     </Button>
                   </Grid>
                 </Border>
-                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <Border Grid.Row="1" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+                  <StackPanel Margin="{controls:Inset Horizontal=Md, Vertical=Xs}" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                    <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Copy as" />
+                    <Button Classes="TextButton Accent" Click="OnCopyRowJsonClick" Content="JSON" AutomationProperties.Name="Copy the row as JSON" />
+                    <Button Classes="TextButton Accent" Click="OnCopyRowCsvClick" Content="CSV" AutomationProperties.Name="Copy the row as CSV" />
+                    <Button Classes="TextButton Accent" Click="OnCopyRowSqlClick" Content="SQL" AutomationProperties.Name="Copy the row as an SQL insert" />
+                  </StackPanel>
+                </Border>
+                <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                   <ItemsControl ItemsSource="{Binding SelectedRowFields}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
@@ -294,6 +312,7 @@
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
                 </ScrollViewer>
+                </Grid>
               </Grid>
             </Border>
           </Grid>

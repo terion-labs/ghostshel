@@ -190,6 +190,38 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Copy_builders_render_json_csv_and_sql_insert()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+        await panel.PreviewTableAsync(panel.Tables[0]);
+        var row = panel.ResultRows[^1];
+
+        var json = panel.BuildRowJson(row);
+        Assert.Contains("\"id\": 2", json, StringComparison.Ordinal);
+        Assert.Contains("\"name\": null", json, StringComparison.Ordinal);
+
+        Assert.Equal(
+            "id,name" + Environment.NewLine + "2,",
+            panel.BuildRowCsv(row));
+
+        Assert.Equal(
+            "INSERT INTO \"people\" (\"id\", \"name\") VALUES (2, NULL);",
+            panel.BuildRowSqlInsert(row));
+
+        var first = panel.ResultRows[0];
+        Assert.Equal(
+            "INSERT INTO \"people\" (\"id\", \"name\") VALUES (1, 'Ada');",
+            panel.BuildRowSqlInsert(first));
+    }
+
+    [Fact]
     public void Connection_string_display_masks_password_values()
     {
         using var panel = new DatabaseRuntimePanelViewModel(
