@@ -81,6 +81,15 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         }
     }
 
+    /// <summary>
+    /// True while the box holds the raw string the user is editing. Text is
+    /// committed on every change during editing: the Connect button runs a
+    /// bound command that never passes through this view, and a focus-loss
+    /// commit fires after focus is already gone, so an edge-triggered commit
+    /// loses the typed string exactly when it is needed.
+    /// </summary>
+    private bool _editingConnectionString;
+
     private void OnConnectionStringGotFocus(object? sender, Avalonia.Input.FocusChangedEventArgs e)
     {
         _ = sender;
@@ -88,6 +97,7 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         if (Panel is { IsSavedConnection: false } panel)
         {
             ConnectionStringBox.Text = panel.ConnectionString;
+            _editingConnectionString = true;
         }
     }
 
@@ -96,12 +106,24 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         _ = sender;
         _ = e;
         CommitConnectionString();
+        _editingConnectionString = false;
         SyncConnectionStringBox();
+    }
+
+    private void OnConnectionStringTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (_editingConnectionString)
+        {
+            CommitConnectionString();
+        }
     }
 
     private void CommitConnectionString()
     {
-        if (Panel is { IsSavedConnection: false } panel && ConnectionStringBox.IsFocused)
+        if (Panel is { IsSavedConnection: false } panel
+            && (_editingConnectionString || ConnectionStringBox.IsFocused))
         {
             panel.ConnectionString = ConnectionStringBox.Text ?? string.Empty;
         }

@@ -115,6 +115,7 @@
               KeyDown="OnConnectionStringKeyDown"
               GotFocus="OnConnectionStringGotFocus"
               LostFocus="OnConnectionStringLostFocus"
+              TextChanged="OnConnectionStringTextChanged"
               AutomationProperties.Name="Database connection string">
             <TextBox.InnerRightContent>
               <Button
