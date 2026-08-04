@@ -675,6 +675,9 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-binary", () => CreateFilePanelProbe("libghost.dylib"), null),
         ("file-preview-binary-hex", () => CreateFilePanelProbe("libghost.dylib", "hex"), null),
         ("file-preview-markdown", () => CreateFilePanelProbe("notes.md"), null),
+        // The same file read as its source: the two readings are the identical
+        // string, which is exactly why switching between them once failed.
+        ("file-preview-markdown-raw", () => CreateFilePanelProbe("notes.md", "raw"), null),
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),

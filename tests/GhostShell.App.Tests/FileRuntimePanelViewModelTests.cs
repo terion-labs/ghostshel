@@ -1368,6 +1368,31 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Showing_markdown_as_source_announces_the_change()
+    {
+        // The two readings are the same string, so nothing about the text
+        // changes — and a view told only about the text would keep drawing
+        // the document it already drew.
+        var panel = await PreviewOf("notes.md", "# Title");
+        var announced = new List<string>();
+        panel.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+
+        panel.PreviewToggles.Single().IsOn = true;
+
+        Assert.True(panel.HasSourcePreview);
+        Assert.False(panel.HasMarkdownPreview);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasSourcePreview), announced);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasMarkdownPreview), announced);
+
+        announced.Clear();
+        panel.PreviewToggles.Single().IsOn = false;
+
+        Assert.True(panel.HasMarkdownPreview);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasMarkdownPreview), announced);
+        panel.Dispose();
+    }
+
+    [Fact]
     public async Task Turning_a_table_off_shows_the_file_as_written()
     {
         var panel = await PreviewOf("people.csv", "name,city\nada,london\n");
@@ -1600,7 +1625,7 @@ public sealed class FileRuntimePanelViewModelTests
         }
     }
 
-    private sealed class StubFilePanelClient :
+    internal sealed class StubFilePanelClient :
         IFilePanelClient,
         IFileProviderProfileRuntime,
         IFileContentMaterializer

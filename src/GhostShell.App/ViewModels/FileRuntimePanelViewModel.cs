@@ -2076,12 +2076,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             case SourcePreviewRendering source:
                 ClearRenderingsOtherThanText();
                 WrapPreviewText = source.Wrap;
-                _markdownRendering = false;
+                SetMarkdownRendering(false);
                 PreviewText = source.Text;
                 break;
             case MarkdownPreviewRendering markdown:
                 ClearRenderingsOtherThanText();
-                _markdownRendering = true;
+                SetMarkdownRendering(true);
                 PreviewText = markdown.Text;
                 break;
             case BinaryPreviewRendering binary:
@@ -2140,6 +2140,24 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// Clears what was drawn, keeping the file, its details and the chosen
     /// switches: this is a change of reading, not a change of file.
     /// </summary>
+    /// <summary>
+    /// Whether the text in hand is laid out as Markdown or shown as source.
+    /// Announced here rather than left to the text itself: showing a Markdown
+    /// file as its source is the same string read a different way, so nothing
+    /// about the text changes and nothing about it would be announced.
+    /// </summary>
+    private void SetMarkdownRendering(bool isMarkdown)
+    {
+        if (_markdownRendering == isMarkdown)
+        {
+            return;
+        }
+
+        _markdownRendering = isMarkdown;
+        OnPropertyChanged(nameof(HasMarkdownPreview));
+        OnPropertyChanged(nameof(HasSourcePreview));
+    }
+
     private void ClearRenderingsOtherThanText()
     {
         PreviewImage = null;
@@ -2156,8 +2174,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewTable = null;
         PreviewTree = null;
         PreviewBinary = null;
-        _markdownRendering = false;
-        _wrapPreviewText = true;
+        SetMarkdownRendering(false);
+        WrapPreviewText = true;
         ClearHtmlPreview();
     }
 
@@ -2293,8 +2311,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _requestedPreviewEntry = null;
         _pdfPath = null;
         _lastPreview = null;
-        _markdownRendering = false;
-        _wrapPreviewText = true;
+        SetMarkdownRendering(false);
+        WrapPreviewText = true;
         _previewToggleState.Clear();
         PreviewToggles.Clear();
         ClearHtmlPreview();
