@@ -201,6 +201,11 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             if (refreshed.IsSuccess)
             {
                 _initialized = true;
+                // Ordinarily nobody is subscribed yet. With keys sealed under
+                // the startup PIN the whole presentation exists first and
+                // initialization happens behind the lock screen — this is
+                // how every projection learns the catalog now has content.
+                Changed?.Invoke(this, EventArgs.Empty);
             }
 
             return refreshed;

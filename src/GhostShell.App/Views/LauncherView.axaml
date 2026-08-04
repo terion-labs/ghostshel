@@ -118,7 +118,7 @@
         MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
         PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid Margin="{Binding $parent[Window].WindowTitleBarContentMargin}">
+      <Grid ColumnDefinitions="*,Auto" Margin="{Binding $parent[Window].WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <components:RuntimeTabStripView
             x:Name="LauncherTabStrip"
             Tabs="{Binding RuntimeWorkspace.Tabs}"
@@ -131,6 +131,15 @@
             HomeRequested="OnLauncherHomeClick"
             ActivateRequested="OnActivateTabClick"
             CloseRequested="OnCloseRuntimeTabClick" />
+        <StackPanel
+            Grid.Column="1"
+            Orientation="Horizontal"
+            VerticalAlignment="Center"
+            Spacing="{DynamicResource ShellSpaceXs}"
+            WindowDecorationProperties.ElementRole="User">
+          <Button Classes="IconButton" Click="OnShowSettingsClick" ToolTip.Tip="Settings" AutomationProperties.Name="Open settings"><icons:SymbolIcon Symbol="Settings" FontSize="15" /></Button>
+          <Button Classes="IconButton" Click="OnLockShellClick" ToolTip.Tip="Lock GhostSHELL" AutomationProperties.Name="Lock GhostSHELL" IsVisible="{Binding ApplicationSecurityEditor.IsProtectionEnabled}"><icons:SymbolIcon Symbol="LockClosed" FontSize="15" /></Button>
+        </StackPanel>
       </Grid>
     </Border>
   

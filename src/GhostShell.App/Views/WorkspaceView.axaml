@@ -62,6 +62,7 @@
           </Button>
           <Button Classes="IconButton" Click="OnToggleAgentClick" ToolTip.Tip="Toggle agent panel" AutomationProperties.Name="Toggle AI agent panel"><icons:SymbolIcon Symbol="Bot" FontSize="15" /></Button>
           <Button Classes="IconButton" Click="OnShowSettingsClick" ToolTip.Tip="Settings" AutomationProperties.Name="Open settings"><icons:SymbolIcon Symbol="Settings" FontSize="15" /></Button>
+          <Button Classes="IconButton" Click="OnLockShellClick" ToolTip.Tip="Lock GhostSHELL" AutomationProperties.Name="Lock GhostSHELL" IsVisible="{Binding ApplicationSecurityEditor.IsProtectionEnabled}"><icons:SymbolIcon Symbol="LockClosed" FontSize="15" /></Button>
         </StackPanel>
       </Grid>
     </Border>

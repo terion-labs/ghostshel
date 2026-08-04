@@ -5,6 +5,24 @@ namespace GhostShell.Application.Tests;
 public sealed class DefinitionCatalogTests
 {
     [Fact]
+    public async Task Initialization_announces_itself_to_whoever_already_listens()
+    {
+        // Ordinarily nothing subscribes before initialization. With keys
+        // sealed under the startup PIN the whole presentation exists first,
+        // and a catalog that filled itself silently would leave every
+        // projection empty — no connections, no workspaces, no way to open
+        // a terminal.
+        var fixture = new CatalogFixture();
+        var announced = 0;
+        fixture.Catalog.Changed += (_, _) => announced++;
+
+        var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(announced > 0, "Initialization filled the catalog without telling anyone.");
+    }
+
+    [Fact]
     public async Task Initialize_empty_catalog_seeds_a_bootable_local_workspace()
     {
         var fixture = new CatalogFixture();

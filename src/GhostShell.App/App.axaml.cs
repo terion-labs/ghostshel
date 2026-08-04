@@ -588,6 +588,9 @@ public sealed partial class App : Avalonia.Application
         // lock screen; the restore preference and the recovery decision both
         // live in the database that only exists to us after that.
         await _startupState.Initialized;
+        // The history load the window construction queued hit that same
+        // closed database; asked again now, it answers.
+        _ = MainWindowViewModel.RetryRecentSessionHistoryAsync(CancellationToken.None);
         if (_startupState.RecoveryState != RecoveryDecisionState.Pending)
         {
             _ = await MainWindowViewModel.RestoreSessionOnStartupAsync(

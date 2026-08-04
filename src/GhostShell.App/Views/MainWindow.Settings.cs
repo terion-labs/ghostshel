@@ -109,6 +109,13 @@ public sealed partial class MainWindow
         ViewModel.ApplicationSecurityEditor.LockNow();
     }
 
+    private void OnLockShellClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ViewModel.ApplicationSecurityEditor.LockNow();
+    }
+
     private void OnTerminalSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Terminal);
 

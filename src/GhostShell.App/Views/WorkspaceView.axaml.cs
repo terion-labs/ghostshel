@@ -111,6 +111,8 @@ public sealed partial class WorkspaceView : UserControl
     /// </summary>
     public event EventHandler<PanelSide>? AddPanelToSideRequested;
 
+    public event EventHandler<RoutedEventArgs>? LockShellRequested;
+
     public event EventHandler<RoutedEventArgs>? ShowSettingsRequested;
 
     public event EventHandler<RoutedEventArgs>? SubmitAgentQuestionRequested;
@@ -290,6 +292,9 @@ public sealed partial class WorkspaceView : UserControl
         _ = e;
         AddPanelToSideRequested?.Invoke(sender, PanelSide.Bottom);
     }
+
+    private void OnLockShellClick(object? sender, RoutedEventArgs e) =>
+        LockShellRequested?.Invoke(sender, e);
 
     private void OnShowSettingsClick(object? sender, RoutedEventArgs e) =>
         ShowSettingsRequested?.Invoke(sender, e);
