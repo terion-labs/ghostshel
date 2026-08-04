@@ -261,6 +261,18 @@ internal sealed class QaApplication : Avalonia.Application
             },
             Height: 1200,
             PrepareCapture: DragLastTabToTop),
+        new(
+            "settings-workspace-editor-switch",
+            vm =>
+            {
+                vm.ShowSettings(SettingsPage.Workspaces);
+                vm.BeginEditWorkspace(new WorkspaceId("operations"));
+                // Dirty on purpose: the rail has to carry an edit in progress
+                // with it, or it is a list you cannot use.
+                vm.WorkspaceEditor!.Name = "Operations (renamed)";
+            },
+            Height: 1200,
+            PrepareCapture: SelectDataInTheRail),
         // Keyboard focus has its own visuals; capturing it keeps the focus ring
         // reviewable instead of only reachable by hand.
         new("settings-appearance-focused", vm => vm.ShowSettings(SettingsPage.Appearance), FocusFirst: "SettingsBackButton"),
@@ -368,6 +380,23 @@ internal sealed class QaApplication : Avalonia.Application
         window.MouseMove(to);
         Dispatcher.UIThread.RunJobs();
         window.MouseUp(to, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>
+    /// Switches the editor to another workspace through the rail's own selection
+    /// path, so the capture shows what happens to the edit that was in progress.
+    /// </summary>
+    private static void SelectDataInTheRail(MainWindow window)
+    {
+        var rail = window.GetVisualDescendants()
+            .OfType<ListBox>()
+            .FirstOrDefault(list => list.Name == "PeerList")
+            ?? throw new InvalidOperationException("The workspace editor has no rail.");
+        rail.SelectedItem = rail.Items
+            .OfType<WorkspaceRailItemViewModel>()
+            .FirstOrDefault(peer => peer.Id == new WorkspaceId("data"))
+            ?? throw new InvalidOperationException("The rail does not list the Data workspace.");
         Dispatcher.UIThread.RunJobs();
     }
 

@@ -49,9 +49,32 @@ internal sealed class QaDefinitionCatalog : IDefinitionCatalog
         ScreenDefinition definition, long? expectedRevision, CancellationToken cancellationToken) =>
         Store(definition);
 
+    /// <summary>
+    /// A saved workspace lands in the snapshot, for the same reason the theme
+    /// does: the workspaces rail is drawn from the catalog, so a stub that
+    /// reported success and changed nothing would capture a rail that
+    /// contradicts the save it just made.
+    /// </summary>
     public ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>> SaveWorkspaceAsync(
-        WorkspaceDefinition definition, long? expectedRevision, CancellationToken cancellationToken) =>
-        Store(definition);
+        WorkspaceDefinition definition, long? expectedRevision, CancellationToken cancellationToken)
+    {
+        var stored = new StoredDefinition<WorkspaceDefinition>(
+            definition,
+            (expectedRevision ?? 0) + 1,
+            QaData.Now,
+            QaData.Now);
+        Snapshot = Snapshot with
+        {
+            Workspaces =
+            [
+                .. Snapshot.Workspaces.Where(item => item.Value.Id != definition.Id),
+                stored,
+            ],
+        };
+        Changed?.Invoke(this, EventArgs.Empty);
+        return ValueTask.FromResult(
+            DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Success(stored));
+    }
 
     /// <summary>
     /// The saved appearance, kept so the harness can re-publish it exactly as
