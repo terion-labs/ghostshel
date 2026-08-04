@@ -1397,7 +1397,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             var operation = QueueHistoryOperation(token =>
                 RefreshRecentSessionsCoreAsync(token));
             await operation.WaitAsync(cancellationToken);
-            return !HasRecentSessionFailure;
+            if (HasRecentSessionFailure)
+            {
+                return false;
+            }
+
+            lock (_historyGate)
+            {
+                // The store just answered in full — retention and the list
+                // both. The sticky drain error describes a world this retry
+                // replaced (a read against the still-sealed database, say),
+                // and reporting it at exit would be reporting a ghost.
+                _historyDrainError = null;
+            }
+
+            return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
