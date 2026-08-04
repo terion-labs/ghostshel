@@ -24,6 +24,7 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
 
     private readonly IApplicationEncryption? _encryption;
     private readonly IStartupProtection? _protection;
+    private readonly IBiometricAuthenticator? _biometrics;
     private readonly DispatcherTimer? _idleTimer;
     private DateTimeOffset _lastActivity = DateTimeOffset.UtcNow;
     private bool _busy;
@@ -37,10 +38,12 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
 
     public ApplicationSecurityEditorViewModel(
         IApplicationEncryption? encryption = null,
-        IStartupProtection? protection = null)
+        IStartupProtection? protection = null,
+        IBiometricAuthenticator? biometrics = null)
     {
         _encryption = encryption;
         _protection = protection;
+        _biometrics = biometrics;
         if (_encryption is not null)
         {
             _encryption.Changed += (_, _) => OnPropertyChanged(nameof(IsEncryptionEnabled));
@@ -274,6 +277,28 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
     }
 
     public void LockNow() => _protection?.Lock();
+
+    public bool CanUseBiometrics => _biometrics?.IsAvailable ?? false;
+
+    public string BiometricUnlockLabel =>
+        $"Unlock with {_biometrics?.MethodName ?? "biometrics"}";
+
+    public async Task TryUnlockWithBiometricsAsync()
+    {
+        if (_protection is null || _biometrics is null)
+        {
+            return;
+        }
+
+        // The OS draws the prompt and verdicts; a pass lifts the curtain the
+        // same way the PIN would, meter and all.
+        if (await _biometrics.AuthenticateAsync("unlock GhostSHELL", CancellationToken.None))
+        {
+            _protection.UnlockAuthenticated();
+            UnlockStatus = null;
+            NoteActivity();
+        }
+    }
 
     /// <summary>
     /// Called by the window for any pointer or key input, so "idle" means

@@ -191,6 +191,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IPreviewCacheControl? previewCacheControl = null,
         IApplicationEncryption? applicationEncryption = null,
         IStartupProtection? startupProtection = null,
+        IBiometricAuthenticator? biometricAuthenticator = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
@@ -217,7 +218,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             previewCacheControl);
         ApplicationSecurityEditor = new ApplicationSecurityEditorViewModel(
             applicationEncryption,
-            startupProtection);
+            startupProtection,
+            biometricAuthenticator);
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;

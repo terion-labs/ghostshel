@@ -52,6 +52,14 @@
             Click="OnUnlockClick"
             Content="Unlock"
             AutomationProperties.Name="Unlock GhostSHELL" />
+        <Button
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Classes="SecondaryButton"
+            Click="OnBiometricUnlockClick"
+            Content="{Binding BiometricUnlockLabel}"
+            IsVisible="{Binding CanUseBiometrics}"
+            AutomationProperties.Name="Unlock with biometrics" />
       </StackPanel>
     </controls:SurfaceCard>
   </Border>

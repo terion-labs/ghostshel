@@ -471,6 +471,21 @@ internal sealed class QaLockedProtection : GhostShell.Application.IStartupProtec
     {
     }
 
+    public void UnlockAuthenticated()
+    {
+    }
+
     public ValueTask SetLockTimeoutAsync(TimeSpan? timeout, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
+}
+
+/// <summary>Biometrics that exist but never verify, for the capture.</summary>
+internal sealed class QaBiometrics : GhostShell.Application.IBiometricAuthenticator
+{
+    public bool IsAvailable => true;
+
+    public string MethodName => "Touch ID";
+
+    public Task<bool> AuthenticateAsync(string reason, CancellationToken cancellationToken) =>
+        Task.FromResult(false);
 }

@@ -42,5 +42,12 @@ public interface IStartupProtection
     /// <summary>Locks now; a lock while disabled does nothing.</summary>
     void Lock();
 
+    /// <summary>
+    /// Unlocks without the PIN, for a caller that just verified the person by
+    /// other means — the OS biometric prompt. In-process only by nature: the
+    /// boundary this class defends is the keyboard, not the process.
+    /// </summary>
+    void UnlockAuthenticated();
+
     ValueTask SetLockTimeoutAsync(TimeSpan? timeout, CancellationToken cancellationToken);
 }

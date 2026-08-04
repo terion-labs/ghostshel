@@ -44,6 +44,10 @@ public static class DesktopComposition
             // built before the database so the very first open has its key
             // in hand.
             () => provider.GetRequiredService<GhostShellDatabase>()));
+        if (OperatingSystem.IsMacOS())
+        {
+            services.AddSingleton<IBiometricAuthenticator, MacOsBiometricAuthenticator>();
+        }
         services.AddSingleton<IStartupProtection>(provider => new StartupProtectionRuntime(
             provider.GetRequiredService<ApplicationSecurityVault>().Vault,
             Path.GetDirectoryName(SqliteStorageOptions.CreateDefault().DatabasePath)!));

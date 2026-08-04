@@ -436,7 +436,8 @@ internal sealed class QaApplication : Avalonia.Application
             {
                 DataContext = new GhostShell.App.ViewModels.ApplicationSecurityEditorViewModel(
                     encryption: null,
-                    protection: new QaLockedProtection()),
+                    protection: new QaLockedProtection(),
+                    biometrics: new QaBiometrics()),
             },
         }, null),
         // The statistics panel at a split-panel width, so the stat-card wrap is

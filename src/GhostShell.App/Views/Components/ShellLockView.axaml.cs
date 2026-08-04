@@ -42,6 +42,16 @@ public partial class ShellLockView : UserControl
         }
     }
 
+    private void OnBiometricUnlockClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is ApplicationSecurityEditorViewModel editor)
+        {
+            _ = editor.TryUnlockWithBiometricsAsync();
+        }
+    }
+
     private void TryUnlock()
     {
         if (DataContext is ApplicationSecurityEditorViewModel editor)

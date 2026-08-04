@@ -235,6 +235,28 @@ public sealed class StartupProtectionRuntime : IStartupProtection
         return matches;
     }
 
+    public void UnlockAuthenticated()
+    {
+        lock (_gate)
+        {
+            if (_state is null || !_locked)
+            {
+                return;
+            }
+
+            _locked = false;
+            if (_state.FailedAttempts != 0 || _state.RetryAfterUtc is not null)
+            {
+                // The person is verified; the miss meter has nothing left to
+                // defend against.
+                _state = _state with { FailedAttempts = 0, RetryAfterUtc = null };
+                Write(_state);
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public void Lock()
     {
         lock (_gate)
