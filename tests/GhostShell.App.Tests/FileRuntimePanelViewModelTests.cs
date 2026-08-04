@@ -1742,6 +1742,31 @@ public sealed class FileRuntimePanelViewModelTests
         }
     }
 
+    [Fact]
+    public async Task The_auto_preview_caption_follows_the_threshold_setting()
+    {
+        var preferences = new InMemoryFilePreviewPreferences();
+        var client = new StubFilePanelClient();
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            previewPreferences: preferences);
+        await panel.Initialization;
+        Assert.Equal("Automatically preview files < 2 MB", panel.AutoDownloadPreviewLabel);
+
+        var announced = false;
+        panel.PropertyChanged += (_, e) =>
+            announced |= e.PropertyName == nameof(panel.AutoDownloadPreviewLabel);
+        await preferences.ApplyAsync(
+            preferences.Current with { AutoLoadThresholdBytes = 8 * 1024 * 1024 },
+            CancellationToken.None);
+
+        // A caption that promises a number must follow the number.
+        Assert.True(announced);
+        Assert.Equal("Automatically preview files < 8 MB", panel.AutoDownloadPreviewLabel);
+    }
+
     internal sealed class StubFilePanelClient :
         IFilePanelClient,
         IFileProviderProfileRuntime,

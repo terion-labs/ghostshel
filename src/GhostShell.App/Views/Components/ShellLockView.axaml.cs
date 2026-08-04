@@ -42,6 +42,18 @@ public partial class ShellLockView : UserControl
         }
     }
 
+    private void OnVeilPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _ = sender;
+        // Only presses nothing else claimed reach here — the PIN box and the
+        // buttons handle their own — so a drag can never eat a click.
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            && VisualRoot is Avalonia.Controls.Window window)
+        {
+            window.BeginMoveDrag(e);
+        }
+    }
+
     private void OnBiometricUnlockClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

@@ -6,8 +6,11 @@
     xmlns:icons="using:FluentIcons.Avalonia">
 
   <!-- The veil is opaque on purpose: a lock screen that lets the content
-       shimmer through is a screenshot of the content. -->
-  <Border Background="{DynamicResource ShellBackgroundBrush}">
+       shimmer through is a screenshot of the content. It also covers the
+       custom title bar, so it takes over the title bar's one duty: any
+       press on its background drags the window. -->
+  <Border Background="{DynamicResource ShellBackgroundBrush}"
+      PointerPressed="OnVeilPointerPressed">
     <controls:SurfaceCard
         Width="360"
         HorizontalAlignment="Center"

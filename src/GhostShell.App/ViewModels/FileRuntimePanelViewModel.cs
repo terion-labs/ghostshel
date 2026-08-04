@@ -189,6 +189,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _pdfRenderer = pdfRenderer;
         _databaseRegistry = databaseRegistry;
         _previewPreferences = previewPreferences;
+        if (_previewPreferences is not null)
+        {
+            _previewPreferences.Changed += OnPreviewPreferencesChanged;
+        }
+
         _contentSource = client as IFileContentSource;
         _connection = connection ?? BuiltInConnections.Local;
         _retryCommand = new AsyncActionCommand(
@@ -688,6 +693,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// </summary>
     private long AutoLoadThresholdBytes =>
         _previewPreferences?.Current.AutoLoadThresholdBytes ?? AutoDownloadPreviewBytes;
+
+    /// <summary>
+    /// The toggle's caption, carrying the live threshold: the number it
+    /// promises is the number the settings page set, not a hardcoded one.
+    /// </summary>
+    public string AutoDownloadPreviewLabel =>
+        $"Automatically preview files < {ByteSize.Format(AutoLoadThresholdBytes)}";
+
+    private void OnPreviewPreferencesChanged(object? sender, EventArgs e) =>
+        OnPropertyChanged(nameof(AutoDownloadPreviewLabel));
 
     /// <summary>
     /// Whether this provider's files are fetched over a network. Local
@@ -1568,6 +1583,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             _profileRuntime.ProfilesChanged -= OnProfilesChanged;
         }
+
+        if (_previewPreferences is not null)
+        {
+            _previewPreferences.Changed -= OnPreviewPreferencesChanged;
+        }
+
         _lifetime.Cancel();
         _navigation?.Cancel();
         _preview?.Cancel();

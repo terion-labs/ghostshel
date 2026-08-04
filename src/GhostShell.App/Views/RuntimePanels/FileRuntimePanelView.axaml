@@ -423,11 +423,11 @@
                       VerticalAlignment="Center"
                       Classes="Muted"
                       FontSize="{DynamicResource ShellFontSize9}"
-                      Text="Auto-download &lt;2 MB files for preview" />
+                      Text="{Binding AutoDownloadPreviewLabel}" />
                   <ToggleSwitch
                       VerticalAlignment="Center"
                       IsChecked="{Binding AutoDownloadPreviews, Mode=TwoWay}"
-                      AutomationProperties.Name="Automatically download files under two megabytes to preview them" />
+                      AutomationProperties.Name="Automatically preview files under the size threshold" />
                 </StackPanel>
               </Grid>
             </Border>

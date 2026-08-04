@@ -608,10 +608,10 @@
                     </StackPanel>
                     <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}"
                         IsVisible="{Binding ApplicationSecurityEditor.ShowProtectionSetup}">
-                      <TextBox PasswordChar="●" Watermark="Choose a PIN"
+                      <TextBox PasswordChar="●" PlaceholderText="Choose a PIN"
                           Text="{Binding ApplicationSecurityEditor.NewPin}"
                           AutomationProperties.Name="New startup PIN" />
-                      <TextBox Grid.Column="1" PasswordChar="●" Watermark="Repeat the PIN"
+                      <TextBox Grid.Column="1" PasswordChar="●" PlaceholderText="Repeat the PIN"
                           Text="{Binding ApplicationSecurityEditor.NewPinConfirmation}"
                           AutomationProperties.Name="Repeat startup PIN" />
                       <Button Grid.Column="2" Classes="PrimaryButton" Content="Turn on"
@@ -632,7 +632,7 @@
                             AutomationProperties.Name="Lock timeout" />
                       </Grid>
                       <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                        <TextBox PasswordChar="●" Watermark="Current PIN"
+                        <TextBox PasswordChar="●" PlaceholderText="Current PIN"
                             Text="{Binding ApplicationSecurityEditor.CurrentPin}"
                             AutomationProperties.Name="Current startup PIN" />
                         <Button Grid.Column="1" Classes="SecondaryButton" Content="Lock now"
