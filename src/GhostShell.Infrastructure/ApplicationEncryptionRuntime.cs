@@ -83,10 +83,22 @@ public sealed class ApplicationEncryptionRuntime : IApplicationEncryption, IDisp
     public string? ConfigDatabasePassword => _configPassword;
 
     /// <summary>
+    /// True while the database is encrypted and its keys wait behind the
+    /// startup PIN: nothing that needs the database may run until
+    /// <see cref="AcceptUnwrappedKeys"/> delivers them.
+    /// </summary>
+    public bool AwaitingUnlock { get; private set; }
+
+    /// <summary>
     /// Reads the state of the disk and, when encrypted, the keys from the
     /// keystore. Runs before anything opens the configuration database.
+    /// <paramref name="wrappedKeysPending"/> says startup protection holds
+    /// the keys sealed under the PIN — then their absence from the keystore
+    /// is the design working, not a loss.
     /// </summary>
-    public async ValueTask InitializeAsync(CancellationToken cancellationToken)
+    public async ValueTask InitializeAsync(
+        bool wrappedKeysPending,
+        CancellationToken cancellationToken)
     {
         if (!DatabaseLooksEncrypted())
         {
@@ -96,6 +108,12 @@ public sealed class ApplicationEncryptionRuntime : IApplicationEncryption, IDisp
         _enabled = true;
         _configPassword = await ResolveAsync(ConfigKeyReference, cancellationToken)
             .ConfigureAwait(false);
+        if (_configPassword is null && wrappedKeysPending)
+        {
+            AwaitingUnlock = true;
+            return;
+        }
+
         if (_configPassword is null)
         {
             StartupError =
@@ -176,6 +194,54 @@ public sealed class ApplicationEncryptionRuntime : IApplicationEncryption, IDisp
         _enabled = true;
         Changed?.Invoke(this, EventArgs.Empty);
         return null;
+    }
+
+    /// <summary>
+    /// The keys as startup protection seals them. Null while disabled — there
+    /// is nothing to seal.
+    /// </summary>
+    internal (string Config, string Cache)? ExportKeys() =>
+        _enabled && _configPassword is not null && _cachePassword is not null
+            ? (_configPassword, _cachePassword)
+            : null;
+
+    /// <summary>
+    /// Removes the keystore copies while keeping the keys in memory: from now
+    /// on the sealed blob under the PIN is their only durable home.
+    /// </summary>
+    internal ValueTask ForgetKeystoreCopiesAsync(CancellationToken cancellationToken) =>
+        ForgetAsync(cancellationToken);
+
+    /// <summary>Puts the keys back into the keystore — protection turned off.</summary>
+    internal async ValueTask<bool> RestoreKeystoreCopiesAsync(
+        string configKey,
+        string cacheKey,
+        CancellationToken cancellationToken) =>
+        await StoreAsync(
+                ConfigKeyReference,
+                "Configuration database encryption key",
+                configKey,
+                cancellationToken)
+            .ConfigureAwait(false)
+        && await StoreAsync(
+                CacheKeyReference,
+                "Preview cache encryption key",
+                cacheKey,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>
+    /// Startup protection verified the PIN and unsealed the keys. From here
+    /// the runtime behaves exactly as if the keystore had answered.
+    /// </summary>
+    internal void AcceptUnwrappedKeys(string configKey, string cacheKey)
+    {
+        _configPassword = configKey;
+        _cachePassword = cacheKey;
+        _enabled = true;
+        AwaitingUnlock = false;
+        StartupError = null;
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private async ValueTask<string?> DisableAsync(CancellationToken cancellationToken)

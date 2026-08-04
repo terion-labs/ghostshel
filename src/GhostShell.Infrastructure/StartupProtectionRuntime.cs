@@ -23,6 +23,14 @@ public sealed class StartupProtectionRuntime : IStartupProtection
     private const int Iterations = 600_000;
     private const int FreeAttempts = 5;
 
+    /// <summary>
+    /// One PBKDF2 run yields both halves: the stored verifier and the key
+    /// that seals the app-encryption keys. The halves of a PRF output are
+    /// independent, so publishing the first says nothing about the second.
+    /// </summary>
+    private const int DerivedBytes = 64;
+    private const int VerifierBytes = 32;
+
     private static readonly SecretRef PepperReference = new("app.security.startup-pepper");
 
     private static readonly SecretUsePurpose Purpose = new(
@@ -36,17 +44,46 @@ public sealed class StartupProtectionRuntime : IStartupProtection
     private ProtectionFile? _state;
     private bool _locked;
 
+    private readonly ApplicationEncryptionRuntime? _encryption;
+
     public StartupProtectionRuntime(
         ISecretVault vault,
         string dataDirectory,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ApplicationEncryptionRuntime? encryption = null)
     {
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         _path = Path.Combine(Path.GetFullPath(dataDirectory), FileName);
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _encryption = encryption;
         _state = Read();
         _locked = _state is not null;
+        if (_encryption is not null)
+        {
+            _encryption.Changed += OnEncryptionChanged;
+        }
+    }
+
+    /// <summary>
+    /// Whether the app-encryption keys live sealed under the PIN rather than
+    /// in the keystore. Read at startup, before the database can open.
+    /// </summary>
+    public bool HoldsWrappedKeys => _state?.WrappedKeys is not null;
+
+    private void OnEncryptionChanged(object? sender, EventArgs e)
+    {
+        lock (_gate)
+        {
+            // Encryption turned off makes a sealed blob meaningless; holding
+            // dead ciphertext would only confuse the next startup.
+            if (_encryption is { IsEnabled: false }
+                && _state is { WrappedKeys: not null } state)
+            {
+                _state = state with { WrappedKeys = null };
+                Write(_state);
+            }
+        }
     }
 
     public bool IsEnabled => _state is not null;
@@ -107,14 +144,16 @@ public sealed class StartupProtectionRuntime : IStartupProtection
         }
 
         var salt = RandomNumberGenerator.GetBytes(16);
+        var derived = Derive(pin, salt, pepper);
         var file = new ProtectionFile(
-            Version: 1,
+            Version: 2,
             Salt: Convert.ToHexStringLower(salt),
             Iterations,
-            Verifier: Convert.ToHexStringLower(Derive(pin, salt, pepper)),
+            Verifier: Convert.ToHexStringLower(derived[..VerifierBytes]),
             LockTimeoutSeconds: _state?.LockTimeoutSeconds,
             FailedAttempts: 0,
-            RetryAfterUtc: null);
+            RetryAfterUtc: null,
+            WrappedKeys: SealKeys(derived[VerifierBytes..]));
         lock (_gate)
         {
             _state = file;
@@ -124,8 +163,108 @@ public sealed class StartupProtectionRuntime : IStartupProtection
             _locked = false;
         }
 
+        if (file.WrappedKeys is not null)
+        {
+            // The sealed blob is now the keys' only durable home.
+            await _encryption!.ForgetKeystoreCopiesAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         Changed?.Invoke(this, EventArgs.Empty);
         return null;
+    }
+
+    /// <summary>
+    /// Seals the app-encryption keys under a PIN typed just now — the path
+    /// for turning encryption on while protection already stands. Verifies
+    /// the PIN itself: sealing under an unverified string would brick the
+    /// next startup.
+    /// </summary>
+    public async ValueTask<string?> SealEncryptionKeysAsync(
+        string pin,
+        CancellationToken cancellationToken)
+    {
+        var state = _state;
+        if (state is null || _encryption?.ExportKeys() is null)
+        {
+            return null;
+        }
+
+        if (state.Version < 2)
+        {
+            return "This PIN was set before sealed keys existed; turn protection "
+                + "off and on again to refresh it.";
+        }
+
+        var pepper = await ResolvePepperAsync(cancellationToken).ConfigureAwait(false);
+        if (pepper is null)
+        {
+            return "The OS keystore did not release the protection pepper.";
+        }
+
+        var derived = Derive(pin, Convert.FromHexString(state.Salt), pepper);
+        if (!CryptographicOperations.FixedTimeEquals(
+                derived.AsSpan(0, VerifierBytes),
+                Convert.FromHexString(state.Verifier)))
+        {
+            return "That PIN was refused.";
+        }
+
+        lock (_gate)
+        {
+            _state = state with { WrappedKeys = SealKeys(derived[VerifierBytes..]) };
+            Write(_state);
+        }
+
+        await _encryption.ForgetKeystoreCopiesAsync(cancellationToken).ConfigureAwait(false);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return null;
+    }
+
+    /// <summary>AES-GCM over "config\ncache", or null with nothing to seal.</summary>
+    private string? SealKeys(byte[] wrappingKey)
+    {
+        if (_encryption?.ExportKeys() is not { } keys)
+        {
+            return null;
+        }
+
+        var plaintext = Encoding.UTF8.GetBytes($"{keys.Config}\n{keys.Cache}");
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var ciphertext = new byte[plaintext.Length];
+        var tag = new byte[16];
+        using var cipher = new AesGcm(wrappingKey, tag.Length);
+        cipher.Encrypt(nonce, plaintext, ciphertext, tag);
+        return Convert.ToHexStringLower(nonce)
+            + ":" + Convert.ToHexStringLower(ciphertext)
+            + ":" + Convert.ToHexStringLower(tag);
+    }
+
+    private static (string Config, string Cache)? UnsealKeys(
+        string wrapped,
+        byte[] wrappingKey)
+    {
+        try
+        {
+            var parts = wrapped.Split(':');
+            var nonce = Convert.FromHexString(parts[0]);
+            var ciphertext = Convert.FromHexString(parts[1]);
+            var tag = Convert.FromHexString(parts[2]);
+            var plaintext = new byte[ciphertext.Length];
+            using var cipher = new AesGcm(wrappingKey, tag.Length);
+            cipher.Decrypt(nonce, ciphertext, tag, plaintext);
+            var keys = Encoding.UTF8.GetString(plaintext).Split('\n');
+            return (keys[0], keys[1]);
+        }
+        catch (Exception exception)
+            when (exception is System.Security.Cryptography.AuthenticationTagMismatchException
+                or FormatException
+                or IndexOutOfRangeException)
+        {
+            // A blob the right PIN cannot open is corrupt, not mistyped; the
+            // caller reports it rather than counting a miss.
+            return null;
+        }
     }
 
     public async ValueTask<string?> DisableAsync(
@@ -142,6 +281,22 @@ public sealed class StartupProtectionRuntime : IStartupProtection
             return RetryDelaySeconds > 0
                 ? $"That PIN was refused; the next attempt can be made in {RetryDelaySeconds}s."
                 : "That PIN was refused.";
+        }
+
+        if (_state?.WrappedKeys is not null && _encryption?.ExportKeys() is { } keys)
+        {
+            // The sealed blob dies with the gate, so the keystore becomes the
+            // keys' home again — and the disable is refused rather than let
+            // the only durable copy vanish.
+            if (!await _encryption.RestoreKeystoreCopiesAsync(
+                        keys.Config,
+                        keys.Cache,
+                        cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return "The OS keystore refused to take the encryption keys back; "
+                    + "protection stays on.";
+            }
         }
 
         lock (_gate)
@@ -197,7 +352,18 @@ public sealed class StartupProtectionRuntime : IStartupProtection
 
         var offered = Derive(pin ?? string.Empty, Convert.FromHexString(state.Salt), pepper);
         var expected = Convert.FromHexString(state.Verifier);
-        var matches = CryptographicOperations.FixedTimeEquals(offered, expected);
+        var matches = CryptographicOperations.FixedTimeEquals(
+            offered.AsSpan(0, expected.Length),
+            expected);
+        if (matches
+            && state.WrappedKeys is { } wrapped
+            && _encryption is not null
+            && UnsealKeys(wrapped, offered[VerifierBytes..]) is { } keys)
+        {
+            // The PIN is the keys' release: this is the moment the encrypted
+            // configuration database becomes openable.
+            _encryption.AcceptUnwrappedKeys(keys.Config, keys.Cache);
+        }
         lock (_gate)
         {
             if (matches)
@@ -237,6 +403,15 @@ public sealed class StartupProtectionRuntime : IStartupProtection
 
     public void UnlockAuthenticated()
     {
+        // A sensor verdict cannot derive the wrapping key: while the
+        // encryption keys wait sealed, only the PIN opens anything, and
+        // lifting the curtain without them would start a profile that
+        // cannot read its own database.
+        if (_encryption is { AwaitingUnlock: true })
+        {
+            return;
+        }
+
         lock (_gate)
         {
             if (_state is null || !_locked)
@@ -313,7 +488,7 @@ public sealed class StartupProtectionRuntime : IStartupProtection
             seasoned,
             Iterations,
             HashAlgorithmName.SHA512,
-            outputLength: 32);
+            DerivedBytes);
     }
 
     private async ValueTask<byte[]?> ResolvePepperAsync(CancellationToken cancellationToken)
@@ -388,7 +563,11 @@ public sealed class StartupProtectionRuntime : IStartupProtection
         }
     }
 
-    /// <summary>Everything on disk. No secrets: the pepper never joins it.</summary>
+    /// <summary>
+    /// Everything on disk. No secrets: the pepper never joins it, and
+    /// <paramref name="WrappedKeys"/> is AES-GCM ciphertext under a key that
+    /// only the PIN and the pepper together can derive.
+    /// </summary>
     private sealed record ProtectionFile(
         int Version,
         string Salt,
@@ -396,5 +575,6 @@ public sealed class StartupProtectionRuntime : IStartupProtection
         string Verifier,
         long? LockTimeoutSeconds,
         int FailedAttempts,
-        DateTimeOffset? RetryAfterUtc);
+        DateTimeOffset? RetryAfterUtc,
+        string? WrappedKeys = null);
 }

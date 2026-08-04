@@ -112,7 +112,7 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
 
         // A restart: a fresh runtime over the same disk and vault.
         var (rebooted, rebootedDatabase) = Compose();
-        await rebooted.InitializeAsync(CancellationToken.None);
+        await rebooted.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
         Assert.True(rebooted.IsEnabled);
         Assert.Null(rebooted.StartupError);
         Assert.Equal("sentinel-value", await ReadSentinelAsync(rebootedDatabase));
@@ -133,7 +133,7 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
         // The keys are gone: a fresh runtime sees a plain database and has
         // nothing to resolve.
         var (rebooted, _) = Compose();
-        await rebooted.InitializeAsync(CancellationToken.None);
+        await rebooted.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
         Assert.False(rebooted.IsEnabled);
         Assert.Null(rebooted.PersistentCachePassword);
     }
@@ -151,7 +151,7 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
             emptyVault,
             DatabasePath,
             () => throw new InvalidOperationException("The database must not be touched."));
-        await orphaned.InitializeAsync(CancellationToken.None);
+        await orphaned.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
 
         Assert.True(orphaned.IsEnabled);
         Assert.NotNull(orphaned.StartupError);

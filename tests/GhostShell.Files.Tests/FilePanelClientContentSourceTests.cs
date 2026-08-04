@@ -368,6 +368,8 @@ public sealed class FilePanelClientContentSourceTests : IDisposable
 
         public bool IsEnabled { get; set; }
 
+        public bool AwaitingUnlock => false;
+
         public string? UnsupportedReason => null;
 
         public string? PersistentCachePassword { get; set; } =

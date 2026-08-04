@@ -46,7 +46,11 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
         _biometrics = biometrics;
         if (_encryption is not null)
         {
-            _encryption.Changed += (_, _) => OnPropertyChanged(nameof(IsEncryptionEnabled));
+            _encryption.Changed += (_, _) =>
+            {
+                OnPropertyChanged(nameof(IsEncryptionEnabled));
+                OnPropertyChanged(nameof(CanUseBiometrics));
+            };
         }
 
         if (_protection is not null)
@@ -115,8 +119,29 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
     {
         try
         {
+            if (enabled && _protection is { IsEnabled: true }
+                && string.IsNullOrEmpty(CurrentPin))
+            {
+                // The new keys are sealed under the PIN the moment they
+                // exist; without it they would sit in the keystore, which is
+                // exactly what protection promises they do not.
+                StatusDetail = "Enter your current PIN under Protect startup first: "
+                    + "the new keys are sealed under it.";
+                return;
+            }
+
             var refusal = await _encryption!.SetEnabledAsync(enabled, CancellationToken.None);
             StatusDetail = refusal;
+            if (refusal is null && enabled && _protection is { IsEnabled: true })
+            {
+                StatusDetail = await _protection.SealEncryptionKeysAsync(
+                    CurrentPin,
+                    CancellationToken.None);
+                if (StatusDetail is null)
+                {
+                    CurrentPin = string.Empty;
+                }
+            }
         }
         catch (Exception exception)
         {
@@ -278,7 +303,11 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
 
     public void LockNow() => _protection?.Lock();
 
-    public bool CanUseBiometrics => _biometrics?.IsAvailable ?? false;
+    public bool CanUseBiometrics =>
+        _biometrics?.IsAvailable == true
+        // While the keys wait sealed under the PIN, only the PIN is an
+        // unlock; offering the sensor would offer a button that cannot work.
+        && _encryption is not { AwaitingUnlock: true };
 
     public string BiometricUnlockLabel =>
         $"Unlock with {_biometrics?.MethodName ?? "biometrics"}";

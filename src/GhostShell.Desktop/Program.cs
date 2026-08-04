@@ -57,10 +57,15 @@ internal static class Program
         await using var serviceProviderLifetime = services.ConfigureAwait(false);
 
         // Before anything opens the configuration database: an encrypted
-        // database needs its key from the OS keystore in hand for the very
-        // first connection.
+        // database needs its key in hand for the very first connection —
+        // from the OS keystore, or, when protection sealed the keys under
+        // the PIN, from the unlock that has not happened yet.
+        var protection = services.GetRequiredService<IStartupProtection>()
+            as StartupProtectionRuntime;
         var encryption = services.GetRequiredService<ApplicationEncryptionRuntime>();
-        await encryption.InitializeAsync(CancellationToken.None);
+        await encryption.InitializeAsync(
+            wrappedKeysPending: protection?.HoldsWrappedKeys ?? false,
+            CancellationToken.None);
         if (encryption.StartupError is { } encryptionError)
         {
             Console.Error.WriteLine($"GhostSHELL cannot open this profile: {encryptionError}");
@@ -72,65 +77,83 @@ internal static class Program
             return;
         }
 
-        var runStore = services.GetRequiredService<IApplicationRunStore>();
-        var startResult = await runStore.BeginRunAsync(CancellationToken.None);
-        if (!startResult.IsSuccess)
+        async Task<string?> InitializeProfileAsync()
         {
-            ReportLifecycleFailure(
-                "initialize its recovery marker",
-                startResult.Error!);
+            var runStore = services.GetRequiredService<IApplicationRunStore>();
+            var startResult = await runStore.BeginRunAsync(CancellationToken.None);
+            if (!startResult.IsSuccess)
+            {
+                ReportLifecycleFailure(
+                    "initialize its recovery marker",
+                    startResult.Error!);
+                return $"Local application data is unavailable ({startResult.Error!.Code}).";
+            }
+
+            var startupState = services.GetRequiredService<ApplicationStartupState>();
+            startupState.Initialize(startResult.Value!);
+
+            var agentAuditRecovery = await services
+                .GetRequiredService<AgentAuditRecovery>()
+                .RecoverAsync(CancellationToken.None);
+            if (!agentAuditRecovery.IsSuccess)
+            {
+                Console.Error.WriteLine(
+                    $"GhostSHELL could not reconcile its agent audit trail "
+                    + $"({agentAuditRecovery.Error!.Code}).");
+                return "The local agent audit trail is unavailable or invalid.";
+            }
+
+            var catalog = services.GetRequiredService<IDefinitionCatalog>();
+            var catalogResult = await catalog.InitializeAsync(CancellationToken.None);
+            if (!catalogResult.IsSuccess)
+            {
+                Console.Error.WriteLine(
+                    $"GhostSHELL could not load its durable definitions "
+                    + $"({catalogResult.Error!.Code}).");
+                return $"Saved connections and workspaces are unavailable "
+                    + $"({catalogResult.Error.Code}).";
+            }
+
+            // Failure-tolerant by design: unreadable settings mean the
+            // defaults, never a startup error.
+            await services.GetRequiredService<SqliteFilePreviewPreferences>()
+                .InitializeAsync(CancellationToken.None);
+            return null;
+        }
+
+        if (encryption.AwaitingUnlock)
+        {
+            // The keys arrive with the PIN; everything that needs the
+            // database runs then, behind the lock screen the window opens
+            // with. A failure at that point is fatal exactly as it would
+            // have been here.
+            DeferredStartupCoordinator.Arm(
+                services.GetRequiredService<IStartupProtection>(),
+                InitializeProfileAsync);
+        }
+        else if (await InitializeProfileAsync() is { } profileError)
+        {
+            Environment.ExitCode = 1;
             DesktopStartupFailurePresenter.TryShow(
                 "GhostSHELL could not open this profile",
-                $"Local application data is unavailable ({startResult.Error!.Code}).",
+                profileError,
                 args);
             return;
         }
-
-        var startupState = services.GetRequiredService<ApplicationStartupState>();
-        startupState.Initialize(startResult.Value!);
-
-        var agentAuditRecovery = await services
-            .GetRequiredService<AgentAuditRecovery>()
-            .RecoverAsync(CancellationToken.None);
-        if (!agentAuditRecovery.IsSuccess)
-        {
-            Console.Error.WriteLine(
-                $"GhostSHELL could not reconcile its agent audit trail "
-                + $"({agentAuditRecovery.Error!.Code}).");
-            Environment.ExitCode = 1;
-            DesktopStartupFailurePresenter.TryShow(
-                "GhostSHELL could not verify agent history",
-                "The local agent audit trail is unavailable or invalid.",
-                args);
-            return;
-        }
-
-        var catalog = services.GetRequiredService<IDefinitionCatalog>();
-        var catalogResult = await catalog.InitializeAsync(CancellationToken.None);
-        if (!catalogResult.IsSuccess)
-        {
-            Console.Error.WriteLine(
-                $"GhostSHELL could not load its durable definitions "
-                + $"({catalogResult.Error!.Code}).");
-            Environment.ExitCode = 1;
-            DesktopStartupFailurePresenter.TryShow(
-                "GhostSHELL could not load this profile",
-                $"Saved connections and workspaces are unavailable "
-                + $"({catalogResult.Error.Code}).",
-                args);
-            return;
-        }
-
-        // Failure-tolerant by design: unreadable settings mean the defaults,
-        // never a startup error.
-        await services.GetRequiredService<SqliteFilePreviewPreferences>()
-            .InitializeAsync(CancellationToken.None);
 
         instanceCoordinator.RegisterActivationHandler(RequestMainWindowActivation);
         BuildAvaloniaApp(services).StartWithClassicDesktopLifetime(
             args,
             Avalonia.Controls.ShutdownMode.OnMainWindowClose);
         instanceCoordinator.StopAcceptingActivations();
+
+        // The run began either before the lifetime or, with sealed keys,
+        // behind the lock screen; quitting at the lock screen means no run
+        // marker was ever written and there is nothing to finalize.
+        if (services.GetRequiredService<ApplicationStartupState>().Run is not { } run)
+        {
+            return;
+        }
 
         var mainWindowViewModel = services.GetRequiredService<MainWindowViewModel>();
         // The desktop dispatcher no longer pumps once the classic lifetime returns.
@@ -142,7 +165,7 @@ internal static class Program
                     cancellationToken),
                 mainWindowViewModel.FlushRecentSessionHistoryAsync,
                 _ => services.GetRequiredService<InMemorySessionHostClient>().DisposeAsync(),
-                startResult.Value!.RunId,
+                run.RunId,
                 CancellationToken.None)
             .ConfigureAwait(false);
         if (!completion.IsSuccess)

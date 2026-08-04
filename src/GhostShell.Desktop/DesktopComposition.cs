@@ -50,7 +50,9 @@ public static class DesktopComposition
         }
         services.AddSingleton<IStartupProtection>(provider => new StartupProtectionRuntime(
             provider.GetRequiredService<ApplicationSecurityVault>().Vault,
-            Path.GetDirectoryName(SqliteStorageOptions.CreateDefault().DatabasePath)!));
+            Path.GetDirectoryName(SqliteStorageOptions.CreateDefault().DatabasePath)!,
+            timeProvider: null,
+            provider.GetRequiredService<ApplicationEncryptionRuntime>()));
         services.AddSingleton<IApplicationEncryption>(provider =>
             provider.GetRequiredService<ApplicationEncryptionRuntime>());
         services.AddSingleton(provider =>

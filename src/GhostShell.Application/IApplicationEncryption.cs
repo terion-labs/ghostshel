@@ -21,6 +21,12 @@ public interface IApplicationEncryption
 
     bool IsEnabled { get; }
 
+    /// <summary>
+    /// True while the keys wait sealed behind the startup PIN: the database
+    /// cannot open, and no authenticator except the PIN can change that.
+    /// </summary>
+    bool AwaitingUnlock { get; }
+
     /// <summary>Why <see cref="IsSupported"/> is false, when it is.</summary>
     string? UnsupportedReason { get; }
 

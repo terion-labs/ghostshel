@@ -477,6 +477,11 @@ internal sealed class QaLockedProtection : GhostShell.Application.IStartupProtec
 
     public ValueTask SetLockTimeoutAsync(TimeSpan? timeout, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
+
+    public ValueTask<string?> SealEncryptionKeysAsync(
+        string pin,
+        CancellationToken cancellationToken) =>
+        new((string?)null);
 }
 
 /// <summary>Biometrics that exist but never verify, for the capture.</summary>

@@ -50,4 +50,12 @@ public interface IStartupProtection
     void UnlockAuthenticated();
 
     ValueTask SetLockTimeoutAsync(TimeSpan? timeout, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Seals the app-encryption keys under the PIN typed just now — the step
+    /// after turning encryption on while protection already stands, so the
+    /// keystore copies can be forgotten. Verifies the PIN itself; a no-op
+    /// when protection is off or there is nothing to seal. Null on success.
+    /// </summary>
+    ValueTask<string?> SealEncryptionKeysAsync(string pin, CancellationToken cancellationToken);
 }

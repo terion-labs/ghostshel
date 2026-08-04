@@ -17,6 +17,11 @@ public sealed class StartupProtectionRuntimeTests : IDisposable
 
     public void Dispose()
     {
+        foreach (var database in _databases)
+        {
+            database.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+
         _vault.Dispose();
         try
         {
@@ -142,6 +147,168 @@ public sealed class StartupProtectionRuntimeTests : IDisposable
 
         // Enable, lock, unlock, timeout, the disable's own unlock, disable.
         Assert.True(announcements >= 5);
+    }
+
+    [Fact]
+    public async Task Enabling_protection_with_encryption_on_seals_the_keys_and_the_pin_releases_them()
+    {
+        // A real encrypted database whose keys end up sealed under the PIN.
+        var databasePath = Path.Combine(_root, "ghostshell.db");
+        var (encryption, database) = ComposeEncryption(databasePath);
+        await WriteProbeRowAsync(database);
+        Assert.Null(await encryption.SetEnabledAsync(true, CancellationToken.None));
+
+        var protection = new StartupProtectionRuntime(_vault, _root, _clock, encryption);
+        Assert.Null(await protection.EnableAsync("4812", CancellationToken.None));
+        Assert.True(protection.HoldsWrappedKeys);
+
+        // The keystore holds no key copies any more: a fresh encryption
+        // runtime over the same vault cannot open the database on its own...
+        var (rebooted, rebootedDatabase) = ComposeEncryption(databasePath);
+        var rebootedProtection = new StartupProtectionRuntime(_vault, _root, _clock, rebooted);
+        await rebooted.InitializeAsync(
+            wrappedKeysPending: rebootedProtection.HoldsWrappedKeys,
+            CancellationToken.None);
+        Assert.True(rebooted.AwaitingUnlock);
+        Assert.Null(rebooted.StartupError);
+
+        // ...until the PIN arrives.
+        Assert.True(await rebootedProtection.TryUnlockAsync("4812", CancellationToken.None));
+        Assert.False(rebooted.AwaitingUnlock);
+        Assert.True(rebooted.IsEnabled);
+        Assert.Equal("probe", await ReadProbeRowAsync(rebootedDatabase));
+    }
+
+    [Fact]
+    public async Task The_wrong_pin_releases_nothing()
+    {
+        var databasePath = Path.Combine(_root, "ghostshell.db");
+        var (encryption, database) = ComposeEncryption(databasePath);
+        await WriteProbeRowAsync(database);
+        Assert.Null(await encryption.SetEnabledAsync(true, CancellationToken.None));
+        var protection = new StartupProtectionRuntime(_vault, _root, _clock, encryption);
+        Assert.Null(await protection.EnableAsync("4812", CancellationToken.None));
+
+        var (rebooted, _) = ComposeEncryption(databasePath);
+        var rebootedProtection = new StartupProtectionRuntime(_vault, _root, _clock, rebooted);
+        await rebooted.InitializeAsync(
+            wrappedKeysPending: true,
+            CancellationToken.None);
+
+        Assert.False(await rebootedProtection.TryUnlockAsync("0000", CancellationToken.None));
+        Assert.True(rebooted.AwaitingUnlock);
+        Assert.Null(rebooted.PersistentCachePassword);
+    }
+
+    [Fact]
+    public async Task Disabling_protection_returns_the_keys_to_the_keystore()
+    {
+        var databasePath = Path.Combine(_root, "ghostshell.db");
+        var (encryption, database) = ComposeEncryption(databasePath);
+        await WriteProbeRowAsync(database);
+        Assert.Null(await encryption.SetEnabledAsync(true, CancellationToken.None));
+        var protection = new StartupProtectionRuntime(_vault, _root, _clock, encryption);
+        Assert.Null(await protection.EnableAsync("4812", CancellationToken.None));
+
+        Assert.Null(await protection.DisableAsync("4812", CancellationToken.None));
+
+        // A restart needs nothing but the keystore again.
+        var (rebooted, rebootedDatabase) = ComposeEncryption(databasePath);
+        await rebooted.InitializeAsync(
+            wrappedKeysPending: false,
+            CancellationToken.None);
+        Assert.Null(rebooted.StartupError);
+        Assert.True(rebooted.IsEnabled);
+        Assert.Equal("probe", await ReadProbeRowAsync(rebootedDatabase));
+    }
+
+    [Fact]
+    public async Task Turning_encryption_on_under_standing_protection_seals_through_the_editor_seam()
+    {
+        var databasePath = Path.Combine(_root, "ghostshell.db");
+        var (encryption, database) = ComposeEncryption(databasePath);
+        await WriteProbeRowAsync(database);
+        var protection = new StartupProtectionRuntime(_vault, _root, _clock, encryption);
+        Assert.Null(await protection.EnableAsync("4812", CancellationToken.None));
+        Assert.False(protection.HoldsWrappedKeys);
+
+        Assert.Null(await encryption.SetEnabledAsync(true, CancellationToken.None));
+        Assert.Null(await protection.SealEncryptionKeysAsync("4812", CancellationToken.None));
+
+        Assert.True(protection.HoldsWrappedKeys);
+        var (rebooted, _) = ComposeEncryption(databasePath);
+        var rebootedProtection = new StartupProtectionRuntime(_vault, _root, _clock, rebooted);
+        await rebooted.InitializeAsync(
+            wrappedKeysPending: rebootedProtection.HoldsWrappedKeys,
+            CancellationToken.None);
+        Assert.True(rebooted.AwaitingUnlock);
+        Assert.True(await rebootedProtection.TryUnlockAsync("4812", CancellationToken.None));
+        Assert.True(rebooted.IsEnabled);
+    }
+
+    [Fact]
+    public async Task A_sensor_verdict_cannot_release_sealed_keys()
+    {
+        var databasePath = Path.Combine(_root, "ghostshell.db");
+        var (encryption, database) = ComposeEncryption(databasePath);
+        await WriteProbeRowAsync(database);
+        Assert.Null(await encryption.SetEnabledAsync(true, CancellationToken.None));
+        var protection = new StartupProtectionRuntime(_vault, _root, _clock, encryption);
+        Assert.Null(await protection.EnableAsync("4812", CancellationToken.None));
+
+        var (rebooted, _) = ComposeEncryption(databasePath);
+        var rebootedProtection = new StartupProtectionRuntime(_vault, _root, _clock, rebooted);
+        await rebooted.InitializeAsync(
+            wrappedKeysPending: true,
+            CancellationToken.None);
+        Assert.True(rebooted.AwaitingUnlock);
+
+        // Touch ID passed — and must change nothing: a sensor verdict cannot
+        // derive the wrapping key, and a lifted curtain over an unopenable
+        // database would be a broken app, not an unlocked one.
+        rebootedProtection.UnlockAuthenticated();
+
+        Assert.True(rebootedProtection.IsLocked);
+        Assert.True(rebooted.AwaitingUnlock);
+    }
+
+    private readonly List<GhostShellDatabase> _databases = [];
+
+    private (ApplicationEncryptionRuntime Runtime, GhostShellDatabase Database) ComposeEncryption(
+        string databasePath)
+    {
+        ApplicationEncryptionRuntime? runtime = null;
+        var options = new SqliteStorageOptions(databasePath, acquireProfileLock: false)
+        {
+            PasswordProvider = () => runtime!.ConfigDatabasePassword,
+        };
+        var database = new GhostShellDatabase(options, TimeProvider.System);
+        _databases.Add(database);
+        runtime = new ApplicationEncryptionRuntime(_vault, databasePath, () => database);
+        return (runtime, database);
+    }
+
+    private static async Task WriteProbeRowAsync(GhostShellDatabase database)
+    {
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO definitions(
+                kind, id, schema_version, revision, name, payload_json,
+                created_utc, updated_utc)
+            VALUES (
+                'probe', 'wrapped', 1, 1, 'probe', '{}',
+                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+            """;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<string?> ReadProbeRowAsync(GhostShellDatabase database)
+    {
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM definitions WHERE id = 'wrapped';";
+        return Convert.ToString(await command.ExecuteScalarAsync());
     }
 
     private sealed class ManualClock(DateTimeOffset start) : TimeProvider
