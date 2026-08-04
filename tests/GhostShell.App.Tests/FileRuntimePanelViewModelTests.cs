@@ -1424,7 +1424,7 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
-    public async Task The_bytes_are_there_for_whoever_asks_and_do_not_wrap()
+    public async Task The_bytes_are_there_for_whoever_asks()
     {
         var panel = await PreviewOf(
             "payload.bin",
@@ -1435,10 +1435,10 @@ public sealed class FileRuntimePanelViewModelTests
         await panel.PreviewPresentation;
 
         Assert.False(panel.HasBinaryPreview);
-        Assert.True(panel.HasSourcePreview);
-        // A hex dump is a fixed-width grid; wrapping it destroys the columns.
-        Assert.False(panel.WrapPreviewText);
-        Assert.Contains("00000000", panel.PreviewText!, StringComparison.Ordinal);
+        Assert.True(panel.HasHexPreview);
+        // Not text: a dump is drawn from rows, a screenful at a time.
+        Assert.False(panel.HasSourcePreview);
+        Assert.Equal("00000000", panel.PreviewHex!.Rows[0].Offset);
         panel.Dispose();
     }
 

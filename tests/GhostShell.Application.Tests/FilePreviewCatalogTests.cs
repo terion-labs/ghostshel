@@ -41,17 +41,37 @@ public sealed class FilePreviewCatalogTests
     }
 
     [Fact]
-    public void A_hex_dump_does_not_wrap()
+    public void The_bytes_come_as_rows_rather_than_one_long_string()
     {
         var outcome = Catalog.Create(
             Binary("payload.bin"),
             new Dictionary<string, bool> { [BinaryPreviewer.HexToggle] = true });
 
-        // A hex dump is a fixed-width grid: wrapping folds every row and the
-        // columns stop lining up.
-        var source = Assert.IsType<SourcePreviewRendering>(outcome.Rendering);
-        Assert.False(source.Wrap);
-        Assert.Contains("00000000", source.Text, StringComparison.Ordinal);
+        // Rows, because a dump handed to a text view costs a measure of every
+        // line before anything can be drawn; a list draws what is on screen.
+        var hex = Assert.IsType<HexPreviewRendering>(outcome.Rendering);
+        var row = Assert.Single(hex.Rows);
+        Assert.Equal("00000000", row.Offset);
+        Assert.StartsWith("01 02 03", row.Bytes, StringComparison.Ordinal);
+        Assert.Equal("...", row.Characters);
+    }
+
+    [Fact]
+    public void A_dump_says_when_it_is_only_the_start_of_the_file()
+    {
+        var content = new byte[PreviewText.MaximumHexBytes + 4_096];
+        var outcome = Catalog.Create(
+            new FilePreviewSource(
+                "large.bin",
+                FilePanelPreviewKind.Hex,
+                "application/octet-stream",
+                content,
+                IsTruncated: false),
+            new Dictionary<string, bool> { [BinaryPreviewer.HexToggle] = true });
+
+        var hex = Assert.IsType<HexPreviewRendering>(outcome.Rendering);
+        Assert.Equal(PreviewText.MaximumHexBytes / 16, hex.Rows.Count);
+        Assert.StartsWith("First ", hex.Summary, StringComparison.Ordinal);
     }
 
     private static FilePreviewSource Binary(string name) =>

@@ -1,0 +1,52 @@
+<UserControl
+    x:Class="GhostShell.App.Views.Components.HexPreviewView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+  <Grid RowDefinitions="*,Auto">
+    <!-- A list, not a text view: a dump is thousands of identical rows, and a
+         text view has to measure every one before it can show the first. -->
+    <ListBox
+        x:Name="Rows"
+        ItemsSource="{Binding Rows}"
+        Background="Transparent"
+        BorderThickness="0"
+        SelectionMode="Single"
+        AutomationProperties.Name="File bytes">
+      <ListBox.Styles>
+        <Style Selector="ListBoxItem">
+          <Setter Property="Padding" Value="0" />
+          <Setter Property="MinHeight" Value="0" />
+        </Style>
+      </ListBox.Styles>
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceMd}">
+            <TextBlock
+                Classes="Muted"
+                FontFamily="{DynamicResource ShellDataFontFamily}"
+                FontSize="{DynamicResource ShellFontSize10}"
+                Text="{Binding Offset}" />
+            <TextBlock
+                FontFamily="{DynamicResource ShellDataFontFamily}"
+                FontSize="{DynamicResource ShellFontSize10}"
+                Text="{Binding Bytes}" />
+            <TextBlock
+                Classes="Muted"
+                FontFamily="{DynamicResource ShellDataFontFamily}"
+                FontSize="{DynamicResource ShellFontSize10}"
+                Text="{Binding Characters}" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <TextBlock
+        Grid.Row="1"
+        Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+        Classes="Muted"
+        FontSize="{DynamicResource ShellFontSize9}"
+        Text="{Binding Summary}" />
+  </Grid>
+</UserControl>

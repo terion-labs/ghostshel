@@ -681,6 +681,74 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
+        // The same dump both ways, drawn for real: a text view has to measure
+        // every line before it can show the first, a list only what is on
+        // screen. This is the difference a headless timing never showed.
+        ("preview-timing-hex-shapes", () =>
+        {
+            var size = int.TryParse(
+                Environment.GetEnvironmentVariable("QA_HEX_BYTES"),
+                out var requested)
+                ? requested
+                : 64 * 1024;
+            var bytes = Enumerable.Range(0, size).Select(value => (byte)value).ToArray();
+            var window = new Window
+            {
+                Width = 700,
+                Height = 500,
+                CanResize = false,
+                ShowInTaskbar = false,
+            };
+
+            // The window is up and warm before either is timed, so the numbers
+            // are the cost of showing the dump and nothing else.
+            window.Content = new Border();
+            window.Show();
+            window.UpdateLayout();
+            using (var warm = new RenderTargetBitmap(new PixelSize(700, 500), new Vector(96, 96)))
+            {
+                warm.Render(window);
+            }
+
+            var text = GhostShell.Application.Previews.PreviewText.Hex(bytes, false);
+            _ = text.Length;
+            var rows = GhostShell.Application.Previews.PreviewText.HexRows(bytes, false);
+
+            var editorWatch = System.Diagnostics.Stopwatch.StartNew();
+            var editor = new GhostShell.App.Views.Components.CodePreviewView
+            {
+                FileName = "payload.bin",
+                WordWrap = false,
+                Text = text,
+            };
+            window.Content = editor;
+            window.UpdateLayout();
+            using (var bitmap = new RenderTargetBitmap(new PixelSize(700, 500), new Vector(96, 96)))
+            {
+                bitmap.Render(window);
+            }
+
+            Console.WriteLine(
+                $"TIMING hex-in-text-view {editorWatch.ElapsedMilliseconds}ms "
+                + $"({rows.Rows.Count} rows)");
+
+            var listWatch = System.Diagnostics.Stopwatch.StartNew();
+            var list = new GhostShell.App.Views.Components.HexPreviewView
+            {
+                DataContext = rows,
+            };
+            window.Content = list;
+            window.UpdateLayout();
+            using (var bitmap = new RenderTargetBitmap(new PixelSize(700, 500), new Vector(96, 96)))
+            {
+                bitmap.Render(window);
+            }
+
+            Console.WriteLine(
+                $"TIMING hex-in-list {listWatch.ElapsedMilliseconds}ms "
+                + $"({rows.Rows.Count} rows)");
+            return window;
+        }, null),
         // The hex reading of a real-sized binary, timed the same way.
         ("preview-timing-hex", () =>
         {
@@ -718,11 +786,22 @@ internal sealed class QaApplication : Avalonia.Application
                     var blockingOn = watch.ElapsedMilliseconds;
                     watch.Restart();
                     Settle(panel.PreviewPresentation);
+                    var prepared = watch.ElapsedMilliseconds;
+                    // The part that lands on the UI thread whatever we do off
+                    // it: handing the text to the view and laying it out.
+                    watch.Restart();
                     Dispatcher.UIThread.RunJobs();
                     window.UpdateLayout();
+                    using (var bitmap = new RenderTargetBitmap(
+                               new PixelSize(900, 620),
+                               new Vector(96, 96)))
+                    {
+                        bitmap.Render(window);
+                    }
+
                     Console.WriteLine(
-                        $"TIMING toggle-to-hex blocking={blockingOn}ms "
-                        + $"until-shown={watch.ElapsedMilliseconds}ms");
+                        $"TIMING toggle-to-hex switch={blockingOn}ms "
+                        + $"prepared={prepared}ms applied-on-ui={watch.ElapsedMilliseconds}ms");
 
                     watch.Restart();
                     panel.PreviewToggles.Single().IsOn = false;

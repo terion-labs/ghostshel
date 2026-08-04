@@ -480,6 +480,11 @@
                   Text="{Binding PreviewText}"
                   WordWrap="{Binding WrapPreviewText}"
                   FileName="{Binding PreviewTitle}" />
+              <!-- A file shown as its bytes, a screenful at a time. -->
+              <components:HexPreviewView
+                  Margin="{controls:Inset Sm}"
+                  DataContext="{Binding PreviewHex}"
+                  IsVisible="{Binding $parent[UserControl].DataContext.HasHexPreview}" />
               <!-- A delimited file is shown as the table it describes. -->
               <components:PreviewTableView
                   Margin="{controls:Inset Sm}"

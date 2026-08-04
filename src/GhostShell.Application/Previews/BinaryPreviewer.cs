@@ -11,6 +11,19 @@ public sealed record BinaryPreviewRendering(
     string Detail) : FilePreviewRendering;
 
 /// <summary>
+/// One line of a hex dump, already split into its columns. Rows rather than
+/// one long string because a dump is a grid of tens of thousands of identical
+/// lines: handed to a text editor it costs a full measure of every line before
+/// anything can be drawn, and handed to a list only what is on screen is.
+/// </summary>
+public sealed record HexPreviewRow(string Offset, string Bytes, string Characters);
+
+/// <summary>A file shown as its bytes.</summary>
+public sealed record HexPreviewRendering(
+    IReadOnlyList<HexPreviewRow> Rows,
+    string Summary) : FilePreviewRendering;
+
+/// <summary>
 /// The reading for a binary file. A wall of hex tells almost nobody anything
 /// about a font or a video; naming the format and showing its symbol does, and
 /// the dump is still there for whoever wants it.
@@ -30,10 +43,7 @@ public sealed class BinaryPreviewer : IFilePreviewer
         if (hex)
         {
             return new FilePreviewOutcome(
-                new SourcePreviewRendering(
-                    PreviewText.Hex(source.Content.Span, source.IsTruncated),
-                    source.FileName,
-                    Wrap: false),
+                PreviewText.HexRows(source.Content.Span, source.IsTruncated),
                 [toggle]);
         }
 

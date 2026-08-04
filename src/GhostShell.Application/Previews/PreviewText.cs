@@ -122,6 +122,55 @@ public static class PreviewText
         return builder.ToString();
     }
 
+    /// <summary>
+    /// The same dump as <see cref="Hex"/>, split into rows so a list can draw
+    /// the handful on screen instead of a text view measuring every one.
+    /// </summary>
+    public static HexPreviewRendering HexRows(
+        ReadOnlySpan<byte> content,
+        bool providerTruncated)
+    {
+        var shown = content[..Math.Min(content.Length, MaximumHexBytes)];
+        var rows = new List<HexPreviewRow>((shown.Length / 16) + 1);
+        var bytes = new StringBuilder(50);
+        var characters = new StringBuilder(16);
+        for (var offset = 0; offset < shown.Length; offset += 16)
+        {
+            var row = shown.Slice(offset, Math.Min(16, shown.Length - offset));
+            bytes.Clear();
+            characters.Clear();
+            for (var index = 0; index < 16; index++)
+            {
+                if (index < row.Length)
+                {
+                    bytes.Append(row[index].ToString("X2", CultureInfo.InvariantCulture));
+                }
+                else
+                {
+                    bytes.Append("  ");
+                }
+
+                bytes.Append(index == 7 ? "  " : ' ');
+            }
+
+            foreach (var value in row)
+            {
+                characters.Append(value is >= 32 and <= 126 ? (char)value : '.');
+            }
+
+            rows.Add(new HexPreviewRow(
+                offset.ToString("X8", CultureInfo.InvariantCulture),
+                bytes.ToString().TrimEnd(),
+                characters.ToString()));
+        }
+
+        var truncated = providerTruncated || shown.Length < content.Length;
+        var size = ByteSize.Format(shown.Length);
+        return new HexPreviewRendering(
+            rows,
+            truncated ? $"First {size} of the file" : size);
+    }
+
     /// <summary>The file's extension in lower case, without the dot.</summary>
     public static string Extension(string fileName)
     {

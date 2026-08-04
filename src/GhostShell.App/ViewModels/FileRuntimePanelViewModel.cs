@@ -137,6 +137,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private PreviewTableViewModel? _previewTable;
     private PreviewTreeViewModel? _previewTree;
     private BinaryPreviewRendering? _previewBinary;
+    private HexPreviewRendering? _previewHex;
     private DatabaseRuntimePanelViewModel? _databasePreview;
     private MaterializedFile? _databasePreviewFile;
 
@@ -790,11 +791,29 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasBinaryPreview => _previewBinary is not null;
 
+    /// <summary>The file's bytes, as rows a list can draw one screen at a time.</summary>
+    public HexPreviewRendering? PreviewHex
+    {
+        get => _previewHex;
+        private set
+        {
+            if (SetProperty(ref _previewHex, value))
+            {
+                OnPropertyChanged(nameof(HasHexPreview));
+                OnPropertyChanged(nameof(HasPreview));
+                OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+                OnPropertyChanged(nameof(ShowPreviewProgressDetail));
+            }
+        }
+    }
+
+    public bool HasHexPreview => _previewHex is not null;
+
     public bool HasImagePreview => PreviewImage is not null;
 
     public bool HasPreview =>
         HasTextPreview || HasImagePreview || HasDatabasePreview || HasHtmlPreview
-        || HasTablePreview || HasTreePreview || HasBinaryPreview;
+        || HasTablePreview || HasTreePreview || HasBinaryPreview || HasHexPreview;
 
     /// <summary>
     /// Whether the panel is waiting with nothing to show. Once something is on
@@ -2138,6 +2157,10 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 SetMarkdownRendering(true);
                 PreviewText = markdown.Text;
                 break;
+            case HexPreviewRendering hex:
+                ClearRenderedPreview();
+                PreviewHex = hex;
+                break;
             case BinaryPreviewRendering binary:
                 ClearRenderedPreview();
                 PreviewBinary = binary;
@@ -2220,6 +2243,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewTable = null;
         PreviewTree = null;
         PreviewBinary = null;
+        PreviewHex = null;
         ClearHtmlPreview();
     }
 
@@ -2362,6 +2386,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewTable = null;
         PreviewTree = null;
         PreviewBinary = null;
+        PreviewHex = null;
         PreviewIssue = null;
         PreviewTitle = "Preview";
         _requestedPreviewEntry = null;
