@@ -17,6 +17,16 @@ public enum RecoveryDecisionState
 public sealed class ApplicationStartupState
 {
     private readonly object _gate = new();
+    private readonly TaskCompletionSource _initialized =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Completes when the run has begun and this state is filled in. With
+    /// keys sealed under the startup PIN that happens behind the lock
+    /// screen, not before the window — startup work that reads this state
+    /// awaits it rather than assuming the old ordering.
+    /// </summary>
+    public Task Initialized => _initialized.Task;
 
     public ApplicationRunStart? Run { get; private set; }
 
@@ -65,6 +75,8 @@ public sealed class ApplicationStartupState
                 ? RecoveryDecisionState.Pending
                 : RecoveryDecisionState.NotRequired;
         }
+
+        _initialized.TrySetResult();
     }
 
     public void ResolveRecovery(

@@ -584,6 +584,10 @@ public sealed partial class App : Avalonia.Application
         }
 
         owner.Opened -= OnStartupWindowOpened;
+        // With keys sealed under the startup PIN, the run begins behind the
+        // lock screen; the restore preference and the recovery decision both
+        // live in the database that only exists to us after that.
+        await _startupState.Initialized;
         if (_startupState.RecoveryState != RecoveryDecisionState.Pending)
         {
             _ = await MainWindowViewModel.RestoreSessionOnStartupAsync(
