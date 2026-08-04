@@ -1304,6 +1304,31 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task The_row_of_switches_announces_that_it_has_appeared()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "notes.md", FilePanelEntryKind.File, 7));
+        client.Preview = new FilePanelPreview(
+            client.Root.Child(new FilePanelPathSegment("notes.md")),
+            FilePanelPreviewKind.Text,
+            "text/plain; charset=utf-8",
+            Encoding.UTF8.GetBytes("# Title"),
+            isTruncated: false);
+        using var panel = new FileRuntimePanelViewModel(PanelInstanceId.New(), "Files", client);
+        await panel.Initialization;
+
+        // The panel is bound before any file is selected, so a switch row that
+        // never announces itself stays invisible however full it gets.
+        var announced = new List<string>();
+        panel.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+        panel.SelectedEntry = panel.Entries.Single();
+        await panel.PreviewSelectedAsync();
+
+        Assert.True(panel.HasPreviewToggles);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasPreviewToggles), announced);
+    }
+
+    [Fact]
     public async Task Flipping_a_switch_re_reads_the_bytes_already_in_hand()
     {
         var panel = await PreviewOf("notes.md", "# Title", out var client);

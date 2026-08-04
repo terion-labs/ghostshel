@@ -1353,12 +1353,32 @@ internal sealed class QaApplication : Avalonia.Application
         // Pumped rather than blocked on: the panel finishes its work on this
         // very thread, so waiting on it here would wait forever.
         Settle(panel.Initialization);
-        panel.SelectedEntry = panel.Entries.First(entry => entry.Name == fileName);
-        Settle(panel.PreviewSelectedAsync());
-        if (toggleId is not null)
+
+        var view = new GhostShell.App.Views.RuntimePanels.FileRuntimePanelView
         {
-            panel.PreviewToggles.Single(toggle => toggle.Id == toggleId).IsOn = true;
-        }
+            DataContext = panel,
+        };
+
+        // Selected after the view is bound and laid out, which is the order the
+        // running app does it in. Selecting first hides a whole class of bug:
+        // a binding that is only ever read once still looks right if the value
+        // was already there when it was read.
+        var selected = false;
+        view.LayoutUpdated += (_, _) =>
+        {
+            if (selected || view.Bounds.Width < 1)
+            {
+                return;
+            }
+
+            selected = true;
+            panel.SelectedEntry = panel.Entries.First(entry => entry.Name == fileName);
+            Settle(panel.PreviewSelectedAsync());
+            if (toggleId is not null)
+            {
+                panel.PreviewToggles.Single(toggle => toggle.Id == toggleId).IsOn = true;
+            }
+        };
 
         return new Window
         {
@@ -1366,10 +1386,7 @@ internal sealed class QaApplication : Avalonia.Application
             Height = 620,
             CanResize = false,
             ShowInTaskbar = false,
-            Content = new GhostShell.App.Views.RuntimePanels.FileRuntimePanelView
-            {
-                DataContext = panel,
-            },
+            Content = view,
         };
     }
 

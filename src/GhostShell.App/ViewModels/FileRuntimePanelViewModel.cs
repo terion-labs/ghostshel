@@ -164,6 +164,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _imageDecoder = imageDecoder;
         _archiveReader = archiveReader;
         _previewers = previewers ?? new FilePreviewCatalog();
+        // The row of switches appears and disappears with the collection, and
+        // a bound bool over a collection count is only read once unless the
+        // change is announced.
+        PreviewToggles.CollectionChanged += (_, _) =>
+            OnPropertyChanged(nameof(HasPreviewToggles));
         _pdfRenderer = pdfRenderer;
         _materializer = client as IFileContentMaterializer;
         _connection = connection ?? BuiltInConnections.Local;
@@ -298,6 +303,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(CanDelete));
                 OnPropertyChanged(nameof(CanTransfer));
                 OnPropertyChanged(nameof(CanDownload));
+                OnPropertyChanged(nameof(DownloadLabel));
                 OnPropertyChanged(nameof(CanOpenExternally));
             }
         }
