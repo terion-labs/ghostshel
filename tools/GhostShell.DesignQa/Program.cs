@@ -681,6 +681,59 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
+        // The hex reading of a real-sized binary, timed the same way.
+        ("preview-timing-hex", () =>
+        {
+            var window = CreateFilePanelProbe("libghost.dylib");
+            var panel = (FileRuntimePanelViewModel)
+                ((GhostShell.App.Views.RuntimePanels.FileRuntimePanelView)window.Content!)
+                .DataContext!;
+            var timed = false;
+            window.Opened += (_, _) =>
+            {
+                if (timed)
+                {
+                    return;
+                }
+
+                timed = true;
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var preview = panel.PreviewSelectedAsync();
+                while (!preview.IsCompleted && watch.ElapsedMilliseconds < 10_000)
+                {
+                    Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+                    Thread.Sleep(1);
+                }
+
+                window.UpdateLayout();
+                Console.WriteLine($"TIMING select-binary blocking={watch.ElapsedMilliseconds}ms");
+                Dispatcher.UIThread.RunJobs();
+
+                for (var round = 0; round < 3; round++)
+                {
+                    watch.Restart();
+                    panel.PreviewToggles.Single().IsOn = true;
+                    Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+                    window.UpdateLayout();
+                    var blockingOn = watch.ElapsedMilliseconds;
+                    watch.Restart();
+                    Settle(panel.PreviewPresentation);
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                    Console.WriteLine(
+                        $"TIMING toggle-to-hex blocking={blockingOn}ms "
+                        + $"until-shown={watch.ElapsedMilliseconds}ms");
+
+                    watch.Restart();
+                    panel.PreviewToggles.Single().IsOn = false;
+                    Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+                    window.UpdateLayout();
+                    Console.WriteLine($"TIMING toggle-from-hex blocking={watch.ElapsedMilliseconds}ms");
+                    Dispatcher.UIThread.RunJobs();
+                }
+            };
+            return window;
+        }, null),
         // Not a picture: a stopwatch. Renders the preview path the way the panel
         // does and prints where the time goes.
         ("preview-timing", () =>
@@ -1436,7 +1489,10 @@ internal sealed class QaApplication : Avalonia.Application
         File.WriteAllText(Path.Combine(root, "deployments.csv"), QaData.SampleCsv);
         File.WriteAllBytes(
             Path.Combine(root, "libghost.dylib"),
-            [0xCF, 0xFA, 0xED, 0xFE, .. Enumerable.Range(0, 220).Select(value => (byte)value)]);
+            [
+                0xCF, 0xFA, 0xED, 0xFE,
+                .. Enumerable.Range(0, 512 * 1024).Select(value => (byte)value),
+            ]);
         File.WriteAllText(
             Path.Combine(root, "settings.json"),
             """{"telemetry":{"enabled":false,"endpoint":"https://example.test"},"panels":[1,2,3]}""");

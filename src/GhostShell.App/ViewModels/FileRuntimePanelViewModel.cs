@@ -514,6 +514,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             if (SetProperty(ref _isPreviewLoading, value))
             {
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+                OnPropertyChanged(nameof(ShowPreviewProgressDetail));
             }
         }
     }
@@ -628,6 +629,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(HasSourcePreview));
                 OnPropertyChanged(nameof(HasPreview));
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+                OnPropertyChanged(nameof(ShowPreviewProgressDetail));
             }
         }
     }
@@ -645,6 +647,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(HasSourcePreview));
                 OnPropertyChanged(nameof(HasPreview));
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+                OnPropertyChanged(nameof(ShowPreviewProgressDetail));
             }
         }
     }
@@ -742,6 +745,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(HasTablePreview));
                 OnPropertyChanged(nameof(HasPreview));
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+                OnPropertyChanged(nameof(ShowPreviewProgressDetail));
             }
         }
     }
@@ -758,6 +762,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(HasTreePreview));
                 OnPropertyChanged(nameof(HasPreview));
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+                OnPropertyChanged(nameof(ShowPreviewProgressDetail));
             }
         }
     }
@@ -778,6 +783,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(HasBinaryPreview));
                 OnPropertyChanged(nameof(HasPreview));
                 OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+                OnPropertyChanged(nameof(ShowPreviewProgressDetail));
             }
         }
     }
@@ -789,6 +795,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public bool HasPreview =>
         HasTextPreview || HasImagePreview || HasDatabasePreview || HasHtmlPreview
         || HasTablePreview || HasTreePreview || HasBinaryPreview;
+
+    /// <summary>
+    /// Whether the panel is waiting with nothing to show. Once something is on
+    /// screen the wait is said in the strip along the top instead, so a reading
+    /// is never replaced by a spinner.
+    /// </summary>
+    public bool ShowPreviewProgressDetail => IsPreviewLoading && !HasPreview;
 
     public bool ShowPreviewPlaceholder =>
         !HasPreview && !IsPreviewLoading && !ShowPreviewDownloadPrompt;
@@ -1003,6 +1016,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(ShowPreviewDownloadPrompt));
         OnPropertyChanged(nameof(PreviewDownloadPromptDetail));
         OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+        OnPropertyChanged(nameof(ShowPreviewProgressDetail));
     }
 
     public Task PreviewSelectedAsync(CancellationToken cancellationToken = default)
@@ -2035,7 +2049,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        PresentPreview(result.Value!);
+        await PresentPreviewAsync(result.Value!);
     }
 
     /// <summary>
@@ -2043,23 +2057,63 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// what comes back. The panel knows the renderings, not the formats: a new
     /// format is a new previewer, not another arm of this method.
     /// </summary>
-    private void PresentPreview(FilePanelPreview preview)
+    private Task PresentPreviewAsync(FilePanelPreview preview)
     {
         _lastPreview = preview;
         _previewToggleState.Clear();
-        ApplyPreviewers(preview);
+        return ApplyPreviewersAsync(preview);
     }
 
-    private void ApplyPreviewers(FilePanelPreview preview)
+    /// <summary>
+    /// The presentation currently being prepared. Reading a file — laying out
+    /// a hex dump, indenting a document, parsing rows — is work, and it is not
+    /// done on the thread that has to stay answering the reader.
+    /// </summary>
+    internal Task PreviewPresentation { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Rises with every presentation, so a reading that finishes after a newer
+    /// one was asked for is dropped rather than drawn over it.
+    /// </summary>
+    private int _presentationGeneration;
+
+    private async Task ApplyPreviewersAsync(FilePanelPreview preview)
     {
-        var outcome = _previewers.Create(
-            new FilePreviewSource(
-                PreviewTitle ?? string.Empty,
-                preview.Kind,
-                preview.MediaType,
-                preview.Content,
-                preview.IsTruncated),
-            _previewToggleState);
+        var generation = ++_presentationGeneration;
+        var operation = _preview;
+        var source = new FilePreviewSource(
+            PreviewTitle ?? string.Empty,
+            preview.Kind,
+            preview.MediaType,
+            preview.Content,
+            preview.IsTruncated);
+        var chosen = new Dictionary<string, bool>(_previewToggleState, StringComparer.Ordinal);
+
+        FilePreviewOutcome outcome;
+        IsPreviewLoading = true;
+        try
+        {
+            outcome = await Task.Run(
+                () => _previewers.Create(source, chosen),
+                operation?.Token ?? CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            if (generation == _presentationGeneration)
+            {
+                IsPreviewLoading = false;
+            }
+        }
+
+        if (generation != _presentationGeneration
+            || (operation is not null && !ReferenceEquals(_preview, operation)))
+        {
+            return;
+        }
 
         Replace(
             PreviewToggles,
@@ -2073,11 +2127,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         // Markdown document reinstalls a syntax grammar per fenced block.
         switch (outcome.Rendering)
         {
-            case SourcePreviewRendering source:
+            case SourcePreviewRendering rendered:
                 ClearRenderingsOtherThanText();
-                WrapPreviewText = source.Wrap;
+                WrapPreviewText = rendered.Wrap;
                 SetMarkdownRendering(false);
-                PreviewText = source.Text;
+                PreviewText = rendered.Text;
                 break;
             case MarkdownPreviewRendering markdown:
                 ClearRenderingsOtherThanText();
@@ -2129,10 +2183,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _previewToggleState[id] = isOn;
         if (_lastPreview is { } preview)
         {
+            // Not awaited: the switch answers at once and the reading arrives
+            // when it is ready, with the strip saying so meanwhile.
             // Deliberately not clearing the text first: nulling it makes every
             // view bound to it tear down and rebuild, and rebuilding a Markdown
             // document reinstalls a syntax grammar for each fenced block.
-            ApplyPreviewers(preview);
+            PreviewPresentation = ApplyPreviewersAsync(preview);
         }
     }
 
@@ -2529,6 +2585,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(HasDatabasePreview));
         OnPropertyChanged(nameof(HasPreview));
         OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+        OnPropertyChanged(nameof(ShowPreviewProgressDetail));
         await viewer.ConnectAsync();
     }
 
@@ -2721,6 +2778,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             OnPropertyChanged(nameof(HasHtmlPreview));
             OnPropertyChanged(nameof(HasPreview));
             OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+            OnPropertyChanged(nameof(ShowPreviewProgressDetail));
         }
         catch (OperationCanceledException) when (operation.IsCancellationRequested)
         {

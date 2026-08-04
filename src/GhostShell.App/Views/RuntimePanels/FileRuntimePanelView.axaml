@@ -581,7 +581,18 @@
               <ContentControl
                   x:Name="HtmlPreviewHost"
                   IsVisible="{Binding HasHtmlPreview}" />
-              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding IsPreviewLoading}">
+              <!-- A strip along the top rather than a curtain over the panel:
+                   a reading being prepared should say so without taking away
+                   the one already on screen. -->
+              <ProgressBar
+                  VerticalAlignment="Top"
+                  HorizontalAlignment="Stretch"
+                  Height="2"
+                  MinHeight="2"
+                  IsIndeterminate="True"
+                  IsVisible="{Binding IsPreviewLoading}"
+                  AutomationProperties.Name="Preparing preview" />
+              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowPreviewProgressDetail}">
                 <ProgressBar Width="140" IsIndeterminate="True" />
                 <TextBlock Classes="Muted" Text="Reading preview…" />
               </StackPanel>

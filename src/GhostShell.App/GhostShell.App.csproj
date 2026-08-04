@@ -26,6 +26,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="GhostShell.App.Tests" />
+    <!-- The capture harness drives the shipped panels, so it waits on the same
+         presentation task the panel exposes to its tests. -->
+    <InternalsVisibleTo Include="GhostShell.DesignQa" />
   </ItemGroup>
 
   <PropertyGroup>

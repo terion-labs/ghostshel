@@ -1335,6 +1335,7 @@ public sealed class FileRuntimePanelViewModelTests
         var before = client.PreviewCallCount;
 
         panel.PreviewToggles.Single().IsOn = true;
+        await panel.PreviewPresentation;
 
         // Changing how a file is read must not cost another provider call —
         // on a remote provider that would be another download.
@@ -1359,6 +1360,7 @@ public sealed class FileRuntimePanelViewModelTests
         };
 
         panel.PreviewToggles.Single().IsOn = true;
+        await panel.PreviewPresentation;
 
         // Nulling the text between readings makes every view bound to it tear
         // down and rebuild, and rebuilding a Markdown document reinstalls a
@@ -1378,6 +1380,7 @@ public sealed class FileRuntimePanelViewModelTests
         panel.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
 
         panel.PreviewToggles.Single().IsOn = true;
+        await panel.PreviewPresentation;
 
         Assert.True(panel.HasSourcePreview);
         Assert.False(panel.HasMarkdownPreview);
@@ -1386,6 +1389,7 @@ public sealed class FileRuntimePanelViewModelTests
 
         announced.Clear();
         panel.PreviewToggles.Single().IsOn = false;
+        await panel.PreviewPresentation;
 
         Assert.True(panel.HasMarkdownPreview);
         Assert.Contains(nameof(FileRuntimePanelViewModel.HasMarkdownPreview), announced);
@@ -1398,6 +1402,7 @@ public sealed class FileRuntimePanelViewModelTests
         var panel = await PreviewOf("people.csv", "name,city\nada,london\n");
 
         panel.PreviewToggles.Single().IsOn = false;
+        await panel.PreviewPresentation;
 
         Assert.False(panel.HasTablePreview);
         Assert.Equal("name,city\nada,london\n", panel.PreviewText);
@@ -1427,6 +1432,7 @@ public sealed class FileRuntimePanelViewModelTests
             kind: FilePanelPreviewKind.Hex);
 
         panel.PreviewToggles.Single().IsOn = true;
+        await panel.PreviewPresentation;
 
         Assert.False(panel.HasBinaryPreview);
         Assert.True(panel.HasSourcePreview);
