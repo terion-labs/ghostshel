@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Styling;
 using GhostShell.Application;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -1014,6 +1015,40 @@ internal sealed class AvaloniaNativeBrowserView : INativeBrowserView
         _webView.NavigationStarted += OnNavigationStarted;
         _webView.NavigationCompleted += OnNavigationCompleted;
         _webView.NewWindowRequested += OnNewWindowRequested;
+        // A page asking for prefers-color-scheme should get the shell's
+        // answer, not the machine's. The native view is what the engine
+        // reads, and it only exists once attached — so both moments apply
+        // it, and the shell's own theme is the single source.
+        _webView.AttachedToVisualTree += (_, _) => ApplyColorScheme();
+        _webView.ActualThemeVariantChanged += (_, _) => ApplyColorScheme();
+    }
+
+    /// <summary>
+    /// Tells the engine which color scheme the page should see, following
+    /// the shell's theme. macOS only for now: WebKit reads it from the
+    /// hosting view's appearance, which is a first-class knob there.
+    /// Windows exposes the same idea through WebView2's profile and Linux
+    /// through WebKitGTK settings, neither of which this vendor control
+    /// surfaces — so those keep the machine default until it does.
+    /// </summary>
+    private void ApplyColorScheme()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        if (_webView.TryGetPlatformHandle() is not { } handle
+            || handle.Handle == IntPtr.Zero)
+        {
+            // Before attachment there is no view to tell; the attachment
+            // handler asks again.
+            return;
+        }
+
+        MacColorScheme.Apply(
+            handle.Handle,
+            _webView.ActualThemeVariant == ThemeVariant.Light);
     }
 
     public Control View => _webView;
