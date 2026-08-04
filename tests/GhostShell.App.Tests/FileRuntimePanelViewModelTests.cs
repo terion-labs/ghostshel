@@ -1452,7 +1452,69 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
-    public async Task Selecting_another_file_forgets_the_switches_of_the_last_one()
+    public async Task A_switch_stays_where_the_reader_left_it_for_the_next_file()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "first.bin", FilePanelEntryKind.File, 3));
+        client.Entries.Add(Entry(client.Root, "second.bin", FilePanelEntryKind.File, 3));
+        using var panel = new FileRuntimePanelViewModel(PanelInstanceId.New(), "Files", client);
+        await panel.Initialization;
+
+        client.Preview = BinaryPreview(client.Root, "first.bin");
+        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "first.bin");
+        await panel.PreviewSelectedAsync();
+        panel.PreviewToggles.Single().IsOn = true;
+        await panel.PreviewPresentation;
+        Assert.True(panel.HasHexPreview);
+
+        client.Preview = BinaryPreview(client.Root, "second.bin");
+        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "second.bin");
+        await panel.PreviewSelectedAsync();
+
+        // Someone reading bytes is reading bytes, not reading one file's bytes.
+        Assert.True(panel.HasHexPreview);
+        Assert.True(panel.PreviewToggles.Single().IsOn);
+    }
+
+    [Fact]
+    public async Task A_file_that_does_not_offer_a_switch_is_unaffected_by_it()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "payload.bin", FilePanelEntryKind.File, 3));
+        client.Entries.Add(Entry(client.Root, "people.csv", FilePanelEntryKind.File, 20));
+        using var panel = new FileRuntimePanelViewModel(PanelInstanceId.New(), "Files", client);
+        await panel.Initialization;
+
+        client.Preview = BinaryPreview(client.Root, "payload.bin");
+        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "payload.bin");
+        await panel.PreviewSelectedAsync();
+        panel.PreviewToggles.Single().IsOn = true;
+        await panel.PreviewPresentation;
+
+        client.Preview = new FilePanelPreview(
+            client.Root.Child(new FilePanelPathSegment("people.csv")),
+            FilePanelPreviewKind.Text,
+            "text/plain; charset=utf-8",
+            Encoding.UTF8.GetBytes("name,city\nada,london\n"),
+            isTruncated: false);
+        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "people.csv");
+        await panel.PreviewSelectedAsync();
+
+        Assert.False(panel.HasHexPreview);
+        Assert.True(panel.HasTablePreview);
+        Assert.Equal("As table", panel.PreviewToggles.Single().Label);
+    }
+
+    private static FilePanelPreview BinaryPreview(FilePanelLocation root, string name) =>
+        new(
+            root.Child(new FilePanelPathSegment(name)),
+            FilePanelPreviewKind.Hex,
+            "application/octet-stream",
+            new byte[] { 1, 2, 3 },
+            isTruncated: false);
+
+    [Fact]
+    public async Task A_file_with_nothing_to_choose_shows_no_switches()
     {
         var panel = await PreviewOf("notes.md", "# Title", out var client);
         panel.PreviewToggles.Single().IsOn = true;
@@ -1468,6 +1530,8 @@ public sealed class FileRuntimePanelViewModelTests
         panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "readme.txt");
         await panel.PreviewSelectedAsync();
 
+        // The choices are the claiming previewer's; plain text offers none,
+        // whatever was chosen for the file before it.
         Assert.Empty(panel.PreviewToggles);
         Assert.Equal("plain", panel.PreviewText);
         panel.Dispose();

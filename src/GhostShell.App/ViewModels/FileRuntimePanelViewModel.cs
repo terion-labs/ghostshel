@@ -129,6 +129,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// </summary>
     private FilePanelPreview? _lastPreview;
 
+    /// <summary>
+    /// How the reader chose to be shown things, kept across files. Someone who
+    /// turns on the bytes is reading bytes, not reading one file's bytes, and
+    /// having to ask again for every file is the sort of thing that makes a
+    /// switch not worth using.
+    /// </summary>
     private readonly Dictionary<string, bool> _previewToggleState =
         new(StringComparer.Ordinal);
 
@@ -2079,7 +2085,6 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private Task PresentPreviewAsync(FilePanelPreview preview)
     {
         _lastPreview = preview;
-        _previewToggleState.Clear();
         return ApplyPreviewersAsync(preview);
     }
 
@@ -2394,7 +2399,6 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _lastPreview = null;
         SetMarkdownRendering(false);
         WrapPreviewText = true;
-        _previewToggleState.Clear();
         PreviewToggles.Clear();
         ClearHtmlPreview();
 
