@@ -117,9 +117,23 @@ public sealed class WorkspaceIconChoiceViewModel(WorkspaceIconOption option)
     public bool Matches(string term) => option.Matches(term);
 }
 
-/// <summary>One selectable swatch in the workspace accent row.</summary>
+/// <summary>
+/// One colour a swatch row offers. The picker takes this rather than a concrete
+/// type so the same control serves a workspace's colour, its accent, and
+/// anything else the palette comes to cover.
+/// </summary>
+public interface IColorChoice
+{
+    string Name { get; }
+
+    string Hex { get; }
+
+    bool IsSelected { get; }
+}
+
+/// <summary>One selectable swatch in a colour row.</summary>
 public sealed class WorkspaceAccentChoiceViewModel(WorkspaceAccentOption option)
-    : ObservableObject
+    : ObservableObject, IColorChoice
 {
     private bool _isSelected;
 

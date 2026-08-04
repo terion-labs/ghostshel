@@ -202,13 +202,13 @@
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="Workspaces" /><Button Grid.Column="1" Classes="TextButton Accent" Click="OnCreateWorkspaceClick" Content="New workspace" /></Grid>
                 <ItemsControl ItemsSource="{Binding Workspaces}">
-                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}"><Border Width="32" Height="32" Background="{Binding Accent}" CornerRadius="{DynamicResource ShellControlCornerRadius}"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="15" /></Border><StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Description}" /></StackPanel><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}"><Button Classes="SecondaryButton" Click="OnEditWorkspaceClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteWorkspaceClick" IsVisible="{Binding CanDelete}" AutomationProperties.Name="Delete workspace"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></Grid></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
+                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><controls:ListItem Margin="{controls:Inset Md}" Title="{Binding Name}" Detail="{Binding Description}"><controls:ListItem.Leading><controls:IdentityTile Tint="{Binding Accent}" Symbol="{Binding IconSymbol}" /></controls:ListItem.Leading><controls:ListItem.Trailing><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}"><Button Classes="SecondaryButton" Click="OnEditWorkspaceClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteWorkspaceClick" IsVisible="{Binding CanDelete}" AutomationProperties.Name="Delete workspace"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></controls:ListItem.Trailing></controls:ListItem></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <TextBlock Classes="SectionHeading" Text="Saved screens" />
                 <ItemsControl ItemsSource="{Binding Screens}">
-                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}"><Border Width="32" Height="32" Classes="IconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Grid" FontSize="14" /></Border><StackPanel Grid.Column="1"><TextBlock FontWeight="SemiBold" Text="{Binding Name}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Description}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Layout, StringFormat={}Layout: {0}}" /></StackPanel><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}"><Button Classes="SecondaryButton" Click="OnEditScreenClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteScreenClick" AutomationProperties.Name="Delete saved screen"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></Grid></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
+                  <ItemsControl.ItemTemplate><DataTemplate><controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}"><controls:ListItem Margin="{controls:Inset Md}" Title="{Binding Name}" Detail="{Binding Description}"><controls:ListItem.Leading><controls:IdentityTile Tint="{DynamicResource ShellAccentSoftBrush}" Foreground="{DynamicResource ShellTextBrush}" Symbol="Grid" /></controls:ListItem.Leading><controls:ListItem.Trailing><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding Layout}" /><Button Classes="SecondaryButton" Click="OnEditScreenClick" Content="Edit" /><Button Classes="IconButton Danger" Click="OnDeleteScreenClick" AutomationProperties.Name="Delete saved screen"><icons:SymbolIcon Symbol="Delete" FontSize="13" /></Button></StackPanel></controls:ListItem.Trailing></controls:ListItem></controls:SurfaceCard></DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
@@ -217,24 +217,26 @@
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
-                        <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                          <Border Width="72" Height="44" Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellInnerCornerRadius}" ClipToBounds="True">
-                            <ItemsControl Margin="{DynamicResource ShellPreviewTileInset}" ItemsSource="{Binding PreviewPanels}">
-                              <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:ScreenLayoutPreviewPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                              <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                  <Border Margin="{DynamicResource ShellHairlineInset}" Classes="ScreenPreviewPanel" Classes.primary="{Binding IsPrimary}" />
-                                </DataTemplate>
-                              </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                          </Border>
-                          <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding GridSummary}" />
-                          </StackPanel>
-                          <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="Eyebrow" Text="{Binding SlotCount, StringFormat={}{0} slots}" />
-                          <Button Grid.Column="3" VerticalAlignment="Center" Classes="SecondaryButton" Click="OnEditLayoutClick" Content="Edit" />
-                        </Grid>
+                        <controls:ListItem Margin="{controls:Inset Md}" Title="{Binding Name}" Detail="{Binding GridSummary}">
+                          <controls:ListItem.Leading>
+                            <Border Width="72" Height="44" Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellInnerCornerRadius}" ClipToBounds="True">
+                              <ItemsControl Margin="{DynamicResource ShellPreviewTileInset}" ItemsSource="{Binding PreviewPanels}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:ScreenLayoutPreviewPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate>
+                                    <Border Margin="{DynamicResource ShellHairlineInset}" Classes="ScreenPreviewPanel" Classes.primary="{Binding IsPrimary}" />
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </Border>
+                          </controls:ListItem.Leading>
+                          <controls:ListItem.Trailing>
+                            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                              <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding SlotCount, StringFormat={}{0} slots}" />
+                              <Button Classes="SecondaryButton" Click="OnEditLayoutClick" Content="Edit" />
+                            </StackPanel>
+                          </controls:ListItem.Trailing>
+                        </controls:ListItem>
                       </controls:SurfaceCard>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>

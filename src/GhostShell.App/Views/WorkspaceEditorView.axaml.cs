@@ -8,6 +8,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Media;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.Components;
 using GhostShell.Core;
 
 namespace GhostShell.App.Views;
@@ -20,8 +21,6 @@ namespace GhostShell.App.Views;
 public sealed partial class WorkspaceEditorView : UserControl
 {
     private WorkspaceEditorViewModel? _observedEditor;
-    private bool _syncingAccent;
-    private bool _syncingColor;
     private bool _syncingPeers;
     private WorkspaceEntryEditorViewModel? _draggingEntry;
 
@@ -134,159 +133,35 @@ public sealed partial class WorkspaceEditorView : UserControl
         entryConnectionPicker.ItemsSource = editor.ConnectionOptions;
         entryScreenPicker.ItemsSource = editor.ScreenOptions;
         addLayoutList.SelectedItem = pickableLayouts.FirstOrDefault(option => option.IsAvailable);
-        SynchronizeColorPickers();
     }
 
     /// <summary>
-    /// Selection in the icon and swatch rows is bound declaratively, so only the
-    /// colour pickers — which hold their own value — need pushing.
+    /// Which picker asked the host to sample the screen. Screen sampling is a
+    /// round trip through the window, and by the time the colour comes back the
+    /// only thing that can say where it belongs is what asked for it.
     /// </summary>
-    private void SynchronizeColorPickers()
-    {
-        SynchronizeAccentPicker();
-        SynchronizeIdentityColorPicker();
-    }
+    private SwatchPicker? _samplingPicker;
 
-    private void SynchronizeAccentPicker()
-    {
-        var editor = Editor;
-        if (editor is null || _syncingAccent)
-        {
-            return;
-        }
-
-        // A workspace with no accent yet still needs a sensible starting colour in
-        // the picker; a half-typed hex is not a colour, so the picker keeps its
-        // previous value rather than jumping to black on every keystroke.
-        if (string.IsNullOrWhiteSpace(editor.Accent))
-        {
-            SetPickerColor("AccentColorPicker", Color.Parse(ThemePreference.BronzeFallback.ToString()));
-            return;
-        }
-
-        if (!Color.TryParse(editor.Accent, out var color))
-        {
-            return;
-        }
-
-        SetPickerColor("AccentColorPicker", color);
-    }
-
-    private void SynchronizeIdentityColorPicker()
-    {
-        if (Editor is not { } editor || _syncingColor)
-        {
-            return;
-        }
-
-        if (Color.TryParse(editor.EffectiveColor, out var color))
-        {
-            SetPickerColor("ColorCustomPicker", color);
-        }
-    }
-
-    private void SetPickerColor(string pickerName, Color color)
-    {
-        var syncingAccent = _syncingAccent;
-        var syncingColor = _syncingColor;
-        _syncingAccent = true;
-        _syncingColor = true;
-        try
-        {
-            this.FindControl<ColorPicker>(pickerName)!.Color = color;
-        }
-        finally
-        {
-            _syncingAccent = syncingAccent;
-            _syncingColor = syncingColor;
-        }
-    }
-
-    private void OnIconChoiceClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (Editor is { } editor
-            && sender is Button { DataContext: WorkspaceIconChoiceViewModel choice })
-        {
-            editor.Icon = choice.Id;
-        }
-    }
-
-    /// <summary>
-    /// The swatch rows are bound to choice view models rather than to the palette
-    /// records they wrap, because a swatch also carries whether it is the chosen
-    /// one. Matching the wrong type here is silent: the click does nothing.
-    /// </summary>
-    private void OnColorPresetClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (Editor is { } editor
-            && sender is Button { DataContext: WorkspaceAccentChoiceViewModel choice })
-        {
-            editor.Color = choice.Hex;
-        }
-    }
-
-    private void OnAccentPresetClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (Editor is { } editor
-            && sender is Button { DataContext: WorkspaceAccentChoiceViewModel choice })
-        {
-            editor.Accent = choice.Hex;
-        }
-    }
-
-    private void OnColorChanged(object? sender, ColorChangedEventArgs e)
+    private void OnIconChosen(object? sender, string icon)
     {
         _ = sender;
-        if (Editor is not { } editor || _syncingColor)
-        {
-            return;
-        }
-
-        _syncingColor = true;
-        try
-        {
-            editor.Color = ToHex(e.NewColor);
-        }
-        finally
-        {
-            _syncingColor = false;
-        }
-    }
-
-    private void OnAccentColorChanged(object? sender, ColorChangedEventArgs e)
-    {
-        _ = sender;
-        if (Editor is not { } editor || _syncingAccent)
-        {
-            return;
-        }
-
-        _syncingAccent = true;
-        try
-        {
-            editor.Accent = ToHex(e.NewColor);
-        }
-        finally
-        {
-            _syncingAccent = false;
-        }
-    }
-
-    private void OnClearAccentClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
         if (Editor is { } editor)
         {
-            editor.Accent = string.Empty;
+            editor.Icon = icon;
         }
     }
 
-    private void OnPickAccentClick(object? sender, RoutedEventArgs e) =>
-        PickAccentRequested?.Invoke(sender, e);
+    private void OnSampleColorRequested(object? sender, EventArgs e)
+    {
+        _samplingPicker = sender as SwatchPicker;
+        PickAccentRequested?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// Applies a colour the host sampled from the screen to whichever picker
+    /// asked for it.
+    /// </summary>
+    public void ApplySampledColor(Color color) => _samplingPicker?.ApplySampled(color);
 
     private void OnRenameWorkspaceClick(object? sender, RoutedEventArgs e)
     {
@@ -302,21 +177,6 @@ public sealed partial class WorkspaceEditorView : UserControl
         _ = sender;
         _ = e;
         CreateWorkspaceRequested?.Invoke(this, EventArgs.Empty);
-    }
-
-    private static string ToHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-
-    /// <summary>
-    /// Applies a colour sampled by the host. Kept separate from
-    /// <see cref="OnAccentColorChanged"/> so a sample is a deliberate edit rather
-    /// than a picker echo.
-    /// </summary>
-    public void ApplySampledAccent(Color color)
-    {
-        if (Editor is { } editor)
-        {
-            editor.Accent = ToHex(color);
-        }
     }
 
     private void SynchronizePeerSelection()
@@ -354,20 +214,20 @@ public sealed partial class WorkspaceEditorView : UserControl
         Avalonia.Threading.Dispatcher.UIThread.Post(SynchronizePeerSelection);
     }
 
+    /// <summary>
+    /// Keeps the selection pointing at a row that still exists, and at nothing
+    /// otherwise. Opening the editor selects nothing on purpose: a tab's panels
+    /// are a second screenful, and unfolding them before being asked buries the
+    /// list they belong to.
+    /// </summary>
     private void EnsureEntrySelection()
     {
         var editor = Editor;
-        if (editor is null || editor.Entries.Count == 0)
-        {
-            EntryListControl.SelectedItem = null;
-            ShowSelectedEntry(null);
-            return;
-        }
-
         if (EntryListControl.SelectedItem is not WorkspaceEntryEditorViewModel selected
+            || editor is null
             || !editor.Entries.Contains(selected))
         {
-            EntryListControl.SelectedItem = editor.Entries[0];
+            EntryListControl.SelectedItem = null;
         }
 
         ShowSelectedEntry(EntryListControl.SelectedItem as WorkspaceEntryEditorViewModel);
@@ -376,12 +236,7 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.PropertyName is nameof(WorkspaceEditorViewModel.Accent)
-            or nameof(WorkspaceEditorViewModel.Color))
-        {
-            SynchronizeColorPickers();
-        }
-        else if (e.PropertyName == nameof(WorkspaceEditorViewModel.Entries))
+        if (e.PropertyName == nameof(WorkspaceEditorViewModel.Entries))
         {
             EnsureEntrySelection();
         }
@@ -401,6 +256,10 @@ public sealed partial class WorkspaceEditorView : UserControl
     {
         SelectedEntryEditorControl.DataContext = entry;
         SelectedEntryEditorControl.IsVisible = entry is not null;
+        // The prompt and the editor are the same slot: one of them is always
+        // the answer to "what does clicking a row do".
+        this.FindControl<TextBlock>("SelectTabPrompt")!.IsVisible =
+            entry is null && Editor?.HasNoEntries == false;
     }
 
     /// <summary>
@@ -685,7 +544,6 @@ public sealed partial class WorkspaceEditorView : UserControl
 
         editor.Reset();
         ClearInteractionError();
-        SynchronizeColorPickers();
         EnsureEntrySelection();
         ResetRequested?.Invoke(this, EventArgs.Empty);
     }

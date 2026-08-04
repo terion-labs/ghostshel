@@ -2145,6 +2145,12 @@ internal sealed class QaApplication : Avalonia.Application
                     button.Flyout?.Hide();
                 }
 
+                // And an editor a route left with unsaved changes, which refuses
+                // to be navigated away from — correctly, in the product, and
+                // ruinously here: every later route would capture the one before
+                // it and report nothing wrong.
+                viewModel.DismissWorkspaceEditor();
+
                 route.Apply(viewModel);
                 await Task.Delay(220);
                 Dispatcher.UIThread.RunJobs();

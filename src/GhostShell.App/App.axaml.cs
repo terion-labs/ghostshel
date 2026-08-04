@@ -447,6 +447,14 @@ public sealed partial class App : Avalonia.Application
         }
 
         Resources["ShellControlMinHeight"] = resources.ControlMinHeight;
+
+        // The three sizes a mark is drawn at — in a row, beside a name, and as
+        // the subject of the page. Derived from the control height rather than
+        // fixed, so a compact density shrinks the tiles with everything else
+        // instead of leaving them looming over the rows they belong to.
+        Resources["ShellTileSizeSm"] = Math.Round(resources.ControlMinHeight * 0.85);
+        Resources["ShellTileSizeMd"] = Math.Round(resources.ControlMinHeight * 1.05);
+        Resources["ShellTileSizeLg"] = Math.Round(resources.ControlMinHeight * 1.75);
         Resources["ShellControlCornerRadius"] = resources.ControlCornerRadius;
         Resources["ShellControlPadding"] = resources.ControlPadding;
         Resources["ShellButtonPadding"] = resources.ButtonPadding;

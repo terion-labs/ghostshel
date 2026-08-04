@@ -137,8 +137,8 @@
     <!-- Colors -->
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Colors" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Fine-tune the terminal palette and review its ANSI colors." />
+        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Colours" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Fine-tune the terminal palette and review its ANSI colours." />
       </StackPanel>
       <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
@@ -306,7 +306,7 @@
                   TextChanged="OnCustomAccentTextChanged"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
-                  AutomationProperties.Name="Custom accent color" />
+                  AutomationProperties.Name="Custom accent colour" />
               <Button
                   x:Name="CustomAccentEyedropper"
                   Grid.Column="2"

@@ -321,7 +321,7 @@ public sealed class SettingsViewContractTests
                      ("AppearanceModeLight", "Color mode Light"),
                      ("PlatformProfilePicker", "Platform profile"),
                      ("AccentModePicker", "Accent mode"),
-                     ("CustomAccentText", "Custom accent color"),
+                     ("CustomAccentText", "Custom accent colour"),
                      ("ApplicationTextScalePicker", "Application text size"),
                  })
         {

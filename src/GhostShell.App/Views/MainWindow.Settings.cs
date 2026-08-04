@@ -643,7 +643,7 @@ public sealed partial class MainWindow
         if (field == WorkspaceAccentSampleField)
         {
             this.FindControl<WorkspaceEditorView>("WorkspaceDefinitionEditor")
-                ?.ApplySampledAccent(color);
+                ?.ApplySampledColor(color);
             return;
         }
 

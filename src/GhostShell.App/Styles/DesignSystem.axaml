@@ -116,6 +116,76 @@
         <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
       </Style>
     </ControlTheme>
+    <ControlTheme x:Key="{x:Type controls:IdentityTile}" TargetType="controls:IdentityTile">
+      <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+      <Setter Property="Width" Value="{DynamicResource ShellTileSizeMd}" />
+      <Setter Property="Height" Value="{DynamicResource ShellTileSizeMd}" />
+      <Setter Property="FontSize" Value="{DynamicResource ShellFontSize16}" />
+      <!-- The icon's colour is the one the palette guarantees against a filled
+           accent. A tile picking white itself is a contrast promise a view is
+           not in a position to make. -->
+      <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border
+              Background="{TemplateBinding Tint}"
+              CornerRadius="{TemplateBinding CornerRadius}">
+            <icons:SymbolIcon
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Symbol="{TemplateBinding Symbol}"
+                FontSize="{TemplateBinding FontSize}"
+                Foreground="{TemplateBinding Foreground}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:small">
+        <Setter Property="Width" Value="{DynamicResource ShellTileSizeSm}" />
+        <Setter Property="Height" Value="{DynamicResource ShellTileSizeSm}" />
+        <Setter Property="FontSize" Value="{DynamicResource ShellFontSize13}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource ShellInnerCornerRadius}" />
+      </Style>
+      <Style Selector="^:large">
+        <Setter Property="Width" Value="{DynamicResource ShellTileSizeLg}" />
+        <Setter Property="Height" Value="{DynamicResource ShellTileSizeLg}" />
+        <Setter Property="FontSize" Value="{DynamicResource ShellFontSize26}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type controls:ListItem}" TargetType="controls:ListItem">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <ContentPresenter VerticalAlignment="Center" Content="{TemplateBinding Leading}" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+              <TextBlock
+                  FontWeight="SemiBold"
+                  Text="{TemplateBinding Title}"
+                  TextTrimming="CharacterEllipsis" />
+              <TextBlock
+                  Name="PART_Detail"
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize11}"
+                  Text="{TemplateBinding Detail}"
+                  TextTrimming="CharacterEllipsis"
+                  IsVisible="False" />
+            </StackPanel>
+            <ContentPresenter
+                Grid.Column="2"
+                VerticalAlignment="Center"
+                Content="{TemplateBinding Trailing}" />
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:detailed /template/ TextBlock#PART_Detail">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+    </ControlTheme>
+
     <ControlTheme x:Key="{x:Type controls:StatusChip}" TargetType="controls:StatusChip">
       <Setter Property="Padding" Value="{DynamicResource ShellPillPadding}" />
       <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />

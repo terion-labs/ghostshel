@@ -165,6 +165,17 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
 
     public bool HasNoMatchingIcons => IconChoices.Count == 0;
 
+    /// <summary>
+    /// The line under the icon grid. A search that found nothing has to say so
+    /// where the icons would have been — the alternative is an empty row and an
+    /// invitation to browse a set that is plainly not being shown.
+    /// </summary>
+    public string IconHint => HasNoMatchingIcons
+        ? "No icon matches that search."
+        : _showAllIcons || !string.IsNullOrWhiteSpace(_iconSearch)
+            ? "Pick one, or narrow the search."
+            : "Search to reach the rest of the set.";
+
     private void RefreshIconChoices()
     {
         var matches = string.IsNullOrWhiteSpace(_iconSearch) && !_showAllIcons
@@ -180,6 +191,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(HasNoMatchingIcons));
+        OnPropertyChanged(nameof(IconHint));
     }
 
     private IReadOnlyList<WorkspaceIconOption> CommonIconsIncludingCurrent()

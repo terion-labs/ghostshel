@@ -306,6 +306,31 @@ public sealed class WorkspaceEditorViewModelTests
     }
 
     /// <summary>
+    /// The two swatch rows answer different questions, so they must not agree
+    /// by accident: a workspace with a colour and no accent has to show one
+    /// row marked and the other empty, or the accent row is claiming a value
+    /// the workspace does not have.
+    /// </summary>
+    [Fact]
+    public void A_colour_without_an_accent_marks_only_the_colour_row()
+    {
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("data"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Data",
+            null,
+            accent: null,
+            [],
+            color: "#5B8FD1");
+        using var editor = new WorkspaceEditorViewModel(workspace, 3, [], [], []);
+
+        Assert.Equal("#5B8FD1", editor.EffectiveColor);
+        Assert.Single(editor.ColorChoices, choice => choice.IsSelected);
+        Assert.Equal("#5B8FD1", editor.ColorChoices.Single(choice => choice.IsSelected).Hex);
+        Assert.DoesNotContain(editor.AccentChoices, choice => choice.IsSelected);
+    }
+
+    /// <summary>
     /// The rail is how you move between workspaces, so the one you are editing
     /// has to be in it — including the one that does not exist yet.
     /// </summary>
