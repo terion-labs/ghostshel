@@ -348,6 +348,25 @@
     <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
   </Style>
 
+  <!--
+    A list whose rows already carry colour of their own — a workspace tile, a
+    tab's kind — cannot also be selected in accent: the two colours fight and
+    the row reads as an alert. These rows are selected by lifting the surface
+    instead, which is what a list of things you are choosing between looks like
+    when the things are not themselves neutral.
+  -->
+  <Style Selector="ListBox.NeutralSelection > ListBoxItem">
+    <Setter Property="Padding" Value="8,4" />
+  </Style>
+
+  <Style Selector="ListBox.NeutralSelection > ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.NeutralSelection > ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+  </Style>
+
   <Style Selector="Button.NavButton">
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -605,6 +624,15 @@
 
   <Style Selector="TextBlock.Eyebrow.Accent">
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <!-- An eyebrow that labels a region rather than a single value. Small caps
+       tracked apart read as a heading at a size where sentence case reads as
+       body text; the text itself is written capitalised so a screen reader is
+       not spelling out letters. -->
+  <Style Selector="TextBlock.Eyebrow.Caps">
+    <Setter Property="LetterSpacing" Value="0.9" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize9}" />
   </Style>
 
   <Style Selector="Border.TopChrome">
@@ -978,6 +1006,27 @@
     <Setter Property="Background" Value="{DynamicResource ShellControlSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellControlBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <!-- The same picker cut as a circle, for the end of a row of round presets:
+       a rounded rectangle there reads as a different kind of control rather
+       than as one more colour to choose. -->
+  <Style Selector="ColorPicker.Swatch.Round">
+    <Setter Property="Width" Value="30" />
+    <Setter Property="Height" Value="30" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Content">
+      <Template>
+        <Border
+            Margin="{DynamicResource ShellHairlineInset}"
+            Background="{Binding $parent[ColorPicker].Color, Converter={StaticResource ColorBrushConverter}}"
+            CornerRadius="{DynamicResource ShellPillCornerRadius}" />
+      </Template>
+    </Setter>
+  </Style>
+
+  <Style Selector="ColorPicker.Swatch.Round /template/ DropDownButton">
+    <Setter Property="CornerRadius" Value="999" />
   </Style>
 
   <Style Selector="ColorPicker.Swatch /template/ DropDownButton /template/ PathIcon">

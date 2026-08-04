@@ -1903,6 +1903,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             snapshot.Screens.Select(item => item.Value).ToArray(),
             snapshot.Layouts.Select(item => item.Value).ToArray(),
             snapshot.FileProviderProfiles.Select(item => item.Value).ToArray());
+        WorkspaceEditor.SetPeers(snapshot.Workspaces.Select(item => item.Value).ToArray());
         _editingDefinition = stored.Value.Key;
         _editingRevision = stored.Revision;
         EditorName = stored.Value.Name;
@@ -1941,6 +1942,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             snapshot.Screens.Select(item => item.Value).ToArray(),
             snapshot.Layouts.Select(item => item.Value).ToArray(),
             snapshot.FileProviderProfiles.Select(item => item.Value).ToArray());
+        WorkspaceEditor.SetPeers(snapshot.Workspaces.Select(item => item.Value).ToArray());
         _editingDefinition = definition.Key;
         _editingRevision = null;
         EditorName = definition.Name;
@@ -8477,7 +8479,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     item.Revision,
                     item.Value.Name,
                     item.Value.Description ?? "No description",
-                    item.Value.Accent ?? ThemePreference.BronzeFallback.ToString(),
+                    // The tile carries the workspace's identity colour, which is
+                    // its own field now; an accent-only workspace keeps looking
+                    // the way it did before colours existed.
+                    WorkspaceTints.Of(item.Value),
                     Initials(item.Value.Name),
                     WorkspaceIconSymbol(item.Value.Icon),
                     item.Value.Entries.Count))

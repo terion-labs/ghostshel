@@ -254,14 +254,151 @@ public sealed class WorkspaceEditorViewModelTests
 
         editor.Name = " ";
         editor.Accent = "orange";
+        editor.Color = "also not a colour";
         editor.Icon = "Bad Icon";
 
         Assert.False(editor.IsValid);
         Assert.False(editor.CanSave);
         Assert.Contains(editor.ValidationIssues, issue => issue.Code == DefinitionValidationCode.Required);
+        // The colour and the accent are separate fields, so a complaint about one
+        // must name which one: "the workspace colour is wrong" pointing at the
+        // accent is a message that sends you to the wrong control.
+        Assert.Contains(editor.ValidationIssues, issue => issue.Message.Contains("accent"));
         Assert.Contains(editor.ValidationIssues, issue => issue.Message.Contains("color"));
         Assert.Contains(editor.ValidationIssues, issue => issue.Message.Contains("icon"));
         Assert.Throws<InvalidOperationException>(() => editor.CreateSaveRequest());
+    }
+
+    /// <summary>
+    /// The colour marks the workspace; the accent retints the shell. Saving one
+    /// as the other would make choosing a tab colour silently change the theme.
+    /// </summary>
+    [Fact]
+    public void The_identity_colour_and_the_accent_are_saved_as_separate_fields()
+    {
+        using var editor = new WorkspaceEditorViewModel(Workspace([]), 3, [], [], []);
+
+        editor.Color = "#5B8FD1";
+        editor.Accent = "#5FA97A";
+
+        var saved = editor.CreateSaveRequest().Definition;
+        Assert.Equal("#5B8FD1", saved.Color);
+        Assert.Equal("#5FA97A", saved.Accent);
+    }
+
+    /// <summary>
+    /// A workspace with no colour of its own still has to be drawn, and drawn as
+    /// something recognisable rather than as a hole.
+    /// </summary>
+    [Fact]
+    public void A_workspace_with_no_colour_falls_back_to_its_accent()
+    {
+        using var editor = new WorkspaceEditorViewModel(Workspace([]), 3, [], [], []);
+
+        Assert.Equal(string.Empty, editor.Color);
+        Assert.Equal("#B8793A", editor.EffectiveColor);
+
+        editor.Accent = string.Empty;
+        Assert.False(string.IsNullOrWhiteSpace(editor.EffectiveColor));
+
+        editor.Color = "#5B8FD1";
+        Assert.Equal("#5B8FD1", editor.EffectiveColor);
+    }
+
+    /// <summary>
+    /// The rail is how you move between workspaces, so the one you are editing
+    /// has to be in it — including the one that does not exist yet.
+    /// </summary>
+    [Fact]
+    public void The_rail_marks_the_open_workspace_and_includes_an_unsaved_one()
+    {
+        var other = new WorkspaceDefinition(
+            new WorkspaceId("other"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Other",
+            null,
+            null,
+            [new WorkspaceEntry.ScreenReference(new WorkspaceEntryId("e"), new ScreenId("s"))]);
+        using var saved = new WorkspaceEditorViewModel(Workspace([]), 3, [], [], []);
+        using var unsaved = WorkspaceEditorViewModel.CreateNew([], [], []);
+
+        saved.SetPeers([Workspace([]), other]);
+        unsaved.SetPeers([Workspace([]), other]);
+
+        Assert.Equal(2, saved.PeerCount);
+        Assert.Single(saved.Peers, peer => peer.IsCurrent);
+        Assert.Equal(saved.Id, saved.Peers.Single(peer => peer.IsCurrent).Id);
+        Assert.Equal("1 screen", saved.Peers.Single(peer => peer.Id == other.Id).Summary);
+        Assert.Equal("Empty", saved.Peers.Single(peer => peer.Id == saved.Id).Summary);
+
+        Assert.Equal(3, unsaved.PeerCount);
+        Assert.Equal(unsaved.Id, unsaved.Peers.Single(peer => peer.IsCurrent).Id);
+    }
+
+    /// <summary>
+    /// A tab row has to say two things the name does not: what it opens, and
+    /// whether editing it elsewhere changes this workspace.
+    /// </summary>
+    [Fact]
+    public void A_tab_row_names_what_it_opens_without_repeating_its_own_heading()
+    {
+        var connection = LocalConnection("local");
+        var layout = Layout("single", "main");
+        var screen = Screen("deploy", layout, connection.Id);
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace(
+            [
+                new WorkspaceEntry.ConnectionReference(
+                    new WorkspaceEntryId("connection-entry"),
+                    connection.Id,
+                    "Local"),
+                new WorkspaceEntry.Tab(
+                    new WorkspaceEntryId("tab-entry"),
+                    "Scratch",
+                    layout.Id,
+                    [TerminalPanel("p", "main", connection.Id)]),
+            ]),
+            3,
+            [connection],
+            [screen],
+            [layout]);
+
+        var reference = editor.Entries[0];
+        var workspaceOnly = editor.Entries[1];
+
+        // The alias repeats the connection's name, so the row does not print it
+        // twice; giving it a different alias brings the real name back.
+        Assert.Equal("Local", reference.DisplayName);
+        Assert.Equal("Local", reference.Detail);
+        reference.Alias = "Primary shell";
+        Assert.Equal("Local · Local", reference.Detail);
+
+        Assert.Equal("Saved", reference.BadgeLabel);
+        Assert.False(reference.IsWorkspaceOnly);
+        Assert.Equal("Workspace-only", workspaceOnly.BadgeLabel);
+        Assert.True(workspaceOnly.IsWorkspaceOnly);
+    }
+
+    /// <summary>
+    /// The icon row shows a shortlist until asked for everything — but a
+    /// workspace whose icon is not on the shortlist must still see its own.
+    /// </summary>
+    [Fact]
+    public void The_icon_row_always_contains_the_workspace_own_icon()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], icon: "wrench"),
+            3,
+            [],
+            [],
+            []);
+
+        Assert.Contains(editor.IconChoices, choice => choice.Id == "wrench");
+        Assert.True(editor.IconChoices.Single(choice => choice.Id == "wrench").IsSelected);
+        Assert.True(editor.IconChoices.Count < editor.IconCount);
+
+        editor.ShowAllIcons = true;
+        Assert.Equal(editor.IconCount, editor.IconChoices.Count);
     }
 
     [Fact]

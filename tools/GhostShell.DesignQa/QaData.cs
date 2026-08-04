@@ -213,8 +213,39 @@ internal static class QaData
                     new WorkspaceEntryId("ops-logs"),
                     new ScreenId("log-monitor"),
                     "Log Monitor"),
+                // One of each kind, because the editor's rows are meant to make
+                // the difference between them visible and a fixture of all one
+                // kind cannot show that.
+                new WorkspaceEntry.ConnectionReference(
+                    new WorkspaceEntryId("ops-api"),
+                    new ConnectionId("production-api"),
+                    null),
+                new WorkspaceEntry.Tab(
+                    new WorkspaceEntryId("ops-release-notes"),
+                    "Release Notes",
+                    new LayoutId("split-two"),
+                    [
+                        Panel("ops-notes-a", SlotA, "Notes", "production-api"),
+                        Panel("ops-notes-b", SlotB, "Checklist", "staging-web"),
+                    ]),
             ],
             icon: "rocket")),
+        Stored(new WorkspaceDefinition(
+            new WorkspaceId("data"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Data",
+            "Warehouse and reporting",
+            accent: null,
+            [
+                new WorkspaceEntry.ConnectionReference(
+                    new WorkspaceEntryId("data-postgres"),
+                    new ConnectionId("postgres-primary"),
+                    null),
+            ],
+            icon: "database",
+            // A colour with no accent: the workspace is marked without retinting
+            // the shell, which is the pairing the two fields exist to allow.
+            color: "#5B8FD1")),
         Stored(new WorkspaceDefinition(
             new WorkspaceId("development"),
             WorkspaceDefinition.CurrentSchemaVersion,

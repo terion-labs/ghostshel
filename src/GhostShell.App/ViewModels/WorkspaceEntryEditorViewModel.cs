@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using FluentIcons.Common;
 using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
@@ -57,6 +58,25 @@ public sealed class WorkspaceEntryEditorViewModel : ObservableObject, IDisposabl
         WorkspaceEditorEntryKind.SavedScreen => "Saved screen",
         WorkspaceEditorEntryKind.WorkspaceTab => "Workspace tab",
         _ => throw new ArgumentOutOfRangeException(),
+    };
+
+    /// <summary>
+    /// Where this tab's definition lives. A reference stays in step with the
+    /// saved connection or screen it points at; a workspace-only tab is a copy
+    /// that nothing else shares — which is the difference that decides whether
+    /// editing it elsewhere changes what this workspace opens.
+    /// </summary>
+    public string BadgeLabel => IsWorkspaceTab ? "Workspace-only" : "Saved";
+
+    public bool IsWorkspaceOnly => IsWorkspaceTab;
+
+    /// <summary>The row's mark: what kind of thing the tab opens, at a glance.</summary>
+    public Symbol RowSymbol => Kind switch
+    {
+        WorkspaceEditorEntryKind.Connection => Symbol.Server,
+        WorkspaceEditorEntryKind.SavedScreen => Symbol.Grid,
+        WorkspaceEditorEntryKind.WorkspaceTab => Symbol.Window,
+        _ => Symbol.Window,
     };
 
     public string Alias
@@ -126,15 +146,37 @@ public sealed class WorkspaceEntryEditorViewModel : ObservableObject, IDisposabl
         }
     }
 
+    /// <summary>
+    /// What the row says under its name. The name is already on screen, so this
+    /// carries what the name does not — the transport, the layout — and only
+    /// repeats the underlying name when an alias has replaced it above.
+    /// </summary>
     public string Detail => Kind switch
     {
-        WorkspaceEditorEntryKind.Connection => SelectedConnection?.DisplayName ?? "Select a connection",
-        WorkspaceEditorEntryKind.SavedScreen => SelectedScreen?.DisplayName ?? "Select a saved screen",
+        WorkspaceEditorEntryKind.Connection => SelectedConnection is not { IsAvailable: true } connection
+            ? "Select a connection"
+            : RepeatsName(connection.Name)
+                ? connection.Kind
+                : $"{connection.Name} · {connection.Kind}",
+        WorkspaceEditorEntryKind.SavedScreen => SelectedScreen is not { IsAvailable: true } screen
+            ? "Select a saved screen"
+            : RepeatsName(screen.Name)
+                ? screen.LayoutName
+                : $"{screen.Name} · {screen.LayoutName}",
         WorkspaceEditorEntryKind.WorkspaceTab => Tab is null
             ? "Tab definition unavailable"
             : $"{Tab.SelectedLayout.DisplayName} · {Tab.Panels.Count} panel{(Tab.Panels.Count == 1 ? string.Empty : "s")}",
         _ => throw new ArgumentOutOfRangeException(),
     };
+
+    /// <summary>
+    /// Whether the row's own heading already says this. An alias that repeats
+    /// the underlying name is the common case — the row would otherwise print
+    /// the same words twice, once above the other.
+    /// </summary>
+    private bool RepeatsName(string name) =>
+        string.IsNullOrWhiteSpace(Alias)
+        || string.Equals(Alias.Trim(), name, StringComparison.OrdinalIgnoreCase);
 
     public bool HasMissingReference => Kind switch
     {

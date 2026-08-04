@@ -19,9 +19,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private string _name;
     private string _description;
     private string _accent;
+    private string _color;
     private string _icon;
     private bool _autoSave;
     private string _iconSearch = string.Empty;
+    private bool _showAllIcons;
     private bool _isDirty;
     private IReadOnlyList<DefinitionValidationIssue> _validationIssues = [];
     private string? _lastOperationError;
@@ -77,6 +79,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _name = workspace.Name;
         _description = workspace.Description ?? string.Empty;
         _accent = workspace.Accent ?? string.Empty;
+        _color = workspace.Color ?? string.Empty;
         _icon = workspace.Icon;
         _autoSave = workspace.AutoSave;
         _screens = screens.ToDictionary(screen => screen.Id);
@@ -113,9 +116,16 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     public ObservableCollection<WorkspaceIconChoiceViewModel> IconChoices { get; } = [];
 
     /// <summary>
-    /// The accent presets the picker offers. Free choice stays available through
-    /// the custom colour and the eyedropper, so this is a shortcut rather than a
-    /// restriction.
+    /// The identity-colour presets. Free choice stays available through the
+    /// custom picker, so this is a shortcut rather than a restriction.
+    /// </summary>
+    public IReadOnlyList<WorkspaceAccentChoiceViewModel> ColorChoices { get; } =
+        WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option)).ToArray();
+
+    /// <summary>
+    /// The accent presets. Deliberately a separate row from
+    /// <see cref="ColorChoices"/>: the colour marks the workspace, the accent
+    /// retints the shell, and one is not the other.
     /// </summary>
     public IReadOnlyList<WorkspaceAccentChoiceViewModel> AccentChoices { get; } =
         WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option)).ToArray();
@@ -136,11 +146,30 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Whether the grid shows the whole catalog. Off, it shows the common
+    /// icons and the workspace's own — so the icon you already chose is never
+    /// missing from the row that claims to show your choice.
+    /// </summary>
+    public bool ShowAllIcons
+    {
+        get => _showAllIcons;
+        set
+        {
+            if (SetProperty(ref _showAllIcons, value))
+            {
+                RefreshIconChoices();
+            }
+        }
+    }
+
     public bool HasNoMatchingIcons => IconChoices.Count == 0;
 
     private void RefreshIconChoices()
     {
-        var matches = WorkspaceIcons.Search(_iconSearch);
+        var matches = string.IsNullOrWhiteSpace(_iconSearch) && !_showAllIcons
+            ? CommonIconsIncludingCurrent()
+            : WorkspaceIcons.Search(_iconSearch);
         IconChoices.Clear();
         foreach (var option in matches)
         {
@@ -153,6 +182,15 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasNoMatchingIcons));
     }
 
+    private IReadOnlyList<WorkspaceIconOption> CommonIconsIncludingCurrent()
+    {
+        var current = WorkspaceIcons.OptionFor(_icon);
+        return WorkspaceIcons.Common.Any(option =>
+            string.Equals(option.Id, current.Id, StringComparison.Ordinal))
+            ? WorkspaceIcons.Common
+            : [current, .. WorkspaceIcons.Common];
+    }
+
     private void RefreshChoiceSelection()
     {
         foreach (var choice in IconChoices)
@@ -160,10 +198,58 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             choice.IsSelected = string.Equals(choice.Id, _icon, StringComparison.Ordinal);
         }
 
+        // Against the effective colour, not the stored one: the tile is already
+        // painted with the fallback, and a row of swatches with none of them
+        // marked would say the tile's colour came from nowhere.
+        foreach (var choice in ColorChoices)
+        {
+            choice.IsSelected = string.Equals(
+                choice.Hex,
+                EffectiveColor,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
         foreach (var choice in AccentChoices)
         {
             choice.IsSelected = string.Equals(choice.Hex, _accent, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    /// <summary>
+    /// The other workspaces, for the editor's rail. Supplied by the host rather
+    /// than read here, because the editor owns one isolated snapshot and the
+    /// catalog is the host's to know.
+    /// </summary>
+    public ObservableCollection<WorkspaceRailItemViewModel> Peers { get; } = [];
+
+    public int PeerCount => Peers.Count;
+
+    public void SetPeers(IReadOnlyList<WorkspaceDefinition> workspaces)
+    {
+        ArgumentNullException.ThrowIfNull(workspaces);
+        Peers.Clear();
+        foreach (var workspace in workspaces.OrderBy(
+            item => item.Name,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            Peers.Add(WorkspaceRailItemViewModel.From(workspace, workspace.Id == Id));
+        }
+
+        // A workspace being created is not in the catalog yet, so the rail would
+        // show every workspace except the one on screen.
+        if (Peers.All(peer => peer.Id != Id))
+        {
+            Peers.Add(new WorkspaceRailItemViewModel(
+                Id,
+                Name,
+                "New",
+                EffectiveColor,
+                TileSymbol,
+                IsCurrent: true));
+        }
+
+        OnPropertyChanged(nameof(Peers));
+        OnPropertyChanged(nameof(PeerCount));
     }
 
     public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
@@ -198,6 +284,43 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The colour this workspace is recognised by. Empty follows the accent,
+    /// and then the shell's own colour, so a workspace always has a mark.
+    /// </summary>
+    public string Color
+    {
+        get => _color;
+        set
+        {
+            if (SetProperty(ref _color, value))
+            {
+                RefreshChoiceSelection();
+                OnPropertyChanged(nameof(EffectiveColor));
+                Changed();
+            }
+        }
+    }
+
+    /// <summary>What the tile actually paints — never empty. See <see cref="Color"/>.</summary>
+    public string EffectiveColor => WorkspaceTints.Of(_color, _accent);
+
+    /// <summary>The icon the header tile draws, resolved from the stored identifier.</summary>
+    public FluentIcons.Common.Symbol TileSymbol => WorkspaceIcons.SymbolFor(_icon);
+
+    /// <summary>Whether this workspace retints the shell rather than following it.</summary>
+    public bool HasAccent => !string.IsNullOrWhiteSpace(_accent);
+
+    public string AccentSummary => HasAccent
+        ? "This workspace retints the shell while it is open."
+        : "Following the application accent.";
+
+    public int TabCount => _entries.Count(entry => entry.IsWorkspaceTab);
+
+    public int EntryCount => _entries.Count;
+
+    public bool HasNoEntries => _entries.Count == 0;
+
     public string Description
     {
         get => _description;
@@ -219,6 +342,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _accent, value))
             {
                 RefreshChoiceSelection();
+                OnPropertyChanged(nameof(HasAccent));
+                OnPropertyChanged(nameof(AccentSummary));
+                OnPropertyChanged(nameof(EffectiveColor));
                 Changed();
             }
         }
@@ -232,6 +358,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _icon, value))
             {
                 RefreshChoiceSelection();
+                OnPropertyChanged(nameof(TileSymbol));
                 Changed();
             }
         }
@@ -436,11 +563,14 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         var descriptionChanged = !StringComparer.Ordinal.Equals(_description, description);
         var accent = _original.Accent ?? string.Empty;
         var accentChanged = !StringComparer.Ordinal.Equals(_accent, accent);
+        var color = _original.Color ?? string.Empty;
+        var colorChanged = !StringComparer.Ordinal.Equals(_color, color);
         var iconChanged = !StringComparer.Ordinal.Equals(_icon, _original.Icon);
         var autoSaveChanged = _autoSave != _original.AutoSave;
         _name = _original.Name;
         _description = description;
         _accent = accent;
+        _color = color;
         _icon = _original.Icon;
         _autoSave = _original.AutoSave;
         if (nameChanged)
@@ -456,12 +586,27 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         if (accentChanged)
         {
             OnPropertyChanged(nameof(Accent));
+            OnPropertyChanged(nameof(HasAccent));
+            OnPropertyChanged(nameof(AccentSummary));
+        }
+
+        if (colorChanged)
+        {
+            OnPropertyChanged(nameof(Color));
+        }
+
+        if (accentChanged || colorChanged)
+        {
+            OnPropertyChanged(nameof(EffectiveColor));
         }
 
         if (iconChanged)
         {
             OnPropertyChanged(nameof(Icon));
+            OnPropertyChanged(nameof(TileSymbol));
         }
+
+        RefreshChoiceSelection();
 
         if (autoSaveChanged)
         {
@@ -550,23 +695,29 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _entries.Select(entry => entry.Build()).ToArray(),
         _original.AgentPolicyOverride,
         Icon,
-        AutoSave);
+        AutoSave,
+        Color);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {
         var definition = BuildDefinition();
         List<DefinitionValidationIssue> issues = [.. WorkspaceValidator.Validate(definition).Issues];
-        if (!string.IsNullOrWhiteSpace(Accent))
+        foreach (var (value, label) in new[] { (Accent, "accent"), (Color, "color") })
         {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
             try
             {
-                _ = RgbColor.Parse(Accent);
+                _ = RgbColor.Parse(value);
             }
             catch (FormatException)
             {
                 issues.Add(new(
                     DefinitionValidationCode.InvalidEntry,
-                    "The workspace color must contain six hexadecimal digits.",
+                    $"The workspace {label} must contain six hexadecimal digits.",
                     Id.Value));
             }
         }
@@ -636,6 +787,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(ConnectionEntries));
             OnPropertyChanged(nameof(SavedScreenEntries));
             OnPropertyChanged(nameof(WorkspaceTabEntries));
+            OnPropertyChanged(nameof(TabCount));
+            OnPropertyChanged(nameof(EntryCount));
+            OnPropertyChanged(nameof(HasNoEntries));
         }
 
         OnPropertyChanged(nameof(ValidationIssues));

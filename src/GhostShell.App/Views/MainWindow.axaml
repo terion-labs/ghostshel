@@ -361,7 +361,9 @@
             DataContext="{Binding WorkspaceEditor}"
             PickAccentRequested="OnWorkspaceAccentPickRequested"
             SaveRequested="OnWorkspaceEditorSaveRequested"
-            CancelRequested="OnWorkspaceEditorCancelRequested" />
+            CancelRequested="OnWorkspaceEditorCancelRequested"
+            WorkspaceSelectionRequested="OnWorkspaceSelectionRequested"
+            CreateWorkspaceRequested="OnCreateWorkspaceRequested" />
       </controls:SurfaceCard>
 
       <Border

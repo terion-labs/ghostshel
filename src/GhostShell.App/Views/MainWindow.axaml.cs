@@ -1170,6 +1170,55 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// The rail asked for another workspace. Switching carries the edits in
+    /// progress with it when they are complete — refusing to move because
+    /// something is unsaved would make the rail a list you cannot use — and only
+    /// stops when the workspace could not be saved as it stands.
+    /// </summary>
+    private async void OnWorkspaceSelectionRequested(object? sender, WorkspaceId id)
+    {
+        _ = sender;
+        if (!await CommitWorkspaceEditsBeforeSwitchAsync())
+        {
+            return;
+        }
+
+        ViewModel.BeginEditWorkspace(id);
+        FocusDefinitionEditorWhenReady();
+    }
+
+    private async void OnCreateWorkspaceRequested(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (!await CommitWorkspaceEditsBeforeSwitchAsync())
+        {
+            return;
+        }
+
+        ViewModel.BeginCreateWorkspace();
+        FocusDefinitionEditorWhenReady();
+    }
+
+    private async Task<bool> CommitWorkspaceEditsBeforeSwitchAsync()
+    {
+        if (ViewModel.WorkspaceEditor is not { IsDirty: true } editor)
+        {
+            return true;
+        }
+
+        if (!editor.IsValid)
+        {
+            ViewModel.SetError(
+                "This workspace cannot be left as it stands: "
+                + editor.ValidationSummary);
+            return false;
+        }
+
+        return (await ViewModel.SaveWorkspaceEditorAsync(_lifetime.Token)).IsSuccess;
+    }
+
     private async void OnWorkspaceEditorCancelRequested(
         object? sender,
         WorkspaceEditorCancelRequestedEventArgs e)

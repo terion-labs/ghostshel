@@ -1,25 +1,29 @@
 using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Controls.Presenters;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
-using Avalonia.VisualTree;
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Core;
-
-using GhostShell.App.Controls;
 
 namespace GhostShell.App.Views;
 
 /// <summary>
 /// Edits one isolated workspace snapshot and reports host-owned save and close intents.
-/// The control applies reversible in-editor operations itself; persistence and discard
-/// confirmation remain responsibilities of the containing window.
+/// The control applies reversible in-editor operations itself; persistence, discard
+/// confirmation, and switching to another workspace remain the containing window's.
 /// </summary>
 public sealed partial class WorkspaceEditorView : UserControl
 {
     private WorkspaceEditorViewModel? _observedEditor;
     private bool _syncingAccent;
+    private bool _syncingColor;
+    private bool _syncingPeers;
+    private WorkspaceEntryEditorViewModel? _draggingEntry;
 
     public WorkspaceEditorView()
     {
@@ -48,6 +52,16 @@ public sealed partial class WorkspaceEditorView : UserControl
     /// </summary>
     public event EventHandler? PickAccentRequested;
 
+    /// <summary>
+    /// Raised when the rail asks for a different workspace. The editor holds one
+    /// snapshot and cannot swap it for another, so the host decides what happens
+    /// to the edits in progress before opening the next one.
+    /// </summary>
+    public event EventHandler<WorkspaceId>? WorkspaceSelectionRequested;
+
+    /// <summary>Raised when the rail's plus asks for a workspace that does not exist yet.</summary>
+    public event EventHandler? CreateWorkspaceRequested;
+
     public WorkspaceEditorViewModel? Editor => DataContext as WorkspaceEditorViewModel;
 
     public bool FocusInitialControl() =>
@@ -55,10 +69,10 @@ public sealed partial class WorkspaceEditorView : UserControl
 
     private ListBox EntryListControl => this.FindControl<ListBox>("EntryList")!;
 
-    private ScrollViewer SelectedEntryEditorControl =>
-        this.FindControl<ScrollViewer>("SelectedEntryEditor")!;
+    private ListBox PeerListControl => this.FindControl<ListBox>("PeerList")!;
 
-    private SurfaceCard NoEntrySelectionControl => this.FindControl<SurfaceCard>("NoEntrySelection")!;
+    private StackPanel SelectedEntryEditorControl =>
+        this.FindControl<StackPanel>("SelectedEntryEditor")!;
 
     private void ObserveEditor()
     {
@@ -74,27 +88,36 @@ public sealed partial class WorkspaceEditorView : UserControl
         }
 
         ConfigurePickers();
+        SynchronizePeerSelection();
         // After the binding pass, not during DataContextChanged: the entry
         // list's ItemsSource has not delivered the new editor's entries yet, so
         // selecting the first entry now is coerced back to nothing — which is
         // why reopening the editor used to land on the empty state.
-        Avalonia.Threading.Dispatcher.UIThread.Post(EnsureEntrySelection);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            EnsureEntrySelection();
+            SynchronizePeerSelection();
+        });
     }
 
     private void ConfigurePickers()
     {
         var editor = Editor;
-        var addConnectionPicker = this.FindControl<ComboBox>("AddConnectionPicker")!;
-        var addScreenPicker = this.FindControl<ComboBox>("AddScreenPicker")!;
-        var addLayoutPicker = this.FindControl<ComboBox>("AddLayoutPicker")!;
+        // The add-lists live inside flyouts. Their names still resolve here:
+        // Avalonia registers a flyout's content in the enclosing name scope when
+        // the markup loads, not when the flyout first opens — verified rather
+        // than assumed, because the opposite would be a null at every open.
+        var addConnectionList = this.FindControl<ListBox>("AddConnectionList")!;
+        var addScreenList = this.FindControl<ListBox>("AddScreenList")!;
+        var addLayoutList = this.FindControl<ListBox>("AddLayoutList")!;
         var entryConnectionPicker = this.FindControl<ComboBox>("EntryConnectionPicker")!;
         var entryScreenPicker = this.FindControl<ComboBox>("EntryScreenPicker")!;
 
         if (editor is null)
         {
-            addConnectionPicker.ItemsSource = null;
-            addScreenPicker.ItemsSource = null;
-            addLayoutPicker.ItemsSource = null;
+            addConnectionList.ItemsSource = null;
+            addScreenList.ItemsSource = null;
+            addLayoutList.ItemsSource = null;
             entryConnectionPicker.ItemsSource = null;
             entryScreenPicker.ItemsSource = null;
             return;
@@ -105,22 +128,24 @@ public sealed partial class WorkspaceEditorView : UserControl
         var pickableLayouts = editor.LayoutOptions
             .Where(option => !LayoutDefinition.IsAutoSaved(option.Id))
             .ToArray();
-        addConnectionPicker.ItemsSource = editor.ConnectionOptions;
-        addScreenPicker.ItemsSource = editor.ScreenOptions;
-        addLayoutPicker.ItemsSource = pickableLayouts;
+        addConnectionList.ItemsSource = editor.ConnectionOptions;
+        addScreenList.ItemsSource = editor.ScreenOptions;
+        addLayoutList.ItemsSource = pickableLayouts;
         entryConnectionPicker.ItemsSource = editor.ConnectionOptions;
         entryScreenPicker.ItemsSource = editor.ScreenOptions;
-        addConnectionPicker.SelectedItem = editor.ConnectionOptions.FirstOrDefault(option => option.IsAvailable);
-        addScreenPicker.SelectedItem = editor.ScreenOptions.FirstOrDefault(option => option.IsAvailable);
-        addLayoutPicker.SelectedItem = pickableLayouts.FirstOrDefault(option => option.IsAvailable);
-        SynchronizeIconPicker();
+        addLayoutList.SelectedItem = pickableLayouts.FirstOrDefault(option => option.IsAvailable);
+        SynchronizeColorPickers();
     }
 
     /// <summary>
-    /// Selection in the icon and accent grids is bound declaratively, so only the
-    /// colour picker — which holds its own value — needs pushing.
+    /// Selection in the icon and swatch rows is bound declaratively, so only the
+    /// colour pickers — which hold their own value — need pushing.
     /// </summary>
-    private void SynchronizeIconPicker() => SynchronizeAccentPicker();
+    private void SynchronizeColorPickers()
+    {
+        SynchronizeAccentPicker();
+        SynchronizeIdentityColorPicker();
+    }
 
     private void SynchronizeAccentPicker()
     {
@@ -135,7 +160,7 @@ public sealed partial class WorkspaceEditorView : UserControl
         // previous value rather than jumping to black on every keystroke.
         if (string.IsNullOrWhiteSpace(editor.Accent))
         {
-            SetPickerColor(Color.Parse(ThemePreference.BronzeFallback.ToString()));
+            SetPickerColor("AccentColorPicker", Color.Parse(ThemePreference.BronzeFallback.ToString()));
             return;
         }
 
@@ -144,19 +169,36 @@ public sealed partial class WorkspaceEditorView : UserControl
             return;
         }
 
-        SetPickerColor(color);
+        SetPickerColor("AccentColorPicker", color);
     }
 
-    private void SetPickerColor(Color color)
+    private void SynchronizeIdentityColorPicker()
     {
+        if (Editor is not { } editor || _syncingColor)
+        {
+            return;
+        }
+
+        if (Color.TryParse(editor.EffectiveColor, out var color))
+        {
+            SetPickerColor("ColorCustomPicker", color);
+        }
+    }
+
+    private void SetPickerColor(string pickerName, Color color)
+    {
+        var syncingAccent = _syncingAccent;
+        var syncingColor = _syncingColor;
         _syncingAccent = true;
+        _syncingColor = true;
         try
         {
-            this.FindControl<ColorPicker>("AccentColorPicker")!.Color = color;
+            this.FindControl<ColorPicker>(pickerName)!.Color = color;
         }
         finally
         {
-            _syncingAccent = false;
+            _syncingAccent = syncingAccent;
+            _syncingColor = syncingColor;
         }
     }
 
@@ -164,9 +206,24 @@ public sealed partial class WorkspaceEditorView : UserControl
     {
         _ = e;
         if (Editor is { } editor
-            && sender is Button { DataContext: WorkspaceIconOption option })
+            && sender is Button { DataContext: WorkspaceIconChoiceViewModel choice })
         {
-            editor.Icon = option.Id;
+            editor.Icon = choice.Id;
+        }
+    }
+
+    /// <summary>
+    /// The swatch rows are bound to choice view models rather than to the palette
+    /// records they wrap, because a swatch also carries whether it is the chosen
+    /// one. Matching the wrong type here is silent: the click does nothing.
+    /// </summary>
+    private void OnColorPresetClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (Editor is { } editor
+            && sender is Button { DataContext: WorkspaceAccentChoiceViewModel choice })
+        {
+            editor.Color = choice.Hex;
         }
     }
 
@@ -174,9 +231,28 @@ public sealed partial class WorkspaceEditorView : UserControl
     {
         _ = e;
         if (Editor is { } editor
-            && sender is Button { DataContext: WorkspaceAccentOption option })
+            && sender is Button { DataContext: WorkspaceAccentChoiceViewModel choice })
         {
-            editor.Accent = option.Hex;
+            editor.Accent = choice.Hex;
+        }
+    }
+
+    private void OnColorChanged(object? sender, ColorChangedEventArgs e)
+    {
+        _ = sender;
+        if (Editor is not { } editor || _syncingColor)
+        {
+            return;
+        }
+
+        _syncingColor = true;
+        try
+        {
+            editor.Color = ToHex(e.NewColor);
+        }
+        finally
+        {
+            _syncingColor = false;
         }
     }
 
@@ -191,7 +267,7 @@ public sealed partial class WorkspaceEditorView : UserControl
         _syncingAccent = true;
         try
         {
-            editor.Accent = $"#{e.NewColor.R:X2}{e.NewColor.G:X2}{e.NewColor.B:X2}";
+            editor.Accent = ToHex(e.NewColor);
         }
         finally
         {
@@ -199,8 +275,36 @@ public sealed partial class WorkspaceEditorView : UserControl
         }
     }
 
+    private void OnClearAccentClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Editor is { } editor)
+        {
+            editor.Accent = string.Empty;
+        }
+    }
+
     private void OnPickAccentClick(object? sender, RoutedEventArgs e) =>
         PickAccentRequested?.Invoke(sender, e);
+
+    private void OnRenameWorkspaceClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        var input = this.FindControl<TextBox>("WorkspaceNameInput")!;
+        input.Focus();
+        input.SelectAll();
+    }
+
+    private void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        CreateWorkspaceRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static string ToHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
 
     /// <summary>
     /// Applies a colour sampled by the host. Kept separate from
@@ -211,8 +315,43 @@ public sealed partial class WorkspaceEditorView : UserControl
     {
         if (Editor is { } editor)
         {
-            editor.Accent = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+            editor.Accent = ToHex(color);
         }
+    }
+
+    private void SynchronizePeerSelection()
+    {
+        var editor = Editor;
+        _syncingPeers = true;
+        try
+        {
+            PeerListControl.SelectedItem = editor?.Peers.FirstOrDefault(peer => peer.IsCurrent);
+        }
+        finally
+        {
+            _syncingPeers = false;
+        }
+    }
+
+    private void OnPeerSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        _ = e;
+        if (_syncingPeers
+            || Editor is not { } editor
+            || (sender as ListBox)?.SelectedItem is not WorkspaceRailItemViewModel peer)
+        {
+            return;
+        }
+
+        if (peer.Id == editor.Id)
+        {
+            return;
+        }
+
+        WorkspaceSelectionRequested?.Invoke(this, peer.Id);
+        // The host may refuse — an invalid workspace cannot be left behind — so
+        // the rail shows what is actually open rather than what was clicked.
+        Avalonia.Threading.Dispatcher.UIThread.Post(SynchronizePeerSelection);
     }
 
     private void EnsureEntrySelection()
@@ -237,16 +376,20 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.PropertyName is nameof(WorkspaceEditorViewModel.Accent))
+        if (e.PropertyName is nameof(WorkspaceEditorViewModel.Accent)
+            or nameof(WorkspaceEditorViewModel.Color))
         {
-            SynchronizeIconPicker();
+            SynchronizeColorPickers();
         }
         else if (e.PropertyName == nameof(WorkspaceEditorViewModel.Entries))
         {
             EnsureEntrySelection();
         }
+        else if (e.PropertyName == nameof(WorkspaceEditorViewModel.Peers))
+        {
+            SynchronizePeerSelection();
+        }
     }
-
 
     private void OnEntrySelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -258,60 +401,131 @@ public sealed partial class WorkspaceEditorView : UserControl
     {
         SelectedEntryEditorControl.DataContext = entry;
         SelectedEntryEditorControl.IsVisible = entry is not null;
-        NoEntrySelectionControl.IsVisible = entry is null;
     }
 
-    private void OnAddConnectionClick(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// Reordering is a drag on the handle, not a pair of arrows: the order is
+    /// launch order, and dragging is how a list of things that happen in sequence
+    /// is rearranged everywhere else. The move is applied continuously so the row
+    /// under the cursor is the row that will be there when the drag ends.
+    /// </summary>
+    private void OnEntryDragHandlePressed(object? sender, PointerPressedEventArgs e)
     {
-        _ = sender;
-        _ = e;
-        if (Editor is not { } editor
-            || this.FindControl<ComboBox>("AddConnectionPicker")!.SelectedItem
-                is not ScreenConnectionOption option)
+        if (sender is not Control { DataContext: WorkspaceEntryEditorViewModel entry })
         {
-            ShowInteractionError("Choose an available connection first.");
             return;
         }
 
+        _draggingEntry = entry;
+        e.Pointer.Capture(sender as IInputElement);
+        EntryListControl.SelectedItem = entry;
+        e.Handled = true;
+    }
+
+    private void OnEntryDragHandleMoved(object? sender, PointerEventArgs e)
+    {
+        _ = sender;
+        if (_draggingEntry is not { } entry || Editor is not { } editor)
+        {
+            return;
+        }
+
+        var target = EntryIndexAt(e.GetPosition(EntryListControl));
+        if (target < 0 || target == editor.Entries.IndexOf(entry))
+        {
+            return;
+        }
+
+        _ = editor.MoveEntry(entry.Id, target);
+        EntryListControl.SelectedItem = entry;
+    }
+
+    private void OnEntryDragHandleReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _ = sender;
+        _draggingEntry = null;
+        e.Pointer.Capture(null);
+    }
+
+    /// <summary>
+    /// Which row a point in the list belongs to. Containers are asked for their
+    /// own bounds rather than the point being hit-tested, because the pointer is
+    /// captured by the handle while dragging and hit-testing would only ever
+    /// return the handle.
+    /// </summary>
+    private int EntryIndexAt(Point position)
+    {
+        for (var index = 0; index < EntryListControl.ItemCount; index++)
+        {
+            if (EntryListControl.ContainerFromIndex(index) is not Control container
+                || container.TranslatePoint(default, EntryListControl) is not { } origin)
+            {
+                continue;
+            }
+
+            if (position.Y >= origin.Y && position.Y <= origin.Y + container.Bounds.Height)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private void OnAddConnectionSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        _ = e;
+        if (sender is not ListBox list
+            || list.SelectedItem is not ScreenConnectionOption option
+            || Editor is not { } editor)
+        {
+            return;
+        }
+
+        list.SelectedItem = null;
+        CloseFlyoutAround(list);
         CompleteAdd(editor.AddConnection(option.Id));
     }
 
+    /// <summary>
+    /// A screen can be linked or copied, and the difference matters later, so the
+    /// list only records the choice and the flyout's two buttons decide which.
+    /// </summary>
     private void OnAddSavedScreenClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
         if (Editor is not { } editor
-            || this.FindControl<ComboBox>("AddScreenPicker")!.SelectedItem
+            || this.FindControl<ListBox>("AddScreenList")!.SelectedItem
                 is not WorkspaceScreenOption option)
         {
             ShowInteractionError("Choose an available saved screen first.");
             return;
         }
 
+        CloseFlyoutAround(sender as Control);
         CompleteAdd(editor.AddSavedScreen(option.Id));
     }
 
     private void OnCopySavedScreenClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
         if (Editor is not { } editor
-            || this.FindControl<ComboBox>("AddScreenPicker")!.SelectedItem
+            || this.FindControl<ListBox>("AddScreenList")!.SelectedItem
                 is not WorkspaceScreenOption option)
         {
             ShowInteractionError("Choose an available saved screen first.");
             return;
         }
 
+        CloseFlyoutAround(sender as Control);
         CompleteAdd(editor.AddWorkspaceTabFromScreen(option.Id));
     }
 
     private void OnAddWorkspaceTabClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
         if (Editor is not { } editor
-            || this.FindControl<ComboBox>("AddLayoutPicker")!.SelectedItem
+            || this.FindControl<ListBox>("AddLayoutList")!.SelectedItem
                 is not WorkspaceLayoutOption option)
         {
             ShowInteractionError("Choose an available layout first.");
@@ -326,7 +540,16 @@ public sealed partial class WorkspaceEditorView : UserControl
             nameInput.Text = string.Empty;
         }
 
+        CloseFlyoutAround(sender as Control);
         CompleteAdd(result);
+    }
+
+    private static void CloseFlyoutAround(Control? control)
+    {
+        if (control?.FindLogicalAncestorOfType<Popup>() is { } popup)
+        {
+            popup.IsOpen = false;
+        }
     }
 
     private void CompleteAdd(WorkspaceEditorOperationResult result)
@@ -340,41 +563,6 @@ public sealed partial class WorkspaceEditorView : UserControl
         ClearInteractionError();
         EntryListControl.SelectedItem = editor.Entries.Single(entry => entry.Id == entryId);
         EntryListControl.ScrollIntoView(EntryListControl.SelectedItem!);
-    }
-
-    private void OnMoveEntryEarlierClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (sender is Control { DataContext: WorkspaceEntryEditorViewModel entry }
-            && Editor is { } editor)
-        {
-            CompleteEntryOperation(editor.MoveEntryEarlier(entry.Id), entry);
-        }
-    }
-
-    private void OnMoveEntryLaterClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (sender is Control { DataContext: WorkspaceEntryEditorViewModel entry }
-            && Editor is { } editor)
-        {
-            CompleteEntryOperation(editor.MoveEntryLater(entry.Id), entry);
-        }
-    }
-
-    private void CompleteEntryOperation(
-        WorkspaceEditorOperationResult result,
-        WorkspaceEntryEditorViewModel entry)
-    {
-        if (!result.IsSuccess)
-        {
-            ShowInteractionError(result.Error ?? "The workspace order could not be changed.");
-            return;
-        }
-
-        ClearInteractionError();
-        EntryListControl.SelectedItem = entry;
-        EntryListControl.ScrollIntoView(entry);
     }
 
     private void OnRemoveEntryClick(object? sender, RoutedEventArgs e)
@@ -497,7 +685,7 @@ public sealed partial class WorkspaceEditorView : UserControl
 
         editor.Reset();
         ClearInteractionError();
-        SynchronizeIconPicker();
+        SynchronizeColorPickers();
         EnsureEntrySelection();
         ResetRequested?.Invoke(this, EventArgs.Empty);
     }

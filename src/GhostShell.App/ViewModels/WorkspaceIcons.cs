@@ -58,8 +58,39 @@ internal static class WorkspaceIcons
         new("wrench", "Maintenance", Symbol.Wrench, "tools fix ops"),
     ];
 
+    /// <summary>
+    /// The icons the picker offers without being asked. The full catalog is a
+    /// wall of tiles, and a wall is read as "choose carefully" rather than
+    /// "choose"; these ten cover what workspaces are usually named after, and
+    /// the rest stay one search away.
+    /// </summary>
+    public static IReadOnlyList<WorkspaceIconOption> Common { get; } =
+        new[]
+        {
+            WorkspaceDefinition.DefaultIcon,
+            "rocket",
+            "code",
+            "database",
+            "pulse",
+            "terminal",
+            "layers",
+            "cloud",
+            "server",
+            "folder",
+        }
+        .Select(id => All.Single(option => string.Equals(option.Id, id, StringComparison.Ordinal)))
+        .ToArray();
+
     private static readonly Dictionary<string, WorkspaceIconOption> ById =
         All.ToDictionary(option => option.Id, StringComparer.Ordinal);
+
+    /// <summary>
+    /// The catalog entry behind an identifier, or the default one. Callers that
+    /// only draw an icon want <see cref="SymbolFor"/>; this exists for the ones
+    /// that also need its name.
+    /// </summary>
+    public static WorkspaceIconOption OptionFor(string? icon) =>
+        icon is not null && ById.TryGetValue(icon, out var option) ? option : All[0];
 
     /// <summary>
     /// An unknown identifier draws the default rather than nothing, so a
