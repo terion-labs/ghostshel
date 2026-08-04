@@ -432,30 +432,46 @@
               </Grid>
             </Border>
             <controls:SurfaceCard Padding="0" Grid.Row="1" Margin="{controls:Inset Sm}" IsVisible="{Binding HasSelectedMetadata}">
-              <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <StackPanel>
+                <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Kind" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Kind}" /></StackPanel>
                 <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Size" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Size}" /></StackPanel>
                 <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Modified" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedMetadata.Modified}" /></StackPanel>
                 <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Version" /><TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SelectedMetadata.Version}" TextTrimming="CharacterEllipsis" /></StackPanel>
                 <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SelectedMetadata.Source}" />
-                <!-- What this particular format can be shown as. Offered by the
-                     previewer that claimed the file, so the panel gains no
-                     knowledge of formats by showing them. -->
-                <ItemsControl Grid.Row="3" Grid.ColumnSpan="2" ItemsSource="{Binding PreviewToggles}" IsVisible="{Binding HasPreviewToggles}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <CheckBox
-                          FontSize="{DynamicResource ShellFontSize9}"
-                          IsChecked="{Binding IsOn, Mode=TwoWay}"
-                          Content="{Binding Label}"
-                          AutomationProperties.Name="{Binding Label}" />
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </Grid>
+                </Grid>
+                <!-- What this format can be shown as, along the bottom of its
+                     details: the same reading as the workspace status bar,
+                     which is where the shell puts the controls that say how
+                     something is being shown. -->
+                <Border
+                    Background="{DynamicResource ShellSurfaceBrush}"
+                    BorderBrush="{DynamicResource ShellBorderBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="{controls:Inset Horizontal=Md, Vertical=Xs}"
+                    IsVisible="{Binding HasPreviewToggles}">
+                  <ItemsControl ItemsSource="{Binding PreviewToggles}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                          <ToggleSwitch
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding IsOn, Mode=TwoWay}"
+                              AutomationProperties.Name="{Binding Label}" />
+                          <TextBlock
+                              VerticalAlignment="Center"
+                              Classes="Muted"
+                              FontSize="{DynamicResource ShellFontSize9}"
+                              Text="{Binding Label}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </StackPanel>
             </controls:SurfaceCard>
             <Grid Grid.Row="2">
               <components:CodePreviewView

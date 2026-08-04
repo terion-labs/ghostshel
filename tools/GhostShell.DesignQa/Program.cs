@@ -678,6 +678,127 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
+        // Not a picture: a stopwatch. Renders the preview path the way the panel
+        // does and prints where the time goes.
+        ("preview-timing", () =>
+        {
+            var text = File.ReadAllText(
+                Path.Combine(Program.OutputDirectory, "preview-samples", "notes.md"));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var options = new TextMateSharp.Grammars.RegistryOptions(
+                TextMateSharp.Grammars.ThemeName.DarkPlus);
+            Console.WriteLine($"TIMING registry-options {watch.ElapsedMilliseconds}ms");
+
+            watch.Restart();
+            var second = new TextMateSharp.Grammars.RegistryOptions(
+                TextMateSharp.Grammars.ThemeName.DarkPlus);
+            Console.WriteLine($"TIMING registry-options-again {watch.ElapsedMilliseconds}ms");
+            _ = second;
+
+            watch.Restart();
+            var editor = new AvaloniaEdit.TextEditor();
+            var installation = AvaloniaEdit.TextMate.TextMate.InstallTextMate(editor, options);
+            Console.WriteLine($"TIMING install-textmate {watch.ElapsedMilliseconds}ms");
+
+            watch.Restart();
+            installation.SetGrammar(options.GetScopeByLanguageId(
+                options.GetLanguageByExtension(".md")!.Id));
+            Console.WriteLine($"TIMING set-grammar-markdown {watch.ElapsedMilliseconds}ms");
+
+            watch.Restart();
+            editor.Document.Text = text;
+            Console.WriteLine($"TIMING set-document {watch.ElapsedMilliseconds}ms");
+
+            watch.Restart();
+            var blocks = GhostShell.App.MarkdownPreviewDocument.Parse(text);
+            Console.WriteLine(
+                $"TIMING markdown-parse {watch.ElapsedMilliseconds}ms ({blocks.Length} blocks)");
+
+            watch.Restart();
+            var view = new GhostShell.App.Views.Components.MarkdownPreviewView { Text = text };
+            Console.WriteLine($"TIMING markdown-view-construct {watch.ElapsedMilliseconds}ms");
+
+            return new Window
+            {
+                Width = 400,
+                Height = 200,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = view,
+            };
+        }, null),
+        // The whole path, timed as a person experiences it: select the file,
+        // then flip the switch, on the real panel.
+        ("preview-timing-panel", () =>
+        {
+            var window = CreateFilePanelProbe("notes.md");
+            var panel = (FileRuntimePanelViewModel)
+                ((GhostShell.App.Views.RuntimePanels.FileRuntimePanelView)window.Content!)
+                .DataContext!;
+            var timed = false;
+            window.Opened += (_, _) =>
+            {
+                if (timed)
+                {
+                    return;
+                }
+
+                timed = true;
+                // Split deliberately: what the reader waits for before the file
+                // appears, and what arrives afterwards without holding them up.
+                // Drained at Input priority first: that is everything the
+                // reader waits on before the file is on screen. Whatever the
+                // panel deferred below that priority runs afterwards, with
+                // input processed in between.
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var preview = panel.PreviewSelectedAsync();
+                while (!preview.IsCompleted && watch.ElapsedMilliseconds < 10_000)
+                {
+                    Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+                    Thread.Sleep(1);
+                }
+
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Input);
+                window.UpdateLayout();
+                var blocking = watch.ElapsedMilliseconds;
+
+                watch.Restart();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                Console.WriteLine(
+                    $"TIMING select-markdown blocking={blocking}ms "
+                    + $"deferred-afterwards={watch.ElapsedMilliseconds}ms");
+
+                // Drawn, not just laid out: syntax colouring happens while the
+                // text view renders, so a timing that never paints misses it.
+                void Draw(string label, long elapsed)
+                {
+                    var paint = System.Diagnostics.Stopwatch.StartNew();
+                    using var bitmap = new RenderTargetBitmap(
+                        new PixelSize(900, 620),
+                        new Vector(96, 96));
+                    bitmap.Render(window);
+                    Console.WriteLine(
+                        $"TIMING {label} {elapsed}ms + paint {paint.ElapsedMilliseconds}ms");
+                }
+
+                for (var round = 0; round < 3; round++)
+                {
+                    watch.Restart();
+                    panel.PreviewToggles.Single().IsOn = true;
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                    Draw("toggle-to-raw", watch.ElapsedMilliseconds);
+
+                    watch.Restart();
+                    panel.PreviewToggles.Single().IsOn = false;
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                    Draw("toggle-to-markdown", watch.ElapsedMilliseconds);
+                }
+            };
+            return window;
+        }, null),
         // A hex dump must not wrap: the rows are a fixed-width grid, and a
         // folded row stops lining up with the ones above it.
         ("hex-preview", () => new Window
@@ -1299,7 +1420,16 @@ internal sealed class QaApplication : Avalonia.Application
     {
         var root = Path.Combine(Program.OutputDirectory, "preview-samples");
         Directory.CreateDirectory(root);
-        File.WriteAllText(Path.Combine(root, "notes.md"), QaData.MarkdownWithLongFence);
+        // The real file when it is there: a synthetic sample proves nothing
+        // about a document that behaves badly.
+        var realNotes = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "AGENTS.md");
+        File.WriteAllText(
+            Path.Combine(root, "notes.md"),
+            File.Exists(realNotes) && Environment.GetEnvironmentVariable("QA_REAL_MARKDOWN") == "1"
+                ? File.ReadAllText(realNotes)
+                : QaData.MarkdownWithLongFence);
         File.WriteAllText(Path.Combine(root, "deployments.csv"), QaData.SampleCsv);
         File.WriteAllBytes(
             Path.Combine(root, "libghost.dylib"),

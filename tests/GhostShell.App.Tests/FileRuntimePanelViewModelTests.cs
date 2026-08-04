@@ -1346,6 +1346,28 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Flipping_a_switch_does_not_blank_the_text_on_the_way()
+    {
+        var panel = await PreviewOf("notes.md", "# Title\n\n```bash\nls -al\n```\n");
+        var seen = new List<string?>();
+        panel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(FileRuntimePanelViewModel.PreviewText))
+            {
+                seen.Add(panel.PreviewText);
+            }
+        };
+
+        panel.PreviewToggles.Single().IsOn = true;
+
+        // Nulling the text between readings makes every view bound to it tear
+        // down and rebuild, and rebuilding a Markdown document reinstalls a
+        // syntax grammar per fenced block — which is what made this slow.
+        Assert.DoesNotContain(null, seen);
+        panel.Dispose();
+    }
+
+    [Fact]
     public async Task Turning_a_table_off_shows_the_file_as_written()
     {
         var panel = await PreviewOf("people.csv", "name,city\nada,london\n");

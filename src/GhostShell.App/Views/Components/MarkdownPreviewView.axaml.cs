@@ -54,8 +54,23 @@ public sealed partial class MarkdownPreviewView : UserControl
         }
     }
 
+    /// <summary>The text the blocks on screen were built from.</summary>
+    private string? _rendered;
+
+    private bool _hasRendered;
+
     private void Render()
     {
+        // Rebuilding costs a syntax-highlighting installation per fenced block,
+        // so the same text is never laid out twice. Switching a preview to its
+        // source and back hands us the identical string.
+        if (_hasRendered && string.Equals(_rendered, Text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _rendered = Text;
+        _hasRendered = true;
         Blocks.Children.Clear();
         foreach (var block in MarkdownPreviewDocument.Parse(Text))
         {

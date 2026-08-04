@@ -2067,36 +2067,49 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 toggle,
                 OnPreviewToggled)));
 
+        // Each reading clears the ones it replaces — but a reading made of text
+        // assigns straight over the old text rather than blanking it first.
+        // Blanking makes every view bound to it tear down, and rebuilding a
+        // Markdown document reinstalls a syntax grammar per fenced block.
         switch (outcome.Rendering)
         {
             case SourcePreviewRendering source:
+                ClearRenderingsOtherThanText();
                 WrapPreviewText = source.Wrap;
                 _markdownRendering = false;
                 PreviewText = source.Text;
                 break;
             case MarkdownPreviewRendering markdown:
+                ClearRenderingsOtherThanText();
                 _markdownRendering = true;
                 PreviewText = markdown.Text;
                 break;
             case BinaryPreviewRendering binary:
+                ClearRenderedPreview();
                 PreviewBinary = binary;
                 break;
             case TablePreviewRendering table:
+                ClearRenderedPreview();
                 PreviewTable = new PreviewTableViewModel(table);
                 break;
             case ArchivePreviewRendering:
+                ClearRenderedPreview();
                 _ = OpenArchivePreviewAsync(preview.Location);
                 break;
             case ImagePreviewRendering:
+                ClearRenderedPreview();
                 PresentImagePreview(preview);
                 break;
             case PdfPreviewRendering:
+                ClearRenderedPreview();
                 _ = OpenPdfPreviewAsync(preview.Location);
                 break;
             case WebPagePreviewRendering:
+                ClearRenderedPreview();
                 _ = OpenHtmlPreviewAsync(preview.Location);
                 break;
             case DatabasePreviewRendering:
+                ClearRenderedPreview();
                 _ = OpenDatabasePreviewAsync(preview.Location);
                 break;
             default:
@@ -2116,7 +2129,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _previewToggleState[id] = isOn;
         if (_lastPreview is { } preview)
         {
-            ClearRenderedPreview();
+            // Deliberately not clearing the text first: nulling it makes every
+            // view bound to it tear down and rebuild, and rebuilding a Markdown
+            // document reinstalls a syntax grammar for each fenced block.
             ApplyPreviewers(preview);
         }
     }
@@ -2125,6 +2140,15 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// Clears what was drawn, keeping the file, its details and the chosen
     /// switches: this is a change of reading, not a change of file.
     /// </summary>
+    private void ClearRenderingsOtherThanText()
+    {
+        PreviewImage = null;
+        PreviewTable = null;
+        PreviewTree = null;
+        PreviewBinary = null;
+        ClearHtmlPreview();
+    }
+
     private void ClearRenderedPreview()
     {
         PreviewText = null;

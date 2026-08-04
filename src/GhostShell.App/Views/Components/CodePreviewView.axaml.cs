@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Styling;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using AvaloniaEdit.TextMate;
 using TextMateSharp.Grammars;
 
@@ -37,8 +40,17 @@ public sealed partial class CodePreviewView : UserControl
     public static readonly StyledProperty<bool> WordWrapProperty =
         AvaloniaProperty.Register<CodePreviewView, bool>(nameof(WordWrap), defaultValue: true);
 
+    /// <summary>
+    /// One registry per theme for the whole application. Building it parses
+    /// the shipped grammar and theme definitions, and a preview with several
+    /// fenced blocks would otherwise do that once per block.
+    /// </summary>
+    private static readonly Dictionary<ThemeName, RegistryOptions> SharedRegistries = [];
+
     private RegistryOptions? _registryOptions;
     private TextMate.Installation? _textMate;
+    private bool _highlightPending;
+    private bool _isInView;
 
     public CodePreviewView()
     {
@@ -49,7 +61,23 @@ public sealed partial class CodePreviewView : UserControl
         // measured once — before the panel had settled on a width — is wrong
         // for the width it ends up at. Re-measuring on every layout pass is
         // what keeps a fenced block exactly as tall as its code.
-        Editor.LayoutUpdated += (_, _) => FitHeightToContent();
+        // Fitted when the text actually re-lays out — not on every layout pass
+        // in the window. LayoutUpdated fires for unrelated work anywhere in the
+        // tree, and each height we set starts another pass: a document with a
+        // few fenced blocks turned one toggle into dozens of measure rounds.
+        Editor.TextArea.TextView.VisualLinesChanged += (_, _) => FitHeightToContent();
+        SizeChanged += (_, _) => FitHeightToContent();
+
+        // A fenced block far down a document is not worth a grammar until it
+        // is on its way to being looked at.
+        EffectiveViewportChanged += (_, e) =>
+        {
+            if (e.EffectiveViewport.Height > 0 && e.EffectiveViewport.Width > 0)
+            {
+                _isInView = true;
+                RequestHighlighting();
+            }
+        };
     }
 
     public string? Text
@@ -79,17 +107,11 @@ public sealed partial class CodePreviewView : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        if (_textMate is null)
-        {
-            _registryOptions = new RegistryOptions(CurrentThemeName());
-            _textMate = Editor.InstallTextMate(_registryOptions);
-            // Text set hard against the line-number column reads as one
-            // run-on column; a few pixels separate the two.
-            Editor.TextArea.TextView.Margin = new Thickness(8, 0, 0, 0);
-        }
-
+        // Text set hard against the line-number column reads as one run-on
+        // column; a few pixels separate the two.
+        Editor.TextArea.TextView.Margin = new Thickness(8, 0, 0, 0);
         SyncDocument();
-        SyncGrammar();
+        RequestHighlighting();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -109,7 +131,7 @@ public sealed partial class CodePreviewView : UserControl
         }
         else if (change.Property == FileNameProperty)
         {
-            SyncGrammar();
+            RequestHighlighting();
         }
         else if (change.Property == WordWrapProperty)
         {
@@ -120,6 +142,60 @@ public sealed partial class CodePreviewView : UserControl
                 ? Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
                 : Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         }
+    }
+
+    /// <summary>
+    /// Colours the text once it is on screen. Installing a grammar costs tens
+    /// of milliseconds — enough to be felt — and nothing about it needs to
+    /// happen before a reader can start reading, so the text is shown plain
+    /// and coloured a moment later.
+    /// </summary>
+    private void RequestHighlighting()
+    {
+        // A block sized to its content lives inside a scrolling document, so
+        // it waits until the reader has scrolled to it. A full-file preview
+        // fills the panel and is always the thing being looked at.
+        if (_highlightPending || !IsAttachedToVisualTree() || (FitsContent && !_isInView))
+        {
+            return;
+        }
+
+        _highlightPending = true;
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                _highlightPending = false;
+                if (!IsAttachedToVisualTree())
+                {
+                    return;
+                }
+
+                var options = _registryOptions ??= SharedRegistry(CurrentThemeName());
+                // Nothing to install for a file no grammar covers: compiling a
+                // grammar costs tens of milliseconds, and a plain fenced block
+                // would pay it for a highlighting that never happens.
+                if (_textMate is null && ResolveLanguage(FileName) is null)
+                {
+                    return;
+                }
+
+                _textMate ??= Editor.InstallTextMate(options);
+                SyncGrammar();
+            },
+            DispatcherPriority.Background);
+    }
+
+    private bool IsAttachedToVisualTree() => VisualRoot is not null;
+
+    private static RegistryOptions SharedRegistry(ThemeName theme)
+    {
+        if (!SharedRegistries.TryGetValue(theme, out var options))
+        {
+            options = new RegistryOptions(theme);
+            SharedRegistries[theme] = options;
+        }
+
+        return options;
     }
 
     private void SyncDocument()
