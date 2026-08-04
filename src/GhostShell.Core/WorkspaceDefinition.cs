@@ -23,7 +23,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         IReadOnlyList<WorkspaceEntry> entries,
         AgentPolicy? agentPolicyOverride = null,
         string? icon = null,
-        bool autoSave = false)
+        bool autoSave = false,
+        string? color = null)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -34,6 +35,7 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         AgentPolicyOverride = agentPolicyOverride;
         Icon = string.IsNullOrWhiteSpace(icon) ? DefaultIcon : icon.Trim();
         AutoSave = autoSave;
+        Color = string.IsNullOrWhiteSpace(color) ? null : color.Trim();
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -49,7 +51,21 @@ public sealed record WorkspaceDefinition : IDurableDefinition
 
     public string? Description { get; }
 
+    /// <summary>
+    /// How the accent of the shell is retinted while this workspace is
+    /// active. Optional and independent of <see cref="Color"/>: leaving it
+    /// unset keeps whatever accent the shell would otherwise use, including
+    /// one followed from the host, rather than pinning a colour of ours.
+    /// </summary>
     public string? Accent { get; }
+
+    /// <summary>
+    /// The colour this workspace is recognised by — its tile in the rail and
+    /// its mark on tabs. Null means the presentation picks one, so a
+    /// workspace saved before colours existed still looks like something
+    /// rather than a hole.
+    /// </summary>
+    public string? Color { get; }
 
     /// <summary>
     /// A renderer-neutral semantic icon identifier. Views map this stable value to

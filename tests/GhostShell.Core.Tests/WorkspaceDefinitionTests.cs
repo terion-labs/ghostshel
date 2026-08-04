@@ -159,4 +159,55 @@ public sealed class WorkspaceDefinitionTests
                     null,
                     PanelStartupBehavior.None),
             ]);
+
+    [Fact]
+    public void A_workspace_saved_before_colours_existed_still_deserializes()
+    {
+        // Definitions persist as JSON, so an older payload simply lacks the
+        // property. Built by serializing a current definition and removing
+        // the colour, so the fixture cannot drift from the real shape.
+        var current = new WorkspaceDefinition(
+            new WorkspaceId("workspace-old"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Older",
+            null,
+            accent: null,
+            [],
+            icon: "workspace");
+        var older = System.Text.Json.JsonSerializer.Serialize(current)
+            .Replace(",\"Color\":null", string.Empty, StringComparison.Ordinal);
+        Assert.DoesNotContain("Color", older, StringComparison.Ordinal);
+
+        var restored = System.Text.Json.JsonSerializer.Deserialize<WorkspaceDefinition>(older);
+
+        Assert.NotNull(restored);
+        Assert.Null(restored!.Color);
+        Assert.Null(restored.Accent);
+        Assert.Equal("workspace", restored.Icon);
+    }
+
+    [Fact]
+    public void Colour_and_accent_are_independent()
+    {
+        // The tile colour identifies the workspace; the accent retints the
+        // shell. One must never imply the other, or unsetting the accent
+        // would silently repaint the rail.
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("workspace-appearance"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Production",
+            null,
+            accent: null,
+            [],
+            icon: "rocket",
+            color: "  #B4543A  ");
+
+        Assert.Equal("#B4543A", workspace.Color);
+        Assert.Null(workspace.Accent);
+
+        var round = System.Text.Json.JsonSerializer.Deserialize<WorkspaceDefinition>(
+            System.Text.Json.JsonSerializer.Serialize(workspace));
+        Assert.Equal("#B4543A", round!.Color);
+        Assert.Null(round.Accent);
+    }
 }
