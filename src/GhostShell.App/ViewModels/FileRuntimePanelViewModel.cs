@@ -2295,6 +2295,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewTable = null;
         PreviewTree = null;
         PreviewBinary = null;
+        PreviewHex = null;
         SetMarkdownRendering(false);
         WrapPreviewText = true;
         ClearHtmlPreview();
@@ -2522,9 +2523,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 return;
             }
 
-            PreviewTree = new PreviewTreeViewModel(
+            var listing = new PreviewTreeViewModel(
                 PreviewTreeBuilder.FromPaths(entries),
                 SummarizeArchive(entries));
+            PreviewTree = listing;
+            // Attached in steps like every other reading; without this the
+            // listing exists and nothing of it is on screen.
+            await listing.FillAsync(operation.Token);
         }
         catch (OperationCanceledException) when (operation.IsCancellationRequested)
         {

@@ -2,6 +2,7 @@ using System.Text;
 using Avalonia.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using GhostShell.Core;
 
 namespace GhostShell.App.Tests;
@@ -1449,6 +1450,51 @@ public sealed class FileRuntimePanelViewModelTests
 
         Assert.True(text.WrapPreviewText);
         text.Dispose();
+    }
+
+    [Fact]
+    public async Task An_archive_shows_what_is_inside_it()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client.Root, "bundle.zip", FilePanelEntryKind.File, 512));
+        client.Preview = new FilePanelPreview(
+            client.Root.Child(new FilePanelPathSegment("bundle.zip")),
+            FilePanelPreviewKind.Hex,
+            "application/octet-stream",
+            new byte[] { 0x50, 0x4B, 0x03, 0x04 },
+            isTruncated: true);
+        client.MaterializedPath = Path.Combine(Path.GetTempPath(), "bundle.zip");
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            archiveReader: new StubArchiveReader(
+            [
+                new ArchiveEntryDescriptor("docs/guide.md", false, 120, 60),
+                new ArchiveEntryDescriptor("src/main.c", false, 240, 100),
+            ]));
+        await panel.Initialization;
+
+        panel.SelectedEntry = panel.Entries.Single();
+        await panel.PreviewSelectedAsync();
+
+        // Not merely present: a listing whose rows never arrive is an empty
+        // panel with a summary under it.
+        Assert.True(panel.HasTreePreview);
+        Assert.Equal(2, panel.PreviewTree!.Nodes.Count);
+        Assert.Equal(["docs", "src"], panel.PreviewTree.Nodes.Select(node => node.Name));
+    }
+
+    private sealed class StubArchiveReader(IReadOnlyList<ArchiveEntryDescriptor> entries)
+        : IArchiveTableOfContents
+    {
+        public bool Claims(string fileName) => true;
+
+        public ValueTask<IReadOnlyList<ArchiveEntryDescriptor>?> ReadAsync(
+            string path,
+            int maximumEntries,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<IReadOnlyList<ArchiveEntryDescriptor>?>(entries);
     }
 
     [Fact]
