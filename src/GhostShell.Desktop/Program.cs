@@ -196,6 +196,7 @@ internal static class Program
         // defaults, never a startup error.
         await services.GetRequiredService<SqliteFilePreviewPreferences>()
             .InitializeAsync(CancellationToken.None);
+        startupState.MarkProfileInitialized();
         return null;
     }
 

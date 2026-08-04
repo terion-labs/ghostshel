@@ -139,6 +139,12 @@
   </Window.DataTemplates>
 
   <Grid Background="{DynamicResource ShellBackgroundBrush}">
+    <!-- Everything the app draws lives inside this one layer so that
+         locking can collapse it whole. The veil alone cannot cover native
+         surfaces — a webview or a terminal is hosted above every Avalonia
+         pixel — but a collapsed ancestor hides native hosts the same way
+         switching tabs does. -->
+    <Panel IsVisible="{Binding !ApplicationSecurityEditor.IsLocked}">
     <!-- Launcher -->
     <views:LauncherView
         x:Name="LauncherRouteView"
@@ -438,9 +444,11 @@
         </Grid>
       </controls:SurfaceCard>
     </Canvas>
+    </Panel>
 
     <!-- Last child of the root grid on purpose: when the shell is locked,
-         the veil sits above every panel, overlay and toast. -->
+         the veil sits above every panel, overlay and toast — and the layer
+         above holds nothing, native included. -->
     <components:ShellLockView
         DataContext="{Binding ApplicationSecurityEditor}"
         IsVisible="{Binding IsLocked}" />

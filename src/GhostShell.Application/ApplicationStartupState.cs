@@ -21,12 +21,18 @@ public sealed class ApplicationStartupState
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
-    /// Completes when the run has begun and this state is filled in. With
-    /// keys sealed under the startup PIN that happens behind the lock
-    /// screen, not before the window — startup work that reads this state
-    /// awaits it rather than assuming the old ordering.
+    /// Completes when the whole profile is ready — run marker, recovery,
+    /// catalog, preferences — not merely when this state is filled in.
+    /// Session restore resolves connections against the catalog, so a
+    /// signal that fired before the catalog loaded restored workspaces
+    /// whose every adapter was "unavailable". With keys sealed under the
+    /// startup PIN all of this happens behind the lock screen, not before
+    /// the window.
     /// </summary>
     public Task Initialized => _initialized.Task;
+
+    /// <summary>Called once by startup after the last initialization step.</summary>
+    public void MarkProfileInitialized() => _initialized.TrySetResult();
 
     public ApplicationRunStart? Run { get; private set; }
 
@@ -75,8 +81,6 @@ public sealed class ApplicationStartupState
                 ? RecoveryDecisionState.Pending
                 : RecoveryDecisionState.NotRequired;
         }
-
-        _initialized.TrySetResult();
     }
 
     public void ResolveRecovery(
