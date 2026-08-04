@@ -66,7 +66,19 @@ public sealed partial class MainWindow : Window
             AppearancePlatformProfiles,
             AppearanceTextScaleOptions);
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        // Tunneled so any input anywhere counts as activity for the idle
+        // lock, before a control can mark it handled.
+        AddHandler(KeyDownEvent, OnAnyActivity, RoutingStrategies.Tunnel);
+        AddHandler(PointerPressedEvent, OnAnyActivity, RoutingStrategies.Tunnel);
+        AddHandler(PointerMovedEvent, OnAnyActivity, RoutingStrategies.Tunnel);
         Activated += OnWindowActivated;
+    }
+
+    private void OnAnyActivity(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        (DataContext as MainWindowViewModel)?.ApplicationSecurityEditor.NoteActivity();
     }
 
     public MainWindow(
@@ -1501,6 +1513,14 @@ public sealed partial class MainWindow : Window
     private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         _ = sender;
+        if (ViewModel.ApplicationSecurityEditor.IsLocked)
+        {
+            // Locked means locked: no shortcut may act behind the veil. The
+            // keystrokes still reach the PIN box, which is text input, not a
+            // shortcut.
+            return;
+        }
+
         if (ViewModel.IsWorkspaceVisible && !ViewModel.HasOverlay)
         {
             SynchronizeApplicationKeymap();

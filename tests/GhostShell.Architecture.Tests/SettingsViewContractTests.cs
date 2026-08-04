@@ -40,7 +40,10 @@ public sealed class SettingsViewContractTests
             ["EditSecretRequested"] = "OnEditSecretClick",
             ["EditWorkspaceRequested"] = "OnEditWorkspaceClick",
             ["ExportDefinitionsRequested"] = "OnExportDefinitionsClick",
+            ["DisableStartupProtectionRequested"] = "OnDisableStartupProtectionClick",
+            ["EnableStartupProtectionRequested"] = "OnEnableStartupProtectionClick",
             ["FilesSettingsRequested"] = "OnFilesSettingsClick",
+            ["LockNowRequested"] = "OnLockNowClick",
             ["ImportDefinitionsRequested"] = "OnImportDefinitionsClick",
             ["KeybindingPrefixOptionsChangedRequested"] =
                 "OnKeybindingPrefixOptionsChanged",

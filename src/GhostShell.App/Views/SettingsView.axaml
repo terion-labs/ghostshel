@@ -593,6 +593,58 @@
                     </Grid>
                   </StackPanel>
                 </controls:SurfaceCard>
+                <controls:SurfaceCard Padding="0">
+                  <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontWeight="SemiBold" Text="Protect startup" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="Asks for a PIN when the app starts and whenever the lock timeout elapses. The PIN is never stored: what is on disk is a verifier derived from the PIN together with a random pepper held only in the OS keystore — the file alone verifies nothing — and wrong guesses wait out a doubling delay that survives restarts. This gates the window; the data itself is protected by app encryption above." />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="This build has no startup-protection support."
+                          IsVisible="{Binding !ApplicationSecurityEditor.IsProtectionAvailable}" />
+                      <TextBlock Foreground="{DynamicResource ShellWarningBrush}" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="{Binding ApplicationSecurityEditor.ProtectionStatus}"
+                          IsVisible="{Binding ApplicationSecurityEditor.HasProtectionStatus}" />
+                    </StackPanel>
+                    <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}"
+                        IsVisible="{Binding ApplicationSecurityEditor.ShowProtectionSetup}">
+                      <TextBox PasswordChar="●" Watermark="Choose a PIN"
+                          Text="{Binding ApplicationSecurityEditor.NewPin}"
+                          AutomationProperties.Name="New startup PIN" />
+                      <TextBox Grid.Column="1" PasswordChar="●" Watermark="Repeat the PIN"
+                          Text="{Binding ApplicationSecurityEditor.NewPinConfirmation}"
+                          AutomationProperties.Name="Repeat startup PIN" />
+                      <Button Grid.Column="2" Classes="PrimaryButton" Content="Turn on"
+                          Click="OnEnableStartupProtectionClick"
+                          AutomationProperties.Name="Turn on startup protection" />
+                    </Grid>
+                    <StackPanel Spacing="{DynamicResource ShellSpaceSm}"
+                        IsVisible="{Binding ApplicationSecurityEditor.ShowProtectionControls}">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                        <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                          <TextBlock FontWeight="SemiBold" FontSize="{DynamicResource ShellFontSize11}" Text="Lock timeout" />
+                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                              Text="How long the app may sit idle before it locks itself. Any key or pointer input counts as activity." />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" VerticalAlignment="Center" MinWidth="160"
+                            ItemsSource="{Binding ApplicationSecurityEditor.LockTimeoutOptions}"
+                            SelectedItem="{Binding ApplicationSecurityEditor.SelectedLockTimeout}"
+                            AutomationProperties.Name="Lock timeout" />
+                      </Grid>
+                      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                        <TextBox PasswordChar="●" Watermark="Current PIN"
+                            Text="{Binding ApplicationSecurityEditor.CurrentPin}"
+                            AutomationProperties.Name="Current startup PIN" />
+                        <Button Grid.Column="1" Classes="SecondaryButton" Content="Lock now"
+                            Click="OnLockNowClick"
+                            AutomationProperties.Name="Lock GhostSHELL now" />
+                        <Button Grid.Column="2" Classes="SecondaryButton" Content="Turn off"
+                            Click="OnDisableStartupProtectionClick"
+                            AutomationProperties.Name="Turn off startup protection" />
+                      </Grid>
+                    </StackPanel>
+                  </StackPanel>
+                </controls:SurfaceCard>
               </StackPanel>
               <controls:SurfaceCard Tone="Notice" Padding="0"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" /><TextBlock Grid.Column="1" Classes="Muted" Text="{Binding SecretVaultStatus}" TextWrapping="Wrap" /></Grid></controls:SurfaceCard>
               <controls:SurfaceCard Padding="0">

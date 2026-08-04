@@ -101,7 +101,13 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ExportDefinitionsRequested;
 
+    public event EventHandler<RoutedEventArgs>? DisableStartupProtectionRequested;
+
+    public event EventHandler<RoutedEventArgs>? EnableStartupProtectionRequested;
+
     public event EventHandler<RoutedEventArgs>? FilesSettingsRequested;
+
+    public event EventHandler<RoutedEventArgs>? LockNowRequested;
 
     public event EventHandler<RoutedEventArgs>? ImportDefinitionsRequested;
 
@@ -361,8 +367,17 @@ public sealed partial class SettingsView : UserControl
     private void OnExportDefinitionsClick(object? sender, RoutedEventArgs e) =>
         ExportDefinitionsRequested?.Invoke(sender, e);
 
+    private void OnDisableStartupProtectionClick(object? sender, RoutedEventArgs e) =>
+        DisableStartupProtectionRequested?.Invoke(sender, e);
+
+    private void OnEnableStartupProtectionClick(object? sender, RoutedEventArgs e) =>
+        EnableStartupProtectionRequested?.Invoke(sender, e);
+
     private void OnFilesSettingsClick(object? sender, RoutedEventArgs e) =>
         FilesSettingsRequested?.Invoke(sender, e);
+
+    private void OnLockNowClick(object? sender, RoutedEventArgs e) =>
+        LockNowRequested?.Invoke(sender, e);
 
     private void OnImportDefinitionsClick(object? sender, RoutedEventArgs e) =>
         ImportDefinitionsRequested?.Invoke(sender, e);

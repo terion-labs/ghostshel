@@ -440,3 +440,37 @@ problem.
         DatabaseConnections = DatabaseConnections,
     };
 }
+
+/// <summary>A startup gate that is locked, for the lock-screen capture.</summary>
+internal sealed class QaLockedProtection : GhostShell.Application.IStartupProtection
+{
+    public bool IsEnabled => true;
+
+    public bool IsLocked => true;
+
+    public TimeSpan? LockTimeout => TimeSpan.FromMinutes(5);
+
+    public int RetryDelaySeconds => 0;
+
+    public event EventHandler? Changed
+    {
+        add { }
+        remove { }
+    }
+
+    public ValueTask<string?> EnableAsync(string pin, CancellationToken cancellationToken) =>
+        new((string?)null);
+
+    public ValueTask<string?> DisableAsync(string pin, CancellationToken cancellationToken) =>
+        new((string?)null);
+
+    public ValueTask<bool> TryUnlockAsync(string pin, CancellationToken cancellationToken) =>
+        new(false);
+
+    public void Lock()
+    {
+    }
+
+    public ValueTask SetLockTimeoutAsync(TimeSpan? timeout, CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+}

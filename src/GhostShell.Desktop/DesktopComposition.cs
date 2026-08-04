@@ -27,27 +27,26 @@ public static class DesktopComposition
             HostAccessibilityPreferencesSourceSelector.CreateForCurrentPlatform());
         services.AddSingleton<IActiveWindowBoundsSource>(_ =>
             ActiveWindowBoundsSourceSelector.CreateForCurrentPlatform());
-        services.AddSingleton(provider =>
-        {
-            var databasePath = SqliteStorageOptions.CreateDefault().DatabasePath;
-            // A dedicated, un-audited vault, deliberately: the audit sink
-            // writes into the very database these keys unlock, so auditing
-            // the key fetch would need the key it is fetching. The keys are
-            // not credentials of the user's — nothing here weakens the
-            // credential audit trail.
-            var vault = PlatformSecretVaultFactory.Create(new SecretVaultFactoryOptions
+        // A dedicated, un-audited vault for application-security material,
+        // deliberately: the audit sink writes into the very database these
+        // keys unlock, so auditing the key fetch would need the key it is
+        // fetching. Nothing of the user's credentials goes through it.
+        services.AddSingleton(_ => new ApplicationSecurityVault(
+            PlatformSecretVaultFactory.Create(new SecretVaultFactoryOptions
             {
-                DataDirectory = Path.GetDirectoryName(databasePath),
-            }).Vault;
-            return new ApplicationEncryptionRuntime(
-                vault,
-                databasePath,
-                // Resolved at re-key time, not construction time: the runtime
-                // is built before the database so the very first open has its
-                // key in hand.
-                () => provider.GetRequiredService<GhostShellDatabase>(),
-                ownsVault: true);
-        });
+                DataDirectory = Path.GetDirectoryName(
+                    SqliteStorageOptions.CreateDefault().DatabasePath),
+            }).Vault));
+        services.AddSingleton(provider => new ApplicationEncryptionRuntime(
+            provider.GetRequiredService<ApplicationSecurityVault>().Vault,
+            SqliteStorageOptions.CreateDefault().DatabasePath,
+            // Resolved at re-key time, not construction time: the runtime is
+            // built before the database so the very first open has its key
+            // in hand.
+            () => provider.GetRequiredService<GhostShellDatabase>()));
+        services.AddSingleton<IStartupProtection>(provider => new StartupProtectionRuntime(
+            provider.GetRequiredService<ApplicationSecurityVault>().Vault,
+            Path.GetDirectoryName(SqliteStorageOptions.CreateDefault().DatabasePath)!));
         services.AddSingleton<IApplicationEncryption>(provider =>
             provider.GetRequiredService<ApplicationEncryptionRuntime>());
         services.AddSingleton(provider =>

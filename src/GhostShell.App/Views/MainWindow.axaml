@@ -5,6 +5,7 @@
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:dockDocuments="using:Dock.Model.Inpc.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:overlays="using:GhostShell.App.Views.Overlays"
     xmlns:panelViews="using:GhostShell.App.Views.RuntimePanels"
     xmlns:views="using:GhostShell.App.Views"
@@ -249,7 +250,10 @@
         CreateWorkspaceRequested="OnCreateWorkspaceClick"
         EditWorkspaceRequested="OnEditWorkspaceClick"
         ExportDefinitionsRequested="OnExportDefinitionsClick"
+        DisableStartupProtectionRequested="OnDisableStartupProtectionClick"
+        EnableStartupProtectionRequested="OnEnableStartupProtectionClick"
         FilesSettingsRequested="OnFilesSettingsClick"
+        LockNowRequested="OnLockNowClick"
         ImportDefinitionsRequested="OnImportDefinitionsClick"
         IsVisible="{Binding IsSettingsVisible}"
         KeybindingPrefixOptionsChangedRequested="OnKeybindingPrefixOptionsChanged"
@@ -432,5 +436,11 @@
         </Grid>
       </controls:SurfaceCard>
     </Canvas>
+
+    <!-- Last child of the root grid on purpose: when the shell is locked,
+         the veil sits above every panel, overlay and toast. -->
+    <components:ShellLockView
+        DataContext="{Binding ApplicationSecurityEditor}"
+        IsVisible="{Binding IsLocked}" />
   </Grid>
 </Window>

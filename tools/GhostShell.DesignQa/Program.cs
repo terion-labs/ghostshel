@@ -424,6 +424,21 @@ internal sealed class QaApplication : Avalonia.Application
         // The workspaces-rail tiles at Retina density: every icon the rail can
         // draw, so glyph centering is measurable at the scale users run at.
         ("rail-tiles-2x", CreateRailTileProbe, null),
+        // The lock screen as a person meets it: the veil, the PIN box, and a
+        // refusal message, over a stub gate that is locked and metering.
+        ("shell-locked", () => new Window
+        {
+            Width = 900,
+            Height = 620,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new GhostShell.App.Views.Components.ShellLockView
+            {
+                DataContext = new GhostShell.App.ViewModels.ApplicationSecurityEditorViewModel(
+                    encryption: null,
+                    protection: new QaLockedProtection()),
+            },
+        }, null),
         // The statistics panel at a split-panel width, so the stat-card wrap is
         // reviewable at the size that used to clip every value.
         ("stats-narrow", () => new Window

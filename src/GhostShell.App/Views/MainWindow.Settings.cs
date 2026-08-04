@@ -88,6 +88,27 @@ public sealed partial class MainWindow
     private void OnFilesSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Files);
 
+    private void OnEnableStartupProtectionClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        _ = ViewModel.ApplicationSecurityEditor.EnableProtectionAsync();
+    }
+
+    private void OnDisableStartupProtectionClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        _ = ViewModel.ApplicationSecurityEditor.DisableProtectionAsync();
+    }
+
+    private void OnLockNowClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ViewModel.ApplicationSecurityEditor.LockNow();
+    }
+
     private void OnTerminalSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Terminal);
 
