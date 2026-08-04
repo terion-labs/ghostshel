@@ -85,10 +85,17 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
         IsFileBased: true);
 
     public DbConnection CreateConnection(string connectionString) =>
-        new SqliteConnection(connectionString);
+        SqliteInMemoryDatabases.TryCreateConnection(connectionString)
+            ?? new SqliteConnection(connectionString);
 
     public string NormalizeConnectionString(string connectionString) =>
-        FileConnectionStrings.Normalize(connectionString);
+        connectionString.Contains(
+            SqliteInMemoryDatabases.TokenPrefix,
+            StringComparison.Ordinal)
+            // A memory token is already exact; path normalization would only
+            // mangle it.
+            ? connectionString
+            : FileConnectionStrings.Normalize(connectionString);
 
     public string ListTablesSql => """
         SELECT name, type FROM sqlite_master

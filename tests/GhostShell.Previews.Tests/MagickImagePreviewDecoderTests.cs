@@ -50,7 +50,7 @@ public sealed class MagickImagePreviewDecoderTests : IDisposable
         var path = Path.Combine(_root, "scan.tiff");
         await File.WriteAllBytesAsync(path, TestImages.Tiff(120, 90));
 
-        var decoded = await _decoder.DecodeAsync(path, maximumPixels: 4_000_000, CancellationToken.None);
+        var decoded = await _decoder.DecodeAsync(Content(path), maximumPixels: 4_000_000, CancellationToken.None);
 
         Assert.NotNull(decoded);
         Assert.Equal(120, decoded!.Width);
@@ -66,7 +66,7 @@ public sealed class MagickImagePreviewDecoderTests : IDisposable
         var path = Path.Combine(_root, "big.tiff");
         await File.WriteAllBytesAsync(path, TestImages.Tiff(400, 300));
 
-        var decoded = await _decoder.DecodeAsync(path, maximumPixels: 10_000, CancellationToken.None);
+        var decoded = await _decoder.DecodeAsync(Content(path), maximumPixels: 10_000, CancellationToken.None);
 
         Assert.NotNull(decoded);
         // The reported size stays the file's own — the preview says what the
@@ -91,8 +91,11 @@ public sealed class MagickImagePreviewDecoderTests : IDisposable
         var path = Path.Combine(_root, "broken.tiff");
         await File.WriteAllTextAsync(path, "this is not a TIFF at all");
 
-        var decoded = await _decoder.DecodeAsync(path, maximumPixels: 4_000_000, CancellationToken.None);
+        var decoded = await _decoder.DecodeAsync(Content(path), maximumPixels: 4_000_000, CancellationToken.None);
 
         Assert.Null(decoded);
     }
+
+    private static GhostShell.Application.FilePreviewContent Content(string path) =>
+        GhostShell.Application.FilePreviewContent.FromLocalFile(path);
 }

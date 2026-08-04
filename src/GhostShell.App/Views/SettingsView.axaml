@@ -433,35 +433,59 @@
                 <controls:SurfaceCard Tone="Notice" Padding="0"><TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Home is always available as a built-in local provider. Saved profiles persist in SQLite; credentials remain in the OS vault." TextWrapping="Wrap" /></controls:SurfaceCard>
               </StackPanel>
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                <TextBlock Classes="SectionHeading" Text="Transfer queue" />
-                <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoFileTransfers}">
-                  <controls:EmptyStatePanel
-                    Margin="{controls:Inset Lg}"
-                    Glyph="Info"
-                    Heading="No transfers yet"
-                    Body="Select a regular file in a File Viewer panel and choose Transfer." />
+                <TextBlock Classes="SectionHeading" Text="Remote previews" />
+                <controls:SurfaceCard Padding="0">
+                  <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                    <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontWeight="SemiBold" Text="Auto-load previews up to" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="Selecting a remote file downloads it for preview. Files up to this size are fetched the moment they are selected; larger ones show a download action instead, so scrolling a listing never spends bandwidth you didn't ask to spend. Local files are unaffected — nothing is downloaded for them." />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+                      <NumericUpDown Minimum="1" Maximum="256" Increment="1" Width="130" FormatString="0"
+                          Value="{Binding FilePreviewSettingsEditor.AutoLoadThresholdMegabytes}"
+                          AutomationProperties.Name="Auto-load preview threshold in megabytes" />
+                      <TextBlock VerticalAlignment="Center" Classes="Muted" Text="MB" />
+                    </StackPanel>
+                  </Grid>
                 </controls:SurfaceCard>
-                <ItemsControl ItemsSource="{Binding FileTransfers}" IsVisible="{Binding HasFileTransfers}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
-                        <Grid Margin="{controls:Inset Md}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}"><TextBlock Classes="Eyebrow" Text="{Binding Operation}" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Source}" /><icons:SymbolIcon Symbol="ArrowRight" FontSize="12" /><TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Destination}" /></StackPanel>
-                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Stage}" />
-                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Progress}" />
-                            <TextBlock Foreground="{DynamicResource ShellDangerBrush}" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
-                          </StackPanel>
-                          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-                            <controls:StatusChip Content="{Binding State}" />
-                            <Button Classes="SecondaryButton" Click="OnCancelFileTransferClick" Content="Cancel" IsVisible="{Binding CanCancel}" />
-                            <Button Classes="SecondaryButton" Click="OnRetryFileTransferClick" Content="Retry" IsVisible="{Binding CanRetry}" />
-                          </StackPanel>
-                        </Grid>
-                      </controls:SurfaceCard>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <controls:SurfaceCard Padding="0">
+                  <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                    <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontWeight="SemiBold" Text="Keep downloaded previews between runs" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="On: downloaded files are kept on disk so re-opening one is instant, even after a restart. Off: nothing about your remote files persists — small previews live only in memory, larger ones go into an encrypted container whose key exists only inside the running app, and both are destroyed on exit. Even a copy left behind by a crash is unreadable noise, because the key dies with the process." />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                        IsChecked="{Binding FilePreviewSettingsEditor.KeepPreviewsBetweenRuns}"
+                        AutomationProperties.Name="Keep downloaded previews between runs" />
+                  </Grid>
+                </controls:SurfaceCard>
+                <controls:SurfaceCard Padding="0">
+                  <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                    <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontWeight="SemiBold" Text="Preview cache size limit" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="The most disk the preview cache may hold. When it fills, the copies you haven't looked at longest are removed first. This bounds the cache; it never fails a preview." />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+                      <NumericUpDown Minimum="16" Maximum="16384" Increment="128" Width="130" FormatString="0"
+                          Value="{Binding FilePreviewSettingsEditor.CacheBudgetMegabytes}"
+                          AutomationProperties.Name="Preview cache size limit in megabytes" />
+                      <TextBlock VerticalAlignment="Center" Classes="Muted" Text="MB" />
+                    </StackPanel>
+                  </Grid>
+                </controls:SurfaceCard>
+                <controls:SurfaceCard Tone="Notice" Padding="0">
+                  <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <icons:SymbolIcon Symbol="Delete" FontSize="16" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted"
+                        Text="{Binding FilePreviewSettingsEditor.CacheUsageText}" TextWrapping="Wrap" />
+                    <Button Grid.Column="2" VerticalAlignment="Center" Classes="SecondaryButton"
+                        Command="{Binding FilePreviewSettingsEditor.ClearCacheCommand}"
+                        Content="Clear now" AutomationProperties.Name="Clear preview cache" />
+                  </Grid>
+                </controls:SurfaceCard>
               </StackPanel>
             </StackPanel>
 

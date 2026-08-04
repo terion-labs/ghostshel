@@ -1491,7 +1491,8 @@ public sealed class FileRuntimePanelViewModelTests
         public bool Claims(string fileName) => true;
 
         public ValueTask<IReadOnlyList<ArchiveEntryDescriptor>?> ReadAsync(
-            string path,
+            FilePreviewContent content,
+            string fileName,
             int maximumEntries,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult<IReadOnlyList<ArchiveEntryDescriptor>?>(entries);
@@ -1744,7 +1745,7 @@ public sealed class FileRuntimePanelViewModelTests
     internal sealed class StubFilePanelClient :
         IFilePanelClient,
         IFileProviderProfileRuntime,
-        IFileContentMaterializer
+        IFileContentSource
     {
         public StubFilePanelClient()
         {
@@ -1889,12 +1890,12 @@ public sealed class FileRuntimePanelViewModelTests
                     item => item.Location == location)));
         }
 
-        /// <summary>The file a materialize call hands back, when one is set.</summary>
+        /// <summary>The file whole-content calls hand back, when one is set.</summary>
         public string? MaterializedPath { get; set; }
 
         public int MaterializeCallCount { get; private set; }
 
-        public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+        public ValueTask<FilePanelResult<FilePreviewContent>> OpenContentAsync(
             FilePanelLocation location,
             long maximumBytes,
             CancellationToken cancellationToken)
@@ -1904,13 +1905,13 @@ public sealed class FileRuntimePanelViewModelTests
             _ = cancellationToken;
             MaterializeCallCount++;
             return ValueTask.FromResult(MaterializedPath is null
-                ? FilePanelResult<MaterializedFile>.Failure(new FilePanelError(
+                ? FilePanelResult<FilePreviewContent>.Failure(new FilePanelError(
                     FilePanelErrorCode.NotFound,
                     "file_absent",
                     "No file.",
                     false))
-                : FilePanelResult<MaterializedFile>.Success(
-                    new MaterializedFile(MaterializedPath, IsCachedCopy: false)));
+                : FilePanelResult<FilePreviewContent>.Success(
+                    FilePreviewContent.FromLocalFile(MaterializedPath)));
         }
 
         public async ValueTask<FilePanelResult<FilePanelPreview>> PreviewAsync(

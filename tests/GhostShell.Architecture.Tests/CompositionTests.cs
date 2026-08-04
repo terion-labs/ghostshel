@@ -21,13 +21,13 @@ public sealed class CompositionTests
     /// composed chain is asserted here.
     /// </summary>
     [Fact]
-    public async Task ComposedFileClientCanMaterializeFilesByPath()
+    public async Task ComposedFileClientCanServeWholeFileContent()
     {
         await using var services = DesktopComposition.CreateServiceProvider();
 
         var filePanel = services.GetRequiredService<IFilePanelClient>();
 
-        Assert.IsAssignableFrom<IFileContentMaterializer>(filePanel);
+        Assert.IsAssignableFrom<IFileContentSource>(filePanel);
     }
 
     [Fact]

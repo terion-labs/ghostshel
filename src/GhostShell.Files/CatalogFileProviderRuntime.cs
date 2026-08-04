@@ -12,7 +12,7 @@ public sealed class CatalogFileProviderRuntime :
     IFileTransferQueueClient,
     IFileProviderProfileRuntime,
     IFileProviderHostKeyRepair,
-    IFileContentMaterializer
+    IFileContentSource
 {
     private readonly object _gate = new();
     private readonly IDefinitionCatalog _catalog;
@@ -22,6 +22,7 @@ public sealed class CatalogFileProviderRuntime :
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<FilePanelTransferId, TransferRoute> _transferRoutes = [];
     private readonly Dictionary<FilePanelTransferId, FilePanelTransferSnapshot> _transferSnapshots = [];
+    private readonly PreviewContentCache? _contentCache;
     private ProviderGeneration _active;
     private IReadOnlyList<FileProviderRuntimeDiagnostic> _diagnostics = [];
     private bool _disposed;
@@ -31,9 +32,11 @@ public sealed class CatalogFileProviderRuntime :
         ISecretVault secretVault,
         ISshHostKeyTrustStore knownHosts,
         IConnectionSecurityRuntime? connectionSecurityRuntime = null,
-        IConnectionRuntime? connectionRuntime = null)
+        IConnectionRuntime? connectionRuntime = null,
+        PreviewContentCache? contentCache = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _contentCache = contentCache;
         _factory = new FileProviderAdapterFactory(
             secretVault ?? throw new ArgumentNullException(nameof(secretVault)),
             knownHosts ?? throw new ArgumentNullException(nameof(knownHosts)),
@@ -100,16 +103,16 @@ public sealed class CatalogFileProviderRuntime :
         UseActiveAsync((client, token) => client.PreviewAsync(request, token), cancellationToken);
 
     /// <summary>
-    /// Materializing runs against the generation that is active when it starts,
-    /// exactly like every other operation here: a profile reload mid-copy must
-    /// not swap the provider under a half-written file.
+    /// Opening content runs against the generation that is active when it
+    /// starts, exactly like every other operation here: a profile reload
+    /// mid-download must not swap the provider under a half-fetched file.
     /// </summary>
-    public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+    public ValueTask<FilePanelResult<FilePreviewContent>> OpenContentAsync(
         FilePanelLocation location,
         long maximumBytes,
         CancellationToken cancellationToken) =>
         UseActiveAsync(
-            (client, token) => client.MaterializeAsync(location, maximumBytes, token),
+            (client, token) => client.OpenContentAsync(location, maximumBytes, token),
             cancellationToken);
 
     public ValueTask<FilePanelResult<FilePanelEntry>> CreateDirectoryAsync(
@@ -648,7 +651,7 @@ public sealed class CatalogFileProviderRuntime :
 
         try
         {
-            var generation = new ProviderGeneration(registrations);
+            var generation = new ProviderGeneration(registrations, _contentCache);
             return new GenerationBuild(generation, Array.AsReadOnly(diagnostics.ToArray()));
         }
         catch
@@ -658,7 +661,8 @@ public sealed class CatalogFileProviderRuntime :
         }
     }
 
-    private ProviderGeneration CreateBuiltInGeneration() => new([CreateBuiltInHome()]);
+    private ProviderGeneration CreateBuiltInGeneration() =>
+        new([CreateBuiltInHome()], _contentCache);
 
     private static OwnedFileProviderRegistration CreateBuiltInHome()
     {
@@ -823,11 +827,16 @@ internal sealed class ProviderGeneration
     private bool _retired;
     private bool _disposed;
 
-    public ProviderGeneration(IReadOnlyList<OwnedFileProviderRegistration> registrations)
+    public ProviderGeneration(
+        IReadOnlyList<OwnedFileProviderRegistration> registrations,
+        PreviewContentCache? contentCache = null)
     {
         ArgumentNullException.ThrowIfNull(registrations);
         _owned = registrations;
-        Client = new FilePanelClient(registrations.Select(item => item.Registration));
+        Client = new FilePanelClient(
+            registrations.Select(item => item.Registration),
+            TimeProvider.System,
+            contentCache);
     }
 
     public FilePanelClient Client { get; }
@@ -906,7 +915,7 @@ internal sealed class GenerationLease(ProviderGeneration generation) : IDisposab
 internal sealed class GenerationBoundFilePanelClient :
     IFilePanelClient,
     IFileTransferQueueClient,
-    IFileContentMaterializer,
+    IFileContentSource,
     IDisposable
 {
     private readonly object _gate = new();
@@ -948,12 +957,12 @@ internal sealed class GenerationBoundFilePanelClient :
             (client, token) => client.StatAsync(location, token),
             cancellationToken);
 
-    public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+    public ValueTask<FilePanelResult<FilePreviewContent>> OpenContentAsync(
         FilePanelLocation location,
         long maximumBytes,
         CancellationToken cancellationToken) =>
         UseAsync(
-            (client, token) => client.MaterializeAsync(location, maximumBytes, token),
+            (client, token) => client.OpenContentAsync(location, maximumBytes, token),
             cancellationToken);
 
     public ValueTask<FilePanelResult<FilePanelPreview>> PreviewAsync(

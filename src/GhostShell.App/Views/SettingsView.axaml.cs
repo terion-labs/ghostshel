@@ -55,8 +55,6 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? AppearanceSettingsRequested;
 
-    public event EventHandler<RoutedEventArgs>? CancelFileTransferRequested;
-
     public event EventHandler<RoutedEventArgs>? ClearKeybindingPrefixRequested;
 
     public event EventHandler<RoutedEventArgs>? CloneKeybindingPresetRequested;
@@ -127,8 +125,6 @@ public sealed partial class SettingsView : UserControl
     public event EventHandler<RoutedEventArgs>? ResetAllKeybindingsRequested;
 
     public event EventHandler<RoutedEventArgs>? ResetKeybindingRequested;
-
-    public event EventHandler<RoutedEventArgs>? RetryFileTransferRequested;
 
     public event EventHandler<RoutedEventArgs>? ReviewHistoryPrivacyRequested;
 
@@ -296,9 +292,6 @@ public sealed partial class SettingsView : UserControl
     private void OnAppearanceSettingsClick(object? sender, RoutedEventArgs e) =>
         AppearanceSettingsRequested?.Invoke(sender, e);
 
-    private void OnCancelFileTransferClick(object? sender, RoutedEventArgs e) =>
-        CancelFileTransferRequested?.Invoke(sender, e);
-
     private void OnClearKeybindingPrefixClick(object? sender, RoutedEventArgs e) =>
         ClearKeybindingPrefixRequested?.Invoke(sender, e);
 
@@ -405,9 +398,6 @@ public sealed partial class SettingsView : UserControl
 
     private void OnResetKeybindingClick(object? sender, RoutedEventArgs e) =>
         ResetKeybindingRequested?.Invoke(sender, e);
-
-    private void OnRetryFileTransferClick(object? sender, RoutedEventArgs e) =>
-        RetryFileTransferRequested?.Invoke(sender, e);
 
     private void OnReviewHistoryPrivacyClick(object? sender, RoutedEventArgs e) =>
         ReviewHistoryPrivacyRequested?.Invoke(sender, e);

@@ -17,12 +17,15 @@ public interface IArchiveTableOfContents
     bool Claims(string fileName);
 
     /// <summary>
-    /// The entries, or null when the file cannot be read as an archive. Stops
-    /// at <paramref name="maximumEntries"/>: a listing is a look inside, and an
-    /// archive of a million files must not become a million rows.
+    /// The entries, or null when the content cannot be read as an archive.
+    /// Stops at <paramref name="maximumEntries"/>: a listing is a look inside,
+    /// and an archive of a million files must not become a million rows. The
+    /// file name says which format to expect; the bytes come from the content,
+    /// wherever it lives.
     /// </summary>
     ValueTask<IReadOnlyList<ArchiveEntryDescriptor>?> ReadAsync(
-        string path,
+        FilePreviewContent content,
+        string fileName,
         int maximumEntries,
         CancellationToken cancellationToken);
 }

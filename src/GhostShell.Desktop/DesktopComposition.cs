@@ -79,7 +79,21 @@ public static class DesktopComposition
         services.AddSingleton<ISshHostKeyTrustStore>(provider =>
             provider.GetRequiredService<SshKnownHostStore>());
         services.AddSingleton<IConnectionSecurityRuntime, ConnectionSecurityRuntime>();
-        services.AddSingleton<CatalogFileProviderRuntime>();
+        services.AddSingleton<SqliteFilePreviewPreferences>();
+        services.AddSingleton<IFilePreviewPreferences>(provider =>
+            provider.GetRequiredService<SqliteFilePreviewPreferences>());
+        services.AddSingleton(provider =>
+            new PreviewContentCache(provider.GetRequiredService<IFilePreviewPreferences>()));
+        services.AddSingleton<IPreviewCacheControl>(provider =>
+            provider.GetRequiredService<PreviewContentCache>());
+        services.AddSingleton<IInMemoryDatabaseRegistry, SqliteInMemoryDatabaseRegistry>();
+        services.AddSingleton(provider => new CatalogFileProviderRuntime(
+            provider.GetRequiredService<IDefinitionCatalog>(),
+            provider.GetRequiredService<ISecretVault>(),
+            provider.GetRequiredService<ISshHostKeyTrustStore>(),
+            provider.GetRequiredService<IConnectionSecurityRuntime>(),
+            provider.GetRequiredService<IConnectionRuntime>(),
+            provider.GetRequiredService<PreviewContentCache>()));
         services.AddSingleton<IFilePanelClient>(provider =>
             provider.GetRequiredService<CatalogFileProviderRuntime>());
         services.AddSingleton<IFileTransferQueueClient>(provider =>

@@ -46,7 +46,11 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
     {
         var path = WriteZip("bundle.zip");
 
-        var entries = await _reader.ReadAsync(path, 100, CancellationToken.None);
+        var entries = await _reader.ReadAsync(
+            GhostShell.Application.FilePreviewContent.FromLocalFile(path),
+            Path.GetFileName(path),
+            100,
+            CancellationToken.None);
 
         Assert.NotNull(entries);
         Assert.Equal(
@@ -63,7 +67,11 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
     {
         var path = WriteTar("source.tar", compressed: false);
 
-        var entries = await _reader.ReadAsync(path, 100, CancellationToken.None);
+        var entries = await _reader.ReadAsync(
+            GhostShell.Application.FilePreviewContent.FromLocalFile(path),
+            Path.GetFileName(path),
+            100,
+            CancellationToken.None);
 
         Assert.NotNull(entries);
         var file = Assert.Single(entries!, entry => entry.Path == "readme.txt");
@@ -80,7 +88,11 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
     {
         var path = WriteTar("source.tar.gz", compressed: true);
 
-        var entries = await _reader.ReadAsync(path, 100, CancellationToken.None);
+        var entries = await _reader.ReadAsync(
+            GhostShell.Application.FilePreviewContent.FromLocalFile(path),
+            Path.GetFileName(path),
+            100,
+            CancellationToken.None);
 
         Assert.NotNull(entries);
         Assert.Contains(entries!, entry => entry.Path == "readme.txt");
@@ -91,7 +103,11 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
     {
         var path = WriteZip("many.zip", entryCount: 40);
 
-        var entries = await _reader.ReadAsync(path, 10, CancellationToken.None);
+        var entries = await _reader.ReadAsync(
+            GhostShell.Application.FilePreviewContent.FromLocalFile(path),
+            Path.GetFileName(path),
+            10,
+            CancellationToken.None);
 
         Assert.Equal(10, entries!.Count);
     }
@@ -102,7 +118,11 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
         var path = Path.Combine(_root, "broken.zip");
         await File.WriteAllTextAsync(path, "this is not a zip");
 
-        Assert.Null(await _reader.ReadAsync(path, 100, CancellationToken.None));
+        Assert.Null(await _reader.ReadAsync(
+            GhostShell.Application.FilePreviewContent.FromLocalFile(path),
+            Path.GetFileName(path),
+            100,
+            CancellationToken.None));
     }
 
     private string WriteZip(string name, int entryCount = 0)

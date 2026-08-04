@@ -104,6 +104,11 @@ internal static class Program
             return;
         }
 
+        // Failure-tolerant by design: unreadable settings mean the defaults,
+        // never a startup error.
+        await services.GetRequiredService<SqliteFilePreviewPreferences>()
+            .InitializeAsync(CancellationToken.None);
+
         instanceCoordinator.RegisterActivationHandler(RequestMainWindowActivation);
         BuildAvaloniaApp(services).StartWithClassicDesktopLifetime(
             args,

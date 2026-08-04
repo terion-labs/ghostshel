@@ -113,13 +113,15 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// </summary>
     private readonly HashSet<string> _grantedPreviews = new(StringComparer.Ordinal);
     private readonly IDatabasePanelClient? _databaseClient;
+    private readonly IInMemoryDatabaseRegistry? _databaseRegistry;
+    private readonly IFilePreviewPreferences? _previewPreferences;
     private readonly IImagePreviewDecoder? _imageDecoder;
     private readonly IPdfPreviewRenderer? _pdfRenderer;
-    private string? _pdfPath;
+    private FilePreviewContent? _pdfContent;
     private BrowserAddress? _htmlAddress;
     private int _pdfPageIndex;
     private int _pdfPageCount;
-    private readonly IFileContentMaterializer? _materializer;
+    private readonly IFileContentSource? _contentSource;
     private readonly IArchiveTableOfContents? _archiveReader;
     private readonly FilePreviewCatalog _previewers;
 
@@ -145,7 +147,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private BinaryPreviewRendering? _previewBinary;
     private PreviewHexViewModel? _previewHex;
     private DatabaseRuntimePanelViewModel? _databasePreview;
-    private MaterializedFile? _databasePreviewFile;
+
+    /// <summary>
+    /// The registration serving a remote database preview from memory, so
+    /// closing the preview can release the image. Null while the previewed
+    /// database is a local file opened in place.
+    /// </summary>
+    private string? _databaseMemoryRegistration;
 
     public FileRuntimePanelViewModel(
         PanelInstanceId id,
@@ -161,7 +169,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         IImagePreviewDecoder? imageDecoder = null,
         IPdfPreviewRenderer? pdfRenderer = null,
         IArchiveTableOfContents? archiveReader = null,
-        FilePreviewCatalog? previewers = null)
+        FilePreviewCatalog? previewers = null,
+        IInMemoryDatabaseRegistry? databaseRegistry = null,
+        IFilePreviewPreferences? previewPreferences = null)
         : base(id, PanelKind.FileViewer, title, "Files")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -177,7 +187,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewToggles.CollectionChanged += (_, _) =>
             OnPropertyChanged(nameof(HasPreviewToggles));
         _pdfRenderer = pdfRenderer;
-        _materializer = client as IFileContentMaterializer;
+        _databaseRegistry = databaseRegistry;
+        _previewPreferences = previewPreferences;
+        _contentSource = client as IFileContentSource;
         _connection = connection ?? BuiltInConnections.Local;
         _retryCommand = new AsyncActionCommand(
             () => RetryAsync(),
@@ -662,11 +674,20 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public bool HasError => CurrentIssue is not null;
 
     /// <summary>
-    /// The size at or below which a remote file is fetched for preview without
-    /// asking. Previewing a remote file costs the user's bandwidth, so above
-    /// this the preview waits to be asked for.
+    /// The default size at or below which a remote file is fetched for preview
+    /// without asking, for hosts composed without live settings. The setting
+    /// of the same meaning overrides this.
     /// </summary>
     public const long AutoDownloadPreviewBytes = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// The size at or below which a remote file is fetched for preview without
+    /// asking. Previewing a remote file costs the user's bandwidth, so above
+    /// this the preview waits to be asked for. Read live from settings, so a
+    /// change on the settings page is in effect for the very next selection.
+    /// </summary>
+    private long AutoLoadThresholdBytes =>
+        _previewPreferences?.Current.AutoLoadThresholdBytes ?? AutoDownloadPreviewBytes;
 
     /// <summary>
     /// Whether this provider's files are fetched over a network. Local
@@ -2019,7 +2040,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             && !_grantedPreviews.Contains(PreviewGrantKey(entry))
             && (!AutoDownloadPreviews
                 || entry.Entry.Size is null
-                || entry.Entry.Size > AutoDownloadPreviewBytes))
+                || entry.Entry.Size > AutoLoadThresholdBytes))
         {
             PreviewTitle = entry.Name;
             SetDeferredPreview(entry);
@@ -2432,7 +2453,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         PreviewIssue = null;
         PreviewTitle = "Preview";
         _requestedPreviewEntry = null;
-        _pdfPath = null;
+        _pdfContent?.Dispose();
+        _pdfContent = null;
         _lastPreview = null;
         SetMarkdownRendering(false);
         WrapPreviewText = true;
@@ -2467,8 +2489,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     /// <summary>
     /// The ceiling on an archive read for its listing. Nothing is unpacked —
-    /// a zip is answered from the index at its end — but the file still has to
-    /// be reachable on disk, so a remote one is copied first.
+    /// a zip is answered from the index at its end — but that index lives at
+    /// the end of the file, so a remote archive is fetched whole into the
+    /// preview cache and listed from there.
     /// </summary>
     private const long MaximumArchivePreviewBytes = 512L * 1024 * 1024;
 
@@ -2477,7 +2500,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// </summary>
     private async Task OpenArchivePreviewAsync(FilePanelLocation location)
     {
-        if (_archiveReader is null || _materializer is null)
+        if (_archiveReader is null || _contentSource is null)
         {
             PreviewText = "Archives cannot be listed on this system.";
             return;
@@ -2492,7 +2515,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         IsPreviewLoading = true;
         try
         {
-            var materialized = await _materializer.MaterializeAsync(
+            var opened = await _contentSource.OpenContentAsync(
                 location,
                 MaximumArchivePreviewBytes,
                 operation.Token);
@@ -2501,15 +2524,17 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 return;
             }
 
-            if (!materialized.IsSuccess)
+            if (!opened.IsSuccess)
             {
-                PreviewText = materialized.Error!.Message;
-                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                PreviewText = opened.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(opened.Error);
                 return;
             }
 
+            using var content = opened.Value!;
             var entries = await _archiveReader.ReadAsync(
-                materialized.Value!.Path,
+                content,
+                PreviewTitle,
                 MaximumArchiveEntries,
                 operation.Token);
             if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
@@ -2575,13 +2600,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private const long MaximumDatabasePreviewBytes = 256L * 1024 * 1024;
 
     /// <summary>
-    /// Opens the selected file with the database viewer. Local files open where
-    /// they are; a file on any other provider is copied to a private temporary
-    /// file first, because a database engine opens a path, not a byte stream.
+    /// Opens the selected file with the database viewer. A local file opens
+    /// where it is; a remote one is downloaded as bytes and served to the
+    /// engine from memory — its content never becomes a file on this machine.
     /// </summary>
     private async Task OpenDatabasePreviewAsync(FilePanelLocation location)
     {
-        if (_databaseClient is null || _materializer is null)
+        if (_databaseClient is null || _contentSource is null)
         {
             PreviewText = "This build cannot open database files in the preview.";
             return;
@@ -2594,13 +2619,31 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         IsPreviewLoading = true;
-        FilePanelResult<MaterializedFile> result;
+        string? connectionString = null;
+        string? registration = null;
+        FilePanelResult<FilePreviewContent> result;
         try
         {
-            result = await _materializer.MaterializeAsync(
+            result = await _contentSource.OpenContentAsync(
                 location,
                 MaximumDatabasePreviewBytes,
                 operation.Token);
+            if (result.IsSuccess)
+            {
+                using var content = result.Value!;
+                if (content.LocalPath is { } path)
+                {
+                    // Read-only: previewing a file must not write a journal
+                    // beside the user's own database.
+                    connectionString = $"Data Source={path};Mode=ReadOnly";
+                }
+                else if (_databaseRegistry is not null)
+                {
+                    registration = _databaseRegistry.Register(
+                        await content.ReadAllBytesAsync(operation.Token));
+                    connectionString = registration;
+                }
+            }
         }
         catch (OperationCanceledException) when (operation.IsCancellationRequested)
         {
@@ -2623,11 +2666,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             }
         }
 
-        // The selection moved while the download was in flight. The copy stays
+        // The selection moved while the download was in flight. The bytes stay
         // in the cache: the work is done, and selecting this file again should
-        // find it there rather than fetch it twice.
+        // find them there rather than fetch them twice.
         if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
         {
+            if (registration is not null)
+            {
+                _databaseRegistry!.Unregister(registration);
+            }
+
             return;
         }
 
@@ -2639,17 +2687,19 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        var file = result.Value!;
+        if (connectionString is null)
+        {
+            PreviewText = "This build cannot open remote database files in the preview.";
+            return;
+        }
+
         var viewer = new DatabaseRuntimePanelViewModel(
             PanelInstanceId.New(),
             PreviewTitle,
             _databaseClient,
             SqliteDriverId,
-            // Read-only: previewing a file must not write a journal beside the
-            // user's database, and for a local file this is their real database
-            // rather than a copy.
-            $"Data Source={file.Path};Mode=ReadOnly");
-        _databasePreviewFile = file;
+            connectionString);
+        _databaseMemoryRegistration = registration;
         _databasePreview = viewer;
         OnPropertyChanged(nameof(DatabasePreview));
         OnPropertyChanged(nameof(HasDatabasePreview));
@@ -2693,9 +2743,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     private async Task DecodeImagePreviewAsync(FilePanelLocation location)
     {
-        if (_materializer is null)
+        if (_contentSource is null)
         {
-            PreviewText = "This client cannot open images by path.";
+            PreviewText = "This client cannot open whole images.";
             return;
         }
 
@@ -2708,7 +2758,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         IsPreviewLoading = true;
         try
         {
-            var materialized = await _materializer.MaterializeAsync(
+            var opened = await _contentSource.OpenContentAsync(
                 location,
                 MaximumImagePreviewBytes,
                 operation.Token);
@@ -2717,18 +2767,18 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 return;
             }
 
-            if (!materialized.IsSuccess)
+            if (!opened.IsSuccess)
             {
-                PreviewText = materialized.Error!.Message;
-                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                PreviewText = opened.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(opened.Error);
                 return;
             }
 
-            var path = materialized.Value!.Path;
+            using var content = opened.Value!;
             if (_imageDecoder?.Claims(PreviewTitle) == true)
             {
                 var decoded = await _imageDecoder.DecodeAsync(
-                    path,
+                    content,
                     MaximumPreviewPixels,
                     operation.Token);
                 if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
@@ -2750,14 +2800,15 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 return;
             }
 
-            // A format the drawing stack reads itself, decoded straight from
-            // disk and scaled down as it is read: a full-size bitmap of a
-            // camera photograph costs far more memory than the preview needs.
+            // A format the drawing stack reads itself, decoded from wherever
+            // the content lives and scaled down as it is read: a full-size
+            // bitmap of a camera photograph costs far more memory than the
+            // preview needs.
             var bitmap = await Task.Run(
                 () =>
                 {
-                    using var file = File.OpenRead(path);
-                    return Bitmap.DecodeToWidth(file, MaximumPreviewImageWidth);
+                    using var source = content.OpenRead();
+                    return Bitmap.DecodeToWidth(source, MaximumPreviewImageWidth);
                 },
                 operation.Token);
             if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
@@ -2796,25 +2847,26 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private const long MaximumImagePreviewBytes = 128L * 1024 * 1024;
 
     /// <summary>
-    /// The page a webview should show, once the file is on disk. Null until a
-    /// web page is being previewed.
+    /// The page a webview should show. A local file is shown from where it
+    /// lives; a remote one is carried to the webview as markup, so its bytes
+    /// never land on this machine. Null until a web page is being previewed.
     /// </summary>
     public BrowserAddress? HtmlAddress => _htmlAddress;
 
     public bool HasHtmlPreview => _htmlAddress is not null;
 
     /// <summary>
-    /// Opens a previewed web page from disk. The page is materialized first —
-    /// a webview loads a URL, and a remote file has no URL this machine can
-    /// open — and then handed to the same webview the browser panel uses, so
-    /// it renders as the page its author wrote, subresources and scripts
-    /// included.
+    /// Opens a previewed web page in the same webview the browser panel uses,
+    /// so it renders as the page its author wrote. A local file is opened by
+    /// its own URL — relative subresources beside it keep working. A remote
+    /// file has no URL this machine can open, so its markup is handed to the
+    /// webview as a string and no copy of it is ever written to disk.
     /// </summary>
     private async Task OpenHtmlPreviewAsync(FilePanelLocation location)
     {
-        if (_materializer is null)
+        if (_contentSource is null)
         {
-            PreviewText = "This client cannot open web pages by path.";
+            PreviewText = "This client cannot open web pages.";
             return;
         }
 
@@ -2827,23 +2879,39 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         IsPreviewLoading = true;
         try
         {
-            var materialized = await _materializer.MaterializeAsync(
+            var opened = await _contentSource.OpenContentAsync(
                 location,
-                MaximumImagePreviewBytes,
+                MaximumHtmlPreviewBytes,
                 operation.Token);
             if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
             {
                 return;
             }
 
-            if (!materialized.IsSuccess)
+            if (!opened.IsSuccess)
             {
-                PreviewText = materialized.Error!.Message;
-                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                PreviewText = opened.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(opened.Error);
                 return;
             }
 
-            _htmlAddress = BrowserAddress.ForLocalFile(materialized.Value!.Path);
+            using var content = opened.Value!;
+            if (content.LocalPath is { } path)
+            {
+                _htmlAddress = BrowserAddress.ForLocalFile(path);
+            }
+            else
+            {
+                using var reader = new StreamReader(
+                    content.OpenRead(),
+                    // The BOM wins when present; without one HTML is UTF-8 in
+                    // practice, and a wrong guess mangles glyphs, not safety.
+                    Encoding.UTF8,
+                    detectEncodingFromByteOrderMarks: true);
+                _htmlAddress = BrowserAddress.ForDocument(
+                    await reader.ReadToEndAsync(operation.Token));
+            }
+
             OnPropertyChanged(nameof(HtmlAddress));
             OnPropertyChanged(nameof(HasHtmlPreview));
             OnPropertyChanged(nameof(HasPreview));
@@ -2870,6 +2938,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     /// <summary>
+    /// The ceiling on a previewed web page. Far below the image ceiling it
+    /// used to share: the page becomes one string in memory and then a
+    /// webview's document, and hundreds of megabytes of markup serve nobody.
+    /// </summary>
+    private const long MaximumHtmlPreviewBytes = 16L * 1024 * 1024;
+
+    /// <summary>
     /// The width a PDF page is rasterized at. Generous so the fitted page stays
     /// sharp on a large panel; the view scales it down to fit.
     /// </summary>
@@ -2888,7 +2963,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public Task TurnPdfPageAsync(int delta)
     {
         var target = _pdfPageIndex + delta;
-        if (_pdfPath is null || target < 0 || target >= _pdfPageCount)
+        if (_pdfContent is null || target < 0 || target >= _pdfPageCount)
         {
             return Task.CompletedTask;
         }
@@ -2898,13 +2973,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     /// <summary>
-    /// Opens a PDF and shows its first page. The document is materialized once
-    /// and paged through from there, so turning a page costs a render rather
-    /// than another download.
+    /// Opens a PDF and shows its first page. The content is opened once and
+    /// paged through from there, so turning a page costs a render rather than
+    /// another download.
     /// </summary>
     private async Task OpenPdfPreviewAsync(FilePanelLocation location)
     {
-        if (_pdfRenderer is null || _materializer is null)
+        if (_pdfRenderer is null || _contentSource is null)
         {
             PreviewText = "This build cannot open PDF files in the preview.";
             return;
@@ -2919,7 +2994,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         IsPreviewLoading = true;
         try
         {
-            var materialized = await _materializer.MaterializeAsync(
+            var opened = await _contentSource.OpenContentAsync(
                 location,
                 MaximumImagePreviewBytes,
                 operation.Token);
@@ -2928,16 +3003,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 return;
             }
 
-            if (!materialized.IsSuccess)
+            if (!opened.IsSuccess)
             {
-                PreviewText = materialized.Error!.Message;
-                PreviewIssue = FileOperationIssue.FromProvider(materialized.Error);
+                PreviewText = opened.Error!.Message;
+                PreviewIssue = FileOperationIssue.FromProvider(opened.Error);
                 return;
             }
 
-            _pdfPath = materialized.Value!.Path;
+            _pdfContent = opened.Value!;
             _pdfPageIndex = 0;
-            _pdfPageCount = await _pdfRenderer.CountPagesAsync(_pdfPath, operation.Token);
+            _pdfPageCount = await _pdfRenderer.CountPagesAsync(_pdfContent, operation.Token);
             if (_pdfPageCount == 0)
             {
                 PreviewText = "This PDF could not be opened; it may be damaged or encrypted.";
@@ -2967,13 +3042,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     private async Task RenderPdfPageAsync(CancellationTokenSource? operation)
     {
-        if (_pdfRenderer is null || _pdfPath is null || operation is null)
+        if (_pdfRenderer is null || _pdfContent is null || operation is null)
         {
             return;
         }
 
         var page = await _pdfRenderer.RenderPageAsync(
-            _pdfPath,
+            _pdfContent,
             _pdfPageIndex,
             PdfPageWidth,
             operation.Token);
@@ -3007,7 +3082,14 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     {
         var preview = _databasePreview;
         _databasePreview = null;
-        _databasePreviewFile = null;
+        if (_databaseMemoryRegistration is { } registration)
+        {
+            _databaseMemoryRegistration = null;
+            // Safe against a query still in flight: the registry keeps the
+            // image alive until the last borrowed connection closes.
+            _databaseRegistry?.Unregister(registration);
+        }
+
         if (preview is not null)
         {
             OnPropertyChanged(nameof(DatabasePreview));

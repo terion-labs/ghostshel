@@ -506,7 +506,7 @@ internal sealed class QaApplication : Avalonia.Application
         {
             var decoder = new GhostShell.Previews.MagickImagePreviewDecoder();
             var decoded = decoder
-                .DecodeAsync(Program.TiffProbePath, 8_000_000, CancellationToken.None)
+                .DecodeAsync(GhostShell.Application.FilePreviewContent.FromLocalFile(Program.TiffProbePath), 8_000_000, CancellationToken.None)
                 .AsTask()
                 .GetAwaiter()
                 .GetResult()
@@ -539,7 +539,7 @@ internal sealed class QaApplication : Avalonia.Application
         {
             var decoder = new GhostShell.Previews.MagickImagePreviewDecoder();
             var decoded = decoder
-                .DecodeAsync(Program.TiffProbePath, 8_000_000, CancellationToken.None)
+                .DecodeAsync(GhostShell.Application.FilePreviewContent.FromLocalFile(Program.TiffProbePath), 8_000_000, CancellationToken.None)
                 .AsTask()
                 .GetAwaiter()
                 .GetResult()
@@ -1566,7 +1566,11 @@ internal sealed class QaApplication : Avalonia.Application
         }
 
         var entries = new GhostShell.Previews.ArchiveTableOfContents()
-            .ReadAsync(path, 500, CancellationToken.None)
+            .ReadAsync(
+                GhostShell.Application.FilePreviewContent.FromLocalFile(path),
+                Path.GetFileName(path),
+                500,
+                CancellationToken.None)
             .AsTask()
             .GetAwaiter()
             .GetResult()
@@ -1859,7 +1863,11 @@ internal sealed class QaApplication : Avalonia.Application
     {
         var renderer = new GhostShell.Previews.PdfiumPreviewRenderer();
         var page = renderer
-            .RenderPageAsync(Program.PdfProbePath, 0, 700, CancellationToken.None)
+            .RenderPageAsync(
+                GhostShell.Application.FilePreviewContent.FromLocalFile(Program.PdfProbePath),
+                0,
+                700,
+                CancellationToken.None)
             .AsTask()
             .GetAwaiter()
             .GetResult()

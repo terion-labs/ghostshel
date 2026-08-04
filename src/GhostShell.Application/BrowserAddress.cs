@@ -82,6 +82,35 @@ public sealed record BrowserAddress
     }
 
     /// <summary>
+    /// A page carried as markup rather than fetched from anywhere: a previewed
+    /// remote HTML file whose bytes are already in memory. The webview shows
+    /// the markup directly, so the file is never written to this machine.
+    ///
+    /// Like <see cref="ForLocalFile"/>, deliberately unreachable from
+    /// <see cref="TryParse"/>: only code already holding the content can build
+    /// one, and the address it presents to history and audit is about:blank.
+    /// </summary>
+    public static BrowserAddress ForDocument(string markup)
+    {
+        ArgumentNullException.ThrowIfNull(markup);
+        return new BrowserAddress(BlankUri, markup);
+    }
+
+    private BrowserAddress(Uri value, string document)
+    {
+        Value = value;
+        Document = document;
+    }
+
+    /// <summary>
+    /// The markup to show, when this address carries a page rather than naming
+    /// one. Kept out of serialized state: a page's content is not part of
+    /// where the browser has been.
+    /// </summary>
+    [JsonIgnore]
+    public string? Document { get; }
+
+    /// <summary>
     /// Whether this names a file on this machine that the shell itself chose to
     /// show. Only <see cref="ForLocalFile"/> can set it, so it marks an address
     /// the application built from a real path rather than one parsed from text.

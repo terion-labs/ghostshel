@@ -12,7 +12,7 @@ public sealed class SessionHostedFilePanelClient :
     IFilePanelClient,
     IFileTransferQueueClient,
     IHostedFilePanelClient,
-    IFileContentMaterializer,
+    IFileContentSource,
     IDisposable
 {
     private readonly object _profileGate = new();
@@ -79,22 +79,22 @@ public sealed class SessionHostedFilePanelClient :
     }
 
     /// <summary>
-    /// Materialization is not a session operation: it produces a path on this
-    /// machine, so it goes straight to the provider client rather than through
-    /// the session host. A client that cannot materialize refuses here, exactly
-    /// as it would if the panel had asked it directly.
+    /// Whole-file content is not a session operation: it is served from this
+    /// machine's memory and cache, so it goes straight to the provider client
+    /// rather than through the session host. A client that cannot serve it
+    /// refuses here, exactly as it would if the panel had asked it directly.
     /// </summary>
-    public ValueTask<FilePanelResult<MaterializedFile>> MaterializeAsync(
+    public ValueTask<FilePanelResult<FilePreviewContent>> OpenContentAsync(
         FilePanelLocation location,
         long maximumBytes,
         CancellationToken cancellationToken) =>
-        _profileSource is IFileContentMaterializer materializer
-            ? materializer.MaterializeAsync(location, maximumBytes, cancellationToken)
-            : ValueTask.FromResult(FilePanelResult<MaterializedFile>.Failure(
+        _profileSource is IFileContentSource source
+            ? source.OpenContentAsync(location, maximumBytes, cancellationToken)
+            : ValueTask.FromResult(FilePanelResult<FilePreviewContent>.Failure(
                 new FilePanelError(
                     FilePanelErrorCode.UnsupportedCapability,
-                    "file_materialize_unsupported",
-                    "This file client cannot open files by path.",
+                    "file_content_unsupported",
+                    "This file client cannot open whole files.",
                     false)));
 
     public IReadOnlyList<FileProviderProfileDescriptor> Profiles

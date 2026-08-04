@@ -14,6 +14,7 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly IReadOnlyDictionary<string, FileProviderRegistration> _registrations;
     private readonly TimeProvider _timeProvider;
+    private readonly PreviewContentCache? _contentCache;
 
     public FilePanelClient(IEnumerable<FileProviderRegistration> registrations)
         : this(registrations, TimeProvider.System)
@@ -22,10 +23,12 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
 
     public FilePanelClient(
         IEnumerable<FileProviderRegistration> registrations,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        PreviewContentCache? contentCache = null)
     {
         ArgumentNullException.ThrowIfNull(registrations);
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _contentCache = contentCache;
         var byId = new Dictionary<string, FileProviderRegistration>(StringComparer.Ordinal);
         foreach (var registration in registrations)
         {

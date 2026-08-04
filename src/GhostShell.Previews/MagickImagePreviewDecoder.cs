@@ -44,16 +44,16 @@ public sealed class MagickImagePreviewDecoder : IImagePreviewDecoder
     }
 
     public async ValueTask<DecodedImage?> DecodeAsync(
-        string path,
+        FilePreviewContent content,
         long maximumPixels,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(content);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumPixels);
         try
         {
             return await Task.Run(
-                    () => Decode(path, maximumPixels, cancellationToken),
+                    () => Decode(content, maximumPixels, cancellationToken),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -71,7 +71,7 @@ public sealed class MagickImagePreviewDecoder : IImagePreviewDecoder
     }
 
     private static DecodedImage? Decode(
-        string path,
+        FilePreviewContent content,
         long maximumPixels,
         CancellationToken cancellationToken)
     {
@@ -84,7 +84,8 @@ public sealed class MagickImagePreviewDecoder : IImagePreviewDecoder
         };
         ResourceLimits.Memory = (ulong)MaximumMegabytes * 1024 * 1024;
 
-        using var image = new MagickImage(path, settings);
+        using var source = content.OpenRead();
+        using var image = new MagickImage(source, settings);
         var width = (int)image.Width;
         var height = (int)image.Height;
         var format = image.Format.ToString();

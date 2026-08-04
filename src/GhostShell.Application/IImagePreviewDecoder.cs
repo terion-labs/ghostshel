@@ -16,9 +16,9 @@ public sealed record DecodedImage(
 /// Decodes image files the drawing stack cannot open on its own — camera and
 /// scanner formats, HEIC, TIFF, layered documents.
 ///
-/// It works from a path rather than bytes because an image preview is a whole
-/// file: a bounded head of a JPEG is not a smaller JPEG, and the file may
-/// already be on disk anyway.
+/// It works from whole-file content rather than a bounded head because a head
+/// of a JPEG is not a smaller JPEG; where that content lives is the content's
+/// business, not the decoder's.
 /// </summary>
 public interface IImagePreviewDecoder
 {
@@ -36,7 +36,7 @@ public interface IImagePreviewDecoder
     /// just to be shown in a preview.
     /// </summary>
     ValueTask<DecodedImage?> DecodeAsync(
-        string path,
+        FilePreviewContent content,
         long maximumPixels,
         CancellationToken cancellationToken);
 }

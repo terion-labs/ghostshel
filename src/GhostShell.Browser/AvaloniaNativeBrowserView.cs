@@ -1041,7 +1041,17 @@ internal sealed class AvaloniaNativeBrowserView : INativeBrowserView
         var navigation = BeginExplicitNavigation(address);
         try
         {
-            _webView.Navigate(address.Value);
+            if (address.Document is { } document)
+            {
+                // The page arrives as markup, not a location: the webview
+                // renders it directly and its navigation is about:blank, which
+                // the ordinary address parser already admits.
+                _webView.NavigateToString(document);
+            }
+            else
+            {
+                _webView.Navigate(address.Value);
+            }
         }
         catch
         {

@@ -46,7 +46,7 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
     {
         var path = await WriteProbeAsync("two-pages.pdf");
 
-        Assert.Equal(2, await _renderer.CountPagesAsync(path, CancellationToken.None));
+        Assert.Equal(2, await _renderer.CountPagesAsync(Content(path), CancellationToken.None));
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
     {
         var path = await WriteProbeAsync("render.pdf");
 
-        var page = await _renderer.RenderPageAsync(path, 0, 600, CancellationToken.None);
+        var page = await _renderer.RenderPageAsync(Content(path), 0, 600, CancellationToken.None);
 
         Assert.NotNull(page);
         Assert.Equal(1, page!.PageNumber);
@@ -69,7 +69,7 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
     {
         var path = await WriteProbeAsync("shape.pdf");
 
-        var page = await _renderer.RenderPageAsync(path, 0, 600, CancellationToken.None);
+        var page = await _renderer.RenderPageAsync(Content(path), 0, 600, CancellationToken.None);
 
         Assert.NotNull(page);
         // The probe's pages are US Letter, 612x792 points. Rendering to a width
@@ -84,8 +84,8 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
     {
         var path = await WriteProbeAsync("bounds.pdf");
 
-        Assert.NotNull(await _renderer.RenderPageAsync(path, 1, 400, CancellationToken.None));
-        Assert.Null(await _renderer.RenderPageAsync(path, 2, 400, CancellationToken.None));
+        Assert.NotNull(await _renderer.RenderPageAsync(Content(path), 1, 400, CancellationToken.None));
+        Assert.Null(await _renderer.RenderPageAsync(Content(path), 2, 400, CancellationToken.None));
     }
 
     [Fact]
@@ -94,8 +94,8 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
         var path = Path.Combine(_root, "broken.pdf");
         await File.WriteAllTextAsync(path, "this is not a PDF");
 
-        Assert.Equal(0, await _renderer.CountPagesAsync(path, CancellationToken.None));
-        Assert.Null(await _renderer.RenderPageAsync(path, 0, 400, CancellationToken.None));
+        Assert.Equal(0, await _renderer.CountPagesAsync(Content(path), CancellationToken.None));
+        Assert.Null(await _renderer.RenderPageAsync(Content(path), 0, 400, CancellationToken.None));
     }
 
     private async Task<string> WriteProbeAsync(string name)
@@ -110,4 +110,7 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
     private static (int Width, int Height) PngSize(ReadOnlySpan<byte> png) =>
         (System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png[16..]),
             System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png[20..]));
+
+    private static GhostShell.Application.FilePreviewContent Content(string path) =>
+        GhostShell.Application.FilePreviewContent.FromLocalFile(path);
 }

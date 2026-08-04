@@ -22,15 +22,17 @@ public sealed class PdfiumPreviewRenderer : IPdfPreviewRenderer
         && Path.GetExtension(fileName.Trim())
             .Equals(".pdf", StringComparison.OrdinalIgnoreCase);
 
-    public ValueTask<int> CountPagesAsync(string path, CancellationToken cancellationToken)
+    public ValueTask<int> CountPagesAsync(
+        FilePreviewContent content,
+        CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(content);
         return new ValueTask<int>(Task.Run(
             () =>
             {
                 try
                 {
-                    using var stream = OpenRead(path);
+                    using var stream = content.OpenRead();
                     return Conversion.GetPageCount(stream, leaveOpen: true);
                 }
                 catch (Exception exception) when (IsDocumentFailure(exception))
@@ -44,12 +46,12 @@ public sealed class PdfiumPreviewRenderer : IPdfPreviewRenderer
     }
 
     public ValueTask<PdfPageImage?> RenderPageAsync(
-        string path,
+        FilePreviewContent content,
         int pageIndex,
         int targetWidth,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(content);
         ArgumentOutOfRangeException.ThrowIfNegative(pageIndex);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(targetWidth);
         return new ValueTask<PdfPageImage?>(Task.Run<PdfPageImage?>(
@@ -57,9 +59,9 @@ public sealed class PdfiumPreviewRenderer : IPdfPreviewRenderer
             {
                 try
                 {
-                    using var stream = OpenRead(path);
+                    using var stream = content.OpenRead();
                     // Left open deliberately: the default closes the stream,
-                    // and the page render below needs the same file again.
+                    // and the page render below needs the same bytes again.
                     var pageCount = Conversion.GetPageCount(stream, leaveOpen: true);
                     if (pageIndex >= pageCount)
                     {
@@ -93,13 +95,6 @@ public sealed class PdfiumPreviewRenderer : IPdfPreviewRenderer
             },
             cancellationToken));
     }
-
-    /// <summary>
-    /// Opened read-only and shared: a preview must never be the reason a user
-    /// cannot open their own document elsewhere.
-    /// </summary>
-    private static FileStream OpenRead(string path) =>
-        new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
     /// <summary>
     /// A corrupt, encrypted, or simply not-a-PDF file fails inside PDFium, and

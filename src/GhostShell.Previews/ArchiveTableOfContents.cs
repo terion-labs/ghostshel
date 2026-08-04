@@ -1,5 +1,6 @@
 using System.Formats.Tar;
 using System.IO.Compression;
+using GhostShell.Application;
 using GhostShell.Application.Previews;
 
 namespace GhostShell.Previews;
@@ -16,25 +17,29 @@ public sealed class ArchiveTableOfContents : IArchiveTableOfContents
     public bool Claims(string fileName) => ArchiveFormats.IsArchive(fileName);
 
     public async ValueTask<IReadOnlyList<ArchiveEntryDescriptor>?> ReadAsync(
-        string path,
+        FilePreviewContent content,
+        string fileName,
         int maximumEntries,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumEntries);
 
         try
         {
-            return ArchiveFormats.Kind(path) switch
+            return ArchiveFormats.Kind(fileName) switch
             {
-                ArchiveKind.Zip => ReadZip(path, maximumEntries, cancellationToken),
+                ArchiveKind.Zip => await Task.Run(
+                    () => ReadZip(content, maximumEntries, cancellationToken),
+                    cancellationToken).ConfigureAwait(false),
                 ArchiveKind.Tar => await ReadTarAsync(
-                    path,
+                    content,
                     compressed: false,
                     maximumEntries,
                     cancellationToken).ConfigureAwait(false),
                 ArchiveKind.CompressedTar => await ReadTarAsync(
-                    path,
+                    content,
                     compressed: true,
                     maximumEntries,
                     cancellationToken).ConfigureAwait(false),
@@ -50,12 +55,14 @@ public sealed class ArchiveTableOfContents : IArchiveTableOfContents
     }
 
     private static IReadOnlyList<ArchiveEntryDescriptor> ReadZip(
-        string path,
+        FilePreviewContent content,
         int maximumEntries,
         CancellationToken cancellationToken)
     {
-        using var file = File.OpenRead(path);
-        using var archive = new ZipArchive(file, ZipArchiveMode.Read);
+        // The content's stream is seekable, which is all a zip index needs:
+        // ZipArchive seeks to the central directory and reads entries from it.
+        using var source = content.OpenRead();
+        using var archive = new ZipArchive(source, ZipArchiveMode.Read);
         var entries = new List<ArchiveEntryDescriptor>();
         foreach (var entry in archive.Entries)
         {
@@ -80,15 +87,15 @@ public sealed class ArchiveTableOfContents : IArchiveTableOfContents
     }
 
     private static async ValueTask<IReadOnlyList<ArchiveEntryDescriptor>> ReadTarAsync(
-        string path,
+        FilePreviewContent content,
         bool compressed,
         int maximumEntries,
         CancellationToken cancellationToken)
     {
-        await using var file = File.OpenRead(path);
+        await using var file = content.OpenRead();
         await using var source = compressed
             ? new GZipStream(file, CompressionMode.Decompress)
-            : (Stream)file;
+            : file;
         await using var reader = new TarReader(source, leaveOpen: true);
         var entries = new List<ArchiveEntryDescriptor>();
         while (entries.Count < maximumEntries)

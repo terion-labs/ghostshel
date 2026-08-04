@@ -72,6 +72,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
     private readonly IPdfPreviewRenderer? _pdfPreviewRenderer;
     private readonly IArchiveTableOfContents? _archiveTableOfContents;
+    private readonly IInMemoryDatabaseRegistry? _inMemoryDatabaseRegistry;
+    private readonly IFilePreviewPreferences _filePreviewPreferences;
     private readonly TerminalStartupCommandDispatcher _startupCommandDispatcher;
     private readonly IFileProviderProfileRuntime? _fileProviderRuntime;
     private readonly IAiProviderProfileRuntime? _aiProviderRuntime;
@@ -184,6 +186,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IImagePreviewDecoder? imagePreviewDecoder = null,
         IPdfPreviewRenderer? pdfPreviewRenderer = null,
         IArchiveTableOfContents? archiveTableOfContents = null,
+        IInMemoryDatabaseRegistry? inMemoryDatabaseRegistry = null,
+        IFilePreviewPreferences? filePreviewPreferences = null,
+        IPreviewCacheControl? previewCacheControl = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
@@ -203,6 +208,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _imagePreviewDecoder = imagePreviewDecoder;
         _pdfPreviewRenderer = pdfPreviewRenderer;
         _archiveTableOfContents = archiveTableOfContents;
+        _inMemoryDatabaseRegistry = inMemoryDatabaseRegistry;
+        _filePreviewPreferences = filePreviewPreferences ?? new InMemoryFilePreviewPreferences();
+        FilePreviewSettingsEditor = new FilePreviewSettingsEditorViewModel(
+            _filePreviewPreferences,
+            previewCacheControl);
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
@@ -265,6 +275,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public ISessionHostClient SessionClient { get; }
+
+    /// <summary>
+    /// The preview settings the Files &amp; transfers page edits. Always
+    /// present: without stored preferences it edits in-memory ones, so the
+    /// page behaves the same everywhere it renders.
+    /// </summary>
+    public FilePreviewSettingsEditorViewModel FilePreviewSettingsEditor { get; }
 
     public OnboardingViewModel? Onboarding { get; }
 
@@ -1587,6 +1604,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (page == SettingsPage.Keybindings)
         {
             EnsureKeybindingEditor();
+        }
+
+        if (page == SettingsPage.Files)
+        {
+            // The usage figure is read when the page is opened, not on a
+            // timer: a settings page is looked at, not watched.
+            FilePreviewSettingsEditor.RefreshCacheUsage();
         }
     }
 
@@ -10243,7 +10267,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _databasePanelClient,
             _imagePreviewDecoder,
             _pdfPreviewRenderer,
-            _archiveTableOfContents);
+            _archiveTableOfContents,
+            previewers: null,
+            _inMemoryDatabaseRegistry,
+            _filePreviewPreferences);
     }
 
     private FileProviderProfileDescriptor? ResolveFileProfile(

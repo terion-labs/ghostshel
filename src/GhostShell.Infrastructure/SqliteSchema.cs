@@ -237,5 +237,25 @@ internal static class SqliteSchema
                 restore_sessions_on_start)
             VALUES (1, 1);
             """),
+        new(
+            8,
+            "file-preview-settings",
+            """
+            CREATE TABLE file_preview_settings (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                auto_load_threshold_bytes INTEGER NOT NULL CHECK (
+                    auto_load_threshold_bytes > 0),
+                keep_previews_between_runs INTEGER NOT NULL CHECK (
+                    keep_previews_between_runs IN (0, 1)),
+                cache_budget_bytes INTEGER NOT NULL CHECK (cache_budget_bytes > 0)
+            );
+
+            INSERT INTO file_preview_settings(
+                singleton_id,
+                auto_load_threshold_bytes,
+                keep_previews_between_runs,
+                cache_budget_bytes)
+            VALUES (1, 2097152, 1, 536870912);
+            """),
     ];
 }

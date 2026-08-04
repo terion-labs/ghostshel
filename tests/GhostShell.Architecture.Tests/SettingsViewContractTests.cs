@@ -17,7 +17,6 @@ public sealed class SettingsViewContractTests
             ["AddMcpServerRequested"] = "OnAddMcpServerClick",
             ["AgentSettingsRequested"] = "OnAgentSettingsClick",
             ["AppearanceSettingsRequested"] = "OnAppearanceSettingsClick",
-            ["CancelFileTransferRequested"] = "OnCancelFileTransferClick",
             ["ClearKeybindingPrefixRequested"] = "OnClearKeybindingPrefixClick",
             ["CloneKeybindingPresetRequested"] = "OnCloneKeybindingPresetClick",
             ["CreateAiProviderSecretRequested"] = "OnCreateAiProviderSecretClick",
@@ -55,7 +54,6 @@ public sealed class SettingsViewContractTests
             ["RecordKeybindingRequested"] = "OnRecordKeybindingClick",
             ["ResetAllKeybindingsRequested"] = "OnResetAllKeybindingsClick",
             ["ResetKeybindingRequested"] = "OnResetKeybindingClick",
-            ["RetryFileTransferRequested"] = "OnRetryFileTransferClick",
             ["ReviewHistoryPrivacyRequested"] = "OnReviewHistoryPrivacyClick",
             ["ReviewOnboardingRequested"] = "OnReviewOnboardingClick",
             ["RestoreSessionsOnStartChangedRequested"] =
