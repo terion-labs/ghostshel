@@ -143,7 +143,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private PreviewTableViewModel? _previewTable;
     private PreviewTreeViewModel? _previewTree;
     private BinaryPreviewRendering? _previewBinary;
-    private HexPreviewRendering? _previewHex;
+    private PreviewHexViewModel? _previewHex;
     private DatabaseRuntimePanelViewModel? _databasePreview;
     private MaterializedFile? _databasePreviewFile;
 
@@ -798,7 +798,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public bool HasBinaryPreview => _previewBinary is not null;
 
     /// <summary>The file's bytes, as rows a list can draw one screen at a time.</summary>
-    public HexPreviewRendering? PreviewHex
+    public PreviewHexViewModel? PreviewHex
     {
         get => _previewHex;
         private set
@@ -2149,7 +2149,39 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         // assigns straight over the old text rather than blanking it first.
         // Blanking makes every view bound to it tear down, and rebuilding a
         // Markdown document reinstalls a syntax grammar per fenced block.
-        switch (outcome.Rendering)
+        await ShowAsync(outcome.Rendering, preview, generation);
+    }
+
+    /// <summary>
+    /// Puts a reading on screen without ever holding the thread that draws for
+    /// longer than a step. Producing the reading happens away from this thread;
+    /// attaching it happens here, because it must, but a handful at a time.
+    /// </summary>
+    private async Task ShowAsync(
+        FilePreviewRendering rendering,
+        FilePanelPreview preview,
+        int generation)
+    {
+        using var attachment = CancellationTokenSource.CreateLinkedTokenSource(
+            _preview?.Token ?? CancellationToken.None);
+        var token = attachment.Token;
+        try
+        {
+            await AttachAsync(rendering, preview, token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        _ = generation;
+    }
+
+    private async Task AttachAsync(
+        FilePreviewRendering rendering,
+        FilePanelPreview preview,
+        CancellationToken token)
+    {
+        switch (rendering)
         {
             case SourcePreviewRendering rendered:
                 ClearRenderingsOtherThanText();
@@ -2164,7 +2196,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 break;
             case HexPreviewRendering hex:
                 ClearRenderedPreview();
-                PreviewHex = hex;
+                var bytes = new PreviewHexViewModel(hex);
+                PreviewHex = bytes;
+                await bytes.FillAsync(token);
                 break;
             case BinaryPreviewRendering binary:
                 ClearRenderedPreview();
@@ -2172,11 +2206,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 break;
             case TablePreviewRendering table:
                 ClearRenderedPreview();
-                PreviewTable = new PreviewTableViewModel(table);
+                var rows = new PreviewTableViewModel(table);
+                PreviewTable = rows;
+                await rows.FillAsync(token);
                 break;
             case ArchivePreviewRendering:
                 ClearRenderedPreview();
-                _ = OpenArchivePreviewAsync(preview.Location);
+                await OpenArchivePreviewAsync(preview.Location);
                 break;
             case ImagePreviewRendering:
                 ClearRenderedPreview();
@@ -2196,8 +2232,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 break;
             default:
                 throw new ArgumentOutOfRangeException(
-                    nameof(preview),
-                    outcome.Rendering,
+                    nameof(rendering),
+                    rendering,
                     "The panel has no way to draw this rendering.");
         }
     }

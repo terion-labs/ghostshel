@@ -681,6 +681,61 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
+        // Responsiveness, measured the way a person feels it: a beat posted at
+        // input priority over and over, and the longest gap between two beats
+        // while a preview lands. That gap is how long the panel could not have
+        // answered a click.
+        ("preview-responsiveness", () =>
+        {
+            var window = CreateFilePanelProbe("libghost.dylib");
+            var panel = (FileRuntimePanelViewModel)
+                ((GhostShell.App.Views.RuntimePanels.FileRuntimePanelView)window.Content!)
+                .DataContext!;
+            var measured = false;
+            window.Opened += (_, _) =>
+            {
+                if (measured)
+                {
+                    return;
+                }
+
+                measured = true;
+                Settle(panel.PreviewSelectedAsync());
+
+                foreach (var (label, act) in new (string, Action)[]
+                         {
+                             ("show-bytes", () => panel.PreviewToggles.Single().IsOn = true),
+                             ("hide-bytes", () => panel.PreviewToggles.Single().IsOn = false),
+                         })
+                {
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    var last = 0L;
+                    var longest = 0L;
+                    var beating = true;
+                    void Beat()
+                    {
+                        var now = watch.ElapsedMilliseconds;
+                        longest = Math.Max(longest, now - last);
+                        last = now;
+                        // Bounded: a beat that reposts itself for ever is work
+                        // the pump can never drain.
+                        if (beating && now < 4_000)
+                        {
+                            Dispatcher.UIThread.Post(Beat, DispatcherPriority.Input);
+                        }
+                    }
+
+                    Dispatcher.UIThread.Post(Beat, DispatcherPriority.Input);
+                    act();
+                    Settle(panel.PreviewPresentation);
+                    beating = false;
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                    Console.WriteLine($"TIMING {label} longest-unanswered={longest}ms");
+                }
+            };
+            return window;
+        }, null),
         // The same dump both ways, drawn for real: a text view has to measure
         // every line before it can show the first, a list only what is on
         // screen. This is the difference a headless timing never showed.

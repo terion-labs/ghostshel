@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using GhostShell.Application.Previews;
 
 namespace GhostShell.App.ViewModels;
@@ -51,6 +54,8 @@ public sealed class PreviewTableViewModel
     private const double MaximumColumnWidth = 320;
     private const double CharacterWidth = 7.2;
 
+    private readonly IReadOnlyList<PreviewTableRowViewModel> _rows;
+
     public PreviewTableViewModel(TablePreviewRendering rendering)
     {
         ArgumentNullException.ThrowIfNull(rendering);
@@ -61,7 +66,7 @@ public sealed class PreviewTableViewModel
                 name.Length == 0 ? $"Column {index + 1}" : name,
                 widths[index]))
             .ToArray();
-        Rows = rendering.Rows
+        _rows = rendering.Rows
             .Select((cells, index) => new PreviewTableRowViewModel(index + 1, cells, widths))
             .ToArray();
     }
@@ -70,7 +75,14 @@ public sealed class PreviewTableViewModel
 
     public IReadOnlyList<PreviewTableColumnViewModel> Columns { get; }
 
-    public IReadOnlyList<PreviewTableRowViewModel> Rows { get; }
+    /// <summary>
+    /// Filled a handful of rows at a time, so a table arrives without the panel
+    /// stopping to attach all of it.
+    /// </summary>
+    public ObservableCollection<PreviewTableRowViewModel> Rows { get; } = [];
+
+    public Task FillAsync(CancellationToken cancellationToken) =>
+        IncrementalFill.FillAsync(Rows, _rows, cancellationToken);
 
     private static double[] MeasureColumns(TablePreviewRendering rendering)
     {
@@ -122,22 +134,47 @@ public sealed class PreviewTableRowViewModel
 
 public sealed record PreviewTableCellViewModel(string Text, double Width);
 
+/// <summary>A file's bytes, arriving a handful of rows at a time.</summary>
+public sealed class PreviewHexViewModel
+{
+    private readonly IReadOnlyList<HexPreviewRow> _rows;
+
+    public PreviewHexViewModel(HexPreviewRendering rendering)
+    {
+        ArgumentNullException.ThrowIfNull(rendering);
+        _rows = rendering.Rows;
+        Summary = rendering.Summary;
+    }
+
+    public string Summary { get; }
+
+    public ObservableCollection<HexPreviewRow> Rows { get; } = [];
+
+    public Task FillAsync(CancellationToken cancellationToken) =>
+        IncrementalFill.FillAsync(Rows, _rows, cancellationToken);
+}
+
 /// <summary>An archive's contents, as the folders its entry paths describe.</summary>
 public sealed class PreviewTreeViewModel
 {
+    private readonly IReadOnlyList<PreviewTreeNodeViewModel> _nodes;
+
     public PreviewTreeViewModel(IReadOnlyList<PreviewTreeNode> roots, string summary)
     {
         ArgumentNullException.ThrowIfNull(roots);
         Summary = summary;
         // Opened at the top level: an archive with a single wrapping folder —
         // the common shape — should not need a click to show anything at all.
-        Nodes = roots.Select(node => new PreviewTreeNodeViewModel(node, roots.Count == 1))
+        _nodes = roots.Select(node => new PreviewTreeNodeViewModel(node, roots.Count == 1))
             .ToArray();
     }
 
     public string Summary { get; }
 
-    public IReadOnlyList<PreviewTreeNodeViewModel> Nodes { get; }
+    public ObservableCollection<PreviewTreeNodeViewModel> Nodes { get; } = [];
+
+    public Task FillAsync(CancellationToken cancellationToken) =>
+        IncrementalFill.FillAsync(Nodes, _nodes, cancellationToken);
 }
 
 public sealed class PreviewTreeNodeViewModel : ObservableObject

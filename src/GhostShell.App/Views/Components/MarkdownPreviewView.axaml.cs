@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -71,16 +73,50 @@ public sealed partial class MarkdownPreviewView : UserControl
 
         _rendered = Text;
         _hasRendered = true;
-        Blocks.Children.Clear();
-        foreach (var block in MarkdownPreviewDocument.Parse(Text))
+        _building?.Cancel();
+        _building?.Dispose();
+        _building = new CancellationTokenSource();
+        _ = BuildAsync(_building.Token);
+    }
+
+    /// <summary>
+    /// Blocks arrive a few at a time. A document is laid out on the thread that
+    /// draws — there is nowhere else to build controls — so the work is cut
+    /// into steps and the thread handed back between them; a document twice as
+    /// long then takes twice as many steps rather than one twice as long.
+    /// </summary>
+    private async Task BuildAsync(CancellationToken token)
+    {
+        try
         {
-            var control = Build(block);
-            if (control is not null)
+            Blocks.Children.Clear();
+            var blocks = MarkdownPreviewDocument.Parse(Text);
+            for (var index = 0; index < blocks.Length; index++)
             {
-                Blocks.Children.Add(control);
+                token.ThrowIfCancellationRequested();
+                if (Build(blocks[index]) is { } control)
+                {
+                    Blocks.Children.Add(control);
+                }
+
+                if ((index + 1) % BlocksPerStep == 0 && index + 1 < blocks.Length)
+                {
+                    await Task.Yield();
+                }
             }
         }
+        catch (OperationCanceledException)
+        {
+        }
     }
+
+    /// <summary>
+    /// Blocks laid out before the thread is handed back. A fenced block is the
+    /// expensive one, so the step is small.
+    /// </summary>
+    private const int BlocksPerStep = 8;
+
+    private CancellationTokenSource? _building;
 
     private Control? Build(MarkdownBlock block) => block.Kind switch
     {
