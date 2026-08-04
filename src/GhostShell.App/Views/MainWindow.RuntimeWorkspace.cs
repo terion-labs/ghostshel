@@ -1847,52 +1847,77 @@ public sealed partial class MainWindow
         }
     }
 
-    private void FocusActivePanel()
+    /// <summary>
+    /// How many layout passes a panel's own surface is given to appear
+    /// before focus settles for a plain control. A panel added this turn has
+    /// no realized host yet — the container is created during layout, not
+    /// when the view model arrives — and a single post lands in the gap.
+    /// Bounded so a panel that never realizes still ends the search.
+    /// </summary>
+    private const int PanelFocusAttempts = 6;
+
+    private void FocusActivePanel() => FocusActivePanel(PanelFocusAttempts);
+
+    private void FocusActivePanel(int attemptsRemaining)
     {
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-        {
-            if (ViewModel.ActivePanel is not { } activePanel)
+        // Loaded priority runs after the layout pass, so the first attempt
+        // already sees anything this turn created.
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () =>
             {
-                return;
-            }
+                if (ViewModel.ActivePanel is not { } activePanel)
+                {
+                    return;
+                }
 
-            var terminal = FindActiveTerminalHost();
-            if (terminal is not null)
-            {
-                terminal.RequestInputFocus();
-                return;
-            }
+                var terminal = FindActiveTerminalHost();
+                if (terminal is not null)
+                {
+                    terminal.RequestInputFocus();
+                    return;
+                }
 
-            var browser = this.GetVisualDescendants()
-                .OfType<BrowserPresentationHost>()
-                .FirstOrDefault(control =>
-                    ReferenceEquals(control.DataContext, activePanel));
-            if (browser is not null)
-            {
-                browser.RequestInputFocus();
-                return;
-            }
+                var browser = this.GetVisualDescendants()
+                    .OfType<BrowserPresentationHost>()
+                    .FirstOrDefault(control =>
+                        ReferenceEquals(control.DataContext, activePanel));
+                if (browser is not null)
+                {
+                    browser.RequestInputFocus();
+                    return;
+                }
 
-            // Reaching here for a terminal panel means the host lookup above failed
-            // to recognise its own surface, and focus is about to be handed to a
-            // plain Avalonia control instead. On macOS that makes the native view
-            // resign first responder, and the terminal stops accepting keystrokes
-            // while still drawing output — so say so rather than fail silently.
-            if (activePanel is TerminalRuntimePanelViewModel)
-            {
-                Console.Error.WriteLine(
-                    "[ghostshell:input] focus fell back to a non-terminal control for "
-                    + $"panel {activePanel.Id}; its terminal surface was not found in "
-                    + "the visual tree, so the keyboard has left the terminal");
-            }
+                // A panel that owns a native surface is worth waiting for:
+                // handing focus to a plain control makes the native view
+                // resign first responder on macOS, and the terminal stops
+                // accepting keystrokes while still drawing output.
+                if (attemptsRemaining > 0
+                    && activePanel is TerminalRuntimePanelViewModel
+                        or BrowserRuntimePanelViewModel)
+                {
+                    FocusActivePanel(attemptsRemaining - 1);
+                    return;
+                }
 
-            this.GetVisualDescendants()
-                .OfType<Control>()
-                .FirstOrDefault(control =>
-                    ReferenceEquals(control.DataContext, activePanel)
-                    && control.Classes.Contains("RuntimePanelFocusTarget"))
-                ?.Focus();
-        });
+                // Out of attempts: the surface genuinely never appeared, so
+                // the message means what it says rather than describing a
+                // panel that was merely still being built.
+                if (activePanel is TerminalRuntimePanelViewModel)
+                {
+                    Console.Error.WriteLine(
+                        "[ghostshell:input] focus fell back to a non-terminal control for "
+                        + $"panel {activePanel.Id}; its terminal surface was not found in "
+                        + "the visual tree, so the keyboard has left the terminal");
+                }
+
+                this.GetVisualDescendants()
+                    .OfType<Control>()
+                    .FirstOrDefault(control =>
+                        ReferenceEquals(control.DataContext, activePanel)
+                        && control.Classes.Contains("RuntimePanelFocusTarget"))
+                    ?.Focus();
+            },
+            Avalonia.Threading.DispatcherPriority.Loaded);
     }
 
     private TerminalPresentationHost? FindActiveTerminalHost()
