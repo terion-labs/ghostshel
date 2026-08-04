@@ -239,6 +239,28 @@ internal sealed class QaApplication : Avalonia.Application
             vm.ShowSettings(SettingsPage.Workspaces);
             vm.BeginEditWorkspace(new WorkspaceId("operations"));
         }, Height: 1200),
+        // The two interactions a still capture cannot otherwise reach. Both
+        // drive the real controls — the flyout is opened as a click opens it,
+        // and the reorder is a genuine press-move-release on the drag handle —
+        // so these captures are evidence that they work, not that they render.
+        new(
+            "settings-workspace-editor-add",
+            vm =>
+            {
+                vm.ShowSettings(SettingsPage.Workspaces);
+                vm.BeginEditWorkspace(new WorkspaceId("operations"));
+            },
+            Height: 1200,
+            PrepareCapture: OpenAddConnectionFlyout),
+        new(
+            "settings-workspace-editor-reorder",
+            vm =>
+            {
+                vm.ShowSettings(SettingsPage.Workspaces);
+                vm.BeginEditWorkspace(new WorkspaceId("operations"));
+            },
+            Height: 1200,
+            PrepareCapture: DragLastTabToTop),
         // Keyboard focus has its own visuals; capturing it keeps the focus ring
         // reviewable instead of only reachable by hand.
         new("settings-appearance-focused", vm => vm.ShowSettings(SettingsPage.Appearance), FocusFirst: "SettingsBackButton"),
@@ -302,6 +324,70 @@ internal sealed class QaApplication : Avalonia.Application
                 "The main window no longer exposes its internal drag-ghost presentation seam.");
         _ = show.Invoke(window, [payload, new Point(760, 420)]);
     }
+
+    /// <summary>
+    /// Opens the tab list's "Add connection" flyout the way its button does.
+    /// Raising the click event is not enough — a button opens its flyout inside
+    /// its own click handling, before the event is routed.
+    /// </summary>
+    private static void OpenAddConnectionFlyout(MainWindow window)
+    {
+        var button = NamedControl<Button>(window, "Add a saved connection as a tab");
+        button.Flyout?.ShowAt(button);
+    }
+
+    /// <summary>
+    /// Drags the last tab row to the top with real pointer events, so the
+    /// capture shows the result of the reorder rather than a list that merely
+    /// draws a handle.
+    /// </summary>
+    private static void DragLastTabToTop(MainWindow window)
+    {
+        var handles = window.GetVisualDescendants()
+            .OfType<Control>()
+            .Where(control => string.Equals(
+                AutomationProperties.GetName(control),
+                "Reorder this tab",
+                StringComparison.Ordinal))
+            .ToArray();
+        if (handles.Length < 2)
+        {
+            throw new InvalidOperationException(
+                $"The workspace editor offered {handles.Length} drag handles; the reorder "
+                + "capture needs at least two rows to move between.");
+        }
+
+        var from = CenterInWindow(handles[^1], window);
+        var to = CenterInWindow(handles[0], window);
+        window.MouseDown(from, MouseButton.Left);
+        // Two moves: the first crosses the intervening rows, the second lands on
+        // the target. A single jump would still work, but a drag that only ever
+        // arrives is not the gesture a hand makes.
+        window.MouseMove(new Point(from.X, (from.Y + to.Y) / 2));
+        Dispatcher.UIThread.RunJobs();
+        window.MouseMove(to);
+        Dispatcher.UIThread.RunJobs();
+        window.MouseUp(to, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static Point CenterInWindow(Control control, MainWindow window) =>
+        control.TranslatePoint(
+            new Point(control.Bounds.Width / 2, control.Bounds.Height / 2),
+            window)
+        ?? throw new InvalidOperationException(
+            "A control in the workspace editor is not positioned relative to the window.");
+
+    private static T NamedControl<T>(MainWindow window, string automationName)
+        where T : Control =>
+        window.GetVisualDescendants()
+            .OfType<T>()
+            .FirstOrDefault(candidate => string.Equals(
+                AutomationProperties.GetName(candidate),
+                automationName,
+                StringComparison.Ordinal))
+        ?? throw new InvalidOperationException(
+            $"The route wanted '{automationName}', which is not in the tree.");
 
     private static void ShowFirstLaunchCardHover(MainWindow window)
     {
@@ -2019,6 +2105,15 @@ internal sealed class QaApplication : Avalonia.Application
                              .Where(popup => popup.IsOpen))
                 {
                     popup.Close();
+                }
+
+                // A button's flyout hosts outside the window's visual tree, so
+                // the sweep above never sees it. Left open, it light-dismisses
+                // the next route's first click and that route silently captures
+                // a screen nothing was done to.
+                foreach (var button in window.GetVisualDescendants().OfType<Button>())
+                {
+                    button.Flyout?.Hide();
                 }
 
                 route.Apply(viewModel);
