@@ -189,6 +189,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IInMemoryDatabaseRegistry? inMemoryDatabaseRegistry = null,
         IFilePreviewPreferences? filePreviewPreferences = null,
         IPreviewCacheControl? previewCacheControl = null,
+        IApplicationEncryption? applicationEncryption = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
@@ -213,6 +214,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         FilePreviewSettingsEditor = new FilePreviewSettingsEditorViewModel(
             _filePreviewPreferences,
             previewCacheControl);
+        ApplicationSecurityEditor = new ApplicationSecurityEditorViewModel(
+            applicationEncryption);
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
@@ -282,6 +285,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// page behaves the same everywhere it renders.
     /// </summary>
     public FilePreviewSettingsEditorViewModel FilePreviewSettingsEditor { get; }
+
+    /// <summary>
+    /// The application-security controls on the Security &amp; secrets page.
+    /// Always present; without an encryption service it reports itself
+    /// unavailable rather than not rendering.
+    /// </summary>
+    public ApplicationSecurityEditorViewModel ApplicationSecurityEditor { get; }
 
     public OnboardingViewModel? Onboarding { get; }
 

@@ -55,6 +55,23 @@ internal static class Program
 
         var services = DesktopComposition.CreateServiceProvider();
         await using var serviceProviderLifetime = services.ConfigureAwait(false);
+
+        // Before anything opens the configuration database: an encrypted
+        // database needs its key from the OS keystore in hand for the very
+        // first connection.
+        var encryption = services.GetRequiredService<ApplicationEncryptionRuntime>();
+        await encryption.InitializeAsync(CancellationToken.None);
+        if (encryption.StartupError is { } encryptionError)
+        {
+            Console.Error.WriteLine($"GhostSHELL cannot open this profile: {encryptionError}");
+            Environment.ExitCode = 1;
+            DesktopStartupFailurePresenter.TryShow(
+                "GhostSHELL cannot open this profile",
+                encryptionError,
+                args);
+            return;
+        }
+
         var runStore = services.GetRequiredService<IApplicationRunStore>();
         var startResult = await runStore.BeginRunAsync(CancellationToken.None);
         if (!startResult.IsSuccess)

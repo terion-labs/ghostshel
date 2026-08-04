@@ -24,6 +24,14 @@ public sealed record SqliteStorageOptions
 
     public string DatabasePath { get; }
 
+    /// <summary>
+    /// Supplies the database password at the moment a connection is built,
+    /// so turning application encryption on or off changes the very next
+    /// open rather than the next launch. Null, or a null answer, means the
+    /// database is plain.
+    /// </summary>
+    public Func<string?>? PasswordProvider { get; init; }
+
     public TimeSpan BusyTimeout { get; }
 
     public bool AcquireProfileLock { get; }

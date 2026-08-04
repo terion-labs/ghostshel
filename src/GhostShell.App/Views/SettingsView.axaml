@@ -103,7 +103,7 @@
                     Click="OnSecretsSettingsClick"
                     Icon="Key"
                     IsActive="{Binding IsSecretsSettingsVisible}"
-                    Label="Secrets" />
+                    Label="Security &amp; secrets" />
                 <components:ShellNavigationItem
                     AutomationName="Data and diagnostic settings"
                     Click="OnDiagnosticsSettingsClick"
@@ -569,8 +569,31 @@
 
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsSecretsSettingsVisible}">
               <components:SettingsPageHeader
-                  Heading="Secrets"
+                  Heading="Security &amp; secrets"
                   Description="Credential values live only in the operating-system vault. GhostSHELL stores opaque references in definitions." />
+              <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock Classes="SectionHeading" Text="Application security" />
+                <controls:SurfaceCard Padding="0">
+                  <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+                      <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                        <TextBlock FontWeight="SemiBold" Text="Enable app encryption" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                            Text="Encrypts everything the app itself writes: the configuration database and the on-disk preview cache. The keys are random, live only in the OS keystore, and are deleted when this is turned off — the files are converted in place, both directions, the moment the switch moves. This protects data at rest: a stolen disk image, a synced backup, another local account. It is not a lock on the running app." />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                            Text="{Binding ApplicationSecurityEditor.EncryptionAvailability}" />
+                        <TextBlock Foreground="{DynamicResource ShellWarningBrush}" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                            Text="{Binding ApplicationSecurityEditor.StatusDetail}"
+                            IsVisible="{Binding ApplicationSecurityEditor.HasStatusDetail}" />
+                      </StackPanel>
+                      <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                          IsChecked="{Binding ApplicationSecurityEditor.IsEncryptionEnabled}"
+                          IsEnabled="{Binding ApplicationSecurityEditor.IsEncryptionSupported}"
+                          AutomationProperties.Name="Enable app encryption" />
+                    </Grid>
+                  </StackPanel>
+                </controls:SurfaceCard>
+              </StackPanel>
               <controls:SurfaceCard Tone="Notice" Padding="0"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" /><TextBlock Grid.Column="1" Classes="Muted" Text="{Binding SecretVaultStatus}" TextWrapping="Wrap" /></Grid></controls:SurfaceCard>
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">

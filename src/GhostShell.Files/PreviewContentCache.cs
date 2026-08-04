@@ -44,6 +44,7 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
     private readonly string _directory;
     private readonly string _sessionId = Guid.NewGuid().ToString("n");
     private readonly IFilePreviewPreferences? _preferences;
+    private readonly IApplicationEncryption? _encryption;
     private readonly Dictionary<string, byte[]> _memory = new(StringComparer.Ordinal);
     private readonly LinkedList<string> _memoryOrder = [];
     private long _memoryBytes;
@@ -54,9 +55,11 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
 
     public PreviewContentCache(
         IFilePreviewPreferences? preferences = null,
-        string? directory = null)
+        string? directory = null,
+        IApplicationEncryption? encryption = null)
     {
         _preferences = preferences;
+        _encryption = encryption;
         _directory = directory
             ?? Path.Combine(Path.GetTempPath(), DirectoryName);
         Directory.CreateDirectory(_directory);
@@ -65,6 +68,11 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         if (_preferences is not null)
         {
             _preferences.Changed += OnPreferencesChanged;
+        }
+
+        if (_encryption is not null)
+        {
+            _encryption.Changed += OnEncryptionChanged;
         }
 
         if (Keep is false)
@@ -450,12 +458,53 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         return _session;
     }
 
-    private LiteDatabase Persistent() =>
-        _persistent ??= new LiteDatabase(new ConnectionString
+    private LiteDatabase Persistent()
+    {
+        if (_persistent is not null)
+        {
+            return _persistent;
+        }
+
+        var connection = new ConnectionString
         {
             Filename = PersistentPath,
             Connection = ConnectionType.Direct,
-        });
+        };
+        if (_encryption?.PersistentCachePassword is { } password)
+        {
+            connection.Password = password;
+        }
+
+        try
+        {
+            return _persistent = new LiteDatabase(connection);
+        }
+        catch (LiteException)
+        {
+            // A container the current key will not open — encryption toggled
+            // by an earlier run, or plain corruption. It is a cache: deleting
+            // it costs a re-download, keeping it costs the feature.
+            TryDelete(PersistentPath);
+            TryDelete(LogPathFor(PersistentPath));
+            return _persistent = new LiteDatabase(connection);
+        }
+    }
+
+    private void OnEncryptionChanged(object? sender, EventArgs e)
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            // The old container is unreadable under the new key either way,
+            // and when encryption was just turned on, what is in it is exactly
+            // what must stop existing in the clear.
+            DeletePersistentContainer();
+        }
+    }
 
     private void PruneToBudget(LiteDatabase container)
     {
@@ -598,6 +647,11 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
             if (_preferences is not null)
             {
                 _preferences.Changed -= OnPreferencesChanged;
+            }
+
+            if (_encryption is not null)
+            {
+                _encryption.Changed -= OnEncryptionChanged;
             }
 
             _memory.Clear();

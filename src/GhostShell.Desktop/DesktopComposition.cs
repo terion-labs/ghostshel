@@ -27,7 +27,40 @@ public static class DesktopComposition
             HostAccessibilityPreferencesSourceSelector.CreateForCurrentPlatform());
         services.AddSingleton<IActiveWindowBoundsSource>(_ =>
             ActiveWindowBoundsSourceSelector.CreateForCurrentPlatform());
-        services.AddSingleton(_ => SqliteStorageOptions.CreateDefault());
+        services.AddSingleton(provider =>
+        {
+            var databasePath = SqliteStorageOptions.CreateDefault().DatabasePath;
+            // A dedicated, un-audited vault, deliberately: the audit sink
+            // writes into the very database these keys unlock, so auditing
+            // the key fetch would need the key it is fetching. The keys are
+            // not credentials of the user's — nothing here weakens the
+            // credential audit trail.
+            var vault = PlatformSecretVaultFactory.Create(new SecretVaultFactoryOptions
+            {
+                DataDirectory = Path.GetDirectoryName(databasePath),
+            }).Vault;
+            return new ApplicationEncryptionRuntime(
+                vault,
+                databasePath,
+                // Resolved at re-key time, not construction time: the runtime
+                // is built before the database so the very first open has its
+                // key in hand.
+                () => provider.GetRequiredService<GhostShellDatabase>(),
+                ownsVault: true);
+        });
+        services.AddSingleton<IApplicationEncryption>(provider =>
+            provider.GetRequiredService<ApplicationEncryptionRuntime>());
+        services.AddSingleton(provider =>
+        {
+            // Resolved once here rather than inside the provider delegate:
+            // that delegate also runs while the container is tearing down,
+            // when nothing may be resolved any more.
+            var encryption = provider.GetRequiredService<ApplicationEncryptionRuntime>();
+            return SqliteStorageOptions.CreateDefault() with
+            {
+                PasswordProvider = () => encryption.ConfigDatabasePassword,
+            };
+        });
         services.AddSingleton(_ => LocalArtifactPaths.CreateDefault());
         services.AddSingleton<GhostShellDatabase>();
         services.AddSingleton<IAuditStore, SqliteAuditStore>();
@@ -82,8 +115,10 @@ public static class DesktopComposition
         services.AddSingleton<SqliteFilePreviewPreferences>();
         services.AddSingleton<IFilePreviewPreferences>(provider =>
             provider.GetRequiredService<SqliteFilePreviewPreferences>());
-        services.AddSingleton(provider =>
-            new PreviewContentCache(provider.GetRequiredService<IFilePreviewPreferences>()));
+        services.AddSingleton(provider => new PreviewContentCache(
+            provider.GetRequiredService<IFilePreviewPreferences>(),
+            directory: null,
+            provider.GetRequiredService<IApplicationEncryption>()));
         services.AddSingleton<IPreviewCacheControl>(provider =>
             provider.GetRequiredService<PreviewContentCache>());
         services.AddSingleton<IInMemoryDatabaseRegistry, SqliteInMemoryDatabaseRegistry>();

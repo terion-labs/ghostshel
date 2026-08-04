@@ -306,6 +306,84 @@ public sealed class FilePanelClientContentSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task With_encryption_on_even_the_persistent_container_holds_nothing_in_the_clear()
+    {
+        var content = RandomBytes(300 * 1024);
+        var provider = new RemoteBytesProvider(content);
+        var encryption = new TestApplicationEncryption { IsEnabled = true };
+        var cache = new PreviewContentCache(KeepBetweenRuns(true), _cacheDirectory, encryption);
+        _caches.Add(cache);
+        var client = ClientFor(provider, cache: cache);
+
+        var stored = await ((IFileContentSource)client).OpenContentAsync(
+            RemoteLocation(provider, "kept-secret.bin"),
+            maximumBytes: 1024 * 1024,
+            CancellationToken.None);
+        Assert.True(stored.IsSuccess);
+        Assert.True(File.Exists(Path.Combine(_cacheDirectory, "store.db")));
+
+        var probe = content.AsMemory(0, 64);
+        foreach (var file in Directory.GetFiles(_cacheDirectory)
+                     .Where(file => !file.EndsWith(".lock", StringComparison.Ordinal)))
+        {
+            var bytes = await File.ReadAllBytesAsync(file);
+            Assert.True(
+                bytes.AsSpan().IndexOf(probe.Span) < 0,
+                $"Remote file content was found in the clear in {Path.GetFileName(file)}.");
+        }
+    }
+
+    [Fact]
+    public async Task Toggling_encryption_drops_the_persistent_container()
+    {
+        var provider = new RemoteBytesProvider(RandomBytes(200 * 1024));
+        // Disabled means no password, exactly as the runtime behaves.
+        var encryption = new TestApplicationEncryption
+        {
+            IsEnabled = false,
+            PersistentCachePassword = null,
+        };
+        var cache = new PreviewContentCache(KeepBetweenRuns(true), _cacheDirectory, encryption);
+        _caches.Add(cache);
+        var client = ClientFor(provider, cache: cache);
+        var stored = await ((IFileContentSource)client).OpenContentAsync(
+            RemoteLocation(provider, "soon-stale.bin"),
+            maximumBytes: 1024 * 1024,
+            CancellationToken.None);
+        Assert.True(stored.IsSuccess);
+        Assert.True(File.Exists(Path.Combine(_cacheDirectory, "store.db")));
+
+        // Turning encryption on: what the container holds is exactly what
+        // must stop existing in the clear.
+        encryption.IsEnabled = true;
+        encryption.PersistentCachePassword = "0011223344";
+        encryption.RaiseChanged();
+
+        Assert.False(File.Exists(Path.Combine(_cacheDirectory, "store.db")));
+    }
+
+    private sealed class TestApplicationEncryption : IApplicationEncryption
+    {
+        public bool IsSupported => true;
+
+        public bool IsEnabled { get; set; }
+
+        public string? UnsupportedReason => null;
+
+        public string? PersistentCachePassword { get; set; } =
+            "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899";
+
+        public event EventHandler? Changed;
+
+        public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
+        public ValueTask<string?> SetEnabledAsync(
+            bool enabled,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    [Fact]
     public async Task An_unknown_profile_fails_without_touching_the_filesystem()
     {
         var client = CreateLocalClient();

@@ -20,8 +20,11 @@ public sealed class SqliteDatabaseTests
             SqliteSchema.Migrations[^1].Version.ToString(
                 System.Globalization.CultureInfo.InvariantCulture),
             await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
+        // 3.49.1 is what SQLite3 Multiple Ciphers currently bundles — the
+        // price of encryption at rest; raise alongside GhostShellDatabase's
+        // own minimum as that bundle tracks upstream.
         var version = Version.Parse(await ScalarAsync(connection, "SELECT sqlite_version();"));
-        Assert.True(version >= new Version(3, 51, 3));
+        Assert.True(version >= new Version(3, 49, 1));
     }
 
     [Fact]

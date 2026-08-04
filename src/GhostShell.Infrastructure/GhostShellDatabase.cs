@@ -7,7 +7,14 @@ namespace GhostShell.Infrastructure;
 
 public sealed class GhostShellDatabase : IAsyncDisposable
 {
-    private static readonly Version MinimumSqliteVersion = new(3, 51, 3);
+    /// <summary>
+    /// The engine version this build bundles, asserted so a stray system
+    /// library can never be swapped in underneath. Bundling SQLite3 Multiple
+    /// Ciphers — the price of encryption at rest — currently means 3.49.1
+    /// rather than the newest plain SQLite; raise this as that bundle tracks
+    /// upstream.
+    /// </summary>
+    private static readonly Version MinimumSqliteVersion = new(3, 49, 1);
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
     private readonly IReadOnlyList<SqliteMigration> _migrations;
     private readonly SqliteStorageOptions _options;
@@ -149,7 +156,37 @@ public sealed class GhostShellDatabase : IAsyncDisposable
             ForeignKeys = true,
             DefaultTimeout = checked((int)Math.Ceiling(_options.BusyTimeout.TotalSeconds)),
         };
+        if (_options.PasswordProvider?.Invoke() is { } password)
+        {
+            builder.Password = password;
+        }
+
         return new SqliteConnection(builder.ConnectionString);
+    }
+
+    /// <summary>
+    /// Runs an operation that must have the database file to itself — turning
+    /// encryption on or off rewrites every page. New opens wait at the gate
+    /// and then re-verify the (possibly re-keyed) file; pooled connections
+    /// are dropped first so no idle handle survives the change.
+    /// </summary>
+    public async ValueTask RunExclusiveMaintenanceAsync(
+        Func<CancellationToken, Task> operation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _initializationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            SqliteConnection.ClearAllPools();
+            _initialized = false;
+            await operation(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _initializationGate.Release();
+        }
     }
 
     private async Task ConfigureConnectionAsync(
