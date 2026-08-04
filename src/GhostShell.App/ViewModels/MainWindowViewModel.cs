@@ -104,6 +104,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private Task _historyOperations = Task.CompletedTask;
     private Task? _shutdownTask;
     private RecentSessionStoreError? _historyDrainError;
+
+    /// <summary>
+    /// Sessions this process has already ended. A session ends once; the
+    /// store enforces that, and this keeps the app from asking twice.
+    /// </summary>
+    private readonly HashSet<SessionId> _completedSessionIds = [];
     private CancellationTokenSource? _runtimeGraphWatchCancellation;
     private CancellationTokenSource? _workspaceAutoSaveDebounce;
     private RuntimeHistorySource? _runtimeHistorySource;
@@ -8062,11 +8068,33 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var capturedCompletions = completions
-            .Select(item => _recentSessionHistory.CaptureCompletion(
-                item.SessionId,
-                item.Outcome))
-            .ToArray();
+        List<RecentSessionCompletion> captured = [];
+        lock (_historyGate)
+        {
+            foreach (var item in completions)
+            {
+                // A session ends once. Two producers can reach for the same
+                // panel at shutdown — its own close and the sweep that
+                // follows — and the store rightly refuses to overwrite a
+                // terminal outcome, so the duplicate is stopped here rather
+                // than turned into an error nobody can act on.
+                if (!_completedSessionIds.Add(item.SessionId))
+                {
+                    continue;
+                }
+
+                captured.Add(_recentSessionHistory.CaptureCompletion(
+                    item.SessionId,
+                    item.Outcome));
+            }
+        }
+
+        if (captured.Count == 0)
+        {
+            return;
+        }
+
+        var capturedCompletions = captured.ToArray();
         var trackedSessionIds = capturedCompletions
             .Select(item => item.SessionId)
             .ToHashSet();
@@ -8087,6 +8115,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     token);
                 if (!result.IsSuccess)
                 {
+                    if (result.Error!.Code == RecentSessionStoreErrorCode.Conflict)
+                    {
+                        // The row already carries a terminal outcome, so this
+                        // session's end is recorded — by an earlier
+                        // notification, not this one. Nothing was lost, and
+                        // the exit report must stay a report of loss to mean
+                        // anything.
+                        Console.Error.WriteLine(
+                            "[ghostshell:history] A completion arrived for a session "
+                            + "that had already ended; the recorded outcome stands.");
+                        continue;
+                    }
+
                     ApplyRecentSessionFailure(result.Error!);
                     return;
                 }

@@ -1936,6 +1936,137 @@ public sealed class SavedScreenRuntimeIdentityTests
         connectionId,
         PanelStartupBehavior.None);
 
+    [Fact]
+    public async Task A_session_that_already_ended_is_not_reported_as_lost_metadata()
+    {
+        // The store refuses to overwrite a terminal outcome — rightly: a
+        // session ends once. But a refusal means the end is already
+        // recorded, not that anything was lost, and the exit report has to
+        // stay a report of loss to mean anything. Seen live as
+        // "Recent-session metadata could not be persisted safely" on quit.
+        var connection = LocalConnection("connection-ended", "Ended connection");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [], [], [], [], [], [], [], []);
+        var store = new AlreadyEndedRecentSessionStore();
+        using var viewModel = CreateViewModel(
+            snapshot,
+            new EmptyFileClients(),
+            recentSessionHistory: new RecentSessionHistory(store));
+
+        Assert.True(await viewModel.OpenConnectionAsync(connection.Id));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        await AwaitTerminalPanels(runtime);
+        var panel = Assert.Single(Assert.Single(runtime.Tabs).Panels);
+
+        Assert.True(await viewModel.RemovePanelAsync(panel.Id));
+        var flush = await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
+
+        Assert.True(
+            flush.IsSuccess,
+            $"An already-recorded ending was reported as lost: {flush.Error?.Message}");
+    }
+
+    [Fact]
+    public async Task A_session_is_completed_once_however_many_producers_reach_for_it()
+    {
+        var connection = LocalConnection("connection-once", "Once connection");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [], [], [], [], [], [], [], []);
+        var store = new CountingRecentSessionStore();
+        using var viewModel = CreateViewModel(
+            snapshot,
+            new EmptyFileClients(),
+            recentSessionHistory: new RecentSessionHistory(store));
+
+        Assert.True(await viewModel.OpenConnectionAsync(connection.Id));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        await AwaitTerminalPanels(runtime);
+        var panel = Assert.Single(Assert.Single(runtime.Tabs).Panels);
+
+        // The panel's own close, and then the sweep every teardown performs.
+        Assert.True(await viewModel.RemovePanelAsync(panel.Id));
+        viewModel.Dispose();
+        await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
+
+        Assert.Equal(1, store.CompletionCount);
+    }
+
+    /// <summary>A store whose rows always already carry a terminal outcome.</summary>
+    private sealed class AlreadyEndedRecentSessionStore : IRecentSessionStore
+    {
+        public ValueTask<RecentSessionStoreResult<Unit>> RecordCompletedAsync(
+            RecentSessionCompletion completion,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<Unit>.Failure(
+                new RecentSessionStoreError(
+                    RecentSessionStoreErrorCode.Conflict,
+                    "The recent session already has a different terminal outcome.")));
+
+        public ValueTask<RecentSessionStoreResult<Unit>> RecordStartedAsync(
+            RecentSessionRecord recentSession,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<Unit>.Success(Unit.Value));
+
+        public ValueTask<RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>>
+            ListRecentAsync(RecentSessionQuery query, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(
+                RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>.Success([]));
+
+        public ValueTask<RecentSessionStoreResult<int>> MarkActiveSessionsInterruptedAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+
+        public ValueTask<RecentSessionStoreResult<int>> ClearThroughAsync(
+            DateTimeOffset through,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+
+        public ValueTask<RecentSessionStoreResult<int>> ClearAllAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+    }
+
+    /// <summary>A store that counts how often each session is ended.</summary>
+    private sealed class CountingRecentSessionStore : IRecentSessionStore
+    {
+        private int _completions;
+
+        public int CompletionCount => Volatile.Read(ref _completions);
+
+        public ValueTask<RecentSessionStoreResult<Unit>> RecordCompletedAsync(
+            RecentSessionCompletion completion,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _completions);
+            return ValueTask.FromResult(RecentSessionStoreResult<Unit>.Success(Unit.Value));
+        }
+
+        public ValueTask<RecentSessionStoreResult<Unit>> RecordStartedAsync(
+            RecentSessionRecord recentSession,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<Unit>.Success(Unit.Value));
+
+        public ValueTask<RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>>
+            ListRecentAsync(RecentSessionQuery query, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(
+                RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>.Success([]));
+
+        public ValueTask<RecentSessionStoreResult<int>> MarkActiveSessionsInterruptedAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+
+        public ValueTask<RecentSessionStoreResult<int>> ClearThroughAsync(
+            DateTimeOffset through,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+
+        public ValueTask<RecentSessionStoreResult<int>> ClearAllAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+    }
+
     private static MainWindowViewModel CreateViewModel(
         DefinitionCatalogSnapshot snapshot,
         EmptyFileClients files,
