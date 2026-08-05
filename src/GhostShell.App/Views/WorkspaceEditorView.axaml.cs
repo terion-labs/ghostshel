@@ -1,10 +1,8 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.LogicalTree;
 using Avalonia.Media;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
@@ -102,37 +100,45 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void ConfigurePickers()
     {
         var editor = Editor;
-        // The add-lists live inside flyouts. Their names still resolve here:
-        // Avalonia registers a flyout's content in the enclosing name scope when
-        // the markup loads, not when the flyout first opens — verified rather
-        // than assumed, because the opposite would be a null at every open.
-        var addConnectionList = this.FindControl<ListBox>("AddConnectionList")!;
-        var addScreenList = this.FindControl<ListBox>("AddScreenList")!;
-        var addLayoutList = this.FindControl<ListBox>("AddLayoutList")!;
         var entryConnectionPicker = this.FindControl<ComboBox>("EntryConnectionPicker")!;
         var entryScreenPicker = this.FindControl<ComboBox>("EntryScreenPicker")!;
+        entryConnectionPicker.ItemsSource = editor?.ConnectionOptions;
+        entryScreenPicker.ItemsSource = editor?.ScreenOptions;
+    }
 
-        if (editor is null)
+    /// <summary>
+    /// Asks what the tab opens, then adds it. The dialog owns the choice and
+    /// this owns applying it, so a cancelled dialog leaves the workspace
+    /// untouched rather than half-added.
+    /// </summary>
+    private async void OnAddTabClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Editor is not { } editor
+            || TopLevel.GetTopLevel(this) is not Window owner)
         {
-            addConnectionList.ItemsSource = null;
-            addScreenList.ItemsSource = null;
-            addLayoutList.ItemsSource = null;
-            entryConnectionPicker.ItemsSource = null;
-            entryScreenPicker.ItemsSource = null;
             return;
         }
 
-        // Auto-saved layouts carry a live tab's captured geometry; they resolve
-        // existing tab references but are not offered for new tabs.
-        var pickableLayouts = editor.LayoutOptions
-            .Where(option => !LayoutDefinition.IsAutoSaved(option.Id))
-            .ToArray();
-        addConnectionList.ItemsSource = editor.ConnectionOptions;
-        addScreenList.ItemsSource = editor.ScreenOptions;
-        addLayoutList.ItemsSource = pickableLayouts;
-        entryConnectionPicker.ItemsSource = editor.ConnectionOptions;
-        entryScreenPicker.ItemsSource = editor.ScreenOptions;
-        addLayoutList.SelectedItem = pickableLayouts.FirstOrDefault(option => option.IsAvailable);
+        var dialog = new AddWorkspaceTabDialog(
+            editor.ConnectionOptions,
+            editor.ScreenOptions,
+            editor.LayoutOptions);
+        if (await dialog.ShowDialog<WorkspaceTabSource?>(owner) is not { } source)
+        {
+            return;
+        }
+
+        CompleteAdd(source switch
+        {
+            WorkspaceTabSource.Connection connection => editor.AddConnection(connection.Id),
+            WorkspaceTabSource.LinkedScreen screen => editor.AddSavedScreen(screen.Id),
+            WorkspaceTabSource.CopiedScreen screen => editor.AddWorkspaceTabFromScreen(screen.Id),
+            WorkspaceTabSource.NewScreen screen =>
+                editor.AddWorkspaceTab(screen.LayoutId, screen.Name),
+            _ => throw new ArgumentOutOfRangeException(nameof(source)),
+        });
     }
 
     /// <summary>
@@ -331,85 +337,9 @@ public sealed partial class WorkspaceEditorView : UserControl
         return -1;
     }
 
-    private void OnAddConnectionSelected(object? sender, SelectionChangedEventArgs e)
-    {
-        _ = e;
-        if (sender is not ListBox list
-            || list.SelectedItem is not ScreenConnectionOption option
-            || Editor is not { } editor)
-        {
-            return;
-        }
 
-        list.SelectedItem = null;
-        CloseFlyoutAround(list);
-        CompleteAdd(editor.AddConnection(option.Id));
-    }
 
-    /// <summary>
-    /// A screen can be linked or copied, and the difference matters later, so the
-    /// list only records the choice and the flyout's two buttons decide which.
-    /// </summary>
-    private void OnAddSavedScreenClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (Editor is not { } editor
-            || this.FindControl<ListBox>("AddScreenList")!.SelectedItem
-                is not WorkspaceScreenOption option)
-        {
-            ShowInteractionError("Choose an available saved screen first.");
-            return;
-        }
 
-        CloseFlyoutAround(sender as Control);
-        CompleteAdd(editor.AddSavedScreen(option.Id));
-    }
-
-    private void OnCopySavedScreenClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (Editor is not { } editor
-            || this.FindControl<ListBox>("AddScreenList")!.SelectedItem
-                is not WorkspaceScreenOption option)
-        {
-            ShowInteractionError("Choose an available saved screen first.");
-            return;
-        }
-
-        CloseFlyoutAround(sender as Control);
-        CompleteAdd(editor.AddWorkspaceTabFromScreen(option.Id));
-    }
-
-    private void OnAddWorkspaceTabClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (Editor is not { } editor
-            || this.FindControl<ListBox>("AddLayoutList")!.SelectedItem
-                is not WorkspaceLayoutOption option)
-        {
-            ShowInteractionError("Choose an available layout first.");
-            return;
-        }
-
-        var nameInput = this.FindControl<TextBox>("AddTabNameInput")!;
-        var name = string.IsNullOrWhiteSpace(nameInput.Text) ? "New tab" : nameInput.Text.Trim();
-        var result = editor.AddWorkspaceTab(option.Id, name);
-        if (result.IsSuccess)
-        {
-            nameInput.Text = string.Empty;
-        }
-
-        CloseFlyoutAround(sender as Control);
-        CompleteAdd(result);
-    }
-
-    private static void CloseFlyoutAround(Control? control)
-    {
-        if (control?.FindLogicalAncestorOfType<Popup>() is { } popup)
-        {
-            popup.IsOpen = false;
-        }
-    }
 
     private void CompleteAdd(WorkspaceEditorOperationResult result)
     {

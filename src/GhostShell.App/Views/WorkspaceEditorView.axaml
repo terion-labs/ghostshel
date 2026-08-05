@@ -230,88 +230,24 @@
 
                 <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
 
-                <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="Auto,Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                  <Button Classes="PrimaryButton" AutomationProperties.Name="Add a saved connection as a tab">
-                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-                      <icons:SymbolIcon VerticalAlignment="Center" Symbol="Server" FontSize="13" />
-                      <TextBlock VerticalAlignment="Center" Text="Add connection" />
-                    </StackPanel>
-                    <Button.Flyout>
-                      <Flyout Placement="BottomEdgeAlignedLeft">
-                        <ListBox
-                            x:Name="AddConnectionList"
-                            MinWidth="280"
-                            MaxHeight="320"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            SelectionChanged="OnAddConnectionSelected">
-                          <ListBox.ItemTemplate>
-                            <DataTemplate>
-                              <TextBlock Text="{Binding DisplayName}" />
-                            </DataTemplate>
-                          </ListBox.ItemTemplate>
-                        </ListBox>
-                      </Flyout>
-                    </Button.Flyout>
-                  </Button>
-                  <Button Grid.Column="1" Classes="SecondaryButton" AutomationProperties.Name="Add a saved screen as a tab">
-                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-                      <icons:SymbolIcon VerticalAlignment="Center" Symbol="Grid" FontSize="13" />
-                      <TextBlock VerticalAlignment="Center" Text="Add screen" />
-                    </StackPanel>
-                    <Button.Flyout>
-                      <Flyout Placement="BottomEdgeAlignedLeft">
-                        <StackPanel MinWidth="300" Spacing="{DynamicResource ShellSpaceSm}">
-                          <ListBox
-                              x:Name="AddScreenList"
-                              MaxHeight="280"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              AutomationProperties.Name="Saved screen to add">
-                            <ListBox.ItemTemplate>
-                              <DataTemplate>
-                                <TextBlock Text="{Binding DisplayName}" />
-                              </DataTemplate>
-                            </ListBox.ItemTemplate>
-                          </ListBox>
-                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="A linked screen stays reusable: later edits to it apply here too. A copy is this workspace's alone." TextWrapping="Wrap" />
-                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                            <Button Classes="PrimaryButton" Click="OnAddSavedScreenClick" Content="Link screen" AutomationProperties.Name="Link the selected saved screen" />
-                            <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCopySavedScreenClick" Content="Copy instead" AutomationProperties.Name="Copy the selected screen into a workspace-only tab" />
-                          </Grid>
-                        </StackPanel>
-                      </Flyout>
-                    </Button.Flyout>
-                  </Button>
+                <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                   <Button
-                      Grid.Column="2"
-                      HorizontalAlignment="Right"
-                      Classes="TextButton"
-                      Content="or create one just for this workspace"
-                      AutomationProperties.Name="Create a tab that belongs only to this workspace">
-                    <Button.Flyout>
-                      <Flyout Placement="BottomEdgeAlignedRight">
-                        <StackPanel MinWidth="300" Spacing="{DynamicResource ShellSpaceSm}">
-                          <TextBlock Classes="Eyebrow" Text="New workspace-only tab" />
-                          <TextBox x:Name="AddTabNameInput" Watermark="Tab name" AutomationProperties.Name="Name for the new workspace tab" />
-                          <ListBox
-                              x:Name="AddLayoutList"
-                              MaxHeight="240"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              AutomationProperties.Name="Layout for the new workspace tab">
-                            <ListBox.ItemTemplate>
-                              <DataTemplate>
-                                <TextBlock Text="{Binding DisplayName}" />
-                              </DataTemplate>
-                            </ListBox.ItemTemplate>
-                          </ListBox>
-                          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Pick the layout, then bind a connection to each panel below." TextWrapping="Wrap" />
-                          <Button Classes="PrimaryButton" Click="OnAddWorkspaceTabClick" Content="Create tab" AutomationProperties.Name="Create the workspace-only tab" />
-                        </StackPanel>
-                      </Flyout>
-                    </Button.Flyout>
+                      x:Name="AddTabButton"
+                      Classes="PrimaryButton"
+                      Click="OnAddTabClick"
+                      AutomationProperties.Name="Add a tab to this workspace">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                      <icons:SymbolIcon VerticalAlignment="Center" Symbol="Add" FontSize="13" />
+                      <TextBlock VerticalAlignment="Center" Text="Add tab" />
+                    </StackPanel>
                   </Button>
+                  <TextBlock
+                      Grid.Column="1"
+                      VerticalAlignment="Center"
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize11}"
+                      Text="A saved connection or screen, or a screen that belongs only to this workspace."
+                      TextWrapping="Wrap" />
                 </Grid>
               </StackPanel>
             </controls:SurfaceCard>
@@ -385,13 +321,13 @@
               <StackPanel DataContext="{Binding Tab}" Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <components:SectionHeader
-                      Heading="Workspace-only tab"
-                      Description="This panel arrangement belongs only to the workspace." />
+                      Heading="Workspace-only screen"
+                      Description="This screen belongs to the workspace. Nothing else opens it." />
                   <TextBlock Grid.Column="1" Foreground="{DynamicResource ShellDangerBrush}" FontSize="{DynamicResource ShellFontSize9}" IsVisible="{Binding HasMissingDefinition}" Text="Repair required" />
                 </Grid>
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                    <TextBlock FontWeight="SemiBold" Text="Tab name" />
+                    <TextBlock FontWeight="SemiBold" Text="Screen name" />
                     <TextBox Text="{Binding Name, Mode=TwoWay}" />
                   </StackPanel>
                   <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
@@ -510,7 +446,7 @@
                 </ItemsControl>
 
                 <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasMissingDefinition}">
-                  <TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The tab layout or one of its panels has a missing durable dependency." TextWrapping="Wrap" />
+                  <TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The screen's layout or one of its panels has a missing durable dependency." TextWrapping="Wrap" />
                 </controls:SurfaceCard>
               </StackPanel>
             </controls:SurfaceCard>

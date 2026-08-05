@@ -143,7 +143,8 @@ internal sealed record RouteCapture(
     int Height = 900,
     ThemePreference? Theme = null,
     string? ClickFirst = null,
-    Action<MainWindow>? PrepareCapture = null);
+    Action<MainWindow>? PrepareCapture = null,
+    Func<MainWindowViewModel, Window>? Dialog = null);
 
 internal sealed class QaApplication : Avalonia.Application
 {
@@ -251,7 +252,24 @@ internal sealed class QaApplication : Avalonia.Application
                 vm.BeginEditWorkspace(new WorkspaceId("operations"));
             },
             Height: 1200,
-            PrepareCapture: OpenAddConnectionFlyout),
+            Dialog: OpenAddTabDialog),
+        // The same dialog with the workspace-only screen chosen, because the
+        // name and layout it then asks for are the part a static list cannot
+        // show.
+        new(
+            "settings-workspace-editor-add-new-screen",
+            vm =>
+            {
+                vm.ShowSettings(SettingsPage.Workspaces);
+                vm.BeginEditWorkspace(new WorkspaceId("operations"));
+            },
+            Height: 1200,
+            Dialog: viewModel =>
+            {
+                var dialog = OpenAddTabDialog(viewModel);
+                dialog.FindControl<ListBox>("SourceList")!.SelectedIndex = 0;
+                return dialog;
+            }),
         new(
             "settings-workspace-editor-reorder",
             vm =>
@@ -338,14 +356,18 @@ internal sealed class QaApplication : Avalonia.Application
     }
 
     /// <summary>
-    /// Opens the tab list's "Add connection" flyout the way its button does.
-    /// Raising the click event is not enough — a button opens its flyout inside
-    /// its own click handling, before the event is routed.
+    /// The dialog the tab list opens, built from the same options the editor
+    /// hands it.
     /// </summary>
-    private static void OpenAddConnectionFlyout(MainWindow window)
+    private static Window OpenAddTabDialog(MainWindowViewModel viewModel)
     {
-        var button = NamedControl<Button>(window, "Add a saved connection as a tab");
-        button.Flyout?.ShowAt(button);
+        var editor = viewModel.WorkspaceEditor
+            ?? throw new InvalidOperationException(
+                "The route wanted the workspace editor's add-tab dialog with no editor open.");
+        return new AddWorkspaceTabDialog(
+            editor.ConnectionOptions,
+            editor.ScreenOptions,
+            editor.LayoutOptions);
     }
 
     /// <summary>
@@ -2207,6 +2229,32 @@ internal sealed class QaApplication : Avalonia.Application
                 }
 
                 var path = Path.Combine(Program.OutputDirectory, $"{route.Name}.png");
+
+                // A dialog is a window of its own, so it is rendered as one. It
+                // is shown rather than shown modally: ShowDialog does not return
+                // until the dialog closes, and nothing here would close it.
+                if (route.Dialog is { } openDialog)
+                {
+                    var dialog = openDialog(viewModel);
+                    dialog.Show(window);
+                    await Task.Delay(220);
+                    Dispatcher.UIThread.RunJobs();
+                    dialog.UpdateLayout();
+                    await Task.Delay(120);
+                    using (var dialogBitmap = new RenderTargetBitmap(
+                        new PixelSize((int)dialog.Width, (int)dialog.Height),
+                        new Vector(96, 96)))
+                    {
+                        dialogBitmap.Render(dialog);
+                        dialogBitmap.Save(path);
+                    }
+
+                    dialog.Close();
+                    Dispatcher.UIThread.RunJobs();
+                    Console.WriteLine($"CAPTURE {route.Name} -> {path}");
+                    continue;
+                }
+
                 using (var bitmap = new RenderTargetBitmap(new PixelSize(1440, route.Height), new Vector(96, 96)))
                 {
                     bitmap.Render(window);

@@ -56,7 +56,7 @@ public sealed class WorkspaceEntryEditorViewModel : ObservableObject, IDisposabl
     {
         WorkspaceEditorEntryKind.Connection => "Connection",
         WorkspaceEditorEntryKind.SavedScreen => "Saved screen",
-        WorkspaceEditorEntryKind.WorkspaceTab => "Workspace tab",
+        WorkspaceEditorEntryKind.WorkspaceTab => "Workspace-only screen",
         _ => throw new ArgumentOutOfRangeException(),
     };
 
@@ -140,7 +140,7 @@ public sealed class WorkspaceEntryEditorViewModel : ObservableObject, IDisposabl
             {
                 WorkspaceEditorEntryKind.Connection => SelectedConnection?.Name ?? "Missing connection",
                 WorkspaceEditorEntryKind.SavedScreen => SelectedScreen?.Name ?? "Missing saved screen",
-                WorkspaceEditorEntryKind.WorkspaceTab => Tab?.Name ?? "Workspace tab",
+                WorkspaceEditorEntryKind.WorkspaceTab => Tab?.Name ?? "Workspace screen",
                 _ => throw new ArgumentOutOfRangeException(),
             };
         }
