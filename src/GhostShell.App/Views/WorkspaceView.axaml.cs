@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -99,6 +100,35 @@ public sealed partial class WorkspaceView : UserControl
 
         RuntimeDockControl.Factory = factory;
         RuntimeDockControl.Layout = layout;
+        ReportCanvasReadiness();
+    }
+
+    /// <summary>
+    /// Says what the canvas actually holds across the frames either side of a
+    /// hand-over.
+    ///
+    /// A frame of bare canvas has survived two fixes aimed at what it looked
+    /// like, so this stops describing it and counts it: whether the canvas is
+    /// on screen at all, and how much of a visual tree the dock control has,
+    /// when the layout is handed over, once layout has run, and once the frame
+    /// is out. Between those three the empty frame has nowhere left to hide.
+    /// </summary>
+    private void ReportCanvasReadiness()
+    {
+        var clock = Stopwatch.StartNew();
+        void Sample(string when) => Console.Error.WriteLine(
+            $"[ghostshell:perf] canvas {when} at {clock.ElapsedMilliseconds} ms — "
+            + $"on screen {RuntimeDockControl.IsEffectivelyVisible}, "
+            + $"visuals {RuntimeDockControl.GetVisualDescendants().Count()}, "
+            + $"size {RuntimeDockControl.Bounds.Width:F0}x{RuntimeDockControl.Bounds.Height:F0}");
+
+        Sample("handed over");
+        Dispatcher.UIThread.Post(
+            () => Sample("after layout"),
+            DispatcherPriority.Loaded);
+        Dispatcher.UIThread.Post(
+            () => Sample("after render"),
+            DispatcherPriority.Background);
     }
 
     private void ScheduleDockHandOver()
