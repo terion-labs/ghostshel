@@ -2381,10 +2381,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            RuntimeWorkspace = runtimeWorkspace;
-            _runtimeHistorySource = null;
-            StartAcceptedRuntimePanels(runtimeWorkspace);
-            StartRuntimeGraphWatch(runtimeWorkspace);
+            ActivateRuntimeWorkspace(runtimeWorkspace, null, runtimeWorkspace.Name);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2438,10 +2435,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            RuntimeWorkspace = runtimeWorkspace;
-            _runtimeHistorySource = null;
-            StartAcceptedRuntimePanels(runtimeWorkspace);
-            StartRuntimeGraphWatch(runtimeWorkspace);
+            ActivateRuntimeWorkspace(runtimeWorkspace, null, runtimeWorkspace.Name);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2502,10 +2496,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            RuntimeWorkspace = runtime;
-            _runtimeHistorySource = null;
-            StartAcceptedRuntimePanels(runtime);
-            StartRuntimeGraphWatch(runtime);
+            ActivateRuntimeWorkspace(runtime, null, runtime.Name);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2546,10 +2537,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            RuntimeWorkspace = runtime;
-            _runtimeHistorySource = null;
-            StartAcceptedRuntimePanels(runtime);
-            StartRuntimeGraphWatch(runtime);
+            ActivateRuntimeWorkspace(runtime, null, runtime.Name);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2602,10 +2590,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            RuntimeWorkspace = runtime;
-            _runtimeHistorySource = null;
-            StartAcceptedRuntimePanels(runtime);
-            StartRuntimeGraphWatch(runtime);
+            ActivateRuntimeWorkspace(runtime, null, runtime.Name);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2931,10 +2916,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
             else
             {
-                RuntimeWorkspace = runtime;
-                StartAcceptedRuntimePanels(runtime);
-                TrackRecentSessions(runtime.Tabs.SelectMany(tab => tab.Panels));
-                StartRuntimeGraphWatch(runtime);
+                // Restored from a snapshot written before workspaces recorded
+                // where they came from. It cannot be found again by definition,
+                // but it must still be in the open set.
+                ActivateRuntimeWorkspace(runtime, null, runtime.Name);
             }
 
             Route = ShellRoute.Workspace;
@@ -7068,12 +7053,26 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _runtimeSources.TryGetValue(runtime.Id, out var source)
             && source.SourceDefinition == definition);
 
+    /// <summary>
+    /// The one way a runtime workspace goes on screen.
+    ///
+    /// <paramref name="sourceDefinition"/> is null for the workspaces that have
+    /// no saved definition behind them — a local browser, a monitor, an ad-hoc
+    /// database. Those still belong in the open set: membership is what stops
+    /// the next switch from disposing their panels, and it was the absence of
+    /// it that made "open a browser, then click a workspace tile" throw the
+    /// browser away.
+    /// </summary>
     private void ActivateRuntimeWorkspace(
         RuntimeWorkspaceViewModel runtime,
-        DefinitionKey sourceDefinition,
+        DefinitionKey? sourceDefinition,
         string durableTitle)
     {
-        _runtimeSources[runtime.Id] = new RuntimeHistorySource(sourceDefinition, durableTitle);
+        if (sourceDefinition is { } definition)
+        {
+            _runtimeSources[runtime.Id] = new RuntimeHistorySource(definition, durableTitle);
+        }
+
         if (!_openWorkspaces.Contains(runtime))
         {
             _openWorkspaces.Add(runtime);

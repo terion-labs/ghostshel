@@ -405,7 +405,7 @@ public sealed partial class MainWindow : Window
             && ViewModel.SelectedHistorySession is { CanOpen: true } selected)
         {
             e.Handled = true;
-            await ReplaceRuntimeWorkspaceAsync(token =>
+            await OpenRuntimeWorkspaceAsync(token =>
                 ViewModel.OpenRecentSessionAsync(selected, token));
             return;
         }
@@ -654,7 +654,7 @@ public sealed partial class MainWindow : Window
         _ = e;
         if (sender is Control { DataContext: LauncherWorkspaceViewModel workspace })
         {
-            await ReplaceRuntimeWorkspaceAsync(token =>
+            await OpenRuntimeWorkspaceAsync(token =>
                 ViewModel.OpenWorkspaceAsync(workspace.Id, token));
         }
     }
@@ -883,7 +883,7 @@ public sealed partial class MainWindow : Window
         _ = e;
         if (sender is Control { DataContext: RecentSessionHistoryItemViewModel recentSession })
         {
-            await ReplaceRuntimeWorkspaceAsync(token =>
+            await OpenRuntimeWorkspaceAsync(token =>
                 ViewModel.OpenRecentSessionAsync(recentSession, token));
         }
     }
@@ -908,7 +908,7 @@ public sealed partial class MainWindow : Window
         _ = e;
         if (ViewModel.SelectedHistorySession is { CanOpen: true } recentSession)
         {
-            await ReplaceRuntimeWorkspaceAsync(token =>
+            await OpenRuntimeWorkspaceAsync(token =>
                 ViewModel.OpenRecentSessionAsync(recentSession, token));
         }
     }
@@ -1386,7 +1386,7 @@ public sealed partial class MainWindow : Window
                 await LaunchScreenTargetAsync(screen.Id);
                 break;
             case LauncherSearchTarget.Workspace workspace:
-                await ReplaceRuntimeWorkspaceAsync(token =>
+                await OpenRuntimeWorkspaceAsync(token =>
                     ViewModel.OpenWorkspaceAsync(workspace.Id, token));
                 break;
             case LauncherSearchTarget.RecentSession recent:
@@ -1398,7 +1398,7 @@ public sealed partial class MainWindow : Window
                     return;
                 }
 
-                await ReplaceRuntimeWorkspaceAsync(token =>
+                await OpenRuntimeWorkspaceAsync(token =>
                     ViewModel.OpenRecentSessionAsync(recentSession, token));
                 break;
             default:

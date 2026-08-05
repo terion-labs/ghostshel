@@ -82,12 +82,12 @@ public sealed partial class MainWindow
         {
             if (ViewModel.Workspaces.FirstOrDefault() is { } workspace)
             {
-                await ReplaceRuntimeWorkspaceAsync(token =>
+                await OpenRuntimeWorkspaceAsync(token =>
                     ViewModel.OpenWorkspaceAsync(workspace.Id, token));
             }
             else if (ViewModel.Connections.FirstOrDefault(item => item.CanOpen) is { } connection)
             {
-                await ReplaceRuntimeWorkspaceAsync(token =>
+                await OpenRuntimeWorkspaceAsync(token =>
                     ViewModel.OpenConnectionAsync(connection.Id, token));
             }
         }
@@ -113,7 +113,7 @@ public sealed partial class MainWindow
 
         if (!ViewModel.HasRuntimeWorkspace)
         {
-            await ReplaceRuntimeWorkspaceAsync(
+            await OpenRuntimeWorkspaceAsync(
                 ViewModel.OpenLocalBrowserWorkspaceAsync);
             return;
         }
@@ -140,7 +140,7 @@ public sealed partial class MainWindow
 
         if (!ViewModel.HasRuntimeWorkspace)
         {
-            await ReplaceRuntimeWorkspaceAsync(
+            await OpenRuntimeWorkspaceAsync(
                 ViewModel.OpenLocalDatabaseWorkspaceAsync);
             return;
         }
@@ -234,7 +234,7 @@ public sealed partial class MainWindow
 
         if (!ViewModel.HasRuntimeWorkspace)
         {
-            await ReplaceRuntimeWorkspaceAsync(token =>
+            await OpenRuntimeWorkspaceAsync(token =>
                 ViewModel.OpenLocalMonitorWorkspaceAsync(kind, token));
             return;
         }
@@ -306,7 +306,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        await ReplaceRuntimeWorkspaceAsync(token =>
+        await OpenRuntimeWorkspaceAsync(token =>
             ViewModel.OpenConnectionAsync(connection.Id, token));
     }
 
@@ -315,16 +315,23 @@ public sealed partial class MainWindow
             ? NewTerminalTarget.ExistingRuntimeWorkspace
             : NewTerminalTarget.DefaultConnectionWorkspace;
 
-    private async Task ReplaceRuntimeWorkspaceAsync(
+    /// <summary>
+    /// Opens something and brings it to the front. It does not close what was
+    /// there.
+    ///
+    /// It used to run the window close flow first — ending every session in the
+    /// window — and only then open. That was coherent while the shell held one
+    /// runtime workspace, because replacing it did mean ending everything. The
+    /// shell holds several now, so clicking a workspace tile was killing the
+    /// terminals in every other one, and the "this workspace is already running,
+    /// bring it forward" path in OpenWorkspaceAsync could never be reached.
+    ///
+    /// Closing belongs to closing: the window, or a tab.
+    /// </summary>
+    private async Task OpenRuntimeWorkspaceAsync(
         Func<CancellationToken, Task<bool>> open)
     {
         ArgumentNullException.ThrowIfNull(open);
-        if (ViewModel.HasRuntimeWorkspace
-            && !await RunCloseFlowAsync(ViewModel.CloseWindowAsync))
-        {
-            return;
-        }
-
         if (await open(_lifetime.Token))
         {
             ViewModel.CloseOverlay();
