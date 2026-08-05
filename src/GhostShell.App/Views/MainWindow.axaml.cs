@@ -133,14 +133,20 @@ public sealed partial class MainWindow : Window
 
     protected override void OnOpened(EventArgs e)
     {
-        base.OnOpened(e);
-        // A workspace with an accent of its own retints the shell while it is
-        // open. The view model announces it; republishing the application's
-        // resources is the host's to do.
+        // Subscribed before the base raises Opened, not after. Startup restore
+        // runs from that event, and when the work it waits on has already
+        // finished it runs straight through — so the restored workspace
+        // announced its accent while nothing was listening yet, and the shell
+        // kept its own colour until the first switch.
         ViewModel.WorkspaceAccentChanged += OnWorkspaceAccentChanged;
         // Whether a notification leaves a mark depends on whether anyone was
         // looking, and the window is the only thing that can say.
         Deactivated += OnWindowDeactivated;
+        base.OnOpened(e);
+        // And whatever it announced before any of this, in case something else
+        // ever gets in front of the subscription again. The accent that is
+        // already being worn costs nothing to apply.
+        OnWorkspaceAccentChanged(this, ViewModel.ActiveWorkspaceAccent);
         RefreshWindowChromeMetrics();
         Avalonia.Threading.Dispatcher.UIThread.Post(
             RefreshWindowChromeMetrics,

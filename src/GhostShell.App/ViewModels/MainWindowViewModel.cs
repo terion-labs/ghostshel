@@ -1013,6 +1013,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private string? _activeWorkspaceAccent;
 
     /// <summary>
+    /// The accent the open workspace is asking the shell to wear, for anything
+    /// that starts listening after it was announced.
+    /// </summary>
+    public string? ActiveWorkspaceAccent => _activeWorkspaceAccent;
+
+    /// <summary>
     /// Says which part of bringing a workspace forward cost the time, when any
     /// of it did. Under the budget it says nothing; a switch that is not felt
     /// is not worth a line.
