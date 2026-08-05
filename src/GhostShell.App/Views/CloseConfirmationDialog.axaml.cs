@@ -23,7 +23,10 @@ public sealed partial class CloseConfirmationDialog : Window
         {
             CloseScopeKind.Panel => "Close this panel?",
             CloseScopeKind.Tab => "Close this tab?",
-            CloseScopeKind.Workspace => "Close this workspace?",
+            // Terminate, not close: a tab or a window is put away and its
+            // sessions happen to end, while this is asked for in order to end
+            // them. The word should say which one you are doing.
+            CloseScopeKind.Workspace => "Terminate this workspace?",
             CloseScopeKind.Window => "Close GhostSHELL?",
             CloseScopeKind.Session => "Close this session?",
             _ => "Close active sessions?",

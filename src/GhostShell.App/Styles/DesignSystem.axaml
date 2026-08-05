@@ -285,8 +285,8 @@
                       BorderThickness="0"
                       Foreground="{TemplateBinding MarkBrush}"
                       IsVisible="False"
-                      ToolTip.Tip="Close this workspace and end everything running in it"
-                      AutomationProperties.Name="Close this workspace">
+                      ToolTip.Tip="Terminate this workspace and everything running in it"
+                      AutomationProperties.Name="Terminate this workspace">
                     <icons:SymbolIcon
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"

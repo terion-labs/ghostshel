@@ -332,10 +332,69 @@ public sealed partial class MainWindow
         Func<CancellationToken, Task<bool>> open)
     {
         ArgumentNullException.ThrowIfNull(open);
+        var stall = RuntimeSwitchStall.Begin();
         if (await open(_lifetime.Token))
         {
             ViewModel.CloseOverlay();
             FocusActivePanel();
+        }
+
+        stall.ReportWhenDrained(ViewModel.RuntimeWorkspace?.Name);
+    }
+
+    /// <summary>
+    /// How long the window stays busy after a workspace switch, and where.
+    ///
+    /// A switch is a chain of things that all happen on the thread that draws:
+    /// the view model activates, the dock rebuilds every panel view for the tab
+    /// coming forward, and each of those re-attaches to its session. Any of the
+    /// three can be the one that costs, and they cannot be told apart from the
+    /// outside — the window is simply frozen for all of it.
+    ///
+    /// So each phase is timed against the dispatcher itself. Work queued behind
+    /// layout only runs once layout is done, and work queued behind that only
+    /// runs once the frame is out, so the gaps between them are the phases. It
+    /// reports only when a switch was slow enough to be felt.
+    /// </summary>
+    private sealed class RuntimeSwitchStall(Stopwatch clock)
+    {
+        private readonly Stopwatch _clock = clock;
+
+        /// <summary>
+        /// Roughly four frames at sixty hertz. Below this a switch reads as
+        /// immediate and there is nothing to say.
+        /// </summary>
+        private const long BudgetMilliseconds = 64;
+
+        public static RuntimeSwitchStall Begin() => new(Stopwatch.StartNew());
+
+        public void ReportWhenDrained(string? workspace)
+        {
+            var viewModelMilliseconds = _clock.ElapsedMilliseconds;
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                () =>
+                {
+                    var layoutMilliseconds = _clock.ElapsedMilliseconds;
+                    Avalonia.Threading.Dispatcher.UIThread.Post(
+                        () =>
+                        {
+                            _clock.Stop();
+                            var total = _clock.ElapsedMilliseconds;
+                            if (total < BudgetMilliseconds)
+                            {
+                                return;
+                            }
+
+                            Console.Error.WriteLine(
+                                $"[ghostshell:perf] switching to '{workspace ?? "nothing"}' held "
+                                + $"the window for {total} ms — view model "
+                                + $"{viewModelMilliseconds} ms, layout and attach "
+                                + $"{layoutMilliseconds - viewModelMilliseconds} ms, "
+                                + $"first frame {total - layoutMilliseconds} ms");
+                        },
+                        Avalonia.Threading.DispatcherPriority.Background);
+                },
+                Avalonia.Threading.DispatcherPriority.Loaded);
         }
     }
 
