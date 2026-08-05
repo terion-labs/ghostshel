@@ -955,11 +955,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             var previous = _runtimeWorkspace;
             if (SetProperty(ref _runtimeWorkspace, value))
             {
+                // Marked first because the notification above is not free: the
+                // dock control, three tab strips and the status bar all re-read
+                // the workspace from it, and Dock rebuilds its layout while
+                // this setter is still running. Without a mark here that cost
+                // would be charged to whatever came next.
+                _activation?.Mark("bindings");
                 StopRuntimeGraphWatch();
                 // One announcement, from the one place that knows what is in
                 // front. Scattered across the open paths it was missing from
                 // every other way of arriving — restore among them.
                 SetActiveWorkspaceAccent(value?.ShellAccent);
+                _activation?.Mark("accent");
 
                 StopTrackingAgentTerminalSelection(previous);
                 StopTrackingRecovery(previous);
@@ -978,12 +985,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     : _runtimeSources.GetValueOrDefault(value.Id);
                 StartTrackingRecovery(value);
                 StartTrackingAgentTerminalSelection(value);
+                _activation?.Mark("tracking");
                 RefreshAgentTerminalSelectionOptions(resetSelection: true);
+                _activation?.Mark("agent terminals");
                 OnPropertyChanged(nameof(HasRuntimeWorkspace));
                 OnPropertyChanged(nameof(NewItemLauncherTitle));
                 OnPropertyChanged(nameof(CanCreateBrowserPanel));
                 OnPropertyChanged(nameof(WorkspaceStatus));
+                _activation?.Mark("notifications");
                 RefreshLauncherSearchResults();
+                _activation?.Mark("search results");
             }
         }
     }
@@ -7206,11 +7217,76 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private void ReactivateRuntimeWorkspace(RuntimeWorkspaceViewModel runtime)
     {
-        BringToFrontOfOpenSet(runtime);
-        RuntimeWorkspace = runtime;
-        StartRuntimeGraphWatch(runtime);
-        RefreshWorkspaceRuntimeFlags();
-        Notifications.MarkVisibleSeen();
+        var activation = new ActivationTrace();
+        _activation = activation;
+        try
+        {
+            BringToFrontOfOpenSet(runtime);
+            RuntimeWorkspace = runtime;
+            StartRuntimeGraphWatch(runtime);
+            activation.Mark("graph watch");
+            RefreshWorkspaceRuntimeFlags();
+            activation.Mark("rail flags");
+            Notifications.MarkVisibleSeen();
+            activation.Mark("seen marks");
+        }
+        finally
+        {
+            _activation = null;
+        }
+
+        if (activation.TryDescribe(ActivationBudgetMilliseconds, out var description))
+        {
+            Console.Error.WriteLine($"[ghostshell:perf] activation — {description}");
+        }
+    }
+
+    /// <summary>
+    /// Roughly two frames. Under it, bringing a workspace forward is not felt.
+    /// </summary>
+    private const long ActivationBudgetMilliseconds = 32;
+
+    private ActivationTrace? _activation;
+
+    /// <summary>
+    /// Times the steps of bringing a workspace forward, so a slow one says
+    /// which step it was.
+    ///
+    /// All of this runs on the thread that draws, and the phase timing around
+    /// it could only say "the view model" — which is most of a third of a
+    /// second and a dozen different things. The steps are marked where they
+    /// happen, including inside the property setter that does most of them,
+    /// because that is the only place their boundaries exist.
+    /// </summary>
+    private sealed class ActivationTrace
+    {
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly List<(string Step, long Milliseconds)> _steps = [];
+        private long _previous;
+
+        public void Mark(string step)
+        {
+            var elapsed = _clock.ElapsedMilliseconds;
+            _steps.Add((step, elapsed - _previous));
+            _previous = elapsed;
+        }
+
+        public bool TryDescribe(long budgetMilliseconds, out string description)
+        {
+            _clock.Stop();
+            var total = _clock.ElapsedMilliseconds;
+            if (total < budgetMilliseconds)
+            {
+                description = string.Empty;
+                return false;
+            }
+
+            description = $"{total} ms: "
+                + string.Join(
+                    ", ",
+                    _steps.Select(step => $"{step.Step} {step.Milliseconds} ms"));
+            return true;
+        }
     }
 
     /// <summary>
