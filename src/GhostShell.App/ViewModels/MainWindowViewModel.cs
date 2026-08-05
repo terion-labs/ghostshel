@@ -206,6 +206,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         OpenWorkspaces = new(_openWorkspaces);
+        Notifications = new ShellNotificationCenter(
+            () => RuntimeWorkspace,
+            () => IsWindowFocused,
+            RefreshWorkspaceRuntimeFlags);
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
@@ -911,6 +915,27 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// front.
     /// </summary>
     public ReadOnlyObservableCollection<RuntimeWorkspaceViewModel> OpenWorkspaces { get; }
+
+    /// <summary>
+    /// Whether the shell has the user's attention. The window tells it; a
+    /// notification arriving while the app is in the background always leaves a
+    /// mark, because nobody was looking at anything.
+    /// </summary>
+    public bool IsWindowFocused
+    {
+        get => _isWindowFocused;
+        set
+        {
+            if (SetProperty(ref _isWindowFocused, value) && value)
+            {
+                Notifications.MarkVisibleSeen();
+            }
+        }
+    }
+
+    private bool _isWindowFocused = true;
+
+    internal ShellNotificationCenter Notifications { get; }
 
     private readonly ObservableCollection<RuntimeWorkspaceViewModel> _openWorkspaces = [];
 
@@ -2670,7 +2695,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (tab.Panels.SingleOrDefault(panel => panel.Id == panelId)
             is PanelPlaceholderViewModel)
         {
-            return tab.ActivatePanel(panelId);
+            var activated = tab.ActivatePanel(panelId);
+            Notifications.MarkVisibleSeen();
+            return activated;
         }
 
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -6998,6 +7025,26 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 $"Recent-session metadata could not be persisted safely: {error.Message}"));
     }
 
+    /// <summary>
+    /// Re-derives what the rails show about running workspaces: which are open,
+    /// which one is in front, and which are asking to be noticed.
+    ///
+    /// Derived rather than pushed, because the rail lists saved definitions
+    /// while "open" is a fact about runtime instances. The join is the
+    /// definition key, the same one <see cref="FindOpenWorkspace"/> uses.
+    /// </summary>
+    private void RefreshWorkspaceRuntimeFlags()
+    {
+        foreach (var item in Workspaces)
+        {
+            var runtime = FindOpenWorkspace(
+                new DefinitionKey(WorkspaceDefinition.Kind, item.Id.Value));
+            item.IsOpen = runtime is not null;
+            item.IsInFront = runtime is not null && ReferenceEquals(runtime, RuntimeWorkspace);
+            item.HasAttention = runtime?.HasAttention == true;
+        }
+    }
+
     private RuntimeWorkspaceViewModel? FindOpenWorkspace(DefinitionKey definition) =>
         _openWorkspaces.FirstOrDefault(runtime =>
             _runtimeSources.TryGetValue(runtime.Id, out var source)
@@ -7015,9 +7062,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         RuntimeWorkspace = runtime;
+        Notifications.Watch(runtime);
         StartAcceptedRuntimePanels(runtime);
         TrackRecentSessions(runtime.Tabs.SelectMany(tab => tab.Panels));
         StartRuntimeGraphWatch(runtime);
+        RefreshWorkspaceRuntimeFlags();
+        Notifications.MarkVisibleSeen();
     }
 
     /// <summary>
@@ -7028,6 +7078,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         RuntimeWorkspace = runtime;
         StartRuntimeGraphWatch(runtime);
+        RefreshWorkspaceRuntimeFlags();
+        Notifications.MarkVisibleSeen();
     }
 
     /// <summary>
@@ -7057,6 +7109,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var wasActive = ReferenceEquals(RuntimeWorkspace, runtime);
         _openWorkspaces.Remove(runtime);
         _runtimeSources.Remove(runtime.Id);
+        Notifications.Forget(runtime);
         if (wasActive)
         {
             // The setter disposes what is no longer in the open set, so the
@@ -7073,6 +7126,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         StopTrackingRecovery(runtime);
         StopTrackingAgentTerminalSelection(runtime);
         runtime.DisposePanels();
+        RefreshWorkspaceRuntimeFlags();
     }
 
     private void DisposeRuntimeWorkspaceUnlessOwned(
@@ -7812,6 +7866,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        // Every activation the host confirms — a tab, a panel, a drag that moved
+        // one — lands here, which makes this the one place that reliably knows
+        // what the user is now looking at.
+        Notifications.MarkVisibleSeen();
         QueueRuntimeRecoverySnapshot();
         return true;
     }
@@ -8418,6 +8476,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             RecentSessions,
             items.Take(8).ToArray(),
             static (a, b) => a.PresentsSameAs(b));
+        // The durable half was just replaced, so whatever the runtime half said
+        // went with it.
+        RefreshWorkspaceRuntimeFlags();
         RecentSessionStatus = HistorySessions.Count > 0
             ? "Recent sessions store definition metadata only; commands and terminal content are excluded."
             : _storedHistoryRetention is { Policy: { IsEnabled: false } }
@@ -8659,7 +8720,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     WorkspaceIconSymbol(item.Value.Icon),
                     item.Value.Entries.Count))
                 .ToArray(),
-            static (a, b) => a == b);
+            static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             Connections,
             snapshot.Connections
@@ -11207,6 +11268,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         StopTrackingRecovery(_runtimeWorkspace);
         // Every open workspace, not only the one in front: the others are just
         // as alive, and leaving them behind leaks their sessions.
+        Notifications.ForgetAll();
         foreach (var workspace in _openWorkspaces.ToArray())
         {
             workspace.DisposePanels();

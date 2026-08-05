@@ -137,21 +137,90 @@ public enum ShellOverlay
     DefinitionEditor,
 }
 
-public sealed record LauncherWorkspaceViewModel(
-    WorkspaceId Id,
-    long Revision,
-    string Name,
-    string Description,
-    string Accent,
-    string Initials,
-    Symbol IconSymbol,
-    int ItemCount)
+/// <summary>
+/// A workspace as the rails and lists show it.
+///
+/// A class rather than a record because half of it is durable — what the
+/// definition says — and half is what the workspace is doing right now. The
+/// durable half is still replaced wholesale when the catalog changes; the
+/// runtime half has to survive that and change without it, so it is observable
+/// and the item identity is the thing that persists.
+/// </summary>
+public sealed class LauncherWorkspaceViewModel(
+    WorkspaceId id,
+    long revision,
+    string name,
+    string description,
+    string accent,
+    string initials,
+    Symbol iconSymbol,
+    int itemCount) : ObservableObject
 {
+    private bool _isOpen;
+    private bool _isInFront;
+    private bool _hasAttention;
+
+    public WorkspaceId Id { get; } = id;
+
+    public long Revision { get; } = revision;
+
+    public string Name { get; } = name;
+
+    public string Description { get; } = description;
+
+    public string Accent { get; } = accent;
+
+    public string Initials { get; } = initials;
+
+    public Symbol IconSymbol { get; } = iconSymbol;
+
+    public int ItemCount { get; } = itemCount;
+
     /// <summary>The Default workspace always exists; only the rest can go.</summary>
     public bool CanDelete => !string.Equals(
         Id.Value,
         WorkspaceDefinition.DefaultWorkspaceId,
         StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether this workspace is running. Open and in-front are separate
+    /// states and read differently: several workspaces are alive at once, and
+    /// only one of them is the one you are looking at.
+    /// </summary>
+    public bool IsOpen
+    {
+        get => _isOpen;
+        internal set => SetProperty(ref _isOpen, value);
+    }
+
+    public bool IsInFront
+    {
+        get => _isInFront;
+        internal set => SetProperty(ref _isInFront, value);
+    }
+
+    /// <summary>Whether anything inside it asked to be noticed.</summary>
+    public bool HasAttention
+    {
+        get => _hasAttention;
+        internal set => SetProperty(ref _hasAttention, value);
+    }
+
+    /// <summary>
+    /// Whether the durable half would draw identically. The runtime flags are
+    /// deliberately excluded: they live on the item that is already in the
+    /// list, and a change to one must not cause it to be replaced.
+    /// </summary>
+    public bool PresentsSameAs(LauncherWorkspaceViewModel other) =>
+        other is not null
+        && Id == other.Id
+        && Revision == other.Revision
+        && IconSymbol == other.IconSymbol
+        && ItemCount == other.ItemCount
+        && string.Equals(Name, other.Name, StringComparison.Ordinal)
+        && string.Equals(Description, other.Description, StringComparison.Ordinal)
+        && string.Equals(Accent, other.Accent, StringComparison.Ordinal)
+        && string.Equals(Initials, other.Initials, StringComparison.Ordinal);
 }
 
 public sealed record LauncherConnectionViewModel(
@@ -743,6 +812,7 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
 {
     private RuntimeTabViewModel? _activeTab;
     private RuntimeTabViewModel? _lastActiveTab;
+    private bool _hasAttention;
     private long _hostRevision;
     private long _hostSequence;
 
@@ -785,6 +855,16 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     }
 
     public ObservableCollection<RuntimeTabViewModel> Tabs { get; } = [];
+
+    /// <summary>
+    /// Whether anything inside this workspace asked to be noticed. Set by the
+    /// shell's notification centre; see <see cref="RuntimePanelViewModel.HasAttention"/>.
+    /// </summary>
+    public bool HasAttention
+    {
+        get => _hasAttention;
+        internal set => SetProperty(ref _hasAttention, value);
+    }
 
     public long HostRevision
     {
@@ -970,6 +1050,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
     private PanelInstanceId? _zoomedPanelId;
     private string _title;
     private bool _isActive;
+    private bool _hasAttention;
     private bool _usesAutomaticLayout;
     private int _columns;
     private int _rows;
@@ -1081,6 +1162,20 @@ public sealed class RuntimeTabViewModel : ObservableObject
                 OnPropertyChanged(nameof(TabForeground));
             }
         }
+    }
+
+    /// <summary>
+    /// Whether this asked to be noticed and has not been looked at since.
+    ///
+    /// Set from one place — the shell's notification centre — rather than
+    /// computed here, for the same reason <see cref="IsActive"/> is: a flag
+    /// that each level worked out for itself would need every level watching
+    /// its children, and the levels already know nothing about each other.
+    /// </summary>
+    public bool HasAttention
+    {
+        get => _hasAttention;
+        internal set => SetProperty(ref _hasAttention, value);
     }
 
     public string TabBackground => IsActive ? "#32201B" : "#1A1A1D";
@@ -2206,6 +2301,7 @@ public abstract class RuntimePanelViewModel(
     string kindLabel) : ObservableObject, IDisposable
 {
     private bool _isActive;
+    private bool _hasAttention;
     private bool _isVisibleInLayout = true;
     private bool _isZoomed;
 
@@ -2221,6 +2317,20 @@ public abstract class RuntimePanelViewModel(
     {
         get => _isActive;
         internal set => SetProperty(ref _isActive, value);
+    }
+
+    /// <summary>
+    /// Whether this asked to be noticed and has not been looked at since.
+    ///
+    /// Set from one place — the shell's notification centre — rather than
+    /// computed here, for the same reason <see cref="IsActive"/> is: a flag
+    /// that each level worked out for itself would need every level watching
+    /// its children, and the levels already know nothing about each other.
+    /// </summary>
+    public bool HasAttention
+    {
+        get => _hasAttention;
+        internal set => SetProperty(ref _hasAttention, value);
     }
 
     public bool IsVisibleInLayout
@@ -2305,7 +2415,7 @@ public enum ConnectionPanelState
     Disposed,
 }
 
-public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel
+public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPanelNotificationSource
 {
     private readonly IConnectionRuntime _connectionRuntime;
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
@@ -2319,6 +2429,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel
     private IReadOnlyList<string> _startupCommands;
     private CancellationTokenSource? _attempt;
     private EnsureTerminalSessionRequest? _sessionRequest;
+    private CancellationTokenSource? _notificationWatch;
     private bool _hasObservedActiveSession;
     private ConnectionPanelState _connectionState;
     private ConnectionRuntimeError? _connectionError;
@@ -2420,11 +2531,84 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel
             {
                 _sessionRequest = value;
                 HasObservedActiveSession = false;
+                WatchNotifications(value?.SessionId);
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(HasConnectionOverlay));
             }
         }
     }
+
+    /// <summary>
+    /// Raised when the terminal asks to be noticed — a bell, or an OSC 9 /
+    /// OSC 777 notification. Raised on whatever thread the stream delivers on;
+    /// the shell marshals it.
+    /// </summary>
+    public event EventHandler<PanelNotificationEvent>? NotificationReceived;
+
+    /// <summary>
+    /// Follows one session's requests to be noticed.
+    ///
+    /// Per panel rather than per workspace on purpose: the workspace graph
+    /// watch only runs for the workspace on screen, and a notification from a
+    /// workspace nobody is looking at is the entire point of the feature.
+    /// </summary>
+    private void WatchNotifications(SessionId? sessionId)
+    {
+        var previous = Interlocked.Exchange(ref _notificationWatch, null);
+        previous?.Cancel();
+        previous?.Dispose();
+        if (sessionId is not { } id || _disposed)
+        {
+            return;
+        }
+
+        var watch = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _notificationWatch = watch;
+        _ = WatchNotificationsAsync(id, watch.Token);
+    }
+
+    private async Task WatchNotificationsAsync(SessionId sessionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var notification in SessionClient
+                .WatchNotificationsAsync(
+                    new WatchSessionRequest(sessionId, 0),
+                    OperationContext.ForHuman(ClientId, idempotencyKey: IdempotencyKey.New()),
+                    cancellationToken)
+                .ConfigureAwait(false))
+            {
+                if (ShouldRaise(notification))
+                {
+                    NotificationReceived?.Invoke(this, notification);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The panel closed or its session was replaced.
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // A notification stream that dies must not take the panel with it:
+            // the terminal itself is unaffected by nobody listening for bells.
+            Console.Error.WriteLine(
+                $"[ghostshell:notifications] Watch for {sessionId} ended: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Whether a request to be noticed should reach the shell at all.
+    ///
+    /// The bell is the one the user has an opinion about, and until now that
+    /// opinion had nowhere to land: the profile's bell mode was stored, edited,
+    /// and read by nothing. A mode that asks only for a system alert is not
+    /// asking for a mark on the tab.
+    /// </summary>
+    private bool ShouldRaise(PanelNotificationEvent notification) =>
+        notification.Kind != PanelNotificationKind.Bell
+        || (RenderProfile?.BellMode ?? TerminalBellMode.Visual) is
+            TerminalBellMode.Visual or TerminalBellMode.SystemAndVisual;
 
     public bool HasObservedActiveSession
     {

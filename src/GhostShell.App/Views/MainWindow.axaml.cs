@@ -138,6 +138,9 @@ public sealed partial class MainWindow : Window
         // open. The view model announces it; republishing the application's
         // resources is the host's to do.
         ViewModel.WorkspaceAccentChanged += OnWorkspaceAccentChanged;
+        // Whether a notification leaves a mark depends on whether anyone was
+        // looking, and the window is the only thing that can say.
+        Deactivated += OnWindowDeactivated;
         RefreshWindowChromeMetrics();
         Avalonia.Threading.Dispatcher.UIThread.Post(
             RefreshWindowChromeMetrics,
@@ -153,6 +156,13 @@ public sealed partial class MainWindow : Window
         {
             RefreshWindowChromeMetrics();
         }
+    }
+
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ViewModel.IsWindowFocused = false;
     }
 
     private void OnWorkspaceAccentChanged(object? sender, string? accent)
@@ -175,6 +185,8 @@ public sealed partial class MainWindow : Window
         {
             viewModel.WorkspaceAccentChanged -= OnWorkspaceAccentChanged;
         }
+
+        Deactivated -= OnWindowDeactivated;
 
         _applicationHintLifetime?.Cancel();
         _applicationHintLifetime?.Dispose();
@@ -1934,6 +1946,11 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.IsWindowFocused = true;
+        }
+
         RefreshWindowChromeMetrics();
         if (_restoreRouteFocusWhenActivated)
         {
@@ -1980,6 +1997,7 @@ public sealed partial class MainWindow : Window
         _restoreRouteFocusWhenActivated = false;
         FocusCurrentRoute();
     }
+
 
     private async Task<bool> RunCloseFlowAsync(
         Func<CloseDecision, CancellationToken, ValueTask<HostResult<CloseScopeResult>>> close)

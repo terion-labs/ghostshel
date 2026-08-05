@@ -120,6 +120,42 @@ public sealed class SavedScreenRuntimeIdentityTests
         ]);
 
     /// <summary>
+    /// The rails list saved definitions while "open" is a fact about running
+    /// instances. Open and in-front are separate: several workspaces are alive
+    /// at once and only one is the one you are looking at.
+    /// </summary>
+    [Fact]
+    public async Task The_rail_says_which_workspaces_are_running_and_which_is_in_front()
+    {
+        var connection = LocalConnection("rail-connection", "Connection");
+        var first = WorkspaceOver(connection, "rail-first", "First");
+        var second = WorkspaceOver(connection, "rail-second", "Second");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(first), Store(second)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
+
+        LauncherWorkspaceViewModel Rail(WorkspaceId id) =>
+            viewModel.Workspaces.Single(item => item.Id == id);
+
+        Assert.All(viewModel.Workspaces, item => Assert.False(item.IsOpen));
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(first.Id));
+        Assert.True(Rail(first.Id).IsOpen);
+        Assert.True(Rail(first.Id).IsInFront);
+        Assert.False(Rail(second.Id).IsOpen);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(second.Id));
+        // The first is still running — it just is not the one on screen.
+        Assert.True(Rail(first.Id).IsOpen);
+        Assert.False(Rail(first.Id).IsInFront);
+        Assert.True(Rail(second.Id).IsInFront);
+    }
+
+    /// <summary>
     /// A workspace accent retints the shell while that workspace is open, and
     /// only while it is open. The view model cannot republish application
     /// resources, so what it owes the host is the announcement — and owing it
