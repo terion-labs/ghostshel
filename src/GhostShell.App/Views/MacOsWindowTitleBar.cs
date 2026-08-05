@@ -28,18 +28,35 @@ internal static class MacOsWindowTitleBar
     /// <summary>NSWindowTitleVisibility.NSWindowTitleHidden.</summary>
     private const nint TitleHidden = 1;
 
-    public static bool TryStopPaintingItsOwnMaterial(Window window)
+    /// <summary>NSWindowStyleMaskFullSizeContentView.</summary>
+    private const nuint FullSizeContentView = 1 << 15;
+
+    public static MacOsTitleBarOutcome TryStopPaintingItsOwnMaterial(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
         if (!OperatingSystem.IsMacOS()
             || window.TryGetPlatformHandle() is not IMacOSTopLevelPlatformHandle handle
             || handle.NSWindow == 0)
         {
-            return false;
+            return MacOsTitleBarOutcome.Unreachable;
         }
 
         try
         {
+            // The content has to be allowed under the title bar before asking
+            // the title bar not to paint — without this the window still
+            // reserves the band and fills it, and the ask above it does
+            // nothing while reporting that it worked.
+            var styleMask = SendNUInt(handle.NSWindow, sel_registerName("styleMask"));
+            var contentAlreadyRanFullSize = (styleMask & FullSizeContentView) != 0;
+            if (!contentAlreadyRanFullSize)
+            {
+                SendNUIntArgument(
+                    handle.NSWindow,
+                    sel_registerName("setStyleMask:"),
+                    styleMask | FullSizeContentView);
+            }
+
             SendBool(
                 handle.NSWindow,
                 sel_registerName("setTitlebarAppearsTransparent:"),
@@ -50,13 +67,24 @@ internal static class MacOsWindowTitleBar
                 handle.NSWindow,
                 sel_registerName("setTitleVisibility:"),
                 TitleHidden);
-            return true;
+            // Reading it back rather than trusting the set: the previous
+            // version of this reported success on the strength of the call
+            // having returned, which said nothing about whether anything
+            // changed. This distinguishes the two cases that matter — the bit
+            // was already on and the band survived anyway, or we turned it on.
+            var settled = (SendNUInt(handle.NSWindow, sel_registerName("styleMask"))
+                & FullSizeContentView) != 0;
+            return settled
+                ? contentAlreadyRanFullSize
+                    ? MacOsTitleBarOutcome.ContentAlreadyRanFullSize
+                    : MacOsTitleBarOutcome.ContentNowRunsFullSize
+                : MacOsTitleBarOutcome.Refused;
         }
         catch (Exception exception) when (exception is DllNotFoundException
             or EntryPointNotFoundException
             or BadImageFormatException)
         {
-            return false;
+            return MacOsTitleBarOutcome.Unreachable;
         }
     }
 
@@ -72,4 +100,31 @@ internal static class MacOsWindowTitleBar
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern void SendNInt(nint receiver, nint selector, nint value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern nuint SendNUInt(nint receiver, nint selector);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendNUIntArgument(
+        nint receiver,
+        nint selector,
+        nuint value);
+}
+
+/// <summary>
+/// What asking the title bar to stop painting actually did.
+/// </summary>
+internal enum MacOsTitleBarOutcome
+{
+    /// <summary>Not macOS, or no window to ask.</summary>
+    Unreachable,
+
+    /// <summary>Asked, and the style mask still does not carry the bit.</summary>
+    Refused,
+
+    /// <summary>Avalonia had already extended the content; we only asked for transparency.</summary>
+    ContentAlreadyRanFullSize,
+
+    /// <summary>The content did not run under the title bar until we said so.</summary>
+    ContentNowRunsFullSize,
 }

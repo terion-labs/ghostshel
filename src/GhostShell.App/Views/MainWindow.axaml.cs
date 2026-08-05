@@ -229,7 +229,7 @@ public sealed partial class MainWindow : Window
         // Before the blur, not after: the system title bar paints its own
         // material over the top of the client area, and no fill of ours can
         // cancel something drawn above it.
-        var titleBarQuietened = MacOsWindowTitleBar.TryStopPaintingItsOwnMaterial(this);
+        var titleBar = MacOsWindowTitleBar.TryStopPaintingItsOwnMaterial(this);
         var blurred = OperatingSystem.IsMacOS()
             && MacOsQuickTerminalBackdrop.TryApply(this, radius);
         var negotiated = ActualTransparencyLevel;
@@ -240,14 +240,17 @@ public sealed partial class MainWindow : Window
 
         // Only when something did not take. Every appearance republish comes
         // back through here, so a line each time is eight lines a start.
+        var titleBarQuietened = titleBar
+            is MacOsTitleBarOutcome.ContentAlreadyRanFullSize
+            or MacOsTitleBarOutcome.ContentNowRunsFullSize;
         if (titleBarQuietened && blurred && negotiated != WindowTransparencyLevel.None)
         {
             return;
         }
 
         Console.Error.WriteLine(
-            $"[ghostshell:appearance] backdrop incomplete — title bar quietened "
-            + $"{titleBarQuietened}, native blur {blurred}, transparency "
+            $"[ghostshell:appearance] backdrop incomplete — title bar "
+            + $"{titleBar}, native blur {blurred}, transparency "
             + $"{negotiated}, decoration margin {WindowDecorationMargin.Top:0}");
     }
 
@@ -2126,49 +2129,36 @@ public sealed partial class MainWindow : Window
     /// <summary>
     /// How much room the chrome leaves for the window's own controls.
     ///
-    /// The shell draws them itself now, so this is measured from what it drew
-    /// rather than asked of the platform: three discs, the gaps between them,
-    /// and the inset they sit in. Nothing here is reported by a system title
-    /// bar any more, because there is not one.
+    /// The platform still draws them, so the platform is still asked. Drawing
+    /// them ourselves to a hand-computed inset lost the rounded corners, the
+    /// resize edges and the correct button size along with the title bar, so
+    /// the measurement comes back from the system.
     /// </summary>
     private void RefreshWindowChromeMetrics()
     {
         const double horizontalSpacing = 14;
-        const double windowControlsWidth = 12 * 3;
-        const double windowControlsGaps = 8 * 2;
-        const double windowControlsInset = 12 * 2;
+        var reportedHeight = WindowDecorationMargin.Top;
+        TitleBarChromeHeight = double.IsFinite(reportedHeight) && reportedHeight > 0
+            ? reportedHeight
+            : 44;
 
-        TitleBarChromeHeight = 34;
-        WindowTitleBarContentMargin = WindowState == WindowState.FullScreen
-            ? new Thickness(horizontalSpacing, 0)
-            : new Thickness(
-                windowControlsWidth + windowControlsGaps + windowControlsInset,
+        if (OperatingSystem.IsMacOS())
+        {
+            var trafficLightRightEdge = WindowState == WindowState.FullScreen
+                ? 0
+                : MacOsWindowChromeMetrics.TryGetTrafficLightRightEdge(this)
+                    ?? Math.Max(92, TitleBarChromeHeight * 2.25);
+            WindowTitleBarContentMargin = new Thickness(
+                trafficLightRightEdge + horizontalSpacing,
                 0,
                 horizontalSpacing,
                 0);
-    }
+            return;
+        }
 
-    private void OnWindowControlCloseClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        Close();
-    }
-
-    private void OnWindowControlMinimiseClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        WindowState = WindowState.Minimized;
-    }
-
-    private void OnWindowControlZoomClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
+        WindowTitleBarContentMargin = OperatingSystem.IsWindows()
+            ? new Thickness(10, 0, 148, 0)
+            : new Thickness(10, 0);
     }
 
     private void RestoreRouteFocusIfActive()
