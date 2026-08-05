@@ -13,6 +13,20 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     /// </summary>
     public const string DefaultWorkspaceId = "default";
 
+    /// <summary>
+    /// What that workspace is called. "Main" rather than "Default", because
+    /// the shell names it to the person using it, not to the code that seeds
+    /// it — it is where you are when you have not chosen to be anywhere else.
+    /// </summary>
+    public const string DefaultWorkspaceName = "Main";
+
+    /// <summary>
+    /// The name it was seeded with before. A profile still carrying it is
+    /// carrying a seed value, not a choice, so renaming it is safe; a
+    /// workspace the user has named anything else is left alone.
+    /// </summary>
+    public const string LegacyDefaultWorkspaceName = "Default";
+
     [JsonConstructor]
     public WorkspaceDefinition(
         WorkspaceId id,

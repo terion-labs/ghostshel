@@ -641,7 +641,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                 return DefinitionStoreResult<Unit>.Failure(
                     new DefinitionStoreError(
                         DefinitionStoreErrorCode.DependencyConflict,
-                        "The Default workspace always exists and cannot be deleted."));
+                        $"The {WorkspaceDefinition.DefaultWorkspaceName} workspace always exists and cannot be deleted."));
             }
 
             var result = key.Kind switch
@@ -1207,7 +1207,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             || Snapshot.Screens.Count != 0
             || Snapshot.Workspaces.Count != 0)
         {
-            // The Default workspace always exists, whatever else the profile
+            // The always-present workspace exists whatever else the profile
             // holds — a profile that predates the guarantee gets it back here.
             if (Snapshot.Workspaces.Any(item =>
                     string.Equals(
@@ -1215,14 +1215,15 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                         WorkspaceDefinition.DefaultWorkspaceId,
                         StringComparison.Ordinal)))
             {
-                return DefinitionStoreResult<Unit>.Success(Unit.Value);
+                return await MigrateLegacyDefaultWorkspaceNameAsync(cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             var restored = await _workspaces.SaveAsync(
                     new WorkspaceDefinition(
                         new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
                         WorkspaceDefinition.CurrentSchemaVersion,
-                        "Default",
+                        WorkspaceDefinition.DefaultWorkspaceName,
                         "Your local GhostSHELL workspace.",
                         "#B8793A",
                         []),
@@ -1287,6 +1288,49 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             100_000,
             TerminalPalette.GhostShellDark,
             keymap);
+    }
+
+    /// <summary>
+    /// Renames the always-present workspace from what it used to be seeded as.
+    ///
+    /// Only that exact name is touched. A name the user chose — including
+    /// choosing to call it "Default" — is a decision, and the migration has no
+    /// business overwriting one; a profile still carrying the old seed value
+    /// never made a decision at all.
+    /// </summary>
+    private async ValueTask<DefinitionStoreResult<Unit>>
+        MigrateLegacyDefaultWorkspaceNameAsync(CancellationToken cancellationToken)
+    {
+        var stored = Snapshot.Workspaces.FirstOrDefault(item =>
+            item.Value.Id.Value == WorkspaceDefinition.DefaultWorkspaceId);
+        if (stored is null
+            || !string.Equals(
+                stored.Value.Name,
+                WorkspaceDefinition.LegacyDefaultWorkspaceName,
+                StringComparison.Ordinal))
+        {
+            return DefinitionStoreResult<Unit>.Success(Unit.Value);
+        }
+
+        var workspace = stored.Value;
+        var saved = await _workspaces.SaveAsync(
+                new WorkspaceDefinition(
+                    workspace.Id,
+                    workspace.SchemaVersion,
+                    WorkspaceDefinition.DefaultWorkspaceName,
+                    workspace.Description,
+                    workspace.Accent,
+                    workspace.Entries,
+                    workspace.AgentPolicyOverride,
+                    workspace.Icon,
+                    workspace.AutoSave,
+                    workspace.Color),
+                stored.Revision,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return saved.IsSuccess
+            ? DefinitionStoreResult<Unit>.Success(Unit.Value)
+            : DefinitionStoreResult<Unit>.Failure(saved.Error!);
     }
 
     private async ValueTask<DefinitionStoreResult<Unit>>
@@ -1378,7 +1422,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
         var workspace = new WorkspaceDefinition(
             new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
             WorkspaceDefinition.CurrentSchemaVersion,
-            "Default",
+            WorkspaceDefinition.DefaultWorkspaceName,
             "Your local GhostSHELL workspace.",
             "#B8793A",
             [

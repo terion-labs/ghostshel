@@ -87,6 +87,45 @@ public sealed class DefinitionCatalogTests
         Assert.Equal(attemptsAfterFirstInitialization, fixture.TotalSaveAttempts);
     }
 
+    /// <summary>
+    /// The always-present workspace is called Main. A profile made before that
+    /// carries the name it was seeded with, which is not a name anyone chose,
+    /// so it is brought forward once and then left alone.
+    /// </summary>
+    [Fact]
+    public async Task Initialize_renames_the_workspace_still_carrying_the_old_seed_name_once()
+    {
+        var fixture = new CatalogFixture();
+        fixture.Workspaces.Add(
+            CreateAlwaysPresentWorkspace(WorkspaceDefinition.LegacyDefaultWorkspaceName),
+            revision: 3);
+
+        var first = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+        var attemptsAfterFirstInitialization = fixture.Workspaces.SaveAttempts;
+        var second = await fixture.CreateCatalog().InitializeAsync(CancellationToken.None);
+
+        Assert.True(first.IsSuccess, first.Error?.Message);
+        Assert.True(second.IsSuccess, second.Error?.Message);
+        var stored = Assert.Single(second.Value!.Workspaces);
+        Assert.Equal(WorkspaceDefinition.DefaultWorkspaceName, stored.Value.Name);
+        Assert.Equal(4, stored.Revision);
+        Assert.Equal(1, attemptsAfterFirstInitialization);
+        Assert.Equal(attemptsAfterFirstInitialization, fixture.Workspaces.SaveAttempts);
+    }
+
+    [Fact]
+    public async Task Initialize_keeps_a_name_the_user_chose_for_the_always_present_workspace()
+    {
+        var fixture = new CatalogFixture();
+        fixture.Workspaces.Add(CreateAlwaysPresentWorkspace("Work"), revision: 3);
+
+        var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal("Work", Assert.Single(result.Value!.Workspaces).Value.Name);
+        Assert.Equal(0, fixture.Workspaces.SaveAttempts);
+    }
+
     [Fact]
     public async Task Initialize_updates_the_legacy_default_terminal_background_once()
     {
@@ -931,6 +970,15 @@ public sealed class DefinitionCatalogTests
             ConnectionStartup.Default,
             ConnectionKeepAlive.Disabled,
             SshHostKeyPolicy.NotApplicable);
+
+    private static WorkspaceDefinition CreateAlwaysPresentWorkspace(string name) =>
+        new(
+            new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            name,
+            "Your local GhostSHELL workspace.",
+            "#B8793A",
+            []);
 
     private static TerminalProfile CreateTerminalProfile(string id, TerminalPalette palette) =>
         new(
