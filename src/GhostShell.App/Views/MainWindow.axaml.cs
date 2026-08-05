@@ -229,23 +229,22 @@ public sealed partial class MainWindow : Window
         // Before the blur, not after: the system title bar paints its own
         // material over the top of the client area, and no fill of ours can
         // cancel something drawn above it.
-        _ = MacOsWindowTitleBar.TryStopPaintingItsOwnMaterial(this);
+        var titleBarQuietened = MacOsWindowTitleBar.TryStopPaintingItsOwnMaterial(this);
         var blurred = OperatingSystem.IsMacOS()
             && MacOsQuickTerminalBackdrop.TryApply(this, radius);
         var negotiated = ActualTransparencyLevel;
         if (blurred || negotiated != WindowTransparencyLevel.None)
         {
             LetTheBackdropThrough();
-            return;
         }
 
-        // Only when it did not take. Both halves of this failed silently in
-        // turn — a platform that declines says nothing, and a shell that stays
-        // opaque looks the same as one that was never asked — so the absence
-        // is what gets a line.
+        // Three native asks, each of which has failed silently at least once in
+        // getting this far, and each of which looks identical from outside when
+        // it does. The title bar is the one still in question.
         Console.Error.WriteLine(
-            $"[ghostshell:appearance] backdrop refused — native blur {blurred}, "
-            + $"transparency {negotiated}");
+            $"[ghostshell:appearance] backdrop — title bar quietened "
+            + $"{titleBarQuietened}, native blur {blurred}, transparency "
+            + $"{negotiated}, decoration margin {WindowDecorationMargin.Top:0}");
     }
 
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;
