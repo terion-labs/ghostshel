@@ -70,6 +70,7 @@
               <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                 <icons:SymbolIcon VerticalAlignment="Center" Symbol="WindowConsole" FontSize="13" Foreground="{Binding TabForeground}" />
                 <TextBlock VerticalAlignment="Center" Foreground="{Binding TabForeground}" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                <controls:SignalDot IsVisible="{Binding HasAttention}" />
               </StackPanel>
             </Button>
             <Border

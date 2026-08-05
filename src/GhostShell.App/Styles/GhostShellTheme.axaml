@@ -96,6 +96,25 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
+  <!--
+    A workspace tile in the rails. Open and in-front are two states and they
+    must not read as one: several workspaces run at once, and only one of them
+    is the one being looked at. Open is a quiet outline saying "this is alive";
+    in front is the accent, saying "this is where you are".
+  -->
+  <Style Selector="Button.WorkspaceTile">
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.WorkspaceTile.open">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellMutedBrush}" />
+  </Style>
+
+  <Style Selector="Button.WorkspaceTile.current">
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
   <Style Selector="Button.IconButton.Large">
     <Setter Property="Width" Value="34" />
     <Setter Property="Height" Value="34" />

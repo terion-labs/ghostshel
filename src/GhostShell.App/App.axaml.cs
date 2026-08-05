@@ -484,6 +484,13 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellTileSizeSm"] = Math.Round(resources.ControlMinHeight * 0.85);
         Resources["ShellTileSizeMd"] = Math.Round(resources.ControlMinHeight * 1.05);
         Resources["ShellTileSizeLg"] = Math.Round(resources.ControlMinHeight * 1.75);
+
+        // The attention dot, and the ring that keeps it legible on top of a
+        // saturated tile. Derived like the tiles so a compact density does not
+        // leave a mark sized for a roomier one.
+        Resources["ShellSignalDotSize"] = Math.Round(resources.ControlMinHeight * 0.28);
+        Resources["ShellSignalDotRing"] = new Thickness(
+            Math.Max(1, Math.Round(resources.ControlMinHeight * 0.06)));
         Resources["ShellControlCornerRadius"] = resources.ControlCornerRadius;
         Resources["ShellControlPadding"] = resources.ControlPadding;
         Resources["ShellButtonPadding"] = resources.ButtonPadding;

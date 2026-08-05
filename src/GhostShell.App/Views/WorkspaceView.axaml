@@ -146,9 +146,25 @@
                 <!-- Center, not the Stretch default: a fixed-width child of a
                      vertical StackPanel is start-aligned, which pushed every
                      tile against the rail's left edge. -->
-                <Button Width="40" Height="40" Margin="{controls:Inset Bottom=Sm}" HorizontalAlignment="Center" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
-                  <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="16" />
-                </Button>
+                <Panel Margin="{controls:Inset Bottom=Sm}" HorizontalAlignment="Center">
+                  <Button
+                      Width="40"
+                      Height="40"
+                      Padding="0"
+                      Classes="WorkspaceTile"
+                      Classes.open="{Binding IsOpen}"
+                      Classes.current="{Binding IsInFront}"
+                      Background="{Binding Accent}"
+                      Click="OnOpenWorkspaceClick"
+                      ToolTip.Tip="{Binding Name}"
+                      AutomationProperties.Name="{Binding Name}">
+                    <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="16" />
+                  </Button>
+                  <controls:SignalDot
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Top"
+                      IsVisible="{Binding HasAttention}" />
+                </Panel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>

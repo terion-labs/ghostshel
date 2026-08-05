@@ -154,6 +154,29 @@
       </Style>
     </ControlTheme>
 
+    <ControlTheme x:Key="{x:Type controls:SignalDot}" TargetType="controls:SignalDot">
+      <Setter Property="Width" Value="{DynamicResource ShellSignalDotSize}" />
+      <Setter Property="Height" Value="{DynamicResource ShellSignalDotSize}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+      <!-- The ring is the page behind it, not a colour of its own: the dot is
+           drawn over whatever it marks, and against a tile that happens to be
+           accent-coloured an unringed dot is invisible. -->
+      <Setter Property="BorderBrush" Value="{DynamicResource ShellBackgroundBrush}" />
+      <Setter Property="BorderThickness" Value="{DynamicResource ShellSignalDotRing}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              CornerRadius="{DynamicResource ShellPillCornerRadius}" />
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
     <ControlTheme x:Key="{x:Type controls:ListItem}" TargetType="controls:ListItem">
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Template">

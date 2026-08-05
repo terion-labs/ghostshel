@@ -38,6 +38,12 @@
               Text="Terminal" />
           </controls:PanelDockHandle>
           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
+            <!-- The panel that actually asked. The tab and the rail aggregate
+                 it, so this is where the trail ends. -->
+            <controls:SignalDot
+                Margin="{controls:Inset Right=Xs}"
+                IsVisible="{Binding HasAttention}"
+                ToolTip.Tip="This panel asked for attention" />
             <TextBlock
                 VerticalAlignment="Center"
                 Classes="Muted"

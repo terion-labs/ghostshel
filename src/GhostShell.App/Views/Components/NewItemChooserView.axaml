@@ -119,9 +119,25 @@
           <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Button Width="38" Height="38" Padding="0" Background="{Binding Accent}" Click="OnOpenWorkspaceClick" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
-                <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="15" />
-              </Button>
+              <Panel>
+                <Button
+                    Width="38"
+                    Height="38"
+                    Padding="0"
+                    Classes="WorkspaceTile"
+                    Classes.open="{Binding IsOpen}"
+                    Classes.current="{Binding IsInFront}"
+                    Background="{Binding Accent}"
+                    Click="OnOpenWorkspaceClick"
+                    ToolTip.Tip="{Binding Name}"
+                    AutomationProperties.Name="{Binding Name}">
+                  <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="15" />
+                </Button>
+                <controls:SignalDot
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    IsVisible="{Binding HasAttention}" />
+              </Panel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

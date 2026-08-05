@@ -198,6 +198,15 @@ internal sealed class QaApplication : Avalonia.Application
             vm.BeginEditLayout(new LayoutId("grid-four"));
         }),
         new("workspace", vm => vm.ShowWorkspace()),
+        // Every mark at once: a panel that asked, the tab and workspace that
+        // inherit it, and the rail showing which workspaces are running.
+        new(
+            "workspace-attention",
+            vm =>
+            {
+                vm.ShowWorkspace();
+                MarkBackgroundTabForAttention(vm);
+            }),
         new(
             "workspace-drag-ghost",
             vm => vm.ShowWorkspace(),
@@ -439,6 +448,41 @@ internal sealed class QaApplication : Avalonia.Application
                 StringComparison.Ordinal))
         ?? throw new InvalidOperationException(
             $"The route wanted '{automationName}', which is not in the tree.");
+
+    /// <summary>
+    /// Marks a tab other than the one in front, which is the case the marks
+    /// exist for — a notification you can see the result of is not one you
+    /// needed telling about.
+    /// </summary>
+    private static void MarkBackgroundTabForAttention(MainWindowViewModel viewModel)
+    {
+        var workspace = viewModel.RuntimeWorkspace
+            ?? throw new InvalidOperationException(
+                "The attention route needs a runtime workspace.");
+        // Two marks, both real: the panel on screen was marked while the window
+        // was in the background (a case the notification centre has a test
+        // for), and a tab behind it is holding one of its own. One capture then
+        // shows the panel header, the tab strip, and the rail together.
+        var visiblePanel = workspace.Tabs
+            .SelectMany(candidate => candidate.Panels)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                "The attention route needs a panel to mark.");
+        visiblePanel.HasAttention = true;
+        foreach (var candidate in workspace.Tabs)
+        {
+            candidate.HasAttention = candidate.Panels.Contains(visiblePanel)
+                || !candidate.IsActive;
+        }
+
+        workspace.HasAttention = true;
+        foreach (var item in viewModel.Workspaces)
+        {
+            item.HasAttention = true;
+            item.IsOpen = true;
+            item.IsInFront = item == viewModel.Workspaces[0];
+        }
+    }
 
     private static void ShowFirstLaunchCardHover(MainWindow window)
     {
