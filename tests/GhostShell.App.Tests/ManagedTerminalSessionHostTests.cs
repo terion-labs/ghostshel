@@ -61,6 +61,34 @@ public sealed class ManagedTerminalSessionHostTests
         Assert.Equal(latestViewport, host.LastViewport);
     }
 
+    /// <summary>
+    /// A panel attaches on its way into the visual tree and is arranged after,
+    /// so the viewport it attaches with is the surface's unarranged fallback —
+    /// eighty by twenty-four. Nothing reports the real size afterwards: the
+    /// layout pass raises its change while the attachment is still being built,
+    /// and once the layout settles it stays settled. A workspace switched away
+    /// from and back came home eighty columns wide.
+    /// </summary>
+    [Fact]
+    public async Task A_terminal_attached_before_its_first_layout_is_resized_to_what_it_was_given()
+    {
+        var client = new LifecycleClient();
+        // Nothing here is about serializing resizes, so the double's first-resize
+        // latch is opened up front rather than held.
+        client.ReleaseFirstResize.TrySetResult();
+        var host = CreateHost(client);
+        client.InterruptFirstScreenReadWith(() => Arrange(host, new Size(980, 520)));
+
+        await host.InitializeForTestingAsync();
+
+        var arranged = host.Surface.CurrentViewport();
+        Assert.True(
+            arranged.Columns > 80,
+            $"The arranged surface should be wider than the fallback; it measured {arranged}.");
+        Assert.Equal(arranged, host.LastViewport);
+        Assert.Equal(arranged, client.ResizeRequests[^1].Viewport);
+    }
+
     [Fact]
     public void SessionRequestAppliesItsImmutableKeymapSnapshotToTheSurface()
     {
@@ -367,6 +395,7 @@ public sealed class ManagedTerminalSessionHostTests
         private int _activeResizes;
         private int _maximumConcurrentResizes;
         private int _resizeCalls;
+        private Action? _duringFirstScreenRead;
 
         public LifecycleClient(
             InitializationFailureStage? failureStage = null,
@@ -486,6 +515,16 @@ public sealed class ManagedTerminalSessionHostTests
             }
         }
 
+        /// <summary>
+        /// Runs something inside the first screen read — the step that happens
+        /// after the renderer is attached and before the attachment is recorded.
+        /// That is the window a layout pass lands in when a backgrounded
+        /// workspace comes back to the front, and it stays on this thread
+        /// because the surface belongs to it.
+        /// </summary>
+        public void InterruptFirstScreenReadWith(Action interruption) =>
+            _duringFirstScreenRead = interruption;
+
         public void BlockNextPhysicalInput() =>
             Volatile.Write(ref _blockNextPhysicalInput, 1);
 
@@ -597,6 +636,9 @@ public sealed class ManagedTerminalSessionHostTests
         {
             ThrowIf(InitializationFailureStage.Screen);
             ScreenReadCalls++;
+            var interruption = _duringFirstScreenRead;
+            _duringFirstScreenRead = null;
+            interruption?.Invoke();
             return Success(new TerminalScreenSnapshot(
                 string.Empty,
                 0,

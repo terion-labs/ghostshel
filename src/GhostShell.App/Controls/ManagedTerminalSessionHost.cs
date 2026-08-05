@@ -770,6 +770,15 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             _surface.SetInputReady(true);
             _pollTimer.Start();
             RestoreRequestedFocus();
+            // The viewport above was measured before the layout pass that gives
+            // this host its bounds — attaching happens on the way into the visual
+            // tree, arranging happens after. Whatever the surface reports now is
+            // what the terminal must actually be, and this is the only moment
+            // that knows both: a viewport change raised while attaching had no
+            // attachment to resize, and once the layout settles nothing raises
+            // another. Without this a workspace brought back from the background
+            // stayed at the 80x24 fallback its panel was attached with.
+            await ResizeTerminalAsync();
             await SendStartupCommandsIfNeededAsync(generation, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1340,11 +1349,11 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
     {
         _ = sender;
         _ = e;
-        if (_attachmentId is not null)
-        {
-            _resizeTimer.Stop();
-            _resizeTimer.Start();
-        }
+        // Unconditionally, even with no attachment yet: a change dropped here
+        // is a change nothing else will report again. The resize itself already
+        // declines when there is nothing attached to resize.
+        _resizeTimer.Stop();
+        _resizeTimer.Start();
     }
 
     private async void OnResizeTimerTick(object? sender, EventArgs e)
