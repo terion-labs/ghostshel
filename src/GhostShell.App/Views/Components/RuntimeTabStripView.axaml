@@ -17,8 +17,8 @@
     <StackPanel Orientation="{Binding Orientation, ElementName=Root}" Spacing="{DynamicResource ShellSpaceXs}">
       <Button
           x:Name="HomeTabButton"
-          Width="26"
-          Height="26"
+          Width="22"
+          Height="22"
           Padding="0"
           Classes="RuntimeHomeTab"
           Classes.active="{Binding IsHomeActive, ElementName=Root}"
@@ -28,7 +28,7 @@
           ToolTip.Tip="Home"
           AutomationProperties.Name="Open Home tab"
           AutomationProperties.ItemStatus="{Binding HomeItemStatus, ElementName=Root}">
-        <icons:SymbolIcon VerticalAlignment="Center" Symbol="Home" FontSize="12" />
+        <icons:SymbolIcon VerticalAlignment="Center" Symbol="Home" FontSize="11" />
       </Button>
       <ItemsControl ItemsSource="{Binding Tabs, ElementName=Root}">
       <ItemsControl.ItemsPanel>
@@ -42,11 +42,11 @@
                the old height it was the heaviest thing in the chrome and read
                as a banner rather than as one tab among several. -->
           <Grid
-              Width="168"
-              Height="26"
+              Width="158"
+              Height="22"
               Classes="RuntimeTabDropTarget"
               Classes.active="{Binding IsActive}"
-              ColumnDefinitions="20,*,24"
+              ColumnDefinitions="18,*,20"
               DragDrop.AllowDrop="True"
               DragDrop.DragEnter="OnDragEnter"
               DragDrop.DragLeave="OnDragLeave"
@@ -64,7 +64,7 @@
                 Grid.ColumnSpan="3"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                Padding="{controls:Inset Horizontal=Xl}"
+                Padding="{controls:Inset Horizontal=Lg}"
                 Classes="RuntimeTabActivator"
                 Classes.active="{Binding IsActive}"
                 Click="OnActivate"
@@ -77,8 +77,8 @@
                    out through the close button instead of trimming. The label is
                    the only part that gives. -->
               <Grid VerticalAlignment="Center" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
-                <icons:SymbolIcon VerticalAlignment="Center" Symbol="WindowConsole" FontSize="12" />
-                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                <icons:SymbolIcon VerticalAlignment="Center" Symbol="WindowConsole" FontSize="11" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                 <controls:SignalDot Grid.Column="2" IsVisible="{Binding HasAttention}" />
               </Grid>
             </Button>
@@ -114,18 +114,18 @@
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Symbol="ReOrderDotsVertical"
-                  FontSize="11" />
+                  FontSize="10" />
             </Border>
             <Button
                 Grid.Column="2"
-                Width="22"
-                Height="22"
+                Width="18"
+                Height="18"
                 Classes="IconButton"
                 Click="OnClose"
                 ToolTip.Tip="Close tab"
                 AutomationProperties.Name="{Binding Title, StringFormat={}Close tab {0}}"
                 AutomationProperties.HelpText="Close this runtime tab using the normal session close policy.">
-              <icons:SymbolIcon Symbol="Dismiss" FontSize="10" />
+              <icons:SymbolIcon Symbol="Dismiss" FontSize="9" />
             </Button>
           </Grid>
         </DataTemplate>
@@ -133,14 +133,14 @@
       </ItemsControl>
       <Button
           x:Name="AddTabButton"
-          Width="26"
-          Height="26"
+          Width="22"
+          Height="22"
           Padding="0"
           Classes="IconButton"
           Click="OnAddTab"
           ToolTip.Tip="New tab"
           AutomationProperties.Name="Open a new tab">
-        <icons:SymbolIcon Symbol="Add" FontSize="13" />
+        <icons:SymbolIcon Symbol="Add" FontSize="12" />
       </Button>
     </StackPanel>
   </ScrollViewer>

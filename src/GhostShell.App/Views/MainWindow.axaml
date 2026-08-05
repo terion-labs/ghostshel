@@ -138,7 +138,12 @@
     </DataTemplate>
   </Window.DataTemplates>
 
-  <Grid Background="{DynamicResource ShellBackgroundBrush}">
+  <!-- The base surface everything else sits on. Translucent, so the blurred
+       desktop reads behind the gaps between panels; the panels, sidebars and
+       cards over it stay opaque, which is what keeps them legible and keeps
+       the translucency reading as one surface rather than as see-through
+       chrome. -->
+  <Grid Background="{DynamicResource ShellWindowBackdropBrush}">
     <!-- Everything the app draws lives inside this one layer so that
          locking can collapse it whole. The veil alone cannot cover native
          surfaces — a webview or a terminal is hosted above every Avalonia

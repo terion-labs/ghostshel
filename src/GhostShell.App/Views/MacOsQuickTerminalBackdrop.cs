@@ -5,9 +5,12 @@ using Avalonia.Platform;
 namespace GhostShell.App.Views;
 
 /// <summary>
-/// Applies the numeric Quick Terminal blur request on macOS. Avalonia exposes
-/// backdrop blur as a capability tier, not a radius; the native compositor API
-/// used by terminal applications retains the stored radius when available.
+/// Applies a numeric backdrop blur radius on macOS. Avalonia exposes backdrop
+/// blur as a capability tier, not a radius; the native compositor API used by
+/// terminal applications retains the stored radius when available.
+///
+/// Used by the Quick Terminal and by the shell window, which puts the same
+/// blur behind its base surface.
 /// </summary>
 internal static class MacOsQuickTerminalBackdrop
 {

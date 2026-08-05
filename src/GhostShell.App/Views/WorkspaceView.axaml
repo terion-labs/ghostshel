@@ -67,7 +67,9 @@
       </Grid>
     </Border>
 
-    <Border Grid.Row="1" Background="{DynamicResource ShellBackgroundBrush}">
+    <!-- No fill of its own: this band is part of the base surface, and painting
+         it opaque would have punched a solid stripe through the backdrop. -->
+    <Border Grid.Row="1">
       <Grid ColumnDefinitions="*,Auto" Margin="{controls:Inset Horizontal=Sm}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <!-- Centred, not stretched: a pill left to fill the row's full height has
              its rounded corners meet the row edges, which reads as corners cut
@@ -100,7 +102,7 @@
 
     <Border
         Grid.Row="3"
-        Height="34"
+        Height="30"
         Background="{DynamicResource ShellSurfaceBrush}"
         BorderBrush="{DynamicResource ShellBorderBrush}"
         BorderThickness="0,1,0,0"

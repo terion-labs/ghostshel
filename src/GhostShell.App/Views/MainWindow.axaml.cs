@@ -152,6 +152,45 @@ public sealed partial class MainWindow : Window
             RefreshWindowChromeMetrics,
             Avalonia.Threading.DispatcherPriority.Loaded);
         RefreshAppearanceControlsFromStoredProfile();
+        ApplyWindowBackdrop();
+    }
+
+    /// <summary>
+    /// How far the desktop is blurred behind the shell's base surface. Enough
+    /// to be a texture rather than a picture — what is behind the window should
+    /// not compete with what is in it.
+    /// </summary>
+    private const int WindowBackdropBlurRadius = 32;
+
+    /// <summary>
+    /// Puts a blur behind the window so the translucent base surface has
+    /// something to be translucent against.
+    ///
+    /// The native radius first, which is what the Quick Terminal already uses
+    /// and what terminal applications on this platform do; Avalonia's own hint
+    /// is the fallback, and it is a capability tier rather than a radius. A
+    /// host asking for reduced transparency gets neither — its base surface is
+    /// published opaque, and blurring behind an opaque surface is only cost.
+    /// </summary>
+    private void ApplyWindowBackdrop()
+    {
+        if (Avalonia.Application.Current is not App app || app.PrefersReducedTransparency)
+        {
+            return;
+        }
+
+        if (OperatingSystem.IsMacOS()
+            && MacOsQuickTerminalBackdrop.TryApply(this, WindowBackdropBlurRadius))
+        {
+            return;
+        }
+
+        TransparencyLevelHint =
+        [
+            WindowTransparencyLevel.AcrylicBlur,
+            WindowTransparencyLevel.Blur,
+            WindowTransparencyLevel.None,
+        ];
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

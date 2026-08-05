@@ -434,9 +434,36 @@ public sealed partial class App : Avalonia.Application
             _ => Equals(existing, value),
         };
 
+    /// <summary>
+    /// How much of the base surface survives. Enough that panels still read as
+    /// sitting on something of the shell's own rather than directly on the
+    /// desktop, and little enough for the blur behind it to be visible at all.
+    /// </summary>
+    private const byte ShellBackdropAlpha = 0xD8;
+
+    /// <summary>
+    /// Whether the host has asked for less transparency. The shell answers it
+    /// the same way the Quick Terminal does: no translucency and no blur.
+    /// </summary>
+    public bool PrefersReducedTransparency =>
+        _hostAppearance?.GetCurrent().ReducedTransparency == true;
+
     private void ApplyApplicationResources(EffectiveAppearanceResources resources)
     {
         Publish("ShellBackgroundBrush", Brush(resources.Background));
+        // The base surface the whole shell sits on. Slightly translucent, so
+        // the blurred desktop reads through the gaps between panels — but only
+        // where the host is willing: reduced transparency is an accessibility
+        // setting, and an operating system that says so gets a solid surface.
+        Publish(
+            "ShellWindowBackdropBrush",
+            new SolidColorBrush(Color.FromArgb(
+                _hostAppearance?.GetCurrent().ReducedTransparency == true
+                    ? byte.MaxValue
+                    : ShellBackdropAlpha,
+                resources.Background.R,
+                resources.Background.G,
+                resources.Background.B)));
         Publish("ShellSidebarBrush", Brush(resources.SidebarSurface));
         Publish("ShellSidebarBorderBrush", Brush(resources.SidebarBorder));
         Publish("ShellSidebarSelectionBrush", Brush(resources.SidebarSelectionSurface));
