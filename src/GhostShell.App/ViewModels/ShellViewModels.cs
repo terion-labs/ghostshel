@@ -836,13 +836,11 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
         string name,
         string accent,
         IReadOnlyList<LauncherConnectionViewModel> connections,
-        RuntimeAgentPolicyProvenance? agentPolicy = null,
-        string? shellAccent = null)
+        RuntimeAgentPolicyProvenance? agentPolicy = null)
     {
         Id = id;
         Name = name;
         Accent = accent;
-        ShellAccent = shellAccent;
         Connections = new ObservableCollection<LauncherConnectionViewModel>(connections);
         AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
         // A tab in this workspace is governed by this workspace unless it
@@ -894,19 +892,6 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
         internal set => SetProperty(ref _canvasDepth, value);
     }
 
-    /// <summary>
-    /// The accent this workspace asks the whole shell to wear while it is in
-    /// front, or null to leave the shell's own alone.
-    ///
-    /// Separate from <see cref="Accent"/>, which is the mark the workspace is
-    /// recognised by and belongs to the workspace wherever it appears. This one
-    /// belongs to the window, and it travels with the runtime so that every way
-    /// of coming to the front announces it — being opened, being switched back
-    /// to, being restored at start, or being what a closed workspace fell back
-    /// to. It used to be announced only by the open path, so a restored session
-    /// came up wearing the wrong colour.
-    /// </summary>
-    public string? ShellAccent { get; }
 
     public ObservableCollection<LauncherConnectionViewModel> Connections { get; }
 

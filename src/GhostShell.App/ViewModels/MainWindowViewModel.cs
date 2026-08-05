@@ -967,7 +967,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 // One announcement, from the one place that knows what is in
                 // front. Scattered across the open paths it was missing from
                 // every other way of arriving — restore among them.
-                SetActiveWorkspaceAccent(value?.ShellAccent);
+                SetActiveWorkspaceAccent(ShellAccentOf(value));
                 _activation?.Mark("accent");
 
                 StopTrackingAgentTerminalSelection(previous);
@@ -2259,8 +2259,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             RuntimeAgentPolicyProvenance.Default.WithOverride(
                 workspace.AgentPolicyOverride,
                 workspace.Key,
-                storedWorkspace.Revision),
-            workspace.Accent);
+                storedWorkspace.Revision));
         try
         {
             foreach (var entry in workspace.Entries)
@@ -10352,16 +10351,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// definition behind it, or one whose definition is gone, leaves the shell
     /// wearing its own accent, which is what it would have done anyway.
     /// </summary>
-    private string? ShellAccentOf(RuntimeHistorySource? source)
+    private string? ShellAccentOf(RuntimeWorkspaceViewModel? runtime)
     {
-        if (source?.SourceDefinition is not { } definition
-            || definition.Kind != WorkspaceDefinition.Kind)
+        if (runtime is null
+            || !_runtimeSources.TryGetValue(runtime.Id, out var source)
+            || source.SourceDefinition.Kind != WorkspaceDefinition.Kind)
         {
             return null;
         }
 
         return _catalog.Snapshot.Workspaces
-            .FirstOrDefault(item => item.Value.Id.Value == definition.Value)
+            .FirstOrDefault(item => item.Value.Id.Value == source.SourceDefinition.Value)
             ?.Value.Accent;
     }
 
@@ -10381,8 +10381,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             recovered.Accent,
             Connections.Where(item => connectionIds.Contains(item.Id)).ToArray(),
             recovered.AgentPolicy?.ToProvenance()
-                ?? RuntimeAgentPolicyProvenance.LegacyFallback,
-            ShellAccentOf(recovered.HistorySource?.ToHistorySource()));
+                ?? RuntimeAgentPolicyProvenance.LegacyFallback);
         try
         {
             var restoredTabs = new Dictionary<string, RuntimeTabViewModel>(StringComparer.Ordinal);

@@ -385,11 +385,15 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
                 SessionLifecycle.Active,
                 SessionHealth.Healthy,
                 hasActiveWork,
+                // Said to whoever is about to close it, so it says what closing
+                // would interrupt rather than which engine and renderer are
+                // carrying it. The parts naming our own plumbing meant nothing
+                // to the person reading them in a confirmation dialog.
                 _rendererAttached
                     ? hasActiveWork
-                        ? "libghostty-vt · managed renderer · foreground activity"
-                        : "libghostty-vt · managed renderer · shell idle"
-                    : "libghostty-vt active; renderer detached."));
+                        ? "still working"
+                        : "waiting at a prompt"
+                    : "running in the background"));
         }
     }
 

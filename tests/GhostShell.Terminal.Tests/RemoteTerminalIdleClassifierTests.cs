@@ -29,6 +29,39 @@ public sealed class RemoteTerminalIdleClassifierTests
         Assert.False(IsAtShellPrompt(screen, state));
     }
 
+    /// <summary>
+    /// Bracketed paste is what a shell turns on at its prompt so that a paste
+    /// arrives as text rather than as commands. Every modern bash and zsh does
+    /// it, so treating it as a sign of activity meant every remote shell looked
+    /// busy and every close asked to confirm.
+    /// </summary>
+    [Fact]
+    public void A_prompt_that_protects_pastes_is_still_a_prompt()
+    {
+        var state = State(cursorColumn: 15) with
+        {
+            IsBracketedPasteEnabled = true,
+        };
+
+        Assert.True(IsAtShellPrompt("root@ubuntu:~# ", state));
+    }
+
+    /// <summary>
+    /// What actually means something else has the terminal: a program drawing
+    /// on the alternate screen, or one reading the mouse. Both still say so
+    /// even where a prompt would otherwise be recognised.
+    /// </summary>
+    [Fact]
+    public void Mouse_tracking_is_never_treated_as_an_idle_shell()
+    {
+        var state = State(cursorColumn: 15) with
+        {
+            IsMouseTrackingEnabled = true,
+        };
+
+        Assert.False(IsAtShellPrompt("root@ubuntu:~# ", state));
+    }
+
     [Fact]
     public void Alternate_screen_is_never_treated_as_an_idle_shell()
     {

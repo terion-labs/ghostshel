@@ -28,8 +28,17 @@ internal static class RemoteTerminalIdleClassifier
         bool isMouseTrackingEnabled)
     {
         ArgumentNullException.ThrowIfNull(screen);
+        // The alternate screen and mouse tracking mean something has taken the
+        // terminal over, which is the opposite of sitting at a prompt.
+        //
+        // Bracketed paste does not, and treating it as though it did is what
+        // made every modern remote shell look busy: bash and zsh turn it on at
+        // the prompt precisely because that is where a paste needs protecting.
+        // It is evidence of a shell waiting for input, not of a program using
+        // the screen — and a program using the screen still has to fail the
+        // prompt shape below to be called idle.
+        _ = isBracketedPasteEnabled;
         if (isAlternateScreen
-            || isBracketedPasteEnabled
             || isMouseTrackingEnabled
             || cursorColumn <= 0)
         {
