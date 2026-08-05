@@ -359,6 +359,25 @@ public sealed partial class App : Avalonia.Application
         }
     }
 
+    /// <summary>
+    /// The accent of the workspace that is open, when it has one of its own. A
+    /// workspace accent is a temporary override of the application's: it lasts
+    /// while that workspace is open and leaves nothing behind, which is why it
+    /// is held here rather than written to the stored theme.
+    /// </summary>
+    private RgbColor? _workspaceAccent;
+
+    public void SetWorkspaceAccent(RgbColor? accent)
+    {
+        if (_workspaceAccent == accent)
+        {
+            return;
+        }
+
+        _workspaceAccent = accent;
+        ApplyAppearance();
+    }
+
     private EffectiveAppearanceResources ResolveAppearanceResources()
     {
         var preference = _definitionCatalog?.Snapshot.Themes
@@ -366,7 +385,17 @@ public sealed partial class App : Avalonia.Application
             ?? ThemePreference.Default;
         var hostAppearance = _hostAppearance?.GetCurrent()
             ?? throw new InvalidOperationException("Platform appearance settings are unavailable.");
-        return EffectiveAppearanceResourceMapper.Map(preference.Resolve(hostAppearance));
+        var theme = preference.Resolve(hostAppearance);
+        if (_workspaceAccent is { } workspaceAccent)
+        {
+            theme = theme with
+            {
+                Accent = workspaceAccent,
+                AccentSource = AccentSource.Custom,
+            };
+        }
+
+        return EffectiveAppearanceResourceMapper.Map(theme);
     }
 
     private void ApplyApplicationResources(EffectiveAppearanceResources resources)

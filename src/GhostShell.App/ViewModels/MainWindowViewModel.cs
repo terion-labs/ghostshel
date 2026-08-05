@@ -909,6 +909,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _runtimeWorkspace, value))
             {
                 StopRuntimeGraphWatch();
+                if (value is null)
+                {
+                    SetActiveWorkspaceAccent(null);
+                }
+
                 StopTrackingAgentTerminalSelection(previous);
                 QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
                 _runtimeHistorySource = null;
@@ -927,6 +932,27 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public bool HasRuntimeWorkspace => RuntimeWorkspace is not null;
+
+    /// <summary>
+    /// The accent the open workspace asks the shell to wear, or null to go back
+    /// to the application's own. Raised rather than applied here: retinting the
+    /// shell means republishing application resources, which is the host's job.
+    /// </summary>
+    public event EventHandler<string?>? WorkspaceAccentChanged;
+
+    private string? _activeWorkspaceAccent;
+
+    private void SetActiveWorkspaceAccent(string? accent)
+    {
+        var next = string.IsNullOrWhiteSpace(accent) ? null : accent;
+        if (string.Equals(_activeWorkspaceAccent, next, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _activeWorkspaceAccent = next;
+        WorkspaceAccentChanged?.Invoke(this, next);
+    }
 
     public string NewItemLauncherTitle => HasRuntimeWorkspace ? "New Tab" : "New Session";
 
@@ -2034,7 +2060,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var runtime = new RuntimeWorkspaceViewModel(
             WorkspaceInstanceId.New(),
             workspace.Name,
-            workspace.Accent ?? ThemePreference.BronzeFallback.ToString(),
+            WorkspaceTints.Of(workspace),
             ResolveWorkspaceConnections(workspace),
             RuntimeAgentPolicyProvenance.Default.WithOverride(
                 workspace.AgentPolicyOverride,
@@ -2120,6 +2146,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             ActivateRuntimeWorkspace(runtime, workspace.Key, workspace.Name);
+            SetActiveWorkspaceAccent(workspace.Accent);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2164,6 +2191,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             ActivateRuntimeWorkspace(runtime, connection.Key, connection.Name);
+            SetActiveWorkspaceAccent(null);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2214,6 +2242,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             ActivateRuntimeWorkspace(runtime, screen.Key, screen.Name);
+            SetActiveWorkspaceAccent(null);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;

@@ -67,6 +67,55 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.Contains("overlay", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A workspace accent retints the shell while that workspace is open, and
+    /// only while it is open. The view model cannot republish application
+    /// resources, so what it owes the host is the announcement — and owing it
+    /// on the way out matters as much as on the way in.
+    /// </summary>
+    [Fact]
+    public async Task An_open_workspace_announces_its_accent_and_takes_it_back()
+    {
+        var connection = LocalConnection("accent-connection", "Connection");
+        var accented = new WorkspaceDefinition(
+            new WorkspaceId("accented"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Accented",
+            null,
+            "#5FA97A",
+            [
+                new WorkspaceEntry.ConnectionReference(
+                    new WorkspaceEntryId("accent-entry"),
+                    connection.Id),
+            ]);
+        var plain = new WorkspaceDefinition(
+            new WorkspaceId("plain"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Plain",
+            null,
+            null,
+            [
+                new WorkspaceEntry.ConnectionReference(
+                    new WorkspaceEntryId("plain-entry"),
+                    connection.Id),
+            ]);
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(accented), Store(plain)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
+        List<string?> announced = [];
+        viewModel.WorkspaceAccentChanged += (_, accent) => announced.Add(accent);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(accented.Id));
+        Assert.Equal(["#5FA97A"], announced);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(plain.Id));
+        Assert.Equal(["#5FA97A", null], announced);
+    }
+
     [Fact]
     public async Task Workspace_mixed_entry_order_opens_connection_screen_and_owned_tab()
     {

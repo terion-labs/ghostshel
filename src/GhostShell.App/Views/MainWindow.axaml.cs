@@ -134,6 +134,10 @@ public sealed partial class MainWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        // A workspace with an accent of its own retints the shell while it is
+        // open. The view model announces it; republishing the application's
+        // resources is the host's to do.
+        ViewModel.WorkspaceAccentChanged += OnWorkspaceAccentChanged;
         RefreshWindowChromeMetrics();
         Avalonia.Threading.Dispatcher.UIThread.Post(
             RefreshWindowChromeMetrics,
@@ -151,8 +155,27 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OnWorkspaceAccentChanged(object? sender, string? accent)
+    {
+        _ = sender;
+        if (Avalonia.Application.Current is not App app)
+        {
+            return;
+        }
+
+        // A stored accent that no longer parses is a definition problem, not a
+        // reason to leave the shell wearing the last workspace's colour.
+        app.SetWorkspaceAccent(
+            accent is not null && RgbColor.TryParse(accent, out var color) ? color : null);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.WorkspaceAccentChanged -= OnWorkspaceAccentChanged;
+        }
+
         _applicationHintLifetime?.Cancel();
         _applicationHintLifetime?.Dispose();
         _lifetime.Cancel();
