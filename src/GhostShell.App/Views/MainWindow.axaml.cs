@@ -73,6 +73,16 @@ public sealed partial class MainWindow : Window
         AddHandler(PointerPressedEvent, OnAnyActivity, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnAnyActivity, RoutingStrategies.Tunnel);
         Activated += OnWindowActivated;
+        // Asked for before the window is created, not after it is on screen.
+        // The platform decides whether a window can be seen through when it
+        // makes one; a hint arriving later is a request to change something
+        // already built, which macOS simply declines.
+        TransparencyLevelHint =
+        [
+            WindowTransparencyLevel.AcrylicBlur,
+            WindowTransparencyLevel.Blur,
+            WindowTransparencyLevel.Transparent,
+        ];
     }
 
     private void OnAnyActivity(object? sender, RoutedEventArgs e)
@@ -180,16 +190,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // The hint first and unconditionally. It is what makes the platform
-        // window capable of being seen through at all; the native radius below
-        // only says how much to blur what is behind one that already can be.
-        TransparencyLevelHint =
-        [
-            WindowTransparencyLevel.AcrylicBlur,
-            WindowTransparencyLevel.Blur,
-            WindowTransparencyLevel.Transparent,
-            WindowTransparencyLevel.None,
-        ];
         RequestBackdrop();
         // And again once the window is really on screen. The native call needs a
         // window number the platform only issues then, and asking too early
@@ -202,17 +202,21 @@ public sealed partial class MainWindow : Window
 
     private void RequestBackdrop()
     {
-        if (OperatingSystem.IsMacOS()
-            && MacOsQuickTerminalBackdrop.TryApply(this, WindowBackdropBlurRadius))
+        var blurred = OperatingSystem.IsMacOS()
+            && MacOsQuickTerminalBackdrop.TryApply(this, WindowBackdropBlurRadius);
+        var negotiated = ActualTransparencyLevel;
+        if (blurred || negotiated != WindowTransparencyLevel.None)
         {
             LetTheBackdropThrough();
-            return;
         }
 
-        if (ActualTransparencyLevel != WindowTransparencyLevel.None)
-        {
-            LetTheBackdropThrough();
-        }
+        // Both halves have failed silently in turn, so both say what happened.
+        // The window either can be seen through or it cannot, and which of the
+        // two it is decides where to look next.
+        Console.Error.WriteLine(
+            $"[ghostshell:appearance] backdrop — native blur {blurred}, "
+            + $"transparency {negotiated}, window fill "
+            + $"{(Background is null ? "none" : Background.ToString())}");
     }
 
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;
