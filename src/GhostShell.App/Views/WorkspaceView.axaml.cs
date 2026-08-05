@@ -128,12 +128,36 @@ public sealed partial class WorkspaceView : UserControl
         AvaloniaPropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.Property == DockControl.LayoutProperty)
+        if (e.Property != DockControl.LayoutProperty)
         {
-            ScheduleDockInitialization();
+            return;
         }
+
+        // A layout arriving at a view that is already on screen is a workspace
+        // switch, and it is initialized now — before the frame that would
+        // otherwise be drawn without it. Waiting cost two dispatcher hops, which
+        // is two frames of an empty canvas between the workspace you left and
+        // the one you asked for: short enough to be a blink and long enough to
+        // be seen.
+        if (VisualRoot is not null)
+        {
+            InitializeCurrentDockLayout(++_dockInitializationGeneration);
+            return;
+        }
+
+        ScheduleDockInitialization();
     }
 
+    /// <summary>
+    /// Defers initialization until the view has settled, for the one case that
+    /// needs it.
+    ///
+    /// DockControl's automatic path closes native windows whenever the view is
+    /// transiently detached, and recovery necessarily crosses one such
+    /// launcher-to-workspace transition — so a layout that arrives while the
+    /// view is off screen waits until it is on screen and still current, rather
+    /// than being presented into nothing and torn down again.
+    /// </summary>
     private void ScheduleDockInitialization()
     {
         var generation = ++_dockInitializationGeneration;
