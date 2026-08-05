@@ -506,6 +506,15 @@ internal sealed class QaApplication : Avalonia.Application
             ?? throw new InvalidOperationException(
                 "No rail tile offers a close action, so there is nothing to capture.");
         ForcePointerOver(tile);
+        // And the close itself, because a pointer resting on it is where the
+        // tile has to still look like one block rather than two.
+        window.ApplyTemplate();
+        tile.ApplyTemplate();
+        if (tile.GetVisualDescendants().OfType<Button>()
+                .FirstOrDefault(button => button.Name == "PART_Close") is { } close)
+        {
+            ForcePointerOver(close);
+        }
     }
 
     private static void ShowFirstLaunchCardHover(MainWindow window)

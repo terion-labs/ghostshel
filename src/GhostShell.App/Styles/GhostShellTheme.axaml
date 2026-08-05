@@ -47,6 +47,25 @@
   </Style>
 
   <!--
+    The one exception, stated next to the rule it excepts. A workspace rail tile
+    is a single block of the workspace's own colour and the actions inside it
+    paint nothing, so the wash above would put a grey rectangle in the middle of
+    it — which is exactly what appeared under the close button.
+
+    It has to be here rather than with the tile: a style with a pseudo-class
+    condition outranks anything a control theme or a template can set, so the
+    only thing that beats this rule is another rule of the same kind, later in
+    the application's style order.
+  -->
+  <Style Selector="Button.WorkspaceRailTileAction:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.WorkspaceRailTileAction:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!--
     Avalonia draws a hard high-contrast rectangle outside the control by default.
     It ignores the control's shape and reads as damage on dark chrome, so the
     shell suppresses it and expresses focus as an accent ring on the control

@@ -181,12 +181,18 @@
       <Setter Property="Template">
         <ControlTemplate>
           <Border Name="PART_Surface" Background="Transparent">
+            <!-- The shell washes every button's content presenter on hover by
+                 element selector, and a pseudo-class style outranks anything a
+                 template can set — so this transparency is not what stops it.
+                 The exception that does live beside that rule, in
+                 GhostShellTheme, keyed on the class below. -->
             <ContentPresenter
                 Name="PART_Mark"
                 Margin="{TemplateBinding Padding}"
                 Content="{TemplateBinding Content}"
                 HorizontalContentAlignment="Center"
                 VerticalContentAlignment="Center"
+                Background="Transparent"
                 Opacity="0.78" />
           </Border>
         </ControlTemplate>
@@ -247,6 +253,7 @@
                   <Button
                       Name="PART_Open"
                       Grid.Column="1"
+                      Classes="WorkspaceRailTileAction"
                       Theme="{StaticResource WorkspaceRailTileAction}"
                       Width="{DynamicResource ShellTileSizeMd}"
                       Height="{DynamicResource ShellTileSizeMd}"
@@ -267,6 +274,7 @@
                   <Button
                       Name="PART_Close"
                       Grid.Column="2"
+                      Classes="WorkspaceRailTileAction"
                       Theme="{StaticResource WorkspaceRailTileAction}"
                       Width="{DynamicResource ShellTileSizeMd}"
                       Height="{DynamicResource ShellTileSizeMd}"
