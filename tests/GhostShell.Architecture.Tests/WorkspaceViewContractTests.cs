@@ -224,7 +224,11 @@ public sealed class WorkspaceViewContractTests
             element => element.Name.LocalName == "DockControl");
         Assert.Equal("{Binding ActiveTab.DockLayout}", AttributeValue(dockControl, "Layout"));
         Assert.Equal("{Binding ActiveTab.DockFactory}", AttributeValue(dockControl, "Factory"));
-        Assert.Equal("{Binding IsInFront}", AttributeValue(dockControl, "IsVisible"));
+        // Shown, not in front: the workspace being left keeps its canvas on
+        // screen and above the arriving one until that one has built, because a
+        // dock control builds only what it is showing.
+        Assert.Equal("{Binding IsCanvasShown}", AttributeValue(dockControl, "IsVisible"));
+        Assert.Equal("{Binding CanvasDepth}", AttributeValue(dockControl, "ZIndex"));
         // Docking pauses while the layout designer overlay is open: Dock resolves
         // drop targets across every registered DockControl, and the designer's
         // canvas must not be able to dock a slot into the live workspace beneath.

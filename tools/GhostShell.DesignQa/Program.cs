@@ -1657,6 +1657,10 @@ internal sealed class QaApplication : Avalonia.Application
                 .GetField("_openWorkspaces", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(viewModel)!;
         openWorkspaces.Add(workspace);
+        workspace.GetType()
+            .GetProperty("IsCanvasShown")!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(workspace, [true]);
 
         typeof(MainWindowViewModel)
             .GetProperty(nameof(MainWindowViewModel.RuntimeWorkspace))!

@@ -826,7 +826,8 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     private RuntimeTabViewModel? _activeTab;
     private RuntimeTabViewModel? _lastActiveTab;
     private bool _hasAttention;
-    private bool _isInFront;
+    private bool _isCanvasShown;
+    private int _canvasDepth;
     private long _hostRevision;
     private long _hostSequence;
 
@@ -868,17 +869,29 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     public string Accent { get; }
 
     /// <summary>
-    /// Whether this is the workspace on screen.
+    /// Whether this workspace's canvas is on screen.
     ///
-    /// Every open workspace keeps its own canvas, and this is which of them is
-    /// shown. Switching is then a change of visibility rather than a rebuild —
-    /// a dock control tears its layout down and builds the new one over several
-    /// frames, and the empty state in between is a blink.
+    /// Not the same as being the workspace in front. A dock control only builds
+    /// the layout it is showing — one that is not shown reports no visual tree
+    /// at all, however long it is given — so the workspace being left stays on
+    /// screen, above the one arriving, until the arriving one has been built.
+    /// Otherwise there is a frame with nothing to draw, which is the blink.
     /// </summary>
-    public bool IsInFront
+    public bool IsCanvasShown
     {
-        get => _isInFront;
-        internal set => SetProperty(ref _isInFront, value);
+        get => _isCanvasShown;
+        internal set => SetProperty(ref _isCanvasShown, value);
+    }
+
+    /// <summary>
+    /// Where this canvas sits in the stack. The one being left is raised above
+    /// the one arriving so that it covers it whole while it builds, rather than
+    /// showing through the gaps between its panels.
+    /// </summary>
+    public int CanvasDepth
+    {
+        get => _canvasDepth;
+        internal set => SetProperty(ref _canvasDepth, value);
     }
 
     /// <summary>

@@ -256,7 +256,8 @@
         <dock:DockControl
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            IsVisible="{Binding IsInFront}"
+            IsVisible="{Binding IsCanvasShown}"
+            ZIndex="{Binding CanvasDepth}"
             Layout="{Binding ActiveTab.DockLayout}"
             Factory="{Binding ActiveTab.DockFactory}"
             IsDockingEnabled="{Binding $parent[ItemsControl].DataContext.IsLayoutDesignerVisible, Converter={x:Static BoolConverters.Not}}"
