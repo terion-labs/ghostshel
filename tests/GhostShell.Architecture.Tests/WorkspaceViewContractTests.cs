@@ -209,30 +209,29 @@ public sealed class WorkspaceViewContractTests
                     StringComparison.Ordinal));
         }
 
-        // The layout still comes from the active tab, and it still comes by
-        // binding — but it arrives at the view rather than at the control. A
-        // dock control builds its visual tree the instant it is given a layout,
-        // and an uninitialised layout builds nothing, so binding it straight to
-        // the control left the canvas empty for a pass on every switch. The
-        // view initialises it and then hands it over.
-        Assert.Equal(
-            "{Binding RuntimeWorkspace.ActiveTab.DockLayout}",
-            AttributeValue(root, "ActiveDockLayout"));
-        Assert.Equal(
-            "{Binding RuntimeWorkspace.ActiveTab.DockFactory}",
-            AttributeValue(root, "ActiveDockFactory"));
-
-        var dockControl = Assert.Single(
+        // One canvas per open workspace, and switching shows a different one
+        // rather than rebuilding the only one. A dock control does not swap
+        // layouts in place — it holds the outgoing tree, drops to bare chrome
+        // after the frame, and builds the incoming one later — and it will not
+        // build a layout while it is not the canvas being shown, so there is no
+        // preparing one aside either. Each workspace keeps its own.
+        var canvases = Assert.Single(
             root.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && AttributeValue(element, "ItemsSource") == "{Binding OpenWorkspaces}");
+        var dockControl = Assert.Single(
+            canvases.Descendants(),
             element => element.Name.LocalName == "DockControl");
-        Assert.Null(AttributeValue(dockControl, "Layout"));
-        Assert.Null(AttributeValue(dockControl, "Factory"));
+        Assert.Equal("{Binding ActiveTab.DockLayout}", AttributeValue(dockControl, "Layout"));
+        Assert.Equal("{Binding ActiveTab.DockFactory}", AttributeValue(dockControl, "Factory"));
+        Assert.Equal("{Binding IsInFront}", AttributeValue(dockControl, "IsVisible"));
         // Docking pauses while the layout designer overlay is open: Dock resolves
         // drop targets across every registered DockControl, and the designer's
         // canvas must not be able to dock a slot into the live workspace beneath.
-        Assert.Equal(
-            "{Binding !IsLayoutDesignerVisible}",
-            AttributeValue(dockControl, "IsDockingEnabled"));
+        Assert.Contains(
+            "IsLayoutDesignerVisible",
+            AttributeValue(dockControl, "IsDockingEnabled") ?? string.Empty,
+            StringComparison.Ordinal);
         Assert.Equal("True", AttributeValue(dockControl, "InitializeFactory"));
         Assert.Equal("False", AttributeValue(dockControl, "InitializeLayout"));
         // Dock windows are real platform windows. The managed-window layer would

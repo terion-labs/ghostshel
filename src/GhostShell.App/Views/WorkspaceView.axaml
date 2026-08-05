@@ -7,8 +7,6 @@
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:views="using:GhostShell.App.Views"
-    ActiveDockLayout="{Binding RuntimeWorkspace.ActiveTab.DockLayout}"
-    ActiveDockFactory="{Binding RuntimeWorkspace.ActiveTab.DockFactory}"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <Grid RowDefinitions="Auto,34,*,Auto,26">
@@ -235,11 +233,34 @@
       <Grid
           Margin="{controls:Inset Sm}"
           IsVisible="{Binding IsWorkspaceCanvasVisible}">
+        <!-- One canvas per open workspace, and switching shows a different
+             one rather than rebuilding the only one.
+
+             A dock control does not swap layouts in place: measured across a
+             switch it holds the outgoing tree through the next layout pass,
+             drops to bare chrome after the frame, and builds the incoming one
+             later still — and that bare state is a visible blink. It also will
+             not build a layout while it is not the canvas being shown, so
+             there is no preparing one off to the side either. Each workspace
+             keeps its own, built once while it is in front and kept
+             afterwards, so coming back to it is a change of which one is
+             visible and nothing else. -->
+        <ItemsControl ItemsSource="{Binding OpenWorkspaces}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <Panel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
         <dock:DockControl
-            x:Name="RuntimeDockControl"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            IsDockingEnabled="{Binding !IsLayoutDesignerVisible}"
+            IsVisible="{Binding IsInFront}"
+            Layout="{Binding ActiveTab.DockLayout}"
+            Factory="{Binding ActiveTab.DockFactory}"
+            IsDockingEnabled="{Binding $parent[ItemsControl].DataContext.IsLayoutDesignerVisible, Converter={x:Static BoolConverters.Not}}"
+            Loaded="OnRuntimeDockControlLoaded"
             InitializeFactory="True"
             InitializeLayout="False">
           <dock:DockControl.Styles>
@@ -276,6 +297,9 @@
             </Style>
           </dock:DockControl.Styles>
         </dock:DockControl>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding !HasRuntimeWorkspace}">
           <TextBlock Classes="Muted" Text="Open a workspace from the launcher." />
           <Button Classes="PrimaryButton" Click="OnShowLauncherClick" Content="Open launcher" />

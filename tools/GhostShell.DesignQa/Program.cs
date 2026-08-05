@@ -1648,6 +1648,16 @@ internal sealed class QaApplication : Avalonia.Application
             .GetSetMethod(nonPublic: true)!
             .Invoke(workspace, [workspace.Tabs[0]]);
 
+        // The canvas presents one control per open workspace, so a workspace
+        // that is in front without being in the open set has nowhere to draw.
+        // The product puts it there when it activates one; this harness assigns
+        // the property directly, so it has to say the same thing itself.
+        var openWorkspaces = (System.Collections.ObjectModel.ObservableCollection<RuntimeWorkspaceViewModel>)
+            typeof(MainWindowViewModel)
+                .GetField("_openWorkspaces", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(viewModel)!;
+        openWorkspaces.Add(workspace);
+
         typeof(MainWindowViewModel)
             .GetProperty(nameof(MainWindowViewModel.RuntimeWorkspace))!
             .GetSetMethod(nonPublic: true)!

@@ -826,6 +826,7 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     private RuntimeTabViewModel? _activeTab;
     private RuntimeTabViewModel? _lastActiveTab;
     private bool _hasAttention;
+    private bool _isInFront;
     private long _hostRevision;
     private long _hostSequence;
 
@@ -865,6 +866,20 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
 
     /// <summary>The colour this workspace is recognised by.</summary>
     public string Accent { get; }
+
+    /// <summary>
+    /// Whether this is the workspace on screen.
+    ///
+    /// Every open workspace keeps its own canvas, and this is which of them is
+    /// shown. Switching is then a change of visibility rather than a rebuild —
+    /// a dock control tears its layout down and builds the new one over several
+    /// frames, and the empty state in between is a blink.
+    /// </summary>
+    public bool IsInFront
+    {
+        get => _isInFront;
+        internal set => SetProperty(ref _isInFront, value);
+    }
 
     /// <summary>
     /// The accent this workspace asks the whole shell to wear while it is in

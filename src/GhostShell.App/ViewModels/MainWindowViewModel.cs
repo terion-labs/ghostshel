@@ -960,6 +960,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 // the workspace from it, and Dock rebuilds its layout while
                 // this setter is still running. Without a mark here that cost
                 // would be charged to whatever came next.
+                // Which canvas is shown. Each open workspace keeps its own, so
+                // this is the whole of the swap.
+                if (previous is not null)
+                {
+                    previous.IsInFront = false;
+                }
+
+                if (value is not null)
+                {
+                    value.IsInFront = true;
+                }
+
                 _activation?.Mark("bindings");
                 StopRuntimeGraphWatch();
                 _activation?.Mark("graph stop");

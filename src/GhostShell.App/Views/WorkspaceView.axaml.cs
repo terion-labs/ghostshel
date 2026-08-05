@@ -17,146 +17,38 @@ namespace GhostShell.App.Views;
 
 public sealed partial class WorkspaceView : UserControl
 {
-    /// <summary>
-    /// The layout the canvas should be showing, and the factory that owns it.
-    ///
-    /// Bound on this view rather than straight onto the dock control, because
-    /// the control builds its visual tree the moment it is given a layout — and
-    /// a layout that has not been initialised yet builds nothing, leaving the
-    /// canvas empty for a pass. Arriving here first means it can be initialised
-    /// and only then handed over, so the canvas goes from the workspace you
-    /// left to the one you asked for with nothing in between.
-    ///
-    /// Typed as Dock's own model, so the route view still knows nothing about
-    /// the shell's view model.
-    /// </summary>
-    public static readonly StyledProperty<IRootDock?> ActiveDockLayoutProperty =
-        AvaloniaProperty.Register<WorkspaceView, IRootDock?>(nameof(ActiveDockLayout));
-
-    public static readonly StyledProperty<IFactory?> ActiveDockFactoryProperty =
-        AvaloniaProperty.Register<WorkspaceView, IFactory?>(nameof(ActiveDockFactory));
-
     private readonly ConditionalWeakTable<IRootDock, object> _mountedLayouts = [];
-    private int _dockInitializationGeneration;
 
-    public WorkspaceView()
-    {
-        InitializeComponent();
-        RuntimeDockControl.HostWindowFactory =
-            static () => new RuntimePanelHostWindow();
-    }
-
-    public IRootDock? ActiveDockLayout
-    {
-        get => GetValue(ActiveDockLayoutProperty);
-        set => SetValue(ActiveDockLayoutProperty, value);
-    }
-
-    public IFactory? ActiveDockFactory
-    {
-        get => GetValue(ActiveDockFactoryProperty);
-        set => SetValue(ActiveDockFactoryProperty, value);
-    }
-
-    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-    {
-        base.OnPropertyChanged(change);
-        if (change.Property == ActiveDockLayoutProperty
-            || change.Property == ActiveDockFactoryProperty)
-        {
-            HandOverActiveDockLayout();
-        }
-    }
+    public WorkspaceView() => InitializeComponent();
 
     /// <summary>
-    /// Initialises the layout the canvas is about to show, then hands it over.
+    /// Prepares one workspace's canvas as it comes into the tree.
     ///
-    /// Initialising allocates native hosts, so it belongs to the moment the
-    /// workspace is mounted rather than to the moment its view model was built
-    /// — a layout that arrives while this view is off screen waits, because
-    /// recovery builds one while the launcher and its modal are still
-    /// transitioning and a floating window presented into that would be torn
-    /// straight back down. Each layout is mounted once; coming back to one
-    /// already mounted costs nothing.
+    /// Initialising a layout allocates native hosts, which belongs to the
+    /// moment the canvas is mounted rather than to the moment its view model
+    /// was built — recovery constructs a workspace while the launcher and its
+    /// modal are still transitioning, and a floating window presented into that
+    /// is torn straight back down. A canvas is mounted once and remembered,
+    /// because it is kept for as long as its workspace is open.
     /// </summary>
-    private void HandOverActiveDockLayout()
+    private void OnRuntimeDockControlLoaded(object? sender, RoutedEventArgs e)
     {
-        if (ActiveDockLayout is not { } layout || ActiveDockFactory is not { } factory)
+        _ = e;
+        if (sender is not DockControl canvas)
         {
             return;
         }
 
-        if (VisualRoot is null)
+        canvas.HostWindowFactory = static () => new RuntimePanelHostWindow();
+        if (canvas.Layout is not IRootDock layout
+            || layout.Factory is null
+            || _mountedLayouts.TryGetValue(layout, out _))
         {
-            ScheduleDockHandOver();
             return;
         }
 
-        if (!_mountedLayouts.TryGetValue(layout, out _))
-        {
-            factory.InitLayout(layout);
-            _mountedLayouts.Add(layout, this);
-        }
-
-        RuntimeDockControl.Factory = factory;
-        RuntimeDockControl.Layout = layout;
-        ReportCanvasReadiness();
-    }
-
-    /// <summary>
-    /// Says what the canvas actually holds across the frames either side of a
-    /// hand-over.
-    ///
-    /// A frame of bare canvas has survived two fixes aimed at what it looked
-    /// like, so this stops describing it and counts it: whether the canvas is
-    /// on screen at all, and how much of a visual tree the dock control has,
-    /// when the layout is handed over, once layout has run, and once the frame
-    /// is out. Between those three the empty frame has nowhere left to hide.
-    /// </summary>
-    private void ReportCanvasReadiness()
-    {
-        var clock = Stopwatch.StartNew();
-        void Sample(string when) => Console.Error.WriteLine(
-            $"[ghostshell:perf] canvas {when} at {clock.ElapsedMilliseconds} ms — "
-            + $"on screen {RuntimeDockControl.IsEffectivelyVisible}, "
-            + $"visuals {RuntimeDockControl.GetVisualDescendants().Count()}, "
-            + $"size {RuntimeDockControl.Bounds.Width:F0}x{RuntimeDockControl.Bounds.Height:F0}");
-
-        Sample("handed over");
-        Dispatcher.UIThread.Post(
-            () => Sample("after layout"),
-            DispatcherPriority.Loaded);
-        Dispatcher.UIThread.Post(
-            () => Sample("after render"),
-            DispatcherPriority.Background);
-    }
-
-    private void ScheduleDockHandOver()
-    {
-        var generation = ++_dockInitializationGeneration;
-        Dispatcher.UIThread.Post(
-            () => Dispatcher.UIThread.Post(
-                () =>
-                {
-                    if (generation == _dockInitializationGeneration)
-                    {
-                        HandOverActiveDockLayout();
-                    }
-                },
-                DispatcherPriority.Background),
-            DispatcherPriority.Loaded);
-    }
-
-    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToVisualTree(e);
-        HandOverActiveDockLayout();
-    }
-
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        _dockInitializationGeneration++;
-        base.OnDetachedFromVisualTree(e);
+        layout.Factory.InitLayout(layout);
+        _mountedLayouts.Add(layout, this);
     }
 
     public event EventHandler<RoutedEventArgs>? ActivateTabRequested;
