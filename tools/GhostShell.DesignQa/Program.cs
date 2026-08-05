@@ -541,12 +541,17 @@ internal sealed class QaApplication : Avalonia.Application
                 $"Expected one value but found {values.Count}.");
 
     /// <summary>
-    /// The rail's own tile in every state it has: at rest, running in the
-    /// background, in front, asking to be noticed, and opened for closing.
+    /// The rail's own tile in each of its resting states: idle, running in the
+    /// background, in front, and asking to be noticed.
     ///
     /// The real component rather than a replica of it. A hand-built copy could
     /// only ever show what the copy does — and the states are the whole point,
     /// because the rail's job is to be readable at a glance.
+    ///
+    /// The opened state is deliberately not here. It overflows its own tile,
+    /// and a bare window sized to the resting tiles renders it as an empty
+    /// block; `workspace-rail-close` captures it inside the real rail, which is
+    /// the only place its overflow means anything anyway.
     /// </summary>
     private static Window CreateRailTileProbe()
     {
@@ -562,7 +567,6 @@ internal sealed class QaApplication : Avalonia.Application
                      ("#3FB950", FluentIcons.Common.Symbol.Code, true, false, false, true, false),
                      ("#4A90D9", FluentIcons.Common.Symbol.Database, true, true, false, true, false),
                      ("#C4322B", FluentIcons.Common.Symbol.Rocket, true, false, true, true, false),
-                     ("#3FB950", FluentIcons.Common.Symbol.Code, true, false, false, true, true),
                  })
         {
             var tile = new GhostShell.App.Controls.WorkspaceRailTile
@@ -584,11 +588,7 @@ internal sealed class QaApplication : Avalonia.Application
 
         return new Window
         {
-            // Room for the widest state: the last tile opens sideways out of
-            // the rail, and a window sized to the resting tiles would clip the
-            // very thing the route exists to show.
-            Width = 140,
-            SizeToContent = SizeToContent.Height,
+            SizeToContent = SizeToContent.WidthAndHeight,
             CanResize = false,
             Content = stack,
         };

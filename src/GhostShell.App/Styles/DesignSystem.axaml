@@ -155,11 +155,16 @@
     </ControlTheme>
 
     <!--
-      The two actions inside a rail tile. They fill the tile edge to edge and
-      are drawn on the workspace's own colour, so they contribute no surface of
-      their own — the stock button paints a control-coloured lozenge over the
-      tile, and its padding is sized for a label, which squeezed the icon out of
-      a forty-pixel square entirely.
+      The two actions inside a rail tile. They paint nothing at all.
+
+      The tile is one block of the workspace's colour, and hovering it is what
+      lights that block up — so an action that painted a surface of its own put
+      a second, differently-coloured rectangle inside it. On the tile you were
+      already in it read as the colour being greyed out on hover, and across
+      the opened tile it split one block into two, which came apart visibly as
+      the tile closed again and the two halves stopped agreeing.
+
+      Feedback is the glyph instead: it is at rest until the pointer is on it.
 
       Only what no plain `Button` selector reaches is set here. The shell styles
       every button by element, and an element selector outranks a control
@@ -175,21 +180,23 @@
            icons the first time this was built. -->
       <Setter Property="Template">
         <ControlTemplate>
-          <Border Name="PART_Surface" Background="{TemplateBinding Background}">
+          <Border Name="PART_Surface" Background="Transparent">
             <ContentPresenter
+                Name="PART_Mark"
                 Margin="{TemplateBinding Padding}"
                 Content="{TemplateBinding Content}"
                 HorizontalContentAlignment="Center"
-                VerticalContentAlignment="Center" />
+                VerticalContentAlignment="Center"
+                Opacity="0.78" />
           </Border>
         </ControlTemplate>
       </Setter>
 
-      <Style Selector="^:pointerover /template/ Border#PART_Surface">
-        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+      <Style Selector="^:pointerover /template/ ContentPresenter#PART_Mark">
+        <Setter Property="Opacity" Value="1" />
       </Style>
-      <Style Selector="^:pressed /template/ Border#PART_Surface">
-        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+      <Style Selector="^:pressed /template/ ContentPresenter#PART_Mark">
+        <Setter Property="Opacity" Value="0.6" />
       </Style>
     </ControlTheme>
 
@@ -344,8 +351,23 @@
       <Style Selector="^:closable:pointerover /template/ Border#PART_Ring">
         <Setter Property="Width" Value="{DynamicResource ShellWorkspaceRailTileExpandedWidth}" />
       </Style>
-      <Style Selector="^:closable:pointerover /template/ Button#PART_Close">
+      <!-- Present whenever there is something to close, and hidden by the
+           tile's own clip rather than by a switch: flipping it on and off left
+           the glyph appearing and vanishing while the tile was still moving,
+           which is what came apart on the way out. It slides in and out with
+           the width instead, and only answers the pointer once the tile has
+           opened far enough to show it. -->
+      <!-- Present whenever there is something to close, and hidden by the
+           tile's own clip rather than by a switch: flipping it on and off made
+           the glyph appear and vanish while the tile was still moving, which is
+           what came apart on the way out. It slides in and out with the width
+           instead, and only answers the pointer once the tile has opened. -->
+      <Style Selector="^:closable /template/ Button#PART_Close">
         <Setter Property="IsVisible" Value="True" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+      </Style>
+      <Style Selector="^:closable:pointerover /template/ Button#PART_Close">
+        <Setter Property="IsHitTestVisible" Value="True" />
       </Style>
 
       <!-- Docked against the right edge, the tile has to open the other way, and
