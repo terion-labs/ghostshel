@@ -295,6 +295,87 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     /// <summary>
+    /// The window comes up in Main rather than on an empty launcher — but only
+    /// when nothing with a better claim already has it.
+    /// </summary>
+    [Fact]
+    public async Task An_idle_window_opens_Main_and_leaves_a_restored_session_alone()
+    {
+        var connection = LocalConnection("startup-connection", "Connection");
+        var main = new WorkspaceDefinition(
+            new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            WorkspaceDefinition.DefaultWorkspaceName,
+            null,
+            null,
+            [
+                new WorkspaceEntry.ConnectionReference(
+                    new WorkspaceEntryId("startup-entry"),
+                    connection.Id),
+            ]);
+        var other = WorkspaceOver(connection, "startup-other", "Other");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(main), Store(other)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
+
+        Assert.True(await viewModel.OpenDefaultWorkspaceIfIdleAsync());
+        var opened = viewModel.RuntimeWorkspace;
+        Assert.NotNull(opened);
+        Assert.True(viewModel.Workspaces.Single(item => item.Id == main.Id).IsInFront);
+
+        // Something is already in the window, so this has no claim on it.
+        Assert.True(await viewModel.OpenWorkspaceAsync(other.Id));
+        Assert.False(await viewModel.OpenDefaultWorkspaceIfIdleAsync());
+        Assert.NotSame(opened, viewModel.RuntimeWorkspace);
+    }
+
+    /// <summary>
+    /// Which workspace you are in survives the workspace being saved.
+    ///
+    /// The rail's flags are derived, not stored, and a rail item is replaced
+    /// whenever its definition changes — so saving the workspace you are
+    /// working in handed the rail a fresh item with both flags cleared and
+    /// nothing to put them back. Autosave does exactly that on every tab you
+    /// add, which is how the shell forgot where you were mid-session.
+    /// </summary>
+    [Fact]
+    public async Task Saving_the_open_workspace_does_not_lose_which_one_is_in_front()
+    {
+        var connection = LocalConnection("saved-connection", "Connection");
+        var workspace = WorkspaceOver(connection, "saved-workspace", "Saved");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(workspace)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(workspace.Id));
+        Assert.True(viewModel.Workspaces.Single().IsInFront);
+
+        // The same workspace at a later revision: what a save publishes.
+        viewModel.RefreshCatalog(new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [new StoredDefinition<WorkspaceDefinition>(
+                workspace,
+                2,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch)],
+            [], [], [], [], []));
+
+        var railItem = viewModel.Workspaces.Single();
+        Assert.True(railItem.IsOpen);
+        Assert.True(railItem.IsInFront);
+    }
+
+    /// <summary>
     /// Closing the workspace in front puts you back in the one you were in
     /// before it — not the oldest one still running, which is what appending on
     /// first open would have given. The open set is kept in the order the

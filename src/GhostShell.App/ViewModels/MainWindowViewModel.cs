@@ -2798,6 +2798,33 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Opens Main when the window has come up with nothing in it.
+    ///
+    /// Main always exists, so there is always somewhere to be, and starting on
+    /// an empty launcher makes you choose a workspace before you can do
+    /// anything — every time, including the times you would have chosen the one
+    /// that is always there. It defers to everything that has a better claim on
+    /// the window: a restored session, an overlay, an unfinished first run.
+    /// </summary>
+    public async Task<bool> OpenDefaultWorkspaceIfIdleAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (RuntimeWorkspace is not null
+            || HasOverlay
+            || Route != ShellRoute.Launcher
+            || Onboarding?.IsVisible == true)
+        {
+            return false;
+        }
+
+        var main = Workspaces.FirstOrDefault(item => string.Equals(
+            item.Id.Value,
+            WorkspaceDefinition.DefaultWorkspaceId,
+            StringComparison.Ordinal));
+        return main is not null && await OpenWorkspaceAsync(main.Id, cancellationToken);
+    }
+
     public async Task<bool> RestoreSessionOnStartupAsync(
         CancellationToken cancellationToken = default)
     {
@@ -6259,7 +6286,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             Console.Error.WriteLine(
                 $"[ghostshell:recovery] Runtime recovery snapshot preparation failed: {exception}");
-            SetError("Runtime recovery state could not be prepared.");
+            // The reason, not just the fact. Every message this can carry is one
+            // of the codec's own validation sentences — no paths, no session
+            // content — and without it the banner names a subsystem and leaves
+            // the person reading it nothing to act on or report.
+            SetError($"Runtime recovery state could not be prepared. {exception.Message}");
             return;
         }
 
@@ -8811,6 +8842,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     item.Value.Entries.Count))
                 .ToArray(),
             static (a, b) => a.PresentsSameAs(b));
+        // A rail item that was replaced arrives with its runtime flags cleared,
+        // and the flags are derived rather than stored, so nothing else would
+        // put them back. Saving the workspace you are working in bumps its
+        // revision — which is exactly what autosave does every time a tab is
+        // added — and the rail forgot which workspace you were in.
+        RefreshWorkspaceRuntimeFlags();
         ReplaceIfChanged(
             Connections,
             snapshot.Connections

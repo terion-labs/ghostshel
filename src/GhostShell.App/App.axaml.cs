@@ -647,6 +647,10 @@ public sealed partial class App : Avalonia.Application
         {
             _ = await MainWindowViewModel.RestoreSessionOnStartupAsync(
                 CancellationToken.None);
+            // Whatever the restore did or did not find, the window does not
+            // come up empty: Main is always there to come up in.
+            _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(
+                CancellationToken.None);
             return;
         }
 
@@ -654,6 +658,8 @@ public sealed partial class App : Avalonia.Application
             CancellationToken.None);
         if (_recoveryCoordinator is null)
         {
+            _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(
+                CancellationToken.None);
             return;
         }
 
@@ -671,6 +677,8 @@ public sealed partial class App : Avalonia.Application
         _startupState.ResolveRecovery(choice, result.Value!);
         _ = await MainWindowViewModel.ApplyStartupRecoveryAsync(
             _startupState,
+            CancellationToken.None);
+        _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(
             CancellationToken.None);
     }
 }
