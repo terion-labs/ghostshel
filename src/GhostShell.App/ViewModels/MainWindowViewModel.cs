@@ -2917,10 +2917,26 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            RuntimeWorkspace = runtime;
-            StartAcceptedRuntimePanels(runtime);
-            TrackRecentSessions(runtime.Tabs.SelectMany(tab => tab.Panels));
-            StartRuntimeGraphWatch(runtime);
+            // Through ActivateRuntimeWorkspace, not around it. Restoring by
+            // hand left the workspace out of the open set and with no record of
+            // which definition it came from, so clicking its own rail tile
+            // built a second copy and the terminals it was restored with were
+            // replaced by fresh shells.
+            if (payload.Workspace.HistorySource?.ToHistorySource() is { } restoredSource)
+            {
+                ActivateRuntimeWorkspace(
+                    runtime,
+                    restoredSource.SourceDefinition,
+                    restoredSource.DurableTitle);
+            }
+            else
+            {
+                RuntimeWorkspace = runtime;
+                StartAcceptedRuntimePanels(runtime);
+                TrackRecentSessions(runtime.Tabs.SelectMany(tab => tab.Panels));
+                StartRuntimeGraphWatch(runtime);
+            }
+
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -6226,7 +6242,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string payload;
         try
         {
-            payload = RuntimeWorkspaceRecoveryCodec.Serialize(RuntimeWorkspace);
+            payload = RuntimeWorkspaceRecoveryCodec.Serialize(
+                RuntimeWorkspace,
+                _runtimeHistorySource);
         }
         catch (Exception exception) when (
             exception is ArgumentException

@@ -17,12 +17,14 @@ internal static class RuntimeWorkspaceRecoveryCodec
     private const int MaximumPanelsPerTab = 128;
     private const int MaximumGridDimension = 64;
 
-    public static string Serialize(RuntimeWorkspaceViewModel? workspace)
+    public static string Serialize(
+        RuntimeWorkspaceViewModel? workspace,
+        RuntimeHistorySource? historySource = null)
     {
         var payload = new RuntimeWindowRecoveryPayload(
             workspace is null || workspace.Tabs.Count == 0
                 ? null
-                : CaptureWorkspace(workspace));
+                : CaptureWorkspace(workspace, historySource));
         if (!TryValidate(
                 payload,
                 allowLegacyPolicyFallback: false,
@@ -112,7 +114,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
     }
 
     private static RuntimeWorkspaceRecoveryPayload CaptureWorkspace(
-        RuntimeWorkspaceViewModel workspace) =>
+        RuntimeWorkspaceViewModel workspace,
+        RuntimeHistorySource? historySource) =>
         new(
             workspace.Name,
             workspace.Accent,
@@ -122,7 +125,10 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 .Distinct(StringComparer.Ordinal)
                 .ToArray(),
             RuntimeAgentPolicyRecoveryPayload.Capture(workspace.AgentPolicy),
-            workspace.Tabs.Select(CaptureTab).ToArray());
+            workspace.Tabs.Select(CaptureTab).ToArray(),
+            historySource is null
+                ? null
+                : RuntimeHistorySourceRecoveryPayload.Capture(historySource));
 
     private static RuntimeTabRecoveryPayload CaptureTab(RuntimeTabViewModel tab) =>
         new(
@@ -437,13 +443,24 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
 internal sealed record RuntimeWindowRecoveryPayload(RuntimeWorkspaceRecoveryPayload? Workspace);
 
+/// <summary>
+/// A restored workspace, and — since a restart must not sever it — which
+/// definition it was opened from.
+///
+/// <see cref="HistorySource"/> is optional and last so a payload written before
+/// it existed still reads. Without it a restored workspace was anonymous: the
+/// shell could not tell that the tile you clicked was the workspace already
+/// running, so it built a second one and the first workspace's terminals were
+/// replaced by fresh shells.
+/// </summary>
 internal sealed record RuntimeWorkspaceRecoveryPayload(
     string Name,
     string Accent,
     string? ActiveTabKey,
     string[] ConnectionIds,
     RuntimeAgentPolicyRecoveryPayload? AgentPolicy,
-    RuntimeTabRecoveryPayload[] Tabs);
+    RuntimeTabRecoveryPayload[] Tabs,
+    RuntimeHistorySourceRecoveryPayload? HistorySource = null);
 
 internal sealed record RuntimeTabRecoveryPayload(
     string Key,

@@ -70,6 +70,69 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     /// <summary>
+    /// A restored workspace is the workspace, not an anonymous copy of it.
+    ///
+    /// This is the reported bug: with session restore on, the workspace came
+    /// back running, and clicking its own rail tile built a second one — its
+    /// terminals replaced by fresh shells. The restore path set the runtime by
+    /// hand, so the workspace was never in the open set and carried no record
+    /// of the definition it came from.
+    /// </summary>
+    [Fact]
+    public async Task A_restored_workspace_is_found_again_instead_of_rebuilt()
+    {
+        var connection = LocalConnection("restored-connection", "Connection");
+        var workspace = WorkspaceOver(connection, "restored-workspace", "Restored");
+        var definitions = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(workspace)],
+            [], [], [], [], []);
+        var files = new EmptyFileClients();
+
+        var sourceStartup = InitializeRun("interrupted-run");
+        var sourceStore = new RecordingRecoveryStore();
+        var sourceWriter = new RuntimeRecoveryWriter(
+            sourceStore,
+            sourceStartup,
+            TimeProvider.System);
+        using (var source = CreateViewModel(definitions, files, sourceWriter))
+        {
+            Assert.True(await source.OpenWorkspaceAsync(workspace.Id));
+            Assert.True((await sourceWriter.FlushAsync(CancellationToken.None)).IsSuccess);
+        }
+
+        var saved = sourceStore.Snapshots.Last();
+        var startup = InitializeRecoveryRun(
+            "recovery-run",
+            "interrupted-run",
+            RecoveryChoice.Restore,
+            [saved]);
+        using var restored = CreateViewModel(
+            definitions,
+            files,
+            new RuntimeRecoveryWriter(
+                new RecordingRecoveryStore(),
+                startup,
+                TimeProvider.System));
+
+        Assert.True(await restored.ApplyStartupRecoveryAsync(startup));
+        var runtime = restored.RuntimeWorkspace!;
+        var panel = runtime.Tabs[0].Panels[0];
+
+        // The rail knows it is running before anything is clicked.
+        Assert.Single(restored.OpenWorkspaces);
+        Assert.True(restored.Workspaces.Single(item => item.Id == workspace.Id).IsOpen);
+
+        // And clicking its tile returns to it rather than building a second.
+        Assert.True(await restored.OpenWorkspaceAsync(workspace.Id));
+        Assert.Same(runtime, restored.RuntimeWorkspace);
+        Assert.Same(panel, restored.RuntimeWorkspace!.Tabs[0].Panels[0]);
+        Assert.Single(restored.OpenWorkspaces);
+    }
+
+    /// <summary>
     /// The same switch against the real session host rather than a fake.
     ///
     /// This exists because the bug survived two fixes. Both times the test
