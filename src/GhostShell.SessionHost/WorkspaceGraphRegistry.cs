@@ -7,7 +7,17 @@ internal sealed class WorkspaceGraphRegistry
 {
     private readonly object _gate = new();
     private readonly Dictionary<WindowInstanceId, ClientId> _clientByWindow = [];
-    private readonly Dictionary<WindowInstanceId, WorkspaceInstanceId> _workspaceByWindow = [];
+    /// <summary>
+    /// The workspaces each window holds — several, not one.
+    ///
+    /// This was one workspace per window, and registering a second evicted the
+    /// first: the graph was removed, the client saw the removal and closed what
+    /// it believed the host had ended, and every session in the workspace you
+    /// had just switched away from died. A window showing one workspace at a
+    /// time is a presentation fact; it was never a reason for the host to
+    /// forget the others.
+    /// </summary>
+    private readonly Dictionary<WindowInstanceId, HashSet<WorkspaceInstanceId>> _workspacesByWindow = [];
     private readonly Dictionary<WorkspaceInstanceId, HostedWorkspaceGraph> _workspaces = [];
     private readonly int _eventRetention;
     private readonly TimeProvider _timeProvider;
@@ -42,13 +52,9 @@ internal sealed class WorkspaceGraphRegistry
     {
         lock (_gate)
         {
-            if (_workspaces.TryGetValue(workspaceId, out var requested))
-            {
-                return requested.Revision;
-            }
-
-            return TryGetByWindowUnsafe(windowId, out var owned)
-                ? owned.Revision
+            _ = windowId;
+            return _workspaces.TryGetValue(workspaceId, out var requested)
+                ? requested.Revision
                 : 0;
         }
     }
@@ -73,8 +79,7 @@ internal sealed class WorkspaceGraphRegistry
                     requested.Revision);
             }
 
-            _ = TryGetByWindowUnsafe(request.WindowId, out var owned);
-            var currentRevision = requested?.Revision ?? owned?.Revision ?? 0;
+            var currentRevision = requested?.Revision ?? 0;
 
             if (ownerClientId is { } clientId
                 && _clientByWindow.TryGetValue(request.WindowId, out var currentClientId)
@@ -120,14 +125,8 @@ internal sealed class WorkspaceGraphRegistry
                 reconciledWorkspace,
                 _eventRetention,
                 _timeProvider);
-            if (owned is not null)
-            {
-                _workspaces.Remove(owned.WorkspaceId);
-                owned.Remove();
-            }
-
             _workspaces.Add(replacement.WorkspaceId, replacement);
-            _workspaceByWindow[request.WindowId] = replacement.WorkspaceId;
+            WorkspacesOfUnsafe(request.WindowId).Add(replacement.WorkspaceId);
             if (ownerClientId is { } registeringClientId)
             {
                 _clientByWindow[request.WindowId] = registeringClientId;
@@ -185,9 +184,7 @@ internal sealed class WorkspaceGraphRegistry
                 return RevisionConflict<Unit>(currentRevision, expected);
             }
 
-            _workspaceByWindow.Remove(request.WindowId);
-            _clientByWindow.Remove(request.WindowId);
-            _workspaces.Remove(request.WorkspaceId);
+            ForgetWorkspaceUnsafe(request.WindowId, request.WorkspaceId);
             var removedRevision = graph.Remove();
             return HostResult<Unit>.Succeed(Unit.Value, removedRevision);
         }
@@ -226,20 +223,14 @@ internal sealed class WorkspaceGraphRegistry
         ArgumentNullException.ThrowIfNull(owner);
         lock (_gate)
         {
-            if (!TryGetByWindowUnsafe(owner.WindowId, out var graph))
+            if (RejectUnknownOwnerWorkspaceUnsafe(owner, out var graph) is { } rejection)
             {
-                return _workspaces.TryGetValue(owner.WorkspaceId, out var graphForWorkspace)
-                    ? InvalidSessionOwner(
-                        graphForWorkspace.Revision,
-                        "The session owner workspace belongs to another window.")
-                    : null;
+                return rejection;
             }
 
-            if (graph.WorkspaceId != owner.WorkspaceId)
+            if (graph is null)
             {
-                return InvalidSessionOwner(
-                    graph.Revision,
-                    "The session owner workspace is not active in the owner window.");
+                return null;
             }
 
             return graph.ValidateSessionOwner(owner.TabId, owner.PanelId, kind);
@@ -254,20 +245,14 @@ internal sealed class WorkspaceGraphRegistry
         ArgumentNullException.ThrowIfNull(owner);
         lock (_gate)
         {
-            if (!TryGetByWindowUnsafe(owner.WindowId, out var graph))
+            if (RejectUnknownOwnerWorkspaceUnsafe(owner, out var graph) is { } rejection)
             {
-                return _workspaces.TryGetValue(owner.WorkspaceId, out var graphForWorkspace)
-                    ? InvalidSessionOwner(
-                        graphForWorkspace.Revision,
-                        "The session owner workspace belongs to another window.")
-                    : null;
+                return rejection;
             }
 
-            if (graph.WorkspaceId != owner.WorkspaceId)
+            if (graph is null)
             {
-                return InvalidSessionOwner(
-                    graph.Revision,
-                    "The session owner workspace is not active in the owner window.");
+                return null;
             }
 
             return graph.LinkSession(owner.TabId, owner.PanelId, kind, sessionId);
@@ -282,8 +267,8 @@ internal sealed class WorkspaceGraphRegistry
         ArgumentNullException.ThrowIfNull(owner);
         lock (_gate)
         {
-            if (!TryGetByWindowUnsafe(owner.WindowId, out var graph)
-                || graph.WorkspaceId != owner.WorkspaceId)
+            if (!_workspaces.TryGetValue(owner.WorkspaceId, out var graph)
+                || graph.WindowId != owner.WindowId)
             {
                 return;
             }
@@ -306,15 +291,10 @@ internal sealed class WorkspaceGraphRegistry
     {
         lock (_gate)
         {
-            if (!TryGetByWindowUnsafe(windowId, out var graph))
+            foreach (var graph in RemoveWindowUnsafe(windowId))
             {
-                return;
+                graph.Remove();
             }
-
-            _workspaceByWindow.Remove(windowId);
-            _clientByWindow.Remove(windowId);
-            _workspaces.Remove(graph.WorkspaceId);
-            graph.Remove();
         }
     }
 
@@ -330,14 +310,7 @@ internal sealed class WorkspaceGraphRegistry
             var removed = new List<HostedWorkspaceGraph>(windows.Length);
             foreach (var windowId in windows)
             {
-                _clientByWindow.Remove(windowId);
-                if (!_workspaceByWindow.Remove(windowId, out var workspaceId)
-                    || !_workspaces.Remove(workspaceId, out var graph))
-                {
-                    continue;
-                }
-
-                removed.Add(graph);
+                removed.AddRange(RemoveWindowUnsafe(windowId));
             }
 
             graphs = removed.ToArray();
@@ -356,7 +329,7 @@ internal sealed class WorkspaceGraphRegistry
         {
             graphs = _workspaces.Values.ToArray();
             _clientByWindow.Clear();
-            _workspaceByWindow.Clear();
+            _workspacesByWindow.Clear();
             _workspaces.Clear();
         }
 
@@ -366,18 +339,90 @@ internal sealed class WorkspaceGraphRegistry
         }
     }
 
-    private bool TryGetByWindowUnsafe(
-        WindowInstanceId windowId,
-        out HostedWorkspaceGraph graph)
+    /// <summary>
+    /// Says whether a session owner names a workspace this registry can accept.
+    ///
+    /// A workspace it has never heard of is only acceptable when the owner's
+    /// window is unmanaged too — the Quick Terminal opens sessions before any
+    /// graph exists. Once a window has graphs, an owner naming a workspace that
+    /// is not among them is naming nothing, and a session must not be created
+    /// for it.
+    /// </summary>
+    private HostResult<WorkspaceGraphSnapshot>? RejectUnknownOwnerWorkspaceUnsafe(
+        SessionOwner owner,
+        out HostedWorkspaceGraph? graph)
     {
-        if (_workspaceByWindow.TryGetValue(windowId, out var workspaceId)
-            && _workspaces.TryGetValue(workspaceId, out graph!))
+        if (_workspaces.TryGetValue(owner.WorkspaceId, out var found))
         {
-            return true;
+            graph = found;
+            return found.WindowId == owner.WindowId
+                ? null
+                : InvalidSessionOwner(
+                    found.Revision,
+                    "The session owner workspace belongs to another window.");
         }
 
-        graph = null!;
-        return false;
+        graph = null;
+        return _workspacesByWindow.ContainsKey(owner.WindowId)
+            ? InvalidSessionOwner(
+                0,
+                "The session owner workspace is not registered in the owner window.")
+            : null;
+    }
+
+    private HashSet<WorkspaceInstanceId> WorkspacesOfUnsafe(WindowInstanceId windowId)
+    {
+        if (!_workspacesByWindow.TryGetValue(windowId, out var workspaces))
+        {
+            workspaces = [];
+            _workspacesByWindow.Add(windowId, workspaces);
+        }
+
+        return workspaces;
+    }
+
+    /// <summary>
+    /// Drops one workspace, and the window with it once it holds no more. The
+    /// client ownership entry belongs to the window, so it outlives any single
+    /// workspace closing.
+    /// </summary>
+    private void ForgetWorkspaceUnsafe(
+        WindowInstanceId windowId,
+        WorkspaceInstanceId workspaceId)
+    {
+        _workspaces.Remove(workspaceId);
+        if (!_workspacesByWindow.TryGetValue(windowId, out var workspaces))
+        {
+            return;
+        }
+
+        workspaces.Remove(workspaceId);
+        if (workspaces.Count == 0)
+        {
+            _workspacesByWindow.Remove(windowId);
+            _clientByWindow.Remove(windowId);
+        }
+    }
+
+    private List<HostedWorkspaceGraph> RemoveWindowUnsafe(WindowInstanceId windowId)
+    {
+        List<HostedWorkspaceGraph> removed = [];
+        if (!_workspacesByWindow.Remove(windowId, out var workspaces))
+        {
+            _clientByWindow.Remove(windowId);
+            return removed;
+        }
+
+        foreach (var workspaceId in workspaces)
+        {
+            if (_workspaces.Remove(workspaceId, out var graph))
+            {
+                removed.Add(graph);
+            }
+        }
+
+        _clientByWindow.Remove(windowId);
+        return removed;
     }
 
     private static bool TryReconcileSessionLinks(
@@ -389,12 +434,14 @@ internal sealed class WorkspaceGraphRegistry
         out HostError? error)
     {
         var sessionsByPanel = new Dictionary<PanelInstanceId, List<SessionDescriptor>>();
+        // Only the sessions claiming this workspace. It used to take everything
+        // claiming this *window* too and then reject whatever did not also match
+        // the workspace — which was fine while a window held one workspace, and
+        // rejects every registration the moment it holds two.
         foreach (var session in liveSessions.Where(session =>
-                     session.Owner.WindowId == windowId
-                     || session.Owner.WorkspaceId == workspace.Id))
+                     session.Owner.WorkspaceId == workspace.Id))
         {
-            if (session.Owner.WindowId != windowId
-                || session.Owner.WorkspaceId != workspace.Id)
+            if (session.Owner.WindowId != windowId)
             {
                 reconciled = workspace;
                 error = HostError.Create(

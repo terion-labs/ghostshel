@@ -90,6 +90,7 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.True(await viewModel.OpenWorkspaceAsync(first.Id));
         var firstRuntime = viewModel.RuntimeWorkspace!;
         var firstPanel = firstRuntime.Tabs[0].Panels[0];
+        var firstWorkspaceId = firstRuntime.Id;
 
         Assert.True(await viewModel.OpenWorkspaceAsync(second.Id));
         Assert.NotSame(firstRuntime, viewModel.RuntimeWorkspace);
@@ -102,6 +103,9 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.Same(firstRuntime, viewModel.RuntimeWorkspace);
         Assert.Same(firstPanel, viewModel.RuntimeWorkspace!.Tabs[0].Panels[0]);
         Assert.Equal(2, viewModel.OpenWorkspaces.Count);
+        // Same instance throughout: it was never re-registered, so the host
+        // never had cause to tear it down.
+        Assert.Equal(firstWorkspaceId, firstRuntime.Id);
     }
 
     private static WorkspaceDefinition WorkspaceOver(

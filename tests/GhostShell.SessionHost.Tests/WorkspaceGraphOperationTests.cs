@@ -168,53 +168,87 @@ public sealed class WorkspaceGraphOperationTests
         Assert.Equal(resync.Snapshot.LastSequence, resync.ResumeAfterSequence);
     }
 
+    /// <summary>
+    /// This used to assert the opposite — that a second workspace in a window
+    /// evicted the first and completed its watchers. That was the bug written
+    /// down as an invariant: it is why switching workspaces killed the sessions
+    /// in the one you left. A window holds several workspaces; a watcher
+    /// completes when its own workspace is removed, and only then.
+    /// </summary>
     [Fact]
-    public async Task RegisteringNewWorkspaceForWindowAtomicallyRemovesOldGraphAndCompletesWatchers()
+    public async Task RegisteringASecondWorkspaceLeavesTheFirstAndItsWatchersAlive()
     {
         await using var harness = new SessionHostTestHarness();
-        var oldWorkspace = Workspace("workspace-old");
-        var oldSnapshot = (await RegisterAsync(harness, harness.WindowId, oldWorkspace)).Value();
+        var first = Workspace("workspace-old");
+        var firstSnapshot = (await RegisterAsync(harness, harness.WindowId, first)).Value();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         await using var watcher = harness.Client.WatchWorkspaceGraphAsync(
-                new WatchWorkspaceGraphRequest(oldWorkspace.Id, oldSnapshot.LastSequence),
+                new WatchWorkspaceGraphRequest(first.Id, firstSnapshot.LastSequence),
                 harness.HumanContext(),
                 timeout.Token)
             .GetAsyncEnumerator(timeout.Token);
-        var pendingRemoval = watcher.MoveNextAsync().AsTask();
+        var pending = watcher.MoveNextAsync().AsTask();
 
-        var newWorkspace = Workspace("workspace-new");
-        var staleReplacement = await RegisterAsync(
+        var second = Workspace("workspace-new");
+        var registered = (await RegisterAsync(
             harness,
             harness.WindowId,
-            newWorkspace,
-            expectedRevision: 0);
-        Assert.Equal(HostErrorCode.RevisionConflict, staleReplacement.Error().Code);
-        Assert.NotNull((await harness.Client.GetWorkspaceGraphAsync(
-            oldWorkspace.Id,
+            second,
+            expectedRevision: 0)).Value();
+
+        // A workspace the registry has not seen starts at zero, whatever else
+        // the window already holds.
+        Assert.Equal(second.Id, registered.Workspace.Id);
+        Assert.Equal(first.Id, (await harness.Client.GetWorkspaceGraphAsync(
+            first.Id,
             harness.HumanContext(),
-            CancellationToken.None)).Value());
+            CancellationToken.None)).Value().Workspace.Id);
+        Assert.False(pending.IsCompleted);
 
-        var replacement = (await RegisterAsync(
-            harness,
-            harness.WindowId,
-            newWorkspace,
-            expectedRevision: oldSnapshot.Revision)).Value();
-        Assert.Equal(1, replacement.Revision);
-        Assert.Equal(newWorkspace.Id, replacement.Workspace.Id);
+        // Removing it for real is what ends its watch.
+        _ = (await harness.Client.UnregisterWorkspaceGraphAsync(
+            new UnregisterWorkspaceGraphRequest(harness.WindowId, first.Id),
+            harness.HumanContext(),
+            CancellationToken.None)).Value();
 
-        Assert.True(await pendingRemoval.WaitAsync(timeout.Token));
+        Assert.True(await pending.WaitAsync(timeout.Token));
         var removed = Assert.IsType<WorkspaceGraphStreamItem.Event>(watcher.Current).Value;
         Assert.Equal(WorkspaceGraphEventKind.Removed, removed.Kind);
         Assert.False(await watcher.MoveNextAsync());
-        var oldQuery = await harness.Client.GetWorkspaceGraphAsync(
-            oldWorkspace.Id,
+        Assert.Equal(HostErrorCode.NotFound, (await harness.Client.GetWorkspaceGraphAsync(
+            first.Id,
             harness.HumanContext(),
-            CancellationToken.None);
-        Assert.Equal(HostErrorCode.NotFound, oldQuery.Error().Code);
-        Assert.Equal(newWorkspace.Id, (await harness.Client.GetWorkspaceGraphAsync(
-            newWorkspace.Id,
+            CancellationToken.None)).Error().Code);
+        Assert.Equal(second.Id, (await harness.Client.GetWorkspaceGraphAsync(
+            second.Id,
             harness.HumanContext(),
             CancellationToken.None)).Value().Workspace.Id);
+    }
+
+    /// <summary>
+    /// Re-registering a workspace already in the window is still a replacement,
+    /// and still guarded by its revision.
+    /// </summary>
+    [Fact]
+    public async Task ReRegisteringAWorkspaceStillHonoursItsRevision()
+    {
+        await using var harness = new SessionHostTestHarness();
+        var workspace = Workspace("workspace-live");
+        var registered = (await RegisterAsync(harness, harness.WindowId, workspace)).Value();
+
+        var stale = await RegisterAsync(
+            harness,
+            harness.WindowId,
+            Workspace("workspace-live", "Renamed"),
+            expectedRevision: registered.Revision + 1);
+        Assert.Equal(HostErrorCode.RevisionConflict, stale.Error().Code);
+
+        var replaced = (await RegisterAsync(
+            harness,
+            harness.WindowId,
+            Workspace("workspace-live", "Renamed"),
+            expectedRevision: registered.Revision)).Value();
+        Assert.Equal("Renamed", replaced.Workspace.Title);
     }
 
     [Fact]
@@ -883,7 +917,7 @@ public sealed class WorkspaceGraphOperationTests
         new TabInstanceId($"{suffix}-tab"),
         new PanelInstanceId($"{suffix}-panel"));
 
-    private static WorkspaceInstance Workspace(string id)
+    private static WorkspaceInstance Workspace(string id, string title = "Operations")
     {
         var terminal = new PanelInstance(
             new PanelInstanceId($"{id}-terminal"),
@@ -909,7 +943,7 @@ public sealed class WorkspaceGraphOperationTests
             browser.Id);
         return new WorkspaceInstance(
             new WorkspaceInstanceId(id),
-            "Operations",
+            title,
             [primary, secondary],
             primary.Id);
     }
