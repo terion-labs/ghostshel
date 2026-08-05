@@ -205,6 +205,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         SessionRestoreCoordinator? sessionRestoreCoordinator = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        OpenWorkspaces = new(_openWorkspaces);
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
@@ -900,6 +901,26 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Every workspace that is open, not only the one on screen.
+    ///
+    /// Switching between them used to dispose the one being left: its sessions
+    /// were killed and its tabs rebuilt from the definition on the way back,
+    /// which is not what changing view means. A workspace now lives until it is
+    /// closed, and <see cref="RuntimeWorkspace"/> names which of them is in
+    /// front.
+    /// </summary>
+    public ReadOnlyObservableCollection<RuntimeWorkspaceViewModel> OpenWorkspaces { get; }
+
+    private readonly ObservableCollection<RuntimeWorkspaceViewModel> _openWorkspaces = [];
+
+    /// <summary>
+    /// What each open workspace was opened from. The active one's is
+    /// <see cref="_runtimeHistorySource"/>; this keeps the rest so a workspace
+    /// can be found again by its definition instead of being opened twice.
+    /// </summary>
+    private readonly Dictionary<WorkspaceInstanceId, RuntimeHistorySource> _runtimeSources = [];
+
     public RuntimeWorkspaceViewModel? RuntimeWorkspace
     {
         get => _runtimeWorkspace;
@@ -915,10 +936,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 }
 
                 StopTrackingAgentTerminalSelection(previous);
-                QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
-                _runtimeHistorySource = null;
                 StopTrackingRecovery(previous);
-                previous?.DisposePanels();
+
+                // Only a workspace that has actually gone is torn down. One that
+                // is merely no longer in front keeps its sessions, its panels,
+                // and its place in the open set.
+                if (previous is not null && !_openWorkspaces.Contains(previous))
+                {
+                    QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
+                    previous.DisposePanels();
+                }
+
+                _runtimeHistorySource = value is null
+                    ? null
+                    : _runtimeSources.GetValueOrDefault(value.Id);
                 StartTrackingRecovery(value);
                 StartTrackingAgentTerminalSelection(value);
                 RefreshAgentTerminalSelectionOptions(resetSelection: true);
@@ -2057,6 +2088,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var workspace = storedWorkspace.Value;
+
+        // Already open: bring it forward rather than building a second one. The
+        // sessions in it are the point — rebuilding them from the definition is
+        // what "switching killed my processes" was.
+        if (FindOpenWorkspace(workspace.Key) is { } alreadyOpen)
+        {
+            await FlushWorkspaceAutoSaveAsync();
+            ReactivateRuntimeWorkspace(alreadyOpen);
+            SetActiveWorkspaceAccent(workspace.Accent);
+            Route = ShellRoute.Workspace;
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+
+        await FlushWorkspaceAutoSaveAsync();
         var runtime = new RuntimeWorkspaceViewModel(
             WorkspaceInstanceId.New(),
             workspace.Name,
@@ -4290,8 +4336,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                             RecentSessionOutcome.GracefullyClosed);
                     }
 
-                    RuntimeWorkspace = null;
-                    ShowLauncher();
+                    CloseActiveRuntimeWorkspace();
                 },
                 cancellationToken);
         }
@@ -6250,9 +6295,38 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (cancellationToken.IsCancellationRequested
-            || _shutdownStarted
-            || AutoSaveSourceWorkspace() is not { } stored)
+        if (cancellationToken.IsCancellationRequested || _shutdownStarted)
+        {
+            return;
+        }
+
+        await PersistWorkspaceAutoSaveAsync();
+    }
+
+    /// <summary>
+    /// Writes the pending autosave now instead of when the debounce elapses.
+    ///
+    /// Leaving a workspace is exactly when the debounce would be lost: it fires
+    /// against whichever workspace is active at the time, so a switch a second
+    /// after a change used to save the wrong one — or nothing. Every path that
+    /// changes which workspace is in front flushes first.
+    /// </summary>
+    private async Task FlushWorkspaceAutoSaveAsync()
+    {
+        var pending = _workspaceAutoSaveDebounce;
+        if (pending is null || pending.IsCancellationRequested || _shutdownStarted)
+        {
+            return;
+        }
+
+        pending.Cancel();
+        _workspaceAutoSaveDebounce = null;
+        await PersistWorkspaceAutoSaveAsync();
+    }
+
+    private async Task PersistWorkspaceAutoSaveAsync()
+    {
+        if (AutoSaveSourceWorkspace() is not { } stored)
         {
             return;
         }
@@ -6924,16 +6998,81 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 $"Recent-session metadata could not be persisted safely: {error.Message}"));
     }
 
+    private RuntimeWorkspaceViewModel? FindOpenWorkspace(DefinitionKey definition) =>
+        _openWorkspaces.FirstOrDefault(runtime =>
+            _runtimeSources.TryGetValue(runtime.Id, out var source)
+            && source.SourceDefinition == definition);
+
     private void ActivateRuntimeWorkspace(
         RuntimeWorkspaceViewModel runtime,
         DefinitionKey sourceDefinition,
         string durableTitle)
     {
+        _runtimeSources[runtime.Id] = new RuntimeHistorySource(sourceDefinition, durableTitle);
+        if (!_openWorkspaces.Contains(runtime))
+        {
+            _openWorkspaces.Add(runtime);
+        }
+
         RuntimeWorkspace = runtime;
-        _runtimeHistorySource = new RuntimeHistorySource(sourceDefinition, durableTitle);
         StartAcceptedRuntimePanels(runtime);
         TrackRecentSessions(runtime.Tabs.SelectMany(tab => tab.Panels));
         StartRuntimeGraphWatch(runtime);
+    }
+
+    /// <summary>
+    /// Brings an already-open workspace back to the front. Nothing is started
+    /// or restored: its sessions never stopped.
+    /// </summary>
+    private void ReactivateRuntimeWorkspace(RuntimeWorkspaceViewModel runtime)
+    {
+        RuntimeWorkspace = runtime;
+        StartRuntimeGraphWatch(runtime);
+    }
+
+    /// <summary>
+    /// Closes the workspace in front, and shows the launcher only when it was
+    /// the last one. Another open workspace is somewhere to go back to.
+    /// </summary>
+    private void CloseActiveRuntimeWorkspace()
+    {
+        if (RuntimeWorkspace is { } runtime)
+        {
+            CloseRuntimeWorkspace(runtime);
+        }
+
+        if (RuntimeWorkspace is null)
+        {
+            ShowLauncher();
+        }
+    }
+
+    /// <summary>
+    /// Closes a workspace for good: it leaves the open set, its panels are
+    /// disposed, and if it was the one in front another takes its place.
+    /// </summary>
+    private void CloseRuntimeWorkspace(RuntimeWorkspaceViewModel runtime)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        var wasActive = ReferenceEquals(RuntimeWorkspace, runtime);
+        _openWorkspaces.Remove(runtime);
+        _runtimeSources.Remove(runtime.Id);
+        if (wasActive)
+        {
+            // The setter disposes what is no longer in the open set, so the
+            // removal above is what makes this a close rather than a switch.
+            RuntimeWorkspace = _openWorkspaces.LastOrDefault();
+            if (RuntimeWorkspace is { } next)
+            {
+                ReactivateRuntimeWorkspace(next);
+            }
+
+            return;
+        }
+
+        StopTrackingRecovery(runtime);
+        StopTrackingAgentTerminalSelection(runtime);
+        runtime.DisposePanels();
     }
 
     private void DisposeRuntimeWorkspaceUnlessOwned(
@@ -7092,9 +7231,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     return false;
                 }
 
-                RuntimeWorkspace = null;
+                CloseRuntimeWorkspace(runtime);
                 CloseOverlay();
-                Route = ShellRoute.Launcher;
+                if (RuntimeWorkspace is null)
+                {
+                    Route = ShellRoute.Launcher;
+                }
+
                 return true;
             case WorkspaceGraphStreamItem.Event { Value: var workspaceEvent }:
                 return TryApplyRuntimeWorkspaceProjection(
@@ -11062,6 +11205,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
+        // Every open workspace, not only the one in front: the others are just
+        // as alive, and leaving them behind leaks their sessions.
+        foreach (var workspace in _openWorkspaces.ToArray())
+        {
+            workspace.DisposePanels();
+        }
+
+        _openWorkspaces.Clear();
+        _runtimeSources.Clear();
         _runtimeWorkspace?.DisposePanels();
         _runtimeWorkspace = null;
         WorkspaceEditor = null;

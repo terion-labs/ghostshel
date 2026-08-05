@@ -55,7 +55,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     public async Task Autosave_workspace_writes_live_tabs_back_as_a_batched_definition_save()
     {
         var snapshot = CreateCatalogSnapshot();
-        var stored = Assert.Single(snapshot.Workspaces);
+        var stored = snapshot.Workspaces.Single(item => item.Value.Id == WorkspaceId);
         var autosaveWorkspace = new WorkspaceDefinition(
             stored.Value.Id,
             stored.Value.SchemaVersion,
@@ -2015,7 +2015,11 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         await recorder.WatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         recorder.FailWatchWhenCancelled = true;
 
-        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        // A different workspace, because reopening the same one now brings the
+        // workspace already open back to the front rather than replacing it —
+        // switching view is not closing anything. The watch still has to hand
+        // over, which is what this test is about.
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
 
         var replacement = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
         await WaitForAsync(() => recorder.WatchStartCount == 2);
@@ -2883,6 +2887,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     private static readonly WorkspaceId WorkspaceId = new("runtime-graph-workspace");
+
+    /// <summary>A second workspace, for the cases about switching between them.</summary>
+    private static readonly WorkspaceId SecondWorkspaceId = new("runtime-graph-workspace-2");
     private static readonly ConnectionId AppendedConnectionId =
         new("runtime-graph-secondary");
     private static readonly ScreenId AppendedScreenId =
@@ -3248,11 +3255,25 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     [Panel("gamma-process", "left", ScreenPanelKind.ProcessMonitor, "Processes")]),
             ]);
 
+        var second = new WorkspaceDefinition(
+            SecondWorkspaceId,
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Runtime graph second",
+            null,
+            null,
+            [
+                new WorkspaceEntry.Tab(
+                    new WorkspaceEntryId("delta"),
+                    "Delta",
+                    layoutId,
+                    [Panel("delta-terminal", "left", ScreenPanelKind.Terminal, "Terminal")]),
+            ]);
+
         return new DefinitionCatalogSnapshot(
             [Store(connection)],
             [Store(layout)],
             [],
-            [Store(workspace)],
+            [Store(workspace), Store(second)],
             [],
             [],
             [],

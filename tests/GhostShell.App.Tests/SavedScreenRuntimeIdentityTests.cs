@@ -68,6 +68,58 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     /// <summary>
+    /// Switching workspaces is changing view, not closing anything. The
+    /// workspace left behind keeps the very same runtime — same instance, same
+    /// tabs, same sessions — and coming back finds it rather than rebuilding it
+    /// from the definition.
+    /// </summary>
+    [Fact]
+    public async Task Switching_between_workspaces_keeps_both_alive()
+    {
+        var connection = LocalConnection("switch-connection", "Connection");
+        var first = WorkspaceOver(connection, "switch-first", "First");
+        var second = WorkspaceOver(connection, "switch-second", "Second");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(first), Store(second)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(first.Id));
+        var firstRuntime = viewModel.RuntimeWorkspace!;
+        var firstPanel = firstRuntime.Tabs[0].Panels[0];
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(second.Id));
+        Assert.NotSame(firstRuntime, viewModel.RuntimeWorkspace);
+        Assert.Equal(2, viewModel.OpenWorkspaces.Count);
+        // The panel it left behind is still the panel, not a disposed shell of
+        // one: this is what "my processes were killed" looked like.
+        Assert.Contains(firstPanel, firstRuntime.Tabs[0].Panels);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(first.Id));
+        Assert.Same(firstRuntime, viewModel.RuntimeWorkspace);
+        Assert.Same(firstPanel, viewModel.RuntimeWorkspace!.Tabs[0].Panels[0]);
+        Assert.Equal(2, viewModel.OpenWorkspaces.Count);
+    }
+
+    private static WorkspaceDefinition WorkspaceOver(
+        ConnectionProfile connection,
+        string id,
+        string name) => new(
+        new WorkspaceId(id),
+        WorkspaceDefinition.CurrentSchemaVersion,
+        name,
+        null,
+        null,
+        [
+            new WorkspaceEntry.ConnectionReference(
+                new WorkspaceEntryId($"{id}-entry"),
+                connection.Id),
+        ]);
+
+    /// <summary>
     /// A workspace accent retints the shell while that workspace is open, and
     /// only while it is open. The view model cannot republish application
     /// resources, so what it owes the host is the announcement — and owing it
