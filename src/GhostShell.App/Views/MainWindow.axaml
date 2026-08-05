@@ -20,6 +20,25 @@
     ExtendClientAreaTitleBarHeightHint="-1"
     WindowStartupLocation="CenterScreen">
 
+  <!--
+    The pale band across the top was never the platform's title bar — Avalonia
+    draws its own decorations, and up to 12.0.4 the Fluent template filled them
+    with an opaque brush, so extending the client area underneath put our
+    translucent base beneath an opaque lid. Avalonia 12.0.5 makes them
+    transparent, which is why the version moved rather than the template being
+    forked here.
+
+    https://github.com/AvaloniaUI/Avalonia/issues/21082
+
+    The title text is still ours to hide: the shell puts its own tab bar in
+    that band, and the window name drawn behind it is just noise.
+  -->
+  <Window.Styles>
+    <Style Selector="WindowDrawnDecorations /template/ Panel#PART_TitleTextPanel > TextBlock">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+  </Window.Styles>
+
   <Window.DataTemplates>
     <DataTemplate DataType="dockDocuments:Document">
       <ContentControl

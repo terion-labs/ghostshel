@@ -226,10 +226,6 @@ public sealed partial class MainWindow : Window
     private void RequestBackdrop()
     {
         var radius = (Avalonia.Application.Current as App)?.WindowBackdropBlurRadius ?? 0;
-        // Before the blur, not after: the system title bar paints its own
-        // material over the top of the client area, and no fill of ours can
-        // cancel something drawn above it.
-        var titleBar = MacOsWindowTitleBar.TryStopPaintingItsOwnMaterial(this);
         var blurred = OperatingSystem.IsMacOS()
             && MacOsQuickTerminalBackdrop.TryApply(this, radius);
         var negotiated = ActualTransparencyLevel;
@@ -240,18 +236,15 @@ public sealed partial class MainWindow : Window
 
         // Only when something did not take. Every appearance republish comes
         // back through here, so a line each time is eight lines a start.
-        var titleBarQuietened = titleBar
-            is MacOsTitleBarOutcome.ContentAlreadyRanFullSize
-            or MacOsTitleBarOutcome.ContentNowRunsFullSize;
-        if (titleBarQuietened && blurred && negotiated != WindowTransparencyLevel.None)
+        if (blurred && negotiated != WindowTransparencyLevel.None)
         {
             return;
         }
 
         Console.Error.WriteLine(
-            $"[ghostshell:appearance] backdrop incomplete — title bar "
-            + $"{titleBar}, native blur {blurred}, transparency "
-            + $"{negotiated}, decoration margin {WindowDecorationMargin.Top:0}");
+            $"[ghostshell:appearance] backdrop incomplete — native blur "
+            + $"{blurred}, transparency {negotiated}, decoration margin "
+            + $"{WindowDecorationMargin.Top:0}");
     }
 
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;

@@ -253,11 +253,48 @@ public sealed class ProjectDependencyTests
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        var version = Version.Parse(Assert.Single(versions));
-        Assert.True(
-            version >= new Version(12, 0, 1),
-            $"Avalonia {version} predates the DBus security fix shipped in 12.0.1.");
+        // Every one of them clears the floor, whatever its cadence.
+        foreach (var candidate in versions)
+        {
+            var parsed = Version.Parse(candidate);
+            Assert.True(
+                parsed >= new Version(12, 0, 1),
+                $"Avalonia {parsed} predates the DBus security fix shipped in 12.0.1.");
+        }
+
+        // And the ones Avalonia releases together stay together.
+        var lockstep = new[]
+            {
+                "src/GhostShell.App/GhostShell.App.csproj",
+                "src/GhostShell.Browser/GhostShell.Browser.csproj",
+                "src/GhostShell.Desktop/GhostShell.Desktop.csproj",
+            }
+            .SelectMany(path => LoadProject(path).Descendants("PackageReference"))
+            .Where(element => IsAvaloniaFrameworkPackage((string?)element.Attribute("Include"))
+                && !IndependentlyReleasedAvaloniaPackages.Contains(
+                    (string?)element.Attribute("Include"),
+                    StringComparer.Ordinal))
+            .Select(element => (string?)element.Attribute("Version"))
+            .Where(version => version is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Single(lockstep);
     }
+
+    /// <summary>
+    /// Avalonia framework packages that do not ship on the framework's own
+    /// release train. The web view stopped at 12.0.1 while the framework went
+    /// on to 12.0.5, and it binds its Avalonia dependency as a floor rather
+    /// than an exact version, so it resolves against the newer framework
+    /// perfectly well. Holding the whole framework back to match it would cost
+    /// the drawn-decorations transparency fix for nothing.
+    /// </summary>
+    private static readonly string[] IndependentlyReleasedAvaloniaPackages =
+    [
+        "Avalonia.Controls.WebView",
+    ];
 
     /// <summary>
     /// The rule is about the Avalonia framework's own packages, which ship as
