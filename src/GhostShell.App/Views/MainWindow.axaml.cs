@@ -2123,31 +2123,52 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// How much room the chrome leaves for the window's own controls.
+    ///
+    /// The shell draws them itself now, so this is measured from what it drew
+    /// rather than asked of the platform: three discs, the gaps between them,
+    /// and the inset they sit in. Nothing here is reported by a system title
+    /// bar any more, because there is not one.
+    /// </summary>
     private void RefreshWindowChromeMetrics()
     {
         const double horizontalSpacing = 14;
-        var reportedHeight = WindowDecorationMargin.Top;
-        TitleBarChromeHeight = double.IsFinite(reportedHeight) && reportedHeight > 0
-            ? reportedHeight
-            : 44;
+        const double windowControlsWidth = 12 * 3;
+        const double windowControlsGaps = 8 * 2;
+        const double windowControlsInset = 12 * 2;
 
-        if (OperatingSystem.IsMacOS())
-        {
-            var trafficLightRightEdge = WindowState == WindowState.FullScreen
-                ? 0
-                : MacOsWindowChromeMetrics.TryGetTrafficLightRightEdge(this)
-                    ?? Math.Max(92, TitleBarChromeHeight * 2.25);
-            WindowTitleBarContentMargin = new Thickness(
-                trafficLightRightEdge + horizontalSpacing,
+        TitleBarChromeHeight = 34;
+        WindowTitleBarContentMargin = WindowState == WindowState.FullScreen
+            ? new Thickness(horizontalSpacing, 0)
+            : new Thickness(
+                windowControlsWidth + windowControlsGaps + windowControlsInset,
                 0,
                 horizontalSpacing,
                 0);
-            return;
-        }
+    }
 
-        WindowTitleBarContentMargin = OperatingSystem.IsWindows()
-            ? new Thickness(10, 0, 148, 0)
-            : new Thickness(10, 0);
+    private void OnWindowControlCloseClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Close();
+    }
+
+    private void OnWindowControlMinimiseClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        WindowState = WindowState.Minimized;
+    }
+
+    private void OnWindowControlZoomClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
     }
 
     private void RestoreRouteFocusIfActive()

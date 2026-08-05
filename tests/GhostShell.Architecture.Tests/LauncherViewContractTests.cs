@@ -419,13 +419,15 @@ public sealed class LauncherViewContractTests
     public void Main_window_owns_the_titlebar_move_fallback()
     {
         var mainWindow = Assert.IsType<XElement>(LoadView("MainWindow").Root);
-        Assert.Equal("Full", AttributeValue(mainWindow, "WindowDecorations"));
-        Assert.Equal(
-            "True",
-            AttributeValue(mainWindow, "ExtendClientAreaToDecorationsHint"));
-        Assert.Equal(
-            "-1",
-            AttributeValue(mainWindow, "ExtendClientAreaTitleBarHeightHint"));
+        // No system decorations. The platform title bar painted its own
+        // material across the top of the window — measured pixel for pixel
+        // against another application's, it was the same bar — and nothing
+        // drawn beneath it could match that, so the shell carries its own
+        // window controls instead.
+        Assert.Equal("None", AttributeValue(mainWindow, "WindowDecorations"));
+        Assert.Single(
+            mainWindow.Descendants(),
+            element => element.Name.LocalName == "WindowControlsView");
 
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
             "public sealed partial class MainWindow : Window");

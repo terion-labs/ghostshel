@@ -15,7 +15,7 @@
     Height="900"
     MinWidth="1080"
     MinHeight="680"
-    WindowDecorations="Full"
+    WindowDecorations="None"
     ExtendClientAreaToDecorationsHint="True"
     ExtendClientAreaTitleBarHeightHint="-1"
     WindowStartupLocation="CenterScreen">
@@ -144,6 +144,20 @@
        the translucency reading as one surface rather than as see-through
        chrome. -->
   <Grid Background="{DynamicResource ShellWindowBackdropBrush}">
+    <!-- The window's own controls, over every route, because the system title
+         bar that used to carry them is gone. It painted its own material across
+         the top — pixel for pixel the bar every other application has — and
+         nothing drawn beneath it could match that. -->
+    <components:WindowControlsView
+        x:Name="WindowControls"
+        ZIndex="10"
+        HorizontalAlignment="Left"
+        VerticalAlignment="Top"
+        Margin="{controls:Inset Horizontal=Md, Vertical=Sm}"
+        IsVisible="{Binding !ApplicationSecurityEditor.IsLocked}"
+        CloseRequested="OnWindowControlCloseClick"
+        MinimiseRequested="OnWindowControlMinimiseClick"
+        ZoomRequested="OnWindowControlZoomClick" />
     <!-- Everything the app draws lives inside this one layer so that
          locking can collapse it whole. The veil alone cannot cover native
          surfaces — a webview or a terminal is hosted above every Avalonia

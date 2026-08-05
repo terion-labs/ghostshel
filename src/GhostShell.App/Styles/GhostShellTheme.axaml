@@ -115,6 +115,34 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
+  <!-- A window control is a coloured disc and nothing else: no border, no
+       hover wash, no focus ring drawn over its own shape. -->
+  <Style Selector="Button.WindowControl">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.WindowControl /template/ ContentPresenter">
+    <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
+  </Style>
+
+  <Style Selector="Button.WindowControl:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+    <Setter Property="Opacity" Value="0.82" />
+  </Style>
+
+  <Style Selector="Button.WindowControl:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+    <Setter Property="Opacity" Value="0.64" />
+  </Style>
+
   <Style Selector="Button.IconButton.Large">
     <Setter Property="Width" Value="34" />
     <Setter Property="Height" Value="34" />
