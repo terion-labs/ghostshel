@@ -191,8 +191,16 @@ public sealed class LauncherViewContractTests
             AttributeValue(root, "Margin"));
         var home = FindNamedElement(root, "HomeTabButton");
 
-        Assert.Equal("32", AttributeValue(home, "Width"));
-        Assert.Equal("32", AttributeValue(home, "Height"));
+        // A square as tall as the tabs beside it, whatever that is. The number
+        // used to be written here as well, which made every change to the
+        // strip's density a test edit and said nothing about what Home is.
+        var tab = Assert.Single(
+            root.Descendants(),
+            element => AttributeValue(element, "Classes") == "RuntimeTabDropTarget");
+        var tabHeight = AttributeValue(tab, "Height");
+        Assert.False(string.IsNullOrWhiteSpace(tabHeight));
+        Assert.Equal(tabHeight, AttributeValue(home, "Width"));
+        Assert.Equal(tabHeight, AttributeValue(home, "Height"));
         Assert.Equal("0", AttributeValue(home, "Padding"));
         Assert.Equal(
             "Open Home tab",

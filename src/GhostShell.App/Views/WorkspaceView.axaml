@@ -100,7 +100,7 @@
 
     <Border
         Grid.Row="3"
-        Height="40"
+        Height="34"
         Background="{DynamicResource ShellSurfaceBrush}"
         BorderBrush="{DynamicResource ShellBorderBrush}"
         BorderThickness="0,1,0,0"
@@ -181,7 +181,7 @@
       </Border>
 
       <Border
-          Width="214"
+          Width="190"
           Classes="FloatingSidebar"
           Padding="{controls:Inset Horizontal=Xs, Vertical=Sm}"
           DockPanel.Dock="{Binding TabStripDock}"

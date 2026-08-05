@@ -220,8 +220,22 @@
                 Background="{TemplateBinding RestingBrush}"
                 CornerRadius="{TemplateBinding CornerRadius}"
                 ClipToBounds="True">
+              <!-- Opening is a movement, so it is drawn as one. Short enough
+                   that the close is under the pointer about as soon as the
+                   pointer stops, rather than being waited for. -->
+              <Border.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Width" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+              </Border.Transitions>
               <Panel>
-                <Border Name="PART_Wash" Background="{TemplateBinding AccentBrush}" Opacity="0" />
+                <Border Name="PART_Wash" Background="{TemplateBinding AccentBrush}" Opacity="0">
+                  <Border.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                    </Transitions>
+                  </Border.Transitions>
+                </Border>
                 <Grid ColumnDefinitions="Auto,Auto,Auto">
                   <Button
                       Name="PART_Open"
@@ -277,7 +291,14 @@
                 BorderThickness="{DynamicResource ShellWorkspaceRailRing}"
                 CornerRadius="{TemplateBinding CornerRadius}"
                 Opacity="0"
-                IsHitTestVisible="False" />
+                IsHitTestVisible="False">
+              <Border.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Width" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                  <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                </Transitions>
+              </Border.Transitions>
+            </Border>
             <controls:SignalDot
                 Name="PART_Attention"
                 HorizontalAlignment="Right"
