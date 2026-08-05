@@ -446,17 +446,6 @@ public sealed partial class App : Avalonia.Application
     /// </summary>
     private const byte ShellBackdropAlpha = 0xE0;
 
-    /// <summary>
-    /// The same surface where the system title bar sits behind it.
-    ///
-    /// macOS draws its own material in that band, over the client area, and it
-    /// lightens whatever we put there — so the base painted at one strength
-    /// across the window comes out visibly lighter along the top. Told by the
-    /// seam's own history: painting the band nothing shows the line, painting
-    /// it a second coat of the base hides it, and a second coat is only a
-    /// higher alpha said twice. This says it once.
-    /// </summary>
-    private const byte ShellTitleBarBackdropAlpha = 0xEE;
 
     /// <summary>
     /// Whether the host has asked for less transparency. The shell answers it
@@ -484,15 +473,6 @@ public sealed partial class App : Avalonia.Application
         // the blurred desktop reads through the gaps between panels — but only
         // where the host is willing: reduced transparency is an accessibility
         // setting, and an operating system that says so gets a solid surface.
-        Publish(
-            "ShellWindowTitleBarBackdropBrush",
-            new SolidColorBrush(Color.FromArgb(
-                WindowBackdropBlurRadius == 0
-                    ? byte.MaxValue
-                    : ShellTitleBarBackdropAlpha,
-                resources.Background.R,
-                resources.Background.G,
-                resources.Background.B)));
         Publish(
             "ShellWindowBackdropBrush",
             new SolidColorBrush(Color.FromArgb(

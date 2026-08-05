@@ -654,13 +654,13 @@
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize9}" />
   </Style>
 
-  <!-- The chrome band is the base surface, but not at the same strength: the
-       system title bar draws its own material in that band, over the client
-       area, and it lightens whatever we put there. Painting nothing leaves a
-       visible seam where the material stops; this is the base said once at the
-       strength that meets it. -->
+  <!-- The chrome band is the base surface and paints nothing of its own, now
+       that the system title bar has been told to stop painting there too. It
+       was compensated for by hand three times — matched, doubled, then
+       calibrated — and the seam came back each time, because the thing being
+       compensated for was drawn above the compensation. -->
   <Style Selector="Border.TopChrome">
-    <Setter Property="Background" Value="{DynamicResource ShellWindowTitleBarBackdropBrush}" />
+    <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
 

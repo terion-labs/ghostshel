@@ -226,6 +226,10 @@ public sealed partial class MainWindow : Window
     private void RequestBackdrop()
     {
         var radius = (Avalonia.Application.Current as App)?.WindowBackdropBlurRadius ?? 0;
+        // Before the blur, not after: the system title bar paints its own
+        // material over the top of the client area, and no fill of ours can
+        // cancel something drawn above it.
+        _ = MacOsWindowTitleBar.TryStopPaintingItsOwnMaterial(this);
         var blurred = OperatingSystem.IsMacOS()
             && MacOsQuickTerminalBackdrop.TryApply(this, radius);
         var negotiated = ActualTransparencyLevel;
