@@ -77,12 +77,24 @@ public sealed partial class MainWindow : Window
         // The platform decides whether a window can be seen through when it
         // makes one; a hint arriving later is a request to change something
         // already built, which macOS simply declines.
-        TransparencyLevelHint =
-        [
-            WindowTransparencyLevel.AcrylicBlur,
-            WindowTransparencyLevel.Blur,
-            WindowTransparencyLevel.Transparent,
-        ];
+        //
+        // On macOS the ask is only to be see-through. Asking for blur here as
+        // well adds Avalonia's own vibrancy layer on top of the native radius
+        // below, and two blurs of the same backdrop compound — the shell came
+        // out far blurrier at twenty than the Quick Terminal is at forty-eight,
+        // which is what gave it away. Elsewhere there is no native radius to
+        // apply, so the hint is the blur.
+        TransparencyLevelHint = OperatingSystem.IsMacOS()
+            ?
+            [
+                WindowTransparencyLevel.Transparent,
+            ]
+            :
+            [
+                WindowTransparencyLevel.AcrylicBlur,
+                WindowTransparencyLevel.Blur,
+                WindowTransparencyLevel.Transparent,
+            ];
     }
 
     private void OnAnyActivity(object? sender, RoutedEventArgs e)
