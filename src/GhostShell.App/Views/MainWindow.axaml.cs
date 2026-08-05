@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using GhostShell.App;
@@ -182,6 +183,7 @@ public sealed partial class MainWindow : Window
         if (OperatingSystem.IsMacOS()
             && MacOsQuickTerminalBackdrop.TryApply(this, WindowBackdropBlurRadius))
         {
+            LetTheBackdropThrough();
             return;
         }
 
@@ -191,7 +193,21 @@ public sealed partial class MainWindow : Window
             WindowTransparencyLevel.Blur,
             WindowTransparencyLevel.None,
         ];
+        if (ActualTransparencyLevel != WindowTransparencyLevel.None)
+        {
+            LetTheBackdropThrough();
+        }
     }
+
+    /// <summary>
+    /// Stops the window painting its own opaque fill, so that the base surface
+    /// above it is the only thing between the content and the backdrop.
+    ///
+    /// Only once a backdrop has actually been established. A window made
+    /// transparent with nothing behind it is not translucent, it is see-through
+    /// — and a platform that refused the blur would have given exactly that.
+    /// </summary>
+    private void LetTheBackdropThrough() => Background = Brushes.Transparent;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
