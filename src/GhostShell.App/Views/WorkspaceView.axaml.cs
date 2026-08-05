@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -6,6 +7,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Dock.Avalonia.Controls;
 using Dock.Model.Controls;
+using Dock.Model.Core;
 
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
@@ -14,21 +16,111 @@ namespace GhostShell.App.Views;
 
 public sealed partial class WorkspaceView : UserControl
 {
+    /// <summary>
+    /// The layout the canvas should be showing, and the factory that owns it.
+    ///
+    /// Bound on this view rather than straight onto the dock control, because
+    /// the control builds its visual tree the moment it is given a layout — and
+    /// a layout that has not been initialised yet builds nothing, leaving the
+    /// canvas empty for a pass. Arriving here first means it can be initialised
+    /// and only then handed over, so the canvas goes from the workspace you
+    /// left to the one you asked for with nothing in between.
+    ///
+    /// Typed as Dock's own model, so the route view still knows nothing about
+    /// the shell's view model.
+    /// </summary>
+    public static readonly StyledProperty<IRootDock?> ActiveDockLayoutProperty =
+        AvaloniaProperty.Register<WorkspaceView, IRootDock?>(nameof(ActiveDockLayout));
+
+    public static readonly StyledProperty<IFactory?> ActiveDockFactoryProperty =
+        AvaloniaProperty.Register<WorkspaceView, IFactory?>(nameof(ActiveDockFactory));
+
+    private readonly ConditionalWeakTable<IRootDock, object> _mountedLayouts = [];
     private int _dockInitializationGeneration;
-    private IRootDock? _initializedDockLayout;
 
     public WorkspaceView()
     {
         InitializeComponent();
         RuntimeDockControl.HostWindowFactory =
             static () => new RuntimePanelHostWindow();
-        RuntimeDockControl.PropertyChanged += OnRuntimeDockControlPropertyChanged;
+    }
+
+    public IRootDock? ActiveDockLayout
+    {
+        get => GetValue(ActiveDockLayoutProperty);
+        set => SetValue(ActiveDockLayoutProperty, value);
+    }
+
+    public IFactory? ActiveDockFactory
+    {
+        get => GetValue(ActiveDockFactoryProperty);
+        set => SetValue(ActiveDockFactoryProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ActiveDockLayoutProperty
+            || change.Property == ActiveDockFactoryProperty)
+        {
+            HandOverActiveDockLayout();
+        }
+    }
+
+    /// <summary>
+    /// Initialises the layout the canvas is about to show, then hands it over.
+    ///
+    /// Initialising allocates native hosts, so it belongs to the moment the
+    /// workspace is mounted rather than to the moment its view model was built
+    /// — a layout that arrives while this view is off screen waits, because
+    /// recovery builds one while the launcher and its modal are still
+    /// transitioning and a floating window presented into that would be torn
+    /// straight back down. Each layout is mounted once; coming back to one
+    /// already mounted costs nothing.
+    /// </summary>
+    private void HandOverActiveDockLayout()
+    {
+        if (ActiveDockLayout is not { } layout || ActiveDockFactory is not { } factory)
+        {
+            return;
+        }
+
+        if (VisualRoot is null)
+        {
+            ScheduleDockHandOver();
+            return;
+        }
+
+        if (!_mountedLayouts.TryGetValue(layout, out _))
+        {
+            factory.InitLayout(layout);
+            _mountedLayouts.Add(layout, this);
+        }
+
+        RuntimeDockControl.Factory = factory;
+        RuntimeDockControl.Layout = layout;
+    }
+
+    private void ScheduleDockHandOver()
+    {
+        var generation = ++_dockInitializationGeneration;
+        Dispatcher.UIThread.Post(
+            () => Dispatcher.UIThread.Post(
+                () =>
+                {
+                    if (generation == _dockInitializationGeneration)
+                    {
+                        HandOverActiveDockLayout();
+                    }
+                },
+                DispatcherPriority.Background),
+            DispatcherPriority.Loaded);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        ScheduleDockInitialization();
+        HandOverActiveDockLayout();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -123,70 +215,6 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ToggleAgentRequested;
 
-    private void OnRuntimeDockControlPropertyChanged(
-        object? sender,
-        AvaloniaPropertyChangedEventArgs e)
-    {
-        _ = sender;
-        if (e.Property != DockControl.LayoutProperty)
-        {
-            return;
-        }
-
-        // A layout arriving at a view that is already on screen is a workspace
-        // switch, and it is initialized now — before the frame that would
-        // otherwise be drawn without it. Waiting cost two dispatcher hops, which
-        // is two frames of an empty canvas between the workspace you left and
-        // the one you asked for: short enough to be a blink and long enough to
-        // be seen.
-        if (VisualRoot is not null)
-        {
-            InitializeCurrentDockLayout(++_dockInitializationGeneration);
-            return;
-        }
-
-        ScheduleDockInitialization();
-    }
-
-    /// <summary>
-    /// Defers initialization until the view has settled, for the one case that
-    /// needs it.
-    ///
-    /// DockControl's automatic path closes native windows whenever the view is
-    /// transiently detached, and recovery necessarily crosses one such
-    /// launcher-to-workspace transition — so a layout that arrives while the
-    /// view is off screen waits until it is on screen and still current, rather
-    /// than being presented into nothing and torn down again.
-    /// </summary>
-    private void ScheduleDockInitialization()
-    {
-        var generation = ++_dockInitializationGeneration;
-        Dispatcher.UIThread.Post(
-            () => Dispatcher.UIThread.Post(
-                () => InitializeCurrentDockLayout(generation),
-                DispatcherPriority.Background),
-            DispatcherPriority.Loaded);
-    }
-
-    private void InitializeCurrentDockLayout(int generation)
-    {
-        if (generation != _dockInitializationGeneration
-            || VisualRoot is null
-            || RuntimeDockControl.Layout is not IRootDock layout
-            || ReferenceEquals(layout, _initializedDockLayout)
-            || layout.Factory is null)
-        {
-            return;
-        }
-
-        // DockControl's automatic InitializeLayout path closes native windows
-        // whenever the view is transiently detached. Recovery necessarily
-        // crosses one such launcher-to-workspace transition. Initialize only
-        // the final attached layout so a restored floating window is not
-        // presented and then immediately removed from the serialized model.
-        layout.Factory.InitLayout(layout);
-        _initializedDockLayout = layout;
-    }
 
     private void OnActivateTabClick(object? sender, RoutedEventArgs e) =>
         ActivateTabRequested?.Invoke(sender, e);

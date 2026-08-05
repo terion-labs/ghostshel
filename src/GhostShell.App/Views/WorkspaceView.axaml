@@ -7,6 +7,8 @@
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:views="using:GhostShell.App.Views"
+    ActiveDockLayout="{Binding RuntimeWorkspace.ActiveTab.DockLayout}"
+    ActiveDockFactory="{Binding RuntimeWorkspace.ActiveTab.DockFactory}"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <Grid RowDefinitions="Auto,34,*,Auto,26">
@@ -237,8 +239,6 @@
             x:Name="RuntimeDockControl"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
-            Layout="{Binding RuntimeWorkspace.ActiveTab.DockLayout}"
-            Factory="{Binding RuntimeWorkspace.ActiveTab.DockFactory}"
             IsDockingEnabled="{Binding !IsLayoutDesignerVisible}"
             InitializeFactory="True"
             InitializeLayout="False">

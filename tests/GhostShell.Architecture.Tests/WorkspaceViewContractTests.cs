@@ -209,15 +209,24 @@ public sealed class WorkspaceViewContractTests
                     StringComparison.Ordinal));
         }
 
+        // The layout still comes from the active tab, and it still comes by
+        // binding — but it arrives at the view rather than at the control. A
+        // dock control builds its visual tree the instant it is given a layout,
+        // and an uninitialised layout builds nothing, so binding it straight to
+        // the control left the canvas empty for a pass on every switch. The
+        // view initialises it and then hands it over.
+        Assert.Equal(
+            "{Binding RuntimeWorkspace.ActiveTab.DockLayout}",
+            AttributeValue(root, "ActiveDockLayout"));
+        Assert.Equal(
+            "{Binding RuntimeWorkspace.ActiveTab.DockFactory}",
+            AttributeValue(root, "ActiveDockFactory"));
+
         var dockControl = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "DockControl");
-        Assert.Equal(
-            "{Binding RuntimeWorkspace.ActiveTab.DockLayout}",
-            AttributeValue(dockControl, "Layout"));
-        Assert.Equal(
-            "{Binding RuntimeWorkspace.ActiveTab.DockFactory}",
-            AttributeValue(dockControl, "Factory"));
+        Assert.Null(AttributeValue(dockControl, "Layout"));
+        Assert.Null(AttributeValue(dockControl, "Factory"));
         // Docking pauses while the layout designer overlay is open: Dock resolves
         // drop targets across every registered DockControl, and the designer's
         // canvas must not be able to dock a slot into the live workspace beneath.
