@@ -57,6 +57,17 @@ public sealed record ThemePreference : IDurableDefinition
 
     public const double MaximumCornerRadius = 20;
 
+    /// <summary>
+    /// How far the desktop is blurred behind the shell's base surface, and
+    /// whether there is one at all: zero means an opaque shell with no blur
+    /// asked for, which is also how someone turns the effect off.
+    /// </summary>
+    public const int MinimumBackdropBlurRadius = 0;
+
+    public const int MaximumBackdropBlurRadius = 64;
+
+    public const int DefaultBackdropBlurRadius = 48;
+
     public static RgbColor BronzeFallback { get; } = RgbColor.Parse("#B8793A");
 
     public static ThemePreference Default { get; } = new(
@@ -78,7 +89,8 @@ public sealed record ThemePreference : IDurableDefinition
         bool showTabBar = true,
         bool showWorkspacesPanel = true,
         TabStripPlacement tabStripPlacement = TabStripPlacement.Top,
-        WorkspacePanelPlacement workspacePanelPlacement = WorkspacePanelPlacement.Left)
+        WorkspacePanelPlacement workspacePanelPlacement = WorkspacePanelPlacement.Left,
+        int backdropBlurRadius = DefaultBackdropBlurRadius)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(accent);
@@ -100,6 +112,15 @@ public sealed record ThemePreference : IDurableDefinition
                 nameof(cornerRadiusOverride),
                 cornerRadiusOverride,
                 $"Corner radius must be between {MinimumCornerRadius} and {MaximumCornerRadius}.");
+        }
+
+        if (backdropBlurRadius is < MinimumBackdropBlurRadius or > MaximumBackdropBlurRadius)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(backdropBlurRadius),
+                backdropBlurRadius,
+                $"Backdrop blur must be between {MinimumBackdropBlurRadius} and "
+                + $"{MaximumBackdropBlurRadius}.");
         }
 
         if (!Enum.IsDefined(density))
@@ -135,6 +156,7 @@ public sealed record ThemePreference : IDurableDefinition
         ShowWorkspacesPanel = showWorkspacesPanel;
         TabStripPlacement = tabStripPlacement;
         WorkspacePanelPlacement = workspacePanelPlacement;
+        BackdropBlurRadius = backdropBlurRadius;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Theme;
@@ -165,6 +187,12 @@ public sealed record ThemePreference : IDurableDefinition
     public TabStripPlacement TabStripPlacement { get; }
 
     public WorkspacePanelPlacement WorkspacePanelPlacement { get; }
+
+    /// <summary>
+    /// How far the desktop is blurred behind the base surface. Zero turns the
+    /// translucency off with it — an opaque shell has nothing to blur behind.
+    /// </summary>
+    public int BackdropBlurRadius { get; }
 
     [JsonIgnore]
     public DefinitionKey Key => new(Kind, Id.Value);

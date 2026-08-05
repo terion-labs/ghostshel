@@ -179,15 +179,6 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// How far the desktop is blurred behind the shell's base surface.
-    ///
-    /// Enough to be a texture rather than a picture, and no more: at thirty-two
-    /// everything behind the window averaged into a flat wash, which reads as a
-    /// solid grey rather than as anything being behind anything.
-    /// </summary>
-    private const int WindowBackdropBlurRadius = 20;
-
-    /// <summary>
     /// Puts a blur behind the window so the translucent base surface has
     /// something to be translucent against.
     ///
@@ -197,6 +188,13 @@ public sealed partial class MainWindow : Window
     /// host asking for reduced transparency gets neither — its base surface is
     /// published opaque, and blurring behind an opaque surface is only cost.
     /// </summary>
+    /// <summary>
+    /// Re-reads the stored backdrop and applies it. Called when the appearance
+    /// is republished, so turning the blur down — or off — takes effect where
+    /// you set it rather than at the next start.
+    /// </summary>
+    internal void RefreshWindowBackdrop() => ApplyWindowBackdrop();
+
     private void ApplyWindowBackdrop()
     {
         if (Avalonia.Application.Current is not App app)
@@ -204,14 +202,14 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (app.PrefersReducedTransparency)
+        if (app.WindowBackdropBlurRadius == 0)
         {
             // Declining is a decision, and it said nothing. A silent early
             // return is indistinguishable from a backdrop that was asked for
             // and refused, which is two different things to go and fix.
-            Console.Error.WriteLine(
-                "[ghostshell:appearance] backdrop — declined, the host asks for "
-                + "reduced transparency");
+            // Off is a setting as well as an accessibility preference, and an
+            // opaque shell is the answer to both.
+            Background = null;
             return;
         }
 
@@ -227,8 +225,9 @@ public sealed partial class MainWindow : Window
 
     private void RequestBackdrop()
     {
+        var radius = (Avalonia.Application.Current as App)?.WindowBackdropBlurRadius ?? 0;
         var blurred = OperatingSystem.IsMacOS()
-            && MacOsQuickTerminalBackdrop.TryApply(this, WindowBackdropBlurRadius);
+            && MacOsQuickTerminalBackdrop.TryApply(this, radius);
         var negotiated = ActualTransparencyLevel;
         if (blurred || negotiated != WindowTransparencyLevel.None)
         {

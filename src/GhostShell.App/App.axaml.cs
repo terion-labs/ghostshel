@@ -444,7 +444,7 @@ public sealed partial class App : Avalonia.Application
     /// window was still opaque at the time and none of it was reaching the
     /// screen. This is the number to move in either direction.
     /// </summary>
-    private const byte ShellBackdropAlpha = 0xD8;
+    private const byte ShellBackdropAlpha = 0xE0;
 
     /// <summary>
     /// The same surface where the system title bar sits behind it.
@@ -456,7 +456,7 @@ public sealed partial class App : Avalonia.Application
     /// it a second coat of the base hides it, and a second coat is only a
     /// higher alpha said twice. This says it once.
     /// </summary>
-    private const byte ShellTitleBarBackdropAlpha = 0xE8;
+    private const byte ShellTitleBarBackdropAlpha = 0xEE;
 
     /// <summary>
     /// Whether the host has asked for less transparency. The shell answers it
@@ -464,6 +464,18 @@ public sealed partial class App : Avalonia.Application
     /// </summary>
     public bool PrefersReducedTransparency =>
         _hostAppearance?.GetCurrent().ReducedTransparency == true;
+
+    /// <summary>
+    /// How far to blur behind the shell, as stored — zero when the person has
+    /// turned it off, and zero when the host asks for reduced transparency,
+    /// which is the same answer arrived at two ways.
+    /// </summary>
+    public int WindowBackdropBlurRadius =>
+        PrefersReducedTransparency
+            ? 0
+            : (_definitionCatalog?.Snapshot.Themes
+                .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)
+                ?.Value ?? ThemePreference.Default).BackdropBlurRadius;
 
     private void ApplyApplicationResources(EffectiveAppearanceResources resources)
     {
@@ -475,7 +487,7 @@ public sealed partial class App : Avalonia.Application
         Publish(
             "ShellWindowTitleBarBackdropBrush",
             new SolidColorBrush(Color.FromArgb(
-                _hostAppearance?.GetCurrent().ReducedTransparency == true
+                WindowBackdropBlurRadius == 0
                     ? byte.MaxValue
                     : ShellTitleBarBackdropAlpha,
                 resources.Background.R,
@@ -484,7 +496,7 @@ public sealed partial class App : Avalonia.Application
         Publish(
             "ShellWindowBackdropBrush",
             new SolidColorBrush(Color.FromArgb(
-                _hostAppearance?.GetCurrent().ReducedTransparency == true
+                WindowBackdropBlurRadius == 0
                     ? byte.MaxValue
                     : ShellBackdropAlpha,
                 resources.Background.R,
@@ -663,6 +675,9 @@ public sealed partial class App : Avalonia.Application
 
         window.Classes.Add(resources.ProfileClass);
         window.Classes.Add(resources.AppearanceClass);
+        // The backdrop is a stored setting, so a change to it has to reach the
+        // window that is wearing it rather than only the next one opened.
+        (window as MainWindow)?.RefreshWindowBackdrop();
         if (resources.HighContrast)
         {
             window.Classes.Add("high-contrast");

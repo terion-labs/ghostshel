@@ -756,7 +756,8 @@ public sealed partial class MainWindow
                     selection.ShowTabBar,
                     selection.ShowWorkspacesPanel,
                     selection.TabStripPlacement,
-                    selection.WorkspacePanelPlacement));
+                    selection.WorkspacePanelPlacement,
+                    selection.BackdropBlurRadius));
             if (!result.IsSuccess)
             {
                 return;

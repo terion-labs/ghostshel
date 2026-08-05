@@ -4,9 +4,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:converters="using:GhostShell.App.Converters"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
+  <UserControl.Resources>
+    <converters:BlurRadiusConverter x:Key="BlurRadiusConverter" />
+  </UserControl.Resources>
   <StackPanel Spacing="{DynamicResource ShellSpaceXl}">
     <components:SettingsPageHeader
         Heading="Appearance"
@@ -454,6 +458,31 @@
           </controls:LabeledField>
         </controls:SurfaceCard>
         <controls:SurfaceCard Tone="Raised" Grid.Column="1">
+          <controls:LabeledField
+              Label="Background blur"
+              Hint="How far the desktop is blurred behind the shell. None turns the translucency off with it.">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <Slider
+                  x:Name="BackdropBlurSlider"
+                  VerticalAlignment="Center"
+                  ValueChanged="OnAppearanceChanged"
+                  Minimum="0"
+                  Maximum="64"
+                  TickFrequency="4"
+                  IsSnapToTickEnabled="True"
+                  AutomationProperties.Name="Background blur" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize12}"
+                  FontWeight="SemiBold"
+                  Text="{Binding #BackdropBlurSlider.Value, Converter={StaticResource BlurRadiusConverter}}" />
+            </Grid>
+          </controls:LabeledField>
+        </controls:SurfaceCard>
+      </Grid>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+        <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
               Label="Padding density">
             <Border Classes="Segmented">

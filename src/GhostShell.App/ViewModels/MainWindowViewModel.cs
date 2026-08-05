@@ -4158,7 +4158,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             effective.ShowTabBar,
             effective.ShowWorkspacesPanel,
             effective.TabStripPlacement,
-            effective.WorkspacePanelPlacement);
+            effective.WorkspacePanelPlacement,
+            effective.BackdropBlurRadius);
         // A theme is all scalars, so record equality is enough to tell that this
         // would rewrite what is already stored.
         if (stored is not null && stored.Value == updated)

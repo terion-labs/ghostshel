@@ -3492,7 +3492,8 @@ public sealed record ThemeChromePreference(
     bool ShowTabBar,
     bool ShowWorkspacesPanel,
     TabStripPlacement TabStripPlacement,
-    WorkspacePanelPlacement WorkspacePanelPlacement)
+    WorkspacePanelPlacement WorkspacePanelPlacement,
+    int BackdropBlurRadius)
 {
     public static ThemeChromePreference From(ThemePreference theme)
     {
@@ -3503,6 +3504,7 @@ public sealed record ThemeChromePreference(
             theme.ShowTabBar,
             theme.ShowWorkspacesPanel,
             theme.TabStripPlacement,
-            theme.WorkspacePanelPlacement);
+            theme.WorkspacePanelPlacement,
+            theme.BackdropBlurRadius);
     }
 }
