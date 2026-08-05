@@ -130,6 +130,16 @@
         back to zero.
       -->
       <SolidColorBrush x:Key="ShellWindowBackdropBrush" Color="#E0111111" />
+
+      <!--
+        The band across the top of the window is Avalonia's own drawn title
+        bar, not the platform's. Avalonia 12.0.5 made the window border
+        transparent but left the bar itself opaque — it only moved the fill
+        behind this named brush so it could be answered here. Left alone it
+        paints SystemControlBackgroundAltHighBrush over the backdrop, which is
+        the pale strip the shell kept growing back.
+      -->
+      <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="Transparent" />
       <x:Double x:Key="ShellSurfaceOpacity">1</x:Double>
       <CornerRadius x:Key="ShellControlCornerRadius">7</CornerRadius>
       <CornerRadius x:Key="ShellCardCornerRadius">9</CornerRadius>

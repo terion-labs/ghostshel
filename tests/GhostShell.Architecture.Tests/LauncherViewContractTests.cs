@@ -432,6 +432,23 @@ public sealed class LauncherViewContractTests
             "-1",
             AttributeValue(mainWindow, "ExtendClientAreaTitleBarHeightHint"));
 
+        // Extending under the decorations is only half of it. Avalonia draws
+        // its own title bar and still fills it with an opaque brush; 12.0.5
+        // only moved that fill behind a named resource. Without an answer to
+        // it the pale strip comes straight back, which it did once already.
+        var app = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "App.axaml"));
+        var titleBarFill = Assert.Single(
+            app.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Key"),
+                "TitleBarBackgroundBrush",
+                StringComparison.Ordinal));
+        Assert.Equal("Transparent", AttributeValue(titleBarFill, "Color"));
+
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
             "public sealed partial class MainWindow : Window");
 
