@@ -435,11 +435,15 @@ public sealed partial class App : Avalonia.Application
         };
 
     /// <summary>
-    /// How much of the base surface survives. Enough that panels still read as
-    /// sitting on something of the shell's own rather than directly on the
-    /// desktop, and little enough for the blur behind it to be visible at all.
+    /// How much of the base surface survives.
+    ///
+    /// The first value tried was eighty-five per cent opaque, which let fifteen
+    /// per cent of the backdrop through — invisible against anything dark, and
+    /// indistinguishable from the effect not working at all. This is the number
+    /// to move if the material is too strong or too faint; everything else in
+    /// the path is confirmed working.
     /// </summary>
-    private const byte ShellBackdropAlpha = 0xD8;
+    private const byte ShellBackdropAlpha = 0xB4;
 
     /// <summary>
     /// Whether the host has asked for less transparency. The shell answers it

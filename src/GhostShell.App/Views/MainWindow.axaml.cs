@@ -185,8 +185,19 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void ApplyWindowBackdrop()
     {
-        if (Avalonia.Application.Current is not App app || app.PrefersReducedTransparency)
+        if (Avalonia.Application.Current is not App app)
         {
+            return;
+        }
+
+        if (app.PrefersReducedTransparency)
+        {
+            // Declining is a decision, and it said nothing. A silent early
+            // return is indistinguishable from a backdrop that was asked for
+            // and refused, which is two different things to go and fix.
+            Console.Error.WriteLine(
+                "[ghostshell:appearance] backdrop — declined, the host asks for "
+                + "reduced transparency");
             return;
         }
 

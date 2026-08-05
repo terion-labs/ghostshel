@@ -129,7 +129,7 @@
         the first publish still resolve a real value rather than silently falling
         back to zero.
       -->
-      <SolidColorBrush x:Key="ShellWindowBackdropBrush" Color="#D8111111" />
+      <SolidColorBrush x:Key="ShellWindowBackdropBrush" Color="#B4111111" />
       <CornerRadius x:Key="ShellControlCornerRadius">7</CornerRadius>
       <CornerRadius x:Key="ShellCardCornerRadius">9</CornerRadius>
       <CornerRadius x:Key="ShellSidebarCornerRadius">9</CornerRadius>
