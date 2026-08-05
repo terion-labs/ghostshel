@@ -96,25 +96,6 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
-  <!--
-    A workspace tile in the rails. Open and in-front are two states and they
-    must not read as one: several workspaces run at once, and only one of them
-    is the one being looked at. Open is a quiet outline saying "this is alive";
-    in front is the accent, saying "this is where you are".
-  -->
-  <Style Selector="Button.WorkspaceTile">
-    <Setter Property="BorderThickness" Value="2" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-  </Style>
-
-  <Style Selector="Button.WorkspaceTile.open">
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellMutedBrush}" />
-  </Style>
-
-  <Style Selector="Button.WorkspaceTile.current">
-    <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
-  </Style>
-
   <Style Selector="Button.IconButton.Large">
     <Setter Property="Width" Value="34" />
     <Setter Property="Height" Value="34" />
@@ -705,6 +686,50 @@
   <Style Selector="Button.RuntimeHomeTab.active">
     <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+  </Style>
+
+  <!--
+    A runtime tab. The one you are in wears the accent, whole — a tint or an
+    edge marker was not enough to find at a glance in a full strip, which is
+    what "hard to tell what is active" meant. The accent is the open
+    workspace's own, so the strip says which workspace you are in as well as
+    which tab, without spending a word on either.
+  -->
+  <Style Selector="Button.RuntimeTabActivator">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+  </Style>
+
+  <Style Selector="Button.RuntimeTabActivator:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button.RuntimeTabActivator.active">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
+  </Style>
+
+  <!-- The stock hover wash would take the accent back off the active tab, and
+       hovering the tab you are already in should change nothing. -->
+  <Style Selector="Button.RuntimeTabActivator.active:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
+  </Style>
+
+  <!-- The reorder handle and the close button are the tab's siblings rather
+       than its content, so they take the tab's own text colour from here. -->
+  <Style Selector="Grid.RuntimeTabDropTarget">
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource ShellMutedBrush}" />
+  </Style>
+
+  <Style Selector="Grid.RuntimeTabDropTarget.active">
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
+  </Style>
+
+  <!-- A button sets its own foreground, so inheriting it is not enough. -->
+  <Style Selector="Grid.RuntimeTabDropTarget.active Button.IconButton">
+    <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
   </Style>
 
   <!--

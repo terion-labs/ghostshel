@@ -207,6 +207,17 @@ internal sealed class QaApplication : Avalonia.Application
                 vm.ShowWorkspace();
                 MarkBackgroundTabForAttention(vm);
             }),
+        // The rail tile opened for closing, in the rail itself: the expansion
+        // has to overflow the sidebar and draw over the canvas, which a probe
+        // window cannot show.
+        new(
+            "workspace-rail-close",
+            vm =>
+            {
+                vm.ShowWorkspace();
+                MarkBackgroundTabForAttention(vm);
+            },
+            PrepareCapture: ShowRailTileCloseAction),
         new(
             "workspace-drag-ghost",
             vm => vm.ShowWorkspace(),
@@ -484,6 +495,19 @@ internal sealed class QaApplication : Avalonia.Application
         }
     }
 
+    /// <summary>
+    /// Opens the close action on the first rail tile that offers one.
+    /// </summary>
+    private static void ShowRailTileCloseAction(MainWindow window)
+    {
+        var tile = window.GetVisualDescendants()
+            .OfType<GhostShell.App.Controls.WorkspaceRailTile>()
+            .FirstOrDefault(candidate => candidate.CanClose)
+            ?? throw new InvalidOperationException(
+                "No rail tile offers a close action, so there is nothing to capture.");
+        ForcePointerOver(tile);
+    }
+
     private static void ShowFirstLaunchCardHover(MainWindow window)
     {
         var cardSurface = window.GetVisualDescendants()
@@ -491,10 +515,19 @@ internal sealed class QaApplication : Avalonia.Application
             .FirstOrDefault(button => button.Classes.Contains("CardSurface"))
             ?? throw new InvalidOperationException(
                 "The launcher no longer exposes a CardSurface button for hover QA.");
+        ForcePointerOver(cardSurface);
+    }
+
+    /// <summary>
+    /// Puts a control into its hovered state without a pointer, so a hover-only
+    /// affordance can be captured at all.
+    /// </summary>
+    private static void ForcePointerOver(StyledElement element)
+    {
         var pseudoClasses = typeof(StyledElement).GetProperty(
                 "PseudoClasses",
                 BindingFlags.Instance | BindingFlags.NonPublic)
-            ?.GetValue(cardSurface) as IPseudoClasses
+            ?.GetValue(element) as IPseudoClasses
             ?? throw new InvalidOperationException(
                 "Avalonia no longer exposes the protected pseudo-class collection used by QA.");
 
@@ -508,60 +541,54 @@ internal sealed class QaApplication : Avalonia.Application
                 $"Expected one value but found {values.Count}.");
 
     /// <summary>
-    /// Replicas of the workspaces-rail buttons, one per representative symbol,
-    /// built exactly like WorkspaceView's rail tiles so glyph placement in the
-    /// capture is the product's.
+    /// The rail's own tile in every state it has: at rest, running in the
+    /// background, in front, asking to be noticed, and opened for closing.
+    ///
+    /// The real component rather than a replica of it. A hand-built copy could
+    /// only ever show what the copy does — and the states are the whole point,
+    /// because the rail's job is to be readable at a glance.
     /// </summary>
     private static Window CreateRailTileProbe()
     {
-        var symbols = new[]
-        {
-            FluentIcons.Common.Symbol.Window,
-            FluentIcons.Common.Symbol.WindowConsole,
-            FluentIcons.Common.Symbol.Code,
-            FluentIcons.Common.Symbol.Rocket,
-            FluentIcons.Common.Symbol.Database,
-        };
         var stack = new StackPanel
         {
             Margin = new Thickness(8),
             Spacing = 8,
         };
-        foreach (var symbol in symbols)
+        foreach (var (accent, symbol, running, current, attention, closable, hovered) in
+                 new (string, FluentIcons.Common.Symbol, bool, bool, bool, bool, bool)[]
+                 {
+                     ("#C77828", FluentIcons.Common.Symbol.Window, false, false, false, false, false),
+                     ("#3FB950", FluentIcons.Common.Symbol.Code, true, false, false, true, false),
+                     ("#4A90D9", FluentIcons.Common.Symbol.Database, true, true, false, true, false),
+                     ("#C4322B", FluentIcons.Common.Symbol.Rocket, true, false, true, true, false),
+                     ("#3FB950", FluentIcons.Common.Symbol.Code, true, false, false, true, true),
+                 })
         {
-            stack.Children.Add(new Button
+            var tile = new GhostShell.App.Controls.WorkspaceRailTile
             {
-                Width = 40,
-                Height = 40,
-                Padding = new Thickness(0),
-                Background = new SolidColorBrush(Color.Parse("#C77828")),
-                Content = new FluentIcons.Avalonia.SymbolIcon
-                {
-                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                    Symbol = symbol,
-                    FontSize = 16,
-                },
-            });
+                Accent = accent,
+                Icon = symbol,
+                IsRunning = running,
+                IsCurrent = current,
+                HasAttention = attention,
+                CanClose = closable,
+            };
+            if (hovered)
+            {
+                ForcePointerOver(tile);
+            }
+
+            stack.Children.Add(tile);
         }
 
-        stack.Children.Add(new Button
-        {
-            Width = 40,
-            Height = 40,
-            Padding = new Thickness(0),
-            Background = Brushes.Transparent,
-            Content = new FluentIcons.Avalonia.SymbolIcon
-            {
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                Symbol = FluentIcons.Common.Symbol.Add,
-                FontSize = 14,
-            },
-        });
         return new Window
         {
-            SizeToContent = SizeToContent.WidthAndHeight,
+            // Room for the widest state: the last tile opens sideways out of
+            // the rail, and a window sized to the resting tiles would clip the
+            // very thing the route exists to show.
+            Width = 140,
+            SizeToContent = SizeToContent.Height,
             CanResize = false,
             Content = stack,
         };

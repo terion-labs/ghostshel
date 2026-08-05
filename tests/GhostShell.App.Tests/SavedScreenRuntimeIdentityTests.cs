@@ -295,6 +295,46 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     /// <summary>
+    /// Closing the workspace in front puts you back in the one you were in
+    /// before it — not the oldest one still running, which is what appending on
+    /// first open would have given. The open set is kept in the order the
+    /// workspaces were last looked at so that "the previous one" is a question
+    /// it can answer.
+    /// </summary>
+    [Fact]
+    public async Task Closing_the_workspace_in_front_returns_to_the_one_before_it()
+    {
+        var connection = LocalConnection("previous-connection", "Connection");
+        var first = WorkspaceOver(connection, "previous-first", "First");
+        var second = WorkspaceOver(connection, "previous-second", "Second");
+        var third = WorkspaceOver(connection, "previous-third", "Third");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(first), Store(second), Store(third)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(first.Id));
+        Assert.True(await viewModel.OpenWorkspaceAsync(second.Id));
+        var secondRuntime = viewModel.RuntimeWorkspace!;
+        Assert.True(await viewModel.OpenWorkspaceAsync(third.Id));
+        // Back to the second, so the second is now the most recent before the
+        // third — and the first is the oldest, which is deliberately not it.
+        Assert.True(await viewModel.OpenWorkspaceAsync(third.Id));
+        Assert.True(await viewModel.OpenWorkspaceAsync(second.Id));
+        Assert.True(await viewModel.OpenWorkspaceAsync(third.Id));
+        var thirdRuntime = viewModel.RuntimeWorkspace!;
+
+        viewModel.RemoveRuntimeWorkspace(thirdRuntime.Id);
+
+        Assert.Same(secondRuntime, viewModel.RuntimeWorkspace);
+        Assert.Equal(2, viewModel.OpenWorkspaces.Count);
+        Assert.DoesNotContain(thirdRuntime, viewModel.OpenWorkspaces);
+    }
+
+    /// <summary>
     /// A workspace accent retints the shell while that workspace is open, and
     /// only while it is open. The view model cannot republish application
     /// resources, so what it owes the host is the announcement — and owing it

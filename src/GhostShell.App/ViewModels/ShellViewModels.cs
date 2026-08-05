@@ -176,7 +176,7 @@ public sealed class LauncherWorkspaceViewModel(
 
     public int ItemCount { get; } = itemCount;
 
-    /// <summary>The Default workspace always exists; only the rest can go.</summary>
+    /// <summary>The Main workspace always exists; only the rest can go.</summary>
     public bool CanDelete => !string.Equals(
         Id.Value,
         WorkspaceDefinition.DefaultWorkspaceId,
@@ -190,8 +190,21 @@ public sealed class LauncherWorkspaceViewModel(
     public bool IsOpen
     {
         get => _isOpen;
-        internal set => SetProperty(ref _isOpen, value);
+        internal set
+        {
+            if (SetProperty(ref _isOpen, value))
+            {
+                OnPropertyChanged(nameof(CanClose));
+            }
+        }
     }
+
+    /// <summary>
+    /// Whether the rail offers to end this workspace. Only something running
+    /// can be ended, and the Main workspace is never offered: it is where
+    /// closing anything else puts you back.
+    /// </summary>
+    public bool CanClose => IsOpen && CanDelete;
 
     public bool IsInFront
     {
@@ -1154,14 +1167,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
     public bool IsActive
     {
         get => _isActive;
-        set
-        {
-            if (SetProperty(ref _isActive, value))
-            {
-                OnPropertyChanged(nameof(TabBackground));
-                OnPropertyChanged(nameof(TabForeground));
-            }
-        }
+        set => SetProperty(ref _isActive, value);
     }
 
     /// <summary>
@@ -1177,10 +1183,6 @@ public sealed class RuntimeTabViewModel : ObservableObject
         get => _hasAttention;
         internal set => SetProperty(ref _hasAttention, value);
     }
-
-    public string TabBackground => IsActive ? "#32201B" : "#1A1A1D";
-
-    public string TabForeground => IsActive ? "#FFF7F0" : "#A7A7AD";
 
     public int Columns => _columns;
 

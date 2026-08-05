@@ -659,6 +659,31 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Ends one workspace from the rail, and nothing else.
+    ///
+    /// Scoped to the workspace rather than the window: the window holds the
+    /// others, and they keep running. The same confirmation a tab close uses
+    /// stands in front of it, because the sessions being ended are just as
+    /// live — the difference is only how many of them there are.
+    /// </summary>
+    private async void OnCloseWorkspaceClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control { DataContext: LauncherWorkspaceViewModel workspace }
+            || ViewModel.OpenWorkspaceInstance(workspace.Id) is not { } instanceId)
+        {
+            return;
+        }
+
+        if (await RunCloseFlowAsync((decision, cancellationToken) =>
+                ViewModel.CloseWorkspaceAsync(instanceId, decision, cancellationToken)))
+        {
+            ViewModel.RemoveRuntimeWorkspace(instanceId);
+            FocusCurrentRoute();
+        }
+    }
+
     private async void OnOpenConnectionClick(object? sender, RoutedEventArgs e)
     {
         _ = e;

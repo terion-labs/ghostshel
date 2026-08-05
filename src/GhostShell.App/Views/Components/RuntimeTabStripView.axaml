@@ -42,6 +42,7 @@
               Width="190"
               Height="32"
               Classes="RuntimeTabDropTarget"
+              Classes.active="{Binding IsActive}"
               ColumnDefinitions="24,*,28"
               DragDrop.AllowDrop="True"
               DragDrop.DragEnter="OnDragEnter"
@@ -51,14 +52,18 @@
             <!-- Stretched, or the chip shrinks to its label and the close button
                  that belongs to this tab renders outside it. Avalonia buttons do
                  not stretch by default. -->
+            <!-- The active tab wears the accent, and the accent is the open
+                 workspace's own, so the tab strip says which workspace you are
+                 in without repeating its name. Colour comes from the theme
+                 rather than from the view model: a tab that carried its own hex
+                 answered no appearance setting. -->
             <Button
                 Grid.ColumnSpan="3"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 Padding="{controls:Inset Horizontal=Xxl}"
-                Background="{Binding TabBackground}"
-                BorderThickness="0"
                 Classes="RuntimeTabActivator"
+                Classes.active="{Binding IsActive}"
                 Click="OnActivate"
                 HorizontalContentAlignment="Left"
                 VerticalContentAlignment="Center"
@@ -68,8 +73,8 @@
                    leaves the label drawn against the top of the tab rather than
                    beside the icon. -->
               <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                <icons:SymbolIcon VerticalAlignment="Center" Symbol="WindowConsole" FontSize="13" Foreground="{Binding TabForeground}" />
-                <TextBlock VerticalAlignment="Center" Foreground="{Binding TabForeground}" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                <icons:SymbolIcon VerticalAlignment="Center" Symbol="WindowConsole" FontSize="13" />
+                <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize11}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                 <controls:SignalDot IsVisible="{Binding HasAttention}" />
               </StackPanel>
             </Button>
@@ -105,8 +110,7 @@
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Symbol="ReOrderDotsVertical"
-                  FontSize="12"
-                  Foreground="{Binding TabForeground}" />
+                  FontSize="12" />
             </Border>
             <Button
                 Grid.Column="2"

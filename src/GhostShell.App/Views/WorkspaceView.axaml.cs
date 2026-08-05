@@ -69,6 +69,8 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? OpenWorkspaceRequested;
 
+    public event EventHandler<RoutedEventArgs>? CloseWorkspaceRequested;
+
     public event EventHandler<RoutedEventArgs>? RefreshAgentAuditRequested;
 
     public event EventHandler<RoutedEventArgs>? RetryFileTransferRequested;
@@ -209,6 +211,9 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnOpenWorkspaceClick(object? sender, RoutedEventArgs e) =>
         OpenWorkspaceRequested?.Invoke(sender, e);
+
+    private void OnCloseWorkspaceClick(object? sender, RoutedEventArgs e) =>
+        CloseWorkspaceRequested?.Invoke(sender, e);
 
     private void OnRefreshAgentAuditClick(object? sender, RoutedEventArgs e) =>
         RefreshAgentAuditRequested?.Invoke(sender, e);

@@ -485,6 +485,14 @@ public sealed partial class App : Avalonia.Application
         Resources["ShellTileSizeMd"] = Math.Round(resources.ControlMinHeight * 1.05);
         Resources["ShellTileSizeLg"] = Math.Round(resources.ControlMinHeight * 1.75);
 
+        // The rail tile's outline, and how wide it opens when it offers to close
+        // the workspace. Twice its own width, so the action it reveals is the
+        // same size as the tile it belongs to rather than a sliver beside it.
+        Resources["ShellWorkspaceRailRing"] = new Thickness(
+            Math.Max(1, Math.Round(resources.ControlMinHeight * 0.05)));
+        Resources["ShellWorkspaceRailTileExpandedWidth"] =
+            Math.Round(resources.ControlMinHeight * 1.05) * 2;
+
         // The attention dot, and the ring that keeps it legible on top of a
         // saturated tile. Derived like the tiles so a compact density does not
         // leave a mark sized for a roomier one.

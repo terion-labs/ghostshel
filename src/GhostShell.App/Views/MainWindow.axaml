@@ -203,6 +203,7 @@
         KeepAgentCapabilityOffRequested="OnKeepAgentCapabilityOffClick"
         LoadOlderAgentAuditRequested="OnLoadOlderAgentAuditClick"
         OpenWorkspaceRequested="OnOpenWorkspaceClick"
+        CloseWorkspaceRequested="OnCloseWorkspaceClick"
         RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
         RetryFileTransferRequested="OnRetryFileTransferClick"
         SavedConnectionLaunchRequested="OnSavedConnectionLaunchRequested"

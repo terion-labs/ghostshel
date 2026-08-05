@@ -4191,6 +4191,26 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Ends every session belonging to one workspace, and nothing else.
+    ///
+    /// Scoped to the workspace rather than the window because the window holds
+    /// several of them: closing the one you are pointing at must leave the rest
+    /// running.
+    /// </summary>
+    public async ValueTask<HostResult<CloseScopeResult>> CloseWorkspaceAsync(
+        WorkspaceInstanceId workspaceId,
+        CloseDecision decision,
+        CancellationToken cancellationToken)
+    {
+        var result = await SessionClient.CloseAsync(
+            CloseScopeRequest.Workspace(workspaceId, decision),
+            NewContext(),
+            cancellationToken);
+        RecordRecentSessionCompletions(result);
+        return result;
+    }
+
     public async ValueTask<HostResult<CloseScopeResult>> CloseWindowAsync(
         CloseDecision decision,
         CancellationToken cancellationToken)
@@ -7048,6 +7068,35 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The running instance of a saved workspace, if it is running. The rail
+    /// lists definitions and the host speaks in instances, so closing from the
+    /// rail has to cross that boundary somewhere; here is the only place that
+    /// already knows how.
+    /// </summary>
+    public WorkspaceInstanceId? OpenWorkspaceInstance(WorkspaceId workspaceId) =>
+        FindOpenWorkspace(new DefinitionKey(WorkspaceDefinition.Kind, workspaceId.Value))?.Id;
+
+    /// <summary>
+    /// Takes a workspace out of the shell once the host has ended its sessions,
+    /// falling back to the one you were in before it. Closing the last one
+    /// leaves nothing to fall back to, so the launcher takes over.
+    /// </summary>
+    public void RemoveRuntimeWorkspace(WorkspaceInstanceId workspaceId)
+    {
+        if (_openWorkspaces.FirstOrDefault(runtime => runtime.Id == workspaceId)
+            is not { } runtime)
+        {
+            return;
+        }
+
+        CloseRuntimeWorkspace(runtime);
+        if (RuntimeWorkspace is null)
+        {
+            ShowLauncher();
+        }
+    }
+
     private RuntimeWorkspaceViewModel? FindOpenWorkspace(DefinitionKey definition) =>
         _openWorkspaces.FirstOrDefault(runtime =>
             _runtimeSources.TryGetValue(runtime.Id, out var source)
@@ -7073,11 +7122,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _runtimeSources[runtime.Id] = new RuntimeHistorySource(definition, durableTitle);
         }
 
-        if (!_openWorkspaces.Contains(runtime))
-        {
-            _openWorkspaces.Add(runtime);
-        }
-
+        BringToFrontOfOpenSet(runtime);
         RuntimeWorkspace = runtime;
         Notifications.Watch(runtime);
         StartAcceptedRuntimePanels(runtime);
@@ -7093,10 +7138,32 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private void ReactivateRuntimeWorkspace(RuntimeWorkspaceViewModel runtime)
     {
+        BringToFrontOfOpenSet(runtime);
         RuntimeWorkspace = runtime;
         StartRuntimeGraphWatch(runtime);
         RefreshWorkspaceRuntimeFlags();
         Notifications.MarkVisibleSeen();
+    }
+
+    /// <summary>
+    /// Keeps the open set in the order the workspaces were last looked at,
+    /// least recent first. That ordering is what makes "the one before this
+    /// one" answerable when the workspace in front is closed — appending on
+    /// first open only ever gave the oldest, which is rarely where you were.
+    /// </summary>
+    private void BringToFrontOfOpenSet(RuntimeWorkspaceViewModel runtime)
+    {
+        var index = _openWorkspaces.IndexOf(runtime);
+        if (index < 0)
+        {
+            _openWorkspaces.Add(runtime);
+            return;
+        }
+
+        if (index != _openWorkspaces.Count - 1)
+        {
+            _openWorkspaces.Move(index, _openWorkspaces.Count - 1);
+        }
     }
 
     /// <summary>
@@ -7135,6 +7202,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (RuntimeWorkspace is { } next)
             {
                 ReactivateRuntimeWorkspace(next);
+            }
+            else
+            {
+                // Nothing left to fall back to, and the rail still has the tile
+                // it was closed from marked as running.
+                RefreshWorkspaceRuntimeFlags();
             }
 
             return;

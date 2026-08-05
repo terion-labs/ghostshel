@@ -125,8 +125,14 @@
     </Border>
 
     <DockPanel Grid.Row="2" LastChildFill="True">
+      <!-- A tile opens sideways out of the rail when it offers to close its
+           workspace, so this one sidebar does not clip its content and draws
+           above the canvas it opens over. Widening the rail instead would move
+           every panel beside it on a hover. -->
       <Border
           Width="56"
+          ZIndex="1"
+          ClipToBounds="False"
           Classes="FloatingSidebar"
           Classes.workspaceLeft="{Binding IsWorkspacePanelOnLeft}"
           Classes.workspaceRight="{Binding IsWorkspacePanelOnRight}"
@@ -139,32 +145,32 @@
              rail minus its border leaves the 40 DIP tiles only 38 DIP at the
              larger inset, and the clipped sides read as flattened circles once
              the corner radius rounds the tiles. -->
-        <StackPanel Margin="{controls:Inset Horizontal=Xs, Vertical=Sm}" Spacing="{DynamicResource ShellSpaceSm}">
-          <ItemsControl ItemsSource="{Binding Workspaces}">
+        <StackPanel ClipToBounds="False" Margin="{controls:Inset Horizontal=Xs, Vertical=Sm}" Spacing="{DynamicResource ShellSpaceSm}">
+          <ItemsControl ClipToBounds="False" ItemsSource="{Binding Workspaces}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel ClipToBounds="False" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <!-- Center, not the Stretch default: a fixed-width child of a
                      vertical StackPanel is start-aligned, which pushed every
                      tile against the rail's left edge. -->
-                <Panel Margin="{controls:Inset Bottom=Sm}" HorizontalAlignment="Center">
-                  <Button
-                      Width="40"
-                      Height="40"
-                      Padding="0"
-                      Classes="WorkspaceTile"
-                      Classes.open="{Binding IsOpen}"
-                      Classes.current="{Binding IsInFront}"
-                      Background="{Binding Accent}"
-                      Click="OnOpenWorkspaceClick"
-                      ToolTip.Tip="{Binding Name}"
-                      AutomationProperties.Name="{Binding Name}">
-                    <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="16" />
-                  </Button>
-                  <controls:SignalDot
-                      HorizontalAlignment="Right"
-                      VerticalAlignment="Top"
-                      IsVisible="{Binding HasAttention}" />
-                </Panel>
+                <controls:WorkspaceRailTile
+                    Margin="{controls:Inset Bottom=Sm}"
+                    HorizontalAlignment="Center"
+                    Accent="{Binding Accent}"
+                    Icon="{Binding IconSymbol}"
+                    IsRunning="{Binding IsOpen}"
+                    IsCurrent="{Binding IsInFront}"
+                    HasAttention="{Binding HasAttention}"
+                    CanClose="{Binding CanClose}"
+                    ExpandsLeft="{Binding $parent[ItemsControl].DataContext.IsWorkspacePanelOnRight}"
+                    OpenRequested="OnOpenWorkspaceClick"
+                    CloseRequested="OnCloseWorkspaceClick"
+                    ToolTip.Tip="{Binding Name}"
+                    AutomationProperties.Name="{Binding Name}" />
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>

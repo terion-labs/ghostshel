@@ -154,6 +154,192 @@
       </Style>
     </ControlTheme>
 
+    <!--
+      The two actions inside a rail tile. They fill the tile edge to edge and
+      are drawn on the workspace's own colour, so they contribute no surface of
+      their own — the stock button paints a control-coloured lozenge over the
+      tile, and its padding is sized for a label, which squeezed the icon out of
+      a forty-pixel square entirely.
+
+      Only what no plain `Button` selector reaches is set here. The shell styles
+      every button by element, and an element selector outranks a control
+      theme's setter, so background, padding and the rest are stated locally at
+      the two use sites where they will actually win.
+    -->
+    <ControlTheme x:Key="WorkspaceRailTileAction" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand" />
+      <!-- Templated outright rather than derived from the stock button. A
+           BasedOn reaching for the platform theme resolves against a different
+           dictionary than this one, and a button that silently inherits no
+           template draws no content at all — which is how the rail lost its
+           icons the first time this was built. -->
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="PART_Surface" Background="{TemplateBinding Background}">
+            <ContentPresenter
+                Margin="{TemplateBinding Padding}"
+                Content="{TemplateBinding Content}"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:pointerover /template/ Border#PART_Surface">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#PART_Surface">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type controls:WorkspaceRailTile}" TargetType="controls:WorkspaceRailTile">
+      <Setter Property="Width" Value="{DynamicResource ShellTileSizeMd}" />
+      <Setter Property="Height" Value="{DynamicResource ShellTileSizeMd}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
+      <Setter Property="FontSize" Value="{DynamicResource ShellFontSize16}" />
+      <!-- The tile opens over the canvas rather than pushing the rail wider: a
+           rail that changed width on hover would move every panel beside it. -->
+      <Setter Property="ClipToBounds" Value="False" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel ClipToBounds="False">
+            <!--
+              The colour is layered rather than swapped, because a style
+              targeting a template part cannot reach back to the tile for a
+              brush it computed. The resting fill is always painted; the full
+              colour is a sheet above it that fades in, and the outline is a
+              third layer outside the clip, so its stroke keeps both halves at
+              the rounded corners.
+            -->
+            <Border
+                Name="PART_Surface"
+                Width="{DynamicResource ShellTileSizeMd}"
+                Height="{DynamicResource ShellTileSizeMd}"
+                HorizontalAlignment="Left"
+                Background="{TemplateBinding RestingBrush}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                ClipToBounds="True">
+              <Panel>
+                <Border Name="PART_Wash" Background="{TemplateBinding AccentBrush}" Opacity="0" />
+                <Grid ColumnDefinitions="Auto,Auto,Auto">
+                  <Button
+                      Name="PART_Open"
+                      Grid.Column="1"
+                      Theme="{StaticResource WorkspaceRailTileAction}"
+                      Width="{DynamicResource ShellTileSizeMd}"
+                      Height="{DynamicResource ShellTileSizeMd}"
+                      MinWidth="0"
+                      MinHeight="0"
+                      Padding="{DynamicResource ShellInsetNone}"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Foreground="{TemplateBinding MarkBrush}"
+                      AutomationProperties.Name="Open this workspace">
+                    <icons:SymbolIcon
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Symbol="{TemplateBinding Icon}"
+                        FontSize="{TemplateBinding FontSize}"
+                        Foreground="{TemplateBinding MarkBrush}" />
+                  </Button>
+                  <Button
+                      Name="PART_Close"
+                      Grid.Column="2"
+                      Theme="{StaticResource WorkspaceRailTileAction}"
+                      Width="{DynamicResource ShellTileSizeMd}"
+                      Height="{DynamicResource ShellTileSizeMd}"
+                      MinWidth="0"
+                      MinHeight="0"
+                      Padding="{DynamicResource ShellInsetNone}"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Foreground="{TemplateBinding MarkBrush}"
+                      IsVisible="False"
+                      ToolTip.Tip="Close this workspace and end everything running in it"
+                      AutomationProperties.Name="Close this workspace">
+                    <icons:SymbolIcon
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Symbol="Dismiss"
+                        FontSize="{DynamicResource ShellFontSize13}"
+                        Foreground="{TemplateBinding MarkBrush}" />
+                  </Button>
+                </Grid>
+              </Panel>
+            </Border>
+            <Border
+                Name="PART_Ring"
+                Width="{DynamicResource ShellTileSizeMd}"
+                Height="{DynamicResource ShellTileSizeMd}"
+                HorizontalAlignment="Left"
+                BorderBrush="{TemplateBinding AccentBrush}"
+                BorderThickness="{DynamicResource ShellWorkspaceRailRing}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Opacity="0"
+                IsHitTestVisible="False" />
+            <controls:SignalDot
+                Name="PART_Attention"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                IsVisible="False" />
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+
+      <!-- Alive, but not the one you are looking at: outlined in its own colour
+           while its fill stays at rest. Two different marks, because they are
+           two different facts. -->
+      <Style Selector="^:running /template/ Border#PART_Ring">
+        <Setter Property="Opacity" Value="1" />
+      </Style>
+
+      <!-- Where you are, and what the pointer is over, both read as full colour.
+           Hovering the rail is how you read it. -->
+      <Style Selector="^:current /template/ Border#PART_Wash">
+        <Setter Property="Opacity" Value="1" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#PART_Wash">
+        <Setter Property="Opacity" Value="1" />
+      </Style>
+      <!-- The tile you are in needs no outline as well: it is already the
+           brightest thing in the rail. -->
+      <Style Selector="^:current /template/ Border#PART_Ring">
+        <Setter Property="Opacity" Value="0" />
+      </Style>
+
+      <Style Selector="^:attention /template/ controls|SignalDot#PART_Attention">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+
+      <!-- The close action is offered on hover, and only where there is
+           something to close and somewhere to fall back to. -->
+      <Style Selector="^:closable:pointerover /template/ Border#PART_Surface">
+        <Setter Property="Width" Value="{DynamicResource ShellWorkspaceRailTileExpandedWidth}" />
+        <!-- It is standing off the rail and over the canvas, so it casts the
+             same shadow anything else that floats above the page does. -->
+        <Setter Property="BoxShadow" Value="{DynamicResource ShellOverlayShadow}" />
+      </Style>
+      <Style Selector="^:closable:pointerover /template/ Border#PART_Ring">
+        <Setter Property="Width" Value="{DynamicResource ShellWorkspaceRailTileExpandedWidth}" />
+      </Style>
+      <Style Selector="^:closable:pointerover /template/ Button#PART_Close">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+
+      <!-- Docked against the right edge, the tile has to open the other way, and
+           the icon must stay where it was rather than sliding across. -->
+      <Style Selector="^:expandsleft /template/ Border#PART_Surface">
+        <Setter Property="HorizontalAlignment" Value="Right" />
+      </Style>
+      <Style Selector="^:expandsleft /template/ Border#PART_Ring">
+        <Setter Property="HorizontalAlignment" Value="Right" />
+      </Style>
+      <Style Selector="^:expandsleft /template/ Button#PART_Close">
+        <Setter Property="Grid.Column" Value="0" />
+      </Style>
+    </ControlTheme>
+
     <ControlTheme x:Key="{x:Type controls:SignalDot}" TargetType="controls:SignalDot">
       <Setter Property="Width" Value="{DynamicResource ShellSignalDotSize}" />
       <Setter Property="Height" Value="{DynamicResource ShellSignalDotSize}" />
