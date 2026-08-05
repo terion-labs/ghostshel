@@ -165,18 +165,51 @@ public sealed partial class MainWindow : Window
         ViewModel.IsWindowFocused = false;
     }
 
+    private string? _pendingWorkspaceAccent;
+    private bool _workspaceAccentRepaintQueued;
+
+    /// <summary>
+    /// Retints the shell for the workspace now in front — after that workspace
+    /// is on screen, not before it.
+    ///
+    /// Republishing the appearance restyles every control bound to a token,
+    /// which is the whole window. Doing it inline made it part of switching:
+    /// the click was answered by a third of a second of restyling and only
+    /// then by the workspace appearing. The colour is not what you asked for
+    /// when you clicked a workspace, so it waits a frame and follows.
+    ///
+    /// Queued once and coalesced. Switching twice quickly should repaint the
+    /// colour you landed on, not each colour you passed through.
+    /// </summary>
     private void OnWorkspaceAccentChanged(object? sender, string? accent)
     {
         _ = sender;
-        if (Avalonia.Application.Current is not App app)
+        _pendingWorkspaceAccent = accent;
+        if (_workspaceAccentRepaintQueued)
         {
             return;
         }
 
-        // A stored accent that no longer parses is a definition problem, not a
-        // reason to leave the shell wearing the last workspace's colour.
-        app.SetWorkspaceAccent(
-            accent is not null && RgbColor.TryParse(accent, out var color) ? color : null);
+        _workspaceAccentRepaintQueued = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () =>
+            {
+                _workspaceAccentRepaintQueued = false;
+                if (Avalonia.Application.Current is not App app)
+                {
+                    return;
+                }
+
+                // A stored accent that no longer parses is a definition problem,
+                // not a reason to leave the shell wearing the last workspace's
+                // colour.
+                app.SetWorkspaceAccent(
+                    _pendingWorkspaceAccent is { } pending
+                    && RgbColor.TryParse(pending, out var color)
+                        ? color
+                        : null);
+            },
+            Avalonia.Threading.DispatcherPriority.Background);
     }
 
     protected override void OnClosed(EventArgs e)

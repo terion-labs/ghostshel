@@ -398,58 +398,94 @@ public sealed partial class App : Avalonia.Application
         return EffectiveAppearanceResourceMapper.Map(theme);
     }
 
+    /// <summary>
+    /// Publishes one appearance token, and only when it has actually changed.
+    ///
+    /// Every write to the application's resources invalidates each control
+    /// bound to that key, anywhere in the window. There are seventy of these
+    /// and almost all of them are the same before and after — a workspace
+    /// accent moves the accent family and nothing else — so rewriting the set
+    /// wholesale restyled the entire tree to change fifteen colours. That is
+    /// most of a third of a second on every workspace switch.
+    ///
+    /// Brushes are compared by colour rather than by reference, because each
+    /// pass builds new ones; without that every write still looks like a
+    /// change and nothing is saved.
+    /// </summary>
+    private void Publish(string key, object? value)
+    {
+        if (Resources.TryGetValue(key, out var existing)
+            && AppearanceValuesMatch(existing, value))
+        {
+            return;
+        }
+
+        Resources[key] = value;
+    }
+
+    private static bool AppearanceValuesMatch(object? existing, object? value) =>
+        (existing, value) switch
+        {
+            (ISolidColorBrush left, ISolidColorBrush right) =>
+                left.Color == right.Color
+                && left.Opacity.Equals(right.Opacity),
+            (FontFamily left, FontFamily right) =>
+                string.Equals(left.Name, right.Name, StringComparison.Ordinal),
+            _ => Equals(existing, value),
+        };
+
     private void ApplyApplicationResources(EffectiveAppearanceResources resources)
     {
-        Resources["ShellBackgroundBrush"] = Brush(resources.Background);
-        Resources["ShellSidebarBrush"] = Brush(resources.SidebarSurface);
-        Resources["ShellSidebarBorderBrush"] = Brush(resources.SidebarBorder);
-        Resources["ShellSidebarSelectionBrush"] = Brush(resources.SidebarSelectionSurface);
-        Resources["ShellSurfaceBrush"] = Brush(resources.Surface);
-        Resources["ShellSurfaceRaisedBrush"] = Brush(resources.RaisedSurface);
-        Resources["ShellSurfaceHoverBrush"] = Brush(resources.HoverSurface);
-        Resources["ShellBorderBrush"] = Brush(resources.Border);
-        Resources["ShellControlSurfaceBrush"] = Brush(resources.ControlSurface);
-        Resources["ShellControlBorderBrush"] = Brush(resources.ControlBorder);
-        Resources["ShellControlHoverBrush"] = Brush(resources.ControlHoverSurface);
-        Resources["ShellTextBrush"] = Brush(resources.Text);
-        Resources["ShellMutedBrush"] = Brush(resources.MutedText);
-        Resources["ShellAccentBrush"] = Brush(resources.Accent);
-        Resources["ShellAccentForegroundBrush"] = Brush(resources.AccentForeground);
-        Resources["ShellAccentSoftBrush"] = Brush(resources.AccentSoft);
-        Resources["ShellDangerBrush"] = Brush(resources.Danger);
-        Resources["ShellDangerForegroundBrush"] = Brush(resources.DangerForeground);
-        Resources["ShellDangerSoftBrush"] = Brush(resources.DangerSoft);
-        Resources["ShellDangerBorderBrush"] = Brush(resources.DangerBorder);
-        Resources["ShellSuccessBrush"] = Brush(resources.Success);
-        Resources["ShellSuccessSoftBrush"] = Brush(resources.SuccessSoft);
-        Resources["ShellSuccessBorderBrush"] = Brush(resources.SuccessBorder);
-        Resources["ShellWarningBrush"] = Brush(resources.Warning);
-        Resources["ShellWarningSoftBrush"] = Brush(resources.WarningSoft);
-        Resources["ShellWarningBorderBrush"] = Brush(resources.WarningBorder);
-        Resources["ShellNoticeBorderBrush"] = Brush(resources.NoticeBorder);
+        Publish("ShellBackgroundBrush", Brush(resources.Background));
+        Publish("ShellSidebarBrush", Brush(resources.SidebarSurface));
+        Publish("ShellSidebarBorderBrush", Brush(resources.SidebarBorder));
+        Publish("ShellSidebarSelectionBrush", Brush(resources.SidebarSelectionSurface));
+        Publish("ShellSurfaceBrush", Brush(resources.Surface));
+        Publish("ShellSurfaceRaisedBrush", Brush(resources.RaisedSurface));
+        Publish("ShellSurfaceHoverBrush", Brush(resources.HoverSurface));
+        Publish("ShellBorderBrush", Brush(resources.Border));
+        Publish("ShellControlSurfaceBrush", Brush(resources.ControlSurface));
+        Publish("ShellControlBorderBrush", Brush(resources.ControlBorder));
+        Publish("ShellControlHoverBrush", Brush(resources.ControlHoverSurface));
+        Publish("ShellTextBrush", Brush(resources.Text));
+        Publish("ShellMutedBrush", Brush(resources.MutedText));
+        Publish("ShellAccentBrush", Brush(resources.Accent));
+        Publish("ShellAccentForegroundBrush", Brush(resources.AccentForeground));
+        Publish("ShellAccentSoftBrush", Brush(resources.AccentSoft));
+        Publish("ShellDangerBrush", Brush(resources.Danger));
+        Publish("ShellDangerForegroundBrush", Brush(resources.DangerForeground));
+        Publish("ShellDangerSoftBrush", Brush(resources.DangerSoft));
+        Publish("ShellDangerBorderBrush", Brush(resources.DangerBorder));
+        Publish("ShellSuccessBrush", Brush(resources.Success));
+        Publish("ShellSuccessSoftBrush", Brush(resources.SuccessSoft));
+        Publish("ShellSuccessBorderBrush", Brush(resources.SuccessBorder));
+        Publish("ShellWarningBrush", Brush(resources.Warning));
+        Publish("ShellWarningSoftBrush", Brush(resources.WarningSoft));
+        Publish("ShellWarningBorderBrush", Brush(resources.WarningBorder));
+        Publish("ShellNoticeBorderBrush", Brush(resources.NoticeBorder));
         // Controls the design system has not retemplated — check boxes, radio
         // buttons, switches, sliders, calendar and text selection — take their
         // accent from Fluent's SystemAccentColor family, which otherwise tracks
         // the operating system rather than the shell's accent setting. Publishing
         // the resolved shell accent (and the shade ramp Fluent derives from it)
         // is what makes every control answer the same appearance setting.
-        Resources["SystemAccentColor"] = resources.Accent;
-        Resources["SystemAccentColorDark1"] = Shade(resources.Accent, Colors.Black, 0.15);
-        Resources["SystemAccentColorDark2"] = Shade(resources.Accent, Colors.Black, 0.30);
-        Resources["SystemAccentColorDark3"] = Shade(resources.Accent, Colors.Black, 0.45);
-        Resources["SystemAccentColorLight1"] = Shade(resources.Accent, Colors.White, 0.15);
-        Resources["SystemAccentColorLight2"] = Shade(resources.Accent, Colors.White, 0.30);
-        Resources["SystemAccentColorLight3"] = Shade(resources.Accent, Colors.White, 0.45);
+        Publish("SystemAccentColor", resources.Accent);
+        Publish("SystemAccentColorDark1", Shade(resources.Accent, Colors.Black, 0.15));
+        Publish("SystemAccentColorDark2", Shade(resources.Accent, Colors.Black, 0.30));
+        Publish("SystemAccentColorDark3", Shade(resources.Accent, Colors.Black, 0.45));
+        Publish("SystemAccentColorLight1", Shade(resources.Accent, Colors.White, 0.15));
+        Publish("SystemAccentColorLight2", Shade(resources.Accent, Colors.White, 0.30));
+        Publish("SystemAccentColorLight3", Shade(resources.Accent, Colors.White, 0.45));
         // Text selection reads as a translucent accent wash, as the host does it,
         // rather than Fluent's opaque block.
-        Resources["TextControlSelectionHighlightColor"] = Color.FromArgb(
+        Publish("TextControlSelectionHighlightColor", Color.FromArgb(
             0x66,
             resources.Accent.R,
             resources.Accent.G,
-            resources.Accent.B);
+            resources.Accent.B));
         // The focused field wears the host's accent halo — macOS's focus ring —
         // rather than only a recolored border.
-        Resources["ShellFocusRingShadow"] = new BoxShadows(new BoxShadow
+        Publish("ShellFocusRingShadow", new BoxShadows(new BoxShadow
         {
             Blur = 0,
             Spread = 3,
@@ -458,61 +494,63 @@ public sealed partial class App : Avalonia.Application
                 resources.Accent.R,
                 resources.Accent.G,
                 resources.Accent.B),
-        });
-        Resources["ShellUiFontFamily"] = resources.FontFamily;
+        }));
+        Publish("ShellUiFontFamily", resources.FontFamily);
         // Data surfaces (result grids, SQL editors) read in a monospace stack;
         // interface chrome stays on the UI family.
-        Resources["ShellDataFontFamily"] = new FontFamily(
-            "SF Mono,Menlo,Monaco,Cascadia Mono,Consolas,monospace");
-        Resources["ShellBaseFontSize"] = resources.BaseFontSize;
-        Resources["ShellPillFontSize"] = resources.PillFontSize;
+        Publish("ShellDataFontFamily", new FontFamily(
+            "SF Mono,Menlo,Monaco,Cascadia Mono,Consolas,monospace"));
+        Publish("ShellBaseFontSize", resources.BaseFontSize);
+        Publish("ShellPillFontSize", resources.PillFontSize);
         foreach (var baseFontSize in ScalableFontSizes)
         {
-            Resources[$"ShellFontSize{baseFontSize}"] = resources.ScaleFontSize(baseFontSize);
-            Resources[$"ShellLineHeight{baseFontSize}"] =
+            Publish($"ShellFontSize{baseFontSize}", resources.ScaleFontSize(baseFontSize));
+            Publish(
+                $"ShellLineHeight{baseFontSize}",
                 Math.Round(
                     resources.ScaleFontSize(baseFontSize) * 1.35 * 2,
-                    MidpointRounding.AwayFromZero) / 2;
+                    MidpointRounding.AwayFromZero) / 2);
         }
 
-        Resources["ShellControlMinHeight"] = resources.ControlMinHeight;
+        Publish("ShellControlMinHeight", resources.ControlMinHeight);
 
         // The three sizes a mark is drawn at — in a row, beside a name, and as
         // the subject of the page. Derived from the control height rather than
         // fixed, so a compact density shrinks the tiles with everything else
         // instead of leaving them looming over the rows they belong to.
-        Resources["ShellTileSizeSm"] = Math.Round(resources.ControlMinHeight * 0.85);
-        Resources["ShellTileSizeMd"] = Math.Round(resources.ControlMinHeight * 1.05);
-        Resources["ShellTileSizeLg"] = Math.Round(resources.ControlMinHeight * 1.75);
+        Publish("ShellTileSizeSm", Math.Round(resources.ControlMinHeight * 0.85));
+        Publish("ShellTileSizeMd", Math.Round(resources.ControlMinHeight * 1.05));
+        Publish("ShellTileSizeLg", Math.Round(resources.ControlMinHeight * 1.75));
 
         // The rail tile's outline, and how wide it opens when it offers to close
         // the workspace. Twice its own width, so the action it reveals is the
         // same size as the tile it belongs to rather than a sliver beside it.
-        Resources["ShellWorkspaceRailRing"] = new Thickness(
-            Math.Max(1, Math.Round(resources.ControlMinHeight * 0.05)));
-        Resources["ShellWorkspaceRailTileExpandedWidth"] =
-            Math.Round(resources.ControlMinHeight * 1.05) * 2;
+        Publish("ShellWorkspaceRailRing", new Thickness(
+            Math.Max(1, Math.Round(resources.ControlMinHeight * 0.05))));
+        Publish(
+            "ShellWorkspaceRailTileExpandedWidth",
+            Math.Round(resources.ControlMinHeight * 1.05) * 2);
 
         // The attention dot, and the ring that keeps it legible on top of a
         // saturated tile. Derived like the tiles so a compact density does not
         // leave a mark sized for a roomier one.
-        Resources["ShellSignalDotSize"] = Math.Round(resources.ControlMinHeight * 0.28);
-        Resources["ShellSignalDotRing"] = new Thickness(
-            Math.Max(1, Math.Round(resources.ControlMinHeight * 0.06)));
-        Resources["ShellControlCornerRadius"] = resources.ControlCornerRadius;
-        Resources["ShellControlPadding"] = resources.ControlPadding;
-        Resources["ShellButtonPadding"] = resources.ButtonPadding;
-        Resources["ShellCardCornerRadius"] = resources.CardCornerRadius;
-        Resources["ShellSidebarCornerRadius"] = resources.SidebarCornerRadius;
-        Resources["ShellCardRadius"] = resources.CardCornerRadius.TopLeft;
-        Resources["ShellPillCornerRadius"] = resources.PillCornerRadius;
-        Resources["ShellInnerCornerRadius"] = resources.InnerCornerRadius;
+        Publish("ShellSignalDotSize", Math.Round(resources.ControlMinHeight * 0.28));
+        Publish("ShellSignalDotRing", new Thickness(
+            Math.Max(1, Math.Round(resources.ControlMinHeight * 0.06))));
+        Publish("ShellControlCornerRadius", resources.ControlCornerRadius);
+        Publish("ShellControlPadding", resources.ControlPadding);
+        Publish("ShellButtonPadding", resources.ButtonPadding);
+        Publish("ShellCardCornerRadius", resources.CardCornerRadius);
+        Publish("ShellSidebarCornerRadius", resources.SidebarCornerRadius);
+        Publish("ShellCardRadius", resources.CardCornerRadius.TopLeft);
+        Publish("ShellPillCornerRadius", resources.PillCornerRadius);
+        Publish("ShellInnerCornerRadius", resources.InnerCornerRadius);
         // The clearance between a rounded miniature frame and the tiles inside
         // it. It follows the radius, not a fixed step: at a tight radius a
         // couple of pixels reads fine, while a round setting needs the tiles
         // pulled in or they touch the frame's curve at every corner.
-        Resources["ShellPreviewTileInset"] = new Thickness(
-            Math.Max(3, resources.InnerCornerRadius.TopLeft * 0.6));
+        Publish("ShellPreviewTileInset", new Thickness(
+            Math.Max(3, resources.InnerCornerRadius.TopLeft * 0.6)));
 
         // The spacing scale, in both forms the framework needs: a number for the
         // Spacing/ColumnSpacing/RowSpacing properties, and a Thickness for Margin
@@ -532,32 +570,32 @@ public sealed partial class App : Avalonia.Application
                      ("Xxl", spacing.Huge),
                  })
         {
-            Resources[$"ShellSpace{name}"] = value;
-            Resources[$"ShellInset{name}"] = new Thickness(value);
+            Publish($"ShellSpace{name}", value);
+            Publish($"ShellInset{name}", new Thickness(value));
         }
 
         // Named insets, for the three shapes that recur often enough that spelling
         // them out at each use site is how they drifted apart in the first place.
-        Resources["ShellCardPadding"] = new Thickness(spacing.Large);
-        Resources["ShellPagePadding"] = new Thickness(spacing.Large);
-        Resources["ShellRowPadding"] = new Thickness(spacing.Large, spacing.Medium);
-        Resources["ShellPillPadding"] = new Thickness(spacing.Small, spacing.ExtraSmall);
+        Publish("ShellCardPadding", new Thickness(spacing.Large));
+        Publish("ShellPagePadding", new Thickness(spacing.Large));
+        Publish("ShellRowPadding", new Thickness(spacing.Large, spacing.Medium));
+        Publish("ShellPillPadding", new Thickness(spacing.Small, spacing.ExtraSmall));
 
         // For a native child view that has to round its own layer because Avalonia
         // cannot clip it. Only the bottom corners are at the panel's edge — a
         // header covers the top two — so rounding all four would carve notches
         // into the middle of the panel rather than shaping its outline.
-        Resources["ShellPanelBottomCornerRadius"] = new CornerRadius(
+        Publish("ShellPanelBottomCornerRadius", new CornerRadius(
             0,
             0,
             resources.CardCornerRadius.BottomRight,
-            resources.CardCornerRadius.BottomLeft);
-        Resources["ShellAppearanceStatus"] = resources.AppearanceStatus;
-        Resources["ShellAccentStatus"] = resources.AccentStatus;
-        Resources["ShellPlatformProfileClass"] = resources.ProfileClass;
-        Resources["ShellHighContrast"] = resources.HighContrast;
-        Resources["ShellMotionEnabled"] = resources.MotionEnabled;
-        Resources["ShellAdvancedMaterialsEnabled"] = resources.AdvancedMaterialsEnabled;
+            resources.CardCornerRadius.BottomLeft));
+        Publish("ShellAppearanceStatus", resources.AppearanceStatus);
+        Publish("ShellAccentStatus", resources.AccentStatus);
+        Publish("ShellPlatformProfileClass", resources.ProfileClass);
+        Publish("ShellHighContrast", resources.HighContrast);
+        Publish("ShellMotionEnabled", resources.MotionEnabled);
+        Publish("ShellAdvancedMaterialsEnabled", resources.AdvancedMaterialsEnabled);
     }
 
     private void ApplyToWindow(

@@ -962,6 +962,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 // would be charged to whatever came next.
                 _activation?.Mark("bindings");
                 StopRuntimeGraphWatch();
+                _activation?.Mark("graph stop");
                 // One announcement, from the one place that knows what is in
                 // front. Scattered across the open paths it was missing from
                 // every other way of arriving — restore among them.
