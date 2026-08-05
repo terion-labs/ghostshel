@@ -180,6 +180,28 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // The hint first and unconditionally. It is what makes the platform
+        // window capable of being seen through at all; the native radius below
+        // only says how much to blur what is behind one that already can be.
+        TransparencyLevelHint =
+        [
+            WindowTransparencyLevel.AcrylicBlur,
+            WindowTransparencyLevel.Blur,
+            WindowTransparencyLevel.Transparent,
+            WindowTransparencyLevel.None,
+        ];
+        RequestBackdrop();
+        // And again once the window is really on screen. The native call needs a
+        // window number the platform only issues then, and asking too early
+        // fails quietly — which is what left the shell opaque with no sign of
+        // why.
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            RequestBackdrop,
+            Avalonia.Threading.DispatcherPriority.Background);
+    }
+
+    private void RequestBackdrop()
+    {
         if (OperatingSystem.IsMacOS()
             && MacOsQuickTerminalBackdrop.TryApply(this, WindowBackdropBlurRadius))
         {
@@ -187,26 +209,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        TransparencyLevelHint =
-        [
-            WindowTransparencyLevel.AcrylicBlur,
-            WindowTransparencyLevel.Blur,
-            WindowTransparencyLevel.None,
-        ];
         if (ActualTransparencyLevel != WindowTransparencyLevel.None)
         {
             LetTheBackdropThrough();
         }
     }
 
-    /// <summary>
-    /// Stops the window painting its own opaque fill, so that the base surface
-    /// above it is the only thing between the content and the backdrop.
-    ///
-    /// Only once a backdrop has actually been established. A window made
-    /// transparent with nothing behind it is not translucent, it is see-through
-    /// — and a platform that refused the blur would have given exactly that.
-    /// </summary>
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

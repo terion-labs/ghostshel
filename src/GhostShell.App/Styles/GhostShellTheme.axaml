@@ -654,8 +654,12 @@
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize9}" />
   </Style>
 
+  <!-- The chrome band is the base surface, not a thing standing on it, so it
+       takes the same translucent fill. Painting it opaque left a solid strip
+       across the top of an otherwise see-through window, with a visible seam
+       where the two met. -->
   <Style Selector="Border.TopChrome">
-    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellWindowBackdropBrush}" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
 
