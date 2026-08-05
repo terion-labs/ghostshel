@@ -241,7 +241,10 @@ internal static class EffectiveAppearanceResourceMapper
         var palette = (isMacOsProfile, isLight) switch
         {
             (true, false) => (
-                Background: "#1C1C1C",
+                // What Finder's window is, so a shell sitting beside one on the
+                // same desktop reads as belonging to it rather than as almost
+                // matching it.
+                Background: "#1B1B1B",
                 Sidebar: "#181818",
                 SidebarBorder: "#343434",
                 SidebarSelection: "#0DFFFFFF",
