@@ -412,6 +412,24 @@ public sealed partial class App : Avalonia.Application
     /// pass builds new ones; without that every write still looks like a
     /// change and nothing is saved.
     /// </summary>
+    /// <summary>
+    /// A surface colour, carrying the shell's surface opacity — or solid, when
+    /// the backdrop is off and there is nothing behind it to show.
+    /// </summary>
+    private SolidColorBrush Translucent(Color color) =>
+        new(Color.FromArgb(
+            WindowBackdropBlurRadius == 0 ? byte.MaxValue : ShellSurfaceAlpha,
+            color.R,
+            color.G,
+            color.B));
+
+    /// <summary>
+    /// The same, as a number, for the surfaces that are drawn rather than
+    /// filled — a terminal paints its own background from its palette.
+    /// </summary>
+    private double SurfaceOpacity =>
+        WindowBackdropBlurRadius == 0 ? 1 : ShellSurfaceAlpha / (double)byte.MaxValue;
+
     private void Publish(string key, object? value)
     {
         if (Resources.TryGetValue(key, out var existing)
@@ -445,6 +463,17 @@ public sealed partial class App : Avalonia.Application
     /// screen. This is the number to move in either direction.
     /// </summary>
     private const byte ShellBackdropAlpha = 0xE0;
+
+    /// <summary>
+    /// How solid the surfaces standing on the base are.
+    ///
+    /// They were fully opaque, which made the shell a pale frame around dark
+    /// slabs — and the frame is what read as a bar along the top, because the
+    /// chrome is the largest run of base surface not covered by a panel. The
+    /// system title bar was quietened and the band stayed, which is what ruled
+    /// that out and left this. Nearly solid, because text is read on these.
+    /// </summary>
+    private const byte ShellSurfaceAlpha = 0xF0;
 
 
     /// <summary>
@@ -482,11 +511,11 @@ public sealed partial class App : Avalonia.Application
                 resources.Background.R,
                 resources.Background.G,
                 resources.Background.B)));
-        Publish("ShellSidebarBrush", Brush(resources.SidebarSurface));
+        Publish("ShellSidebarBrush", Translucent(resources.SidebarSurface));
         Publish("ShellSidebarBorderBrush", Brush(resources.SidebarBorder));
         Publish("ShellSidebarSelectionBrush", Brush(resources.SidebarSelectionSurface));
-        Publish("ShellSurfaceBrush", Brush(resources.Surface));
-        Publish("ShellSurfaceRaisedBrush", Brush(resources.RaisedSurface));
+        Publish("ShellSurfaceBrush", Translucent(resources.Surface));
+        Publish("ShellSurfaceRaisedBrush", Translucent(resources.RaisedSurface));
         Publish("ShellSurfaceHoverBrush", Brush(resources.HoverSurface));
         Publish("ShellBorderBrush", Brush(resources.Border));
         Publish("ShellControlSurfaceBrush", Brush(resources.ControlSurface));
@@ -558,6 +587,7 @@ public sealed partial class App : Avalonia.Application
         }
 
         Publish("ShellControlMinHeight", resources.ControlMinHeight);
+        Publish("ShellSurfaceOpacity", SurfaceOpacity);
 
         // The three sizes a mark is drawn at — in a row, beside a name, and as
         // the subject of the page. Derived from the control height rather than

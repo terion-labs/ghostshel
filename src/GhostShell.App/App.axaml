@@ -130,6 +130,7 @@
         back to zero.
       -->
       <SolidColorBrush x:Key="ShellWindowBackdropBrush" Color="#E0111111" />
+      <x:Double x:Key="ShellSurfaceOpacity">1</x:Double>
       <CornerRadius x:Key="ShellControlCornerRadius">7</CornerRadius>
       <CornerRadius x:Key="ShellCardCornerRadius">9</CornerRadius>
       <CornerRadius x:Key="ShellSidebarCornerRadius">9</CornerRadius>

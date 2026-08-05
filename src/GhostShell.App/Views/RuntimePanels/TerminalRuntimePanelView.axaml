@@ -90,6 +90,7 @@
             StartupCommandDispatcher="{Binding StartupCommandDispatcher}"
             SessionRequest="{Binding SessionRequest}"
             RenderProfile="{Binding RenderProfile}"
+            BackgroundOpacity="{DynamicResource ShellSurfaceOpacity}"
             SessionSnapshotChanged="OnSessionSnapshotChanged"
             SessionInitializationFailed="OnSessionInitializationFailed" />
         <Border

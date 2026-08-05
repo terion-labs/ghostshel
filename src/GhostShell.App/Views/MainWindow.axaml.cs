@@ -238,11 +238,15 @@ public sealed partial class MainWindow : Window
             LetTheBackdropThrough();
         }
 
-        // Three native asks, each of which has failed silently at least once in
-        // getting this far, and each of which looks identical from outside when
-        // it does. The title bar is the one still in question.
+        // Only when something did not take. Every appearance republish comes
+        // back through here, so a line each time is eight lines a start.
+        if (titleBarQuietened && blurred && negotiated != WindowTransparencyLevel.None)
+        {
+            return;
+        }
+
         Console.Error.WriteLine(
-            $"[ghostshell:appearance] backdrop — title bar quietened "
+            $"[ghostshell:appearance] backdrop incomplete — title bar quietened "
             + $"{titleBarQuietened}, native blur {blurred}, transparency "
             + $"{negotiated}, decoration margin {WindowDecorationMargin.Top:0}");
     }
