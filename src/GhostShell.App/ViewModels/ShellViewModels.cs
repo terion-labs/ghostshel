@@ -841,6 +841,20 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
         Accent = accent;
         Connections = new ObservableCollection<LauncherConnectionViewModel>(connections);
         AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
+        // A tab in this workspace is governed by this workspace unless it
+        // brought a policy of its own. Stated once, here, rather than asked of
+        // each of the eight places that build a tab: recovery refuses a
+        // workspace whose tabs contradict its lineage, and the ones that forgot
+        // — every browser, file, monitor and database tab — broke each snapshot
+        // silently from the moment they were added.
+        Tabs.CollectionChanged += (_, changed) =>
+        {
+            foreach (var tab in changed.NewItems?.OfType<RuntimeTabViewModel>()
+                ?? Enumerable.Empty<RuntimeTabViewModel>())
+            {
+                tab.AdoptPolicyLineage(AgentPolicy);
+            }
+        };
     }
 
     public WorkspaceInstanceId Id { get; }
@@ -1115,7 +1129,30 @@ public sealed class RuntimeTabViewModel : ObservableObject
 
     public RuntimeHistorySource? HistorySource { get; }
 
-    public RuntimeAgentPolicyProvenance AgentPolicy { get; }
+    public RuntimeAgentPolicyProvenance AgentPolicy { get; private set; }
+
+    /// <summary>
+    /// Takes the policy lineage of the workspace this tab is joining.
+    ///
+    /// A tab that arrived with provenance of its own — a saved screen, a
+    /// connection resolved against its definition — keeps it; only a tab that
+    /// brought nothing adopts. Called where tabs are appended rather than left
+    /// to each of the eight places that build one, because forgetting it is
+    /// invisible until recovery tries to write the workspace and finds a tab
+    /// whose lineage contradicts it.
+    /// </summary>
+    internal void AdoptPolicyLineage(RuntimeAgentPolicyProvenance workspacePolicy)
+    {
+        ArgumentNullException.ThrowIfNull(workspacePolicy);
+        if (AgentPolicy.Sources.Count != 0
+            || AgentPolicy.HasPolicyOverride
+            || AgentPolicy.IsLegacyFallback)
+        {
+            return;
+        }
+
+        AgentPolicy = workspacePolicy;
+    }
 
     public ObservableCollection<RuntimePanelViewModel> Panels { get; } = [];
 
