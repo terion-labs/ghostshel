@@ -103,7 +103,7 @@
     <Border
         Grid.Row="3"
         Height="30"
-        Background="{DynamicResource ShellWindowBackdropBrush}"
+        Background="Transparent"
         BorderBrush="{DynamicResource ShellBorderBrush}"
         BorderThickness="0,1,0,0"
         IsVisible="{Binding IsTabStripVisibleOnBottom}">
@@ -310,9 +310,9 @@
       </Grid>
     </DockPanel>
 
-    <!-- The status band is chrome on the base surface, so it wears the base
-         rather than a surface of its own. -->
-    <Border Grid.Row="4" Background="{DynamicResource ShellWindowBackdropBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+    <!-- The status band is the base surface, so it paints nothing and lets the
+         window's own fill through rather than laying a second coat over it. -->
+    <Border Grid.Row="4" Background="Transparent" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}" Margin="{controls:Inset Horizontal=Sm}">
         <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding RuntimeWorkspace.ActiveTab.Source}" />
         <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding WorkspaceStatus}" />

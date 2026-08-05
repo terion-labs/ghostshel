@@ -654,12 +654,13 @@
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize9}" />
   </Style>
 
-  <!-- The chrome band is the base surface, not a thing standing on it, so it
-       takes the same translucent fill. Painting it opaque left a solid strip
-       across the top of an otherwise see-through window, with a visible seam
-       where the two met. -->
+  <!-- The chrome band is the base surface, so it paints no fill of its own and
+       lets the window's single one through. Giving it the same translucent
+       brush meant the base was painted twice there, and two coats of a
+       see-through colour are less see-through than one — the top of the window
+       came out heavier than the rest of it. -->
   <Style Selector="Border.TopChrome">
-    <Setter Property="Background" Value="{DynamicResource ShellWindowBackdropBrush}" />
+    <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
 

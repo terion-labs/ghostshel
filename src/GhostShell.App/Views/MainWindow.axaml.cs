@@ -167,11 +167,13 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// How far the desktop is blurred behind the shell's base surface. Enough
-    /// to be a texture rather than a picture — what is behind the window should
-    /// not compete with what is in it.
+    /// How far the desktop is blurred behind the shell's base surface.
+    ///
+    /// Enough to be a texture rather than a picture, and no more: at thirty-two
+    /// everything behind the window averaged into a flat wash, which reads as a
+    /// solid grey rather than as anything being behind anything.
     /// </summary>
-    private const int WindowBackdropBlurRadius = 32;
+    private const int WindowBackdropBlurRadius = 20;
 
     /// <summary>
     /// Puts a blur behind the window so the translucent base surface has
