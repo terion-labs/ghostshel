@@ -200,6 +200,22 @@ internal struct GhosttyVtSemanticPromptEvent
     internal int ExitStatus;
 }
 
+/// <summary>
+/// What OSC 9 or OSC 777 asked to be shown.
+///
+/// A sized struct: <see cref="Size"/> is the byte count the library wrote, and
+/// a field beyond it belongs to a newer library than the one that produced this
+/// event. Both strings are borrowed for the duration of the callback only, so
+/// they must be copied before returning.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct GhosttyVtDesktopNotificationEvent
+{
+    internal nuint Size;
+    internal GhosttyVtString Title;
+    internal GhosttyVtString Body;
+}
+
 internal enum GhosttyVtTerminalData : int
 {
     Invalid = 0,

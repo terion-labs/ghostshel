@@ -34,6 +34,22 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
                 SingleReader = false,
                 SingleWriter = false,
             });
+    /// <summary>
+    /// Requests to be noticed, kept apart from <see cref="_events"/>.
+    ///
+    /// Dropping the oldest is right here in a way it would not be for
+    /// lifecycle: under a flood of bells the newest is the one worth showing,
+    /// and no consumer reconstructs anything from the sequence.
+    /// </summary>
+    private readonly Channel<PanelNotificationEvent> _notifications =
+        Channel.CreateBounded<PanelNotificationEvent>(
+            new BoundedChannelOptions(64)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = false,
+                SingleWriter = false,
+            });
+    private long _notificationSequence;
     private readonly TaskCompletionSource _stopped =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Dictionary<TerminalKittyImageKey, TerminalKittyImageContent> _kittyImages = [];
@@ -392,6 +408,34 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         }
     }
 
+    public async IAsyncEnumerable<PanelNotificationEvent> WatchNotificationsAsync(
+        long afterSequence,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var notification in _notifications.Reader
+                           .ReadAllAsync(cancellationToken)
+                           .ConfigureAwait(false))
+        {
+            if (notification.Sequence > afterSequence)
+            {
+                yield return notification;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Queues a request to be noticed. Called from a native callback, so it
+    /// only ever writes to a channel — anything that could block or throw
+    /// belongs to the reader.
+    /// </summary>
+    internal void PublishNotification(PanelNotificationKind kind, string title, string body) =>
+        _notifications.Writer.TryWrite(new PanelNotificationEvent(
+            Interlocked.Increment(ref _notificationSequence),
+            kind,
+            title,
+            body,
+            DateTimeOffset.UtcNow));
+
     public async ValueTask<PanelCloseOutcome> CloseAsync(
         PanelCloseMode mode,
         CancellationToken cancellationToken)
@@ -545,6 +589,10 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
                     SessionHealth.Ended,
                     "Terminal session closed.");
                 _events.Writer.TryComplete(failure?.SourceException);
+                // A closed session has nothing left to ask for; a watcher
+                // blocked on this channel would otherwise hang until its own
+                // token fired.
+                _notifications.Writer.TryComplete(failure?.SourceException);
             }
         }
         finally

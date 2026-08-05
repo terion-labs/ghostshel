@@ -43,6 +43,28 @@ internal sealed partial class GhosttyVtTerminalSession
                 semanticPromptCallback),
             "set terminal shell-integration callback");
 
+        var desktopNotificationCallback =
+            (void*)(delegate* unmanaged[Cdecl]<
+                nint,
+                nint,
+                GhosttyVtDesktopNotificationEvent*,
+                void>)&OnNativeDesktopNotification;
+        EnsureSuccess(
+            GhosttyVtNative.TerminalSet(
+                _terminal,
+                GhosttyVtTerminalOption.DesktopNotification,
+                desktopNotificationCallback),
+            "set terminal desktop-notification callback");
+
+        var bellCallback =
+            (void*)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnNativeBell;
+        EnsureSuccess(
+            GhosttyVtNative.TerminalSet(
+                _terminal,
+                GhosttyVtTerminalOption.Bell,
+                bellCallback),
+            "set terminal bell callback");
+
         ConfigurePresentationUnsafe(profile);
 
         ulong imageLimit = KittyImageStorageLimit;
@@ -276,6 +298,63 @@ internal sealed partial class GhosttyVtTerminalSession
         {
             // Native callbacks cannot unwind into Ghostty. A malformed marker
             // is deliberately dropped; terminal parsing and rendering continue.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnNativeDesktopNotification(
+        nint terminal,
+        nint userdata,
+        GhosttyVtDesktopNotificationEvent* notification)
+    {
+        _ = terminal;
+        if (userdata == 0
+            || notification is null
+            || notification->Size < (nuint)sizeof(GhosttyVtDesktopNotificationEvent))
+        {
+            return;
+        }
+
+        try
+        {
+            // Both strings are borrowed for the length of this call, so they are
+            // copied here rather than anywhere downstream.
+            var title = notification->Title.CopyUtf8();
+            var body = notification->Body.CopyUtf8();
+            if (GCHandle.FromIntPtr(userdata).Target is GhosttyVtTerminalSession session)
+            {
+                session.PublishNotification(PanelNotificationKind.Notification, title, body);
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind into Ghostty. A malformed
+            // notification is dropped; parsing and rendering continue.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnNativeBell(nint terminal, nint userdata)
+    {
+        _ = terminal;
+        if (userdata == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (GCHandle.FromIntPtr(userdata).Target is GhosttyVtTerminalSession session)
+            {
+                session.PublishNotification(
+                    PanelNotificationKind.Bell,
+                    string.Empty,
+                    string.Empty);
+            }
+        }
+        catch
+        {
+            // As above: a bell is never worth breaking the terminal for.
         }
     }
 

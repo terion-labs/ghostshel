@@ -255,6 +255,94 @@ public sealed class GhosttyVtTerminalSessionTests
         Assert.Equal(4, later.ShellIntegrationEvents.Count);
     }
 
+    /// <summary>
+    /// The two sequences a program actually uses to ask for attention, plus the
+    /// bell. Agents and long builds send these from panels nobody is looking
+    /// at, which is the whole reason the shell carries them.
+    /// </summary>
+    [Fact]
+    public async Task Osc9_osc777_and_the_bell_are_published_as_notifications()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var collected = new List<PanelNotificationEvent>();
+        var watching = Task.Run(
+            async () =>
+            {
+                await foreach (var notification in session
+                    .WatchNotificationsAsync(0, lifetime.Token)
+                    .ConfigureAwait(false))
+                {
+                    lock (collected)
+                    {
+                        collected.Add(notification);
+                    }
+
+                    if (collected.Count == 3)
+                    {
+                        return;
+                    }
+                }
+            },
+            lifetime.Token);
+
+        await harness.Pty.WriteOutputAsync(
+            "\u001b]9;Build finished\u0007"
+            + "\u001b]777;notify;Agent;Waiting for input\u0007"
+            + "\u0007");
+
+        await watching.WaitAsync(TimeSpan.FromSeconds(10));
+
+        PanelNotificationEvent[] notifications;
+        lock (collected)
+        {
+            notifications = [.. collected];
+        }
+
+        Assert.Equal(
+            [
+                PanelNotificationKind.Notification,
+                PanelNotificationKind.Notification,
+                PanelNotificationKind.Bell,
+            ],
+            notifications.Select(notification => notification.Kind));
+        // OSC 9 carries a body and no title; OSC 777 carries both.
+        Assert.Equal("Build finished", notifications[0].Body);
+        Assert.Equal("Agent", notifications[1].Title);
+        Assert.Equal("Waiting for input", notifications[1].Body);
+        Assert.Equal(string.Empty, notifications[2].Body);
+        Assert.Equal([1L, 2L, 3L], notifications.Select(notification => notification.Sequence));
+    }
+
+    /// <summary>
+    /// A watcher that reconnects says what it has already seen, and must not be
+    /// told about it twice.
+    /// </summary>
+    [Fact]
+    public async Task A_notification_watcher_can_resume_after_what_it_already_saw()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await harness.Pty.WriteOutputAsync("\u001b]9;first\u0007\u001b]9;second\u0007");
+
+        var resumed = new List<PanelNotificationEvent>();
+        await foreach (var notification in session
+            .WatchNotificationsAsync(1, lifetime.Token)
+            .ConfigureAwait(false))
+        {
+            resumed.Add(notification);
+            if (resumed.Count == 1)
+            {
+                break;
+            }
+        }
+
+        Assert.Equal("second", Assert.Single(resumed).Body);
+    }
+
     [Fact]
     public async Task Graceful_close_uses_shell_lifecycle_instead_of_treating_every_shell_as_busy()
     {

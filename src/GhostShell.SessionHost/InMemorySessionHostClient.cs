@@ -586,6 +586,30 @@ public sealed partial class InMemorySessionHostClient :
         }
     }
 
+    public async IAsyncEnumerable<PanelNotificationEvent> WatchNotificationsAsync(
+        WatchSessionRequest request,
+        OperationContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(context);
+        if (ValidateContext<Unit>(context, cancellationToken, 0) is not null
+            || !TryGetSession(request.SessionId, out var session))
+        {
+            yield break;
+        }
+
+        // Straight to the engine: notifications carry no host-side state, so
+        // unlike the lifecycle stream there is nothing for the hosted session
+        // to retain, replay, or resynchronize.
+        await foreach (var notification in session.Engine
+            .WatchNotificationsAsync(request.AfterSequence, cancellationToken)
+            .ConfigureAwait(false))
+        {
+            yield return notification;
+        }
+    }
+
     public async IAsyncEnumerable<SessionStreamItem> WatchAsync(
         WatchSessionRequest request,
         OperationContext context,

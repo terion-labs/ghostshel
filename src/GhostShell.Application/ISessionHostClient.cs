@@ -122,6 +122,19 @@ public interface ISessionHostClient
         OperationContext context,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// A session's requests to be noticed, carried separately from its
+    /// lifecycle stream: a notification is a moment rather than a state, and
+    /// the two are watched by different parts of the shell for different
+    /// reasons — most importantly, this one keeps running for a workspace that
+    /// is not the one on screen.
+    /// </summary>
+    IAsyncEnumerable<PanelNotificationEvent> WatchNotificationsAsync(
+        WatchSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        EmptyAsyncEnumerable<PanelNotificationEvent>.Instance;
+
     ValueTask<HostResult<InputLeaseDecision>> AcquireInputLeaseAsync(
         AcquireInputLeaseRequest request,
         OperationContext context,
