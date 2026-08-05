@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.Collections.Immutable;
 using System.Collections.Specialized;
@@ -955,10 +956,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _runtimeWorkspace, value))
             {
                 StopRuntimeGraphWatch();
-                if (value is null)
-                {
-                    SetActiveWorkspaceAccent(null);
-                }
+                // One announcement, from the one place that knows what is in
+                // front. Scattered across the open paths it was missing from
+                // every other way of arriving — restore among them.
+                SetActiveWorkspaceAccent(value?.ShellAccent);
 
                 StopTrackingAgentTerminalSelection(previous);
                 StopTrackingRecovery(previous);
@@ -997,6 +998,31 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public event EventHandler<string?>? WorkspaceAccentChanged;
 
     private string? _activeWorkspaceAccent;
+
+    /// <summary>
+    /// Says which part of bringing a workspace forward cost the time, when any
+    /// of it did. Under the budget it says nothing; a switch that is not felt
+    /// is not worth a line.
+    /// </summary>
+    private static void ReportSwitchPhases(
+        string workspace,
+        long autoSaveMilliseconds,
+        long activationMilliseconds,
+        long snapshotMilliseconds)
+    {
+        const long budgetMilliseconds = 32;
+        var total = autoSaveMilliseconds + activationMilliseconds + snapshotMilliseconds;
+        if (total < budgetMilliseconds)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"[ghostshell:perf] bringing '{workspace}' forward took {total} ms — "
+            + $"autosave flush {autoSaveMilliseconds} ms, activation "
+            + $"{activationMilliseconds} ms, recovery snapshot "
+            + $"{snapshotMilliseconds} ms");
+    }
 
     private void SetActiveWorkspaceAccent(string? accent)
     {
@@ -2119,11 +2145,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         // what "switching killed my processes" was.
         if (FindOpenWorkspace(workspace.Key) is { } alreadyOpen)
         {
+            // Timed in pieces because the whole of it runs on the thread that
+            // draws, and from outside a slow switch is just a frozen window.
+            // The autosave flush writes the workspace being left; reactivating
+            // announces the accent, which republishes every appearance token;
+            // the snapshot serialises the workspace that is now in front.
+            var clock = Stopwatch.StartNew();
             await FlushWorkspaceAutoSaveAsync();
+            var flushed = clock.ElapsedMilliseconds;
             ReactivateRuntimeWorkspace(alreadyOpen);
-            SetActiveWorkspaceAccent(workspace.Accent);
+            var reactivated = clock.ElapsedMilliseconds;
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
+            clock.Stop();
+            ReportSwitchPhases(
+                workspace.Name,
+                flushed,
+                reactivated - flushed,
+                clock.ElapsedMilliseconds - reactivated);
             return true;
         }
 
@@ -2136,7 +2175,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             RuntimeAgentPolicyProvenance.Default.WithOverride(
                 workspace.AgentPolicyOverride,
                 workspace.Key,
-                storedWorkspace.Revision));
+                storedWorkspace.Revision),
+            workspace.Accent);
         try
         {
             foreach (var entry in workspace.Entries)
@@ -2217,7 +2257,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             ActivateRuntimeWorkspace(runtime, workspace.Key, workspace.Name);
-            SetActiveWorkspaceAccent(workspace.Accent);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2262,7 +2301,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             ActivateRuntimeWorkspace(runtime, connection.Key, connection.Name);
-            SetActiveWorkspaceAccent(null);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -2313,7 +2351,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             ActivateRuntimeWorkspace(runtime, screen.Key, screen.Name);
-            SetActiveWorkspaceAccent(null);
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
@@ -10157,6 +10194,28 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The shell accent a restored workspace should come up wearing.
+    ///
+    /// The snapshot does not carry it — it records the colour the workspace is
+    /// recognised by, which is a different field — so it is read back from the
+    /// definition the restored workspace came from. A workspace with no
+    /// definition behind it, or one whose definition is gone, leaves the shell
+    /// wearing its own accent, which is what it would have done anyway.
+    /// </summary>
+    private string? ShellAccentOf(RuntimeHistorySource? source)
+    {
+        if (source?.SourceDefinition is not { } definition
+            || definition.Kind != WorkspaceDefinition.Kind)
+        {
+            return null;
+        }
+
+        return _catalog.Snapshot.Workspaces
+            .FirstOrDefault(item => item.Value.Id.Value == definition.Value)
+            ?.Value.Accent;
+    }
+
     private RuntimeWorkspaceViewModel RestoreWorkspace(
         RuntimeWorkspaceRecoveryPayload recovered)
     {
@@ -10173,7 +10232,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             recovered.Accent,
             Connections.Where(item => connectionIds.Contains(item.Id)).ToArray(),
             recovered.AgentPolicy?.ToProvenance()
-                ?? RuntimeAgentPolicyProvenance.LegacyFallback);
+                ?? RuntimeAgentPolicyProvenance.LegacyFallback,
+            ShellAccentOf(recovered.HistorySource?.ToHistorySource()));
         try
         {
             var restoredTabs = new Dictionary<string, RuntimeTabViewModel>(StringComparer.Ordinal);
