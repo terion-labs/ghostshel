@@ -54,7 +54,9 @@ internal sealed class SessionHostTestHarness : IAsyncDisposable
         OperationContext? context = null,
         SessionId? sessionId = null,
         PanelInstanceId? panelId = null,
-        TerminalLaunchRequest? launch = null)
+        TerminalLaunchRequest? launch = null,
+        WorkspaceInstanceId? workspaceId = null,
+        TabInstanceId? tabId = null)
     {
         var id = sessionId ?? SessionId;
         var result = await Client.EnsureTerminalSessionAsync(
@@ -63,8 +65,8 @@ internal sealed class SessionHostTestHarness : IAsyncDisposable
                 new SessionOwner(
                     HostMode.Desktop,
                     WindowId,
-                    WorkspaceId,
-                    TabId,
+                    workspaceId ?? WorkspaceId,
+                    tabId ?? TabId,
                     panelId ?? PanelId),
                 "test terminal",
                 launch ?? new TerminalLaunchRequest("/tmp")),

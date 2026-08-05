@@ -287,6 +287,28 @@ internal sealed class WorkspaceGraphRegistry
         }
     }
 
+    /// <summary>
+    /// Drops one workspace's graph, leaving the rest of its window's alone.
+    /// Unlike <see cref="Unregister"/> this asks nothing of the caller: it
+    /// follows a close the host has already carried out, so there is no
+    /// ownership left to check and no revision left to conflict with.
+    /// </summary>
+    public void RemoveWorkspace(WorkspaceInstanceId workspaceId)
+    {
+        HostedWorkspaceGraph? graph;
+        lock (_gate)
+        {
+            if (!_workspaces.TryGetValue(workspaceId, out graph))
+            {
+                return;
+            }
+
+            ForgetWorkspaceUnsafe(graph.WindowId, workspaceId);
+        }
+
+        graph.Remove();
+    }
+
     public void RemoveWindow(WindowInstanceId windowId)
     {
         lock (_gate)

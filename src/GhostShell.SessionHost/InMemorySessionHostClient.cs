@@ -1636,7 +1636,7 @@ public sealed partial class InMemorySessionHostClient :
                 var emptyResult = HostResult<CloseScopeResult>.Succeed(
                     new CloseScopeResult.Completed(request.Scope, request.TargetId, []),
                     0);
-                RemoveWorkspaceGraphAfterSuccessfulWindowClose(request, []);
+                RemoveWorkspaceGraphAfterSuccessfulClose(request, []);
                 StoreReplay(context, fingerprint, emptyResult);
                 return emptyResult;
             }
@@ -1765,7 +1765,7 @@ public sealed partial class InMemorySessionHostClient :
             var completed = HostResult<CloseScopeResult>.Succeed(
                 new CloseScopeResult.Completed(request.Scope, request.TargetId, closeResults),
                 targets.Max(target => target.Snapshot().Descriptor.Revision));
-            RemoveWorkspaceGraphAfterSuccessfulWindowClose(request, closeResults);
+            RemoveWorkspaceGraphAfterSuccessfulClose(request, closeResults);
             StoreReplay(context, fingerprint, completed);
             return completed;
         }
@@ -1874,17 +1874,28 @@ public sealed partial class InMemorySessionHostClient :
         // to acquire/release its gate safely before observing the disposed host.
     }
 
-    private void RemoveWorkspaceGraphAfterSuccessfulWindowClose(
+    /// <summary>
+    /// A close that actually ended everything it named takes the graphs it
+    /// named with it. A window close takes all of its window's; a workspace
+    /// close takes exactly one, and its window keeps the rest.
+    /// </summary>
+    private void RemoveWorkspaceGraphAfterSuccessfulClose(
         CloseScopeRequest request,
         IReadOnlyList<SessionCloseResult> results)
     {
-        if (request.Scope != CloseScopeKind.Window
+        if (request.Scope is not (CloseScopeKind.Window or CloseScopeKind.Workspace)
             || request.Decision == CloseDecision.Cancel
             || results.Any(result => result.Outcome is not (
                 SessionCloseOutcome.GracefullyClosed
                 or SessionCloseOutcome.ForceTerminated
                 or SessionCloseOutcome.AlreadyClosed)))
         {
+            return;
+        }
+
+        if (request.Scope == CloseScopeKind.Workspace)
+        {
+            _workspaceGraphs.RemoveWorkspace(new WorkspaceInstanceId(request.TargetId));
             return;
         }
 
@@ -1964,6 +1975,8 @@ public sealed partial class InMemorySessionHostClient :
                 {
                     CloseScopeKind.Panel => session.Owner.PanelId.Value == request.TargetId,
                     CloseScopeKind.Tab => session.Owner.TabId.Value == request.TargetId,
+                    CloseScopeKind.Workspace =>
+                        session.Owner.WorkspaceId.Value == request.TargetId,
                     CloseScopeKind.Window => session.Owner.WindowId.Value == request.TargetId,
                     CloseScopeKind.Session => session.Id.Value == request.TargetId,
                     _ => false,
@@ -2114,6 +2127,7 @@ public sealed partial class InMemorySessionHostClient :
     {
         CloseScopeKind.Panel => ApplicationOperations.PanelClose,
         CloseScopeKind.Tab => ApplicationOperations.TabClose,
+        CloseScopeKind.Workspace => ApplicationOperations.WorkspaceClose,
         CloseScopeKind.Window => ApplicationOperations.WindowClose,
         CloseScopeKind.Session => ApplicationOperations.SessionClose,
         _ => throw new ArgumentOutOfRangeException(nameof(scope), scope, null),

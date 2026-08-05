@@ -23,6 +23,7 @@ public sealed partial class CloseConfirmationDialog : Window
         {
             CloseScopeKind.Panel => "Close this panel?",
             CloseScopeKind.Tab => "Close this tab?",
+            CloseScopeKind.Workspace => "Close this workspace?",
             CloseScopeKind.Window => "Close GhostSHELL?",
             CloseScopeKind.Session => "Close this session?",
             _ => "Close active sessions?",

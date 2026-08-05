@@ -54,5 +54,6 @@ public static class ApplicationOperations
     public const string ProcessesList = "processes.list";
     public const string PanelClose = "panel.close";
     public const string TabClose = "tab.close";
+    public const string WorkspaceClose = "workspace.close";
     public const string WindowClose = "window.close";
 }

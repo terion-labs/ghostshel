@@ -14,6 +14,11 @@ public sealed record CloseScopeRequest(
     public static CloseScopeRequest Tab(TabInstanceId id, CloseDecision decision) =>
         new(CloseScopeKind.Tab, id.Value, decision);
 
+    public static CloseScopeRequest Workspace(
+        WorkspaceInstanceId id,
+        CloseDecision decision) =>
+        new(CloseScopeKind.Workspace, id.Value, decision);
+
     public static CloseScopeRequest Window(WindowInstanceId id, CloseDecision decision) =>
         new(CloseScopeKind.Window, id.Value, decision);
 
