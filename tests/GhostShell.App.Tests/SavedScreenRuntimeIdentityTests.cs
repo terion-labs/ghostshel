@@ -8,6 +8,8 @@ using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.SessionHost;
+using GhostShell.SessionHost.Tests;
 
 namespace GhostShell.App.Tests;
 
@@ -65,6 +67,76 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.Same(editor, viewModel.LayoutDesignerEditor);
         Assert.Equal(ShellOverlay.LayoutDesigner, viewModel.Overlay);
         Assert.Contains("overlay", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The same switch against the real session host rather than a fake.
+    ///
+    /// This exists because the bug survived two fixes. Both times the test
+    /// below passed — it uses a session-client fake with no rules of its own,
+    /// so it proved the client had stopped disposing panels and said nothing
+    /// about the host removing the workspace underneath it. A test that cannot
+    /// be wrong about the host cannot report on the host.
+    ///
+    /// It asserts the workspace graphs, not the sessions: a panel's session is
+    /// established by its view, and there are no views here. Losing the graph
+    /// is what killed the sessions, because the client closes a workspace the
+    /// host says is gone.
+    /// </summary>
+    [Fact]
+    public async Task Both_workspace_graphs_survive_a_switch_against_the_real_host()
+    {
+        await using var host = new InMemorySessionHostClient(
+            new FakeTerminalSessionFactory(),
+            new DesktopLifecyclePolicy(),
+            TimeProvider.System);
+        var connection = LocalConnection("survival-connection", "Connection");
+        var first = WorkspaceOver(connection, "survival-first", "First");
+        var second = WorkspaceOver(connection, "survival-second", "Second");
+        var snapshot = new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(first), Store(second)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(
+            snapshot,
+            new EmptyFileClients(),
+            sessionClient: host);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(first.Id));
+        var firstRuntime = viewModel.RuntimeWorkspace!;
+        var firstPanel = firstRuntime.Tabs[0].Panels[0];
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(second.Id));
+        var secondRuntime = viewModel.RuntimeWorkspace!;
+
+        // The host still knows both. Before this was fixed, registering the
+        // second removed the first and told the client so, which is why every
+        // session in the workspace you left died.
+        await AssertGraphRegisteredAsync(host, firstRuntime.Id);
+        await AssertGraphRegisteredAsync(host, secondRuntime.Id);
+
+        // And the client still has the workspace it left, panels and all.
+        Assert.Equal(2, viewModel.OpenWorkspaces.Count);
+        Assert.Contains(firstPanel, firstRuntime.Tabs[0].Panels);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(first.Id));
+        Assert.Same(firstRuntime, viewModel.RuntimeWorkspace);
+        await AssertGraphRegisteredAsync(host, firstRuntime.Id);
+        await AssertGraphRegisteredAsync(host, secondRuntime.Id);
+    }
+
+    private static async Task AssertGraphRegisteredAsync(
+        InMemorySessionHostClient host,
+        WorkspaceInstanceId workspaceId)
+    {
+        var graph = await host.GetWorkspaceGraphAsync(
+            workspaceId,
+            OperationContext.ForHuman(new ClientId("survival-probe")),
+            default);
+        var registered = Assert.IsType<HostResult<WorkspaceGraphSnapshot>.Success>(graph);
+        Assert.Equal(workspaceId, registered.Value.Workspace.Id);
     }
 
     /// <summary>
