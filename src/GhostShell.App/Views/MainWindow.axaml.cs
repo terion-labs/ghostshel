@@ -219,15 +219,16 @@ public sealed partial class MainWindow : Window
         if (blurred || negotiated != WindowTransparencyLevel.None)
         {
             LetTheBackdropThrough();
+            return;
         }
 
-        // Both halves have failed silently in turn, so both say what happened.
-        // The window either can be seen through or it cannot, and which of the
-        // two it is decides where to look next.
+        // Only when it did not take. Both halves of this failed silently in
+        // turn — a platform that declines says nothing, and a shell that stays
+        // opaque looks the same as one that was never asked — so the absence
+        // is what gets a line.
         Console.Error.WriteLine(
-            $"[ghostshell:appearance] backdrop — native blur {blurred}, "
-            + $"transparency {negotiated}, window fill "
-            + $"{(Background is null ? "none" : Background.ToString())}");
+            $"[ghostshell:appearance] backdrop refused — native blur {blurred}, "
+            + $"transparency {negotiated}");
     }
 
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;
