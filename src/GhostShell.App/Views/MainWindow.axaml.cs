@@ -1348,8 +1348,10 @@ public sealed partial class MainWindow : Window
     private async void OnToggleWorkspacesPanelClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is not ToggleSwitch { IsChecked: { } isChecked }
-            || isChecked == ViewModel.ShowWorkspacesPanel)
+        // No guard against the value it already holds: saving a theme that
+        // matches what is stored is already a no-op, and comparing here made
+        // the switch ignore the user whenever the two had drifted apart.
+        if (sender is not ToggleSwitch { IsChecked: { } isChecked })
         {
             return;
         }

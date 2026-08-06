@@ -249,14 +249,15 @@ public sealed partial class WorkspaceView : UserControl
     private void OnShowNewItemClick(object? sender, RoutedEventArgs e) =>
         ShowNewItemRequested?.Invoke(sender, e);
 
+    /// <summary>
+    /// The shell reads which workspace was chosen from the sender's data
+    /// context, and hiding the menu first takes that context away with the
+    /// popup — so the click arrived describing nothing and nothing happened.
+    /// </summary>
     private void OnWorkspacesMenuOpenClick(object? sender, RoutedEventArgs e)
     {
-        if (WorkspacesMenuButton.Flyout is { } flyout)
-        {
-            flyout.Hide();
-        }
-
         OpenWorkspaceRequested?.Invoke(sender, e);
+        WorkspacesMenuButton.Flyout?.Hide();
     }
 
     private void OnToggleWorkspacesPanel(object? sender, RoutedEventArgs e) =>
