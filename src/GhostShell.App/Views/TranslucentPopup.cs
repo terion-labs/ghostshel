@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 
 namespace GhostShell.App.Views;
 
@@ -64,7 +65,12 @@ internal static class TranslucentPopup
         ];
 
         // Avalonia pins its effect view to a long-deprecated light material, so
-        // the same correction the window needs applies here.
-        MacOsWindowMaterial.TrySit(popup, MacOsMaterial.UnderWindowBackground);
+        // the same correction the window needs applies here — and the glass is
+        // masked to the shape of the surface it sits behind, because the window
+        // holding it is a square and its corners would stand outside the card.
+        MacOsWindowMaterial.TrySit(
+            popup,
+            MacOsMaterial.UnderWindowBackground,
+            (control as TemplatedControl)?.CornerRadius.TopLeft);
     }
 }

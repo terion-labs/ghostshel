@@ -33,7 +33,19 @@ internal static class MacOsWindowMaterial
     /// Any top level, not only the window: a flyout is a window of its own on
     /// this platform, and the glass behind one is the same glass.
     /// </summary>
-    public static bool TrySit(TopLevel window, MacOsMaterial material)
+    public static bool TrySit(TopLevel window, MacOsMaterial material) =>
+        TrySit(window, material, cornerRadius: null);
+
+    /// <summary>
+    /// A popup's window is a square, and the effect view fills it. The card
+    /// inside is rounded, so without masking the blur to the same radius the
+    /// square corners of the window stand outside it — which is the block that
+    /// appeared at the corner of every menu once the glass went in.
+    ///
+    /// The window itself is left alone: rounding that would take the platform's
+    /// shadow with it.
+    /// </summary>
+    public static bool TrySit(TopLevel window, MacOsMaterial material, double? cornerRadius)
     {
         ArgumentNullException.ThrowIfNull(window);
         if (!OperatingSystem.IsMacOS()
@@ -77,6 +89,13 @@ internal static class MacOsWindowMaterial
 
                 SendNIntArgument(subview, Selector("setMaterial:"), (nint)material);
                 SendNIntArgument(subview, Selector("setState:"), AlwaysActive);
+                if (cornerRadius is > 0 and { } radius
+                    && SendId(subview, Selector("layer")) is var layer and not 0)
+                {
+                    SendDoubleArgument(layer, Selector("setCornerRadius:"), radius);
+                    SendBoolArgument(layer, Selector("setMasksToBounds:"), true);
+                }
+
                 return true;
             }
 
@@ -155,6 +174,15 @@ internal static class MacOsWindowMaterial
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern nint SendIdAtIndex(nint receiver, nint selector, nuint index);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendDoubleArgument(nint receiver, nint selector, double value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendBoolArgument(
+        nint receiver,
+        nint selector,
+        [MarshalAs(UnmanagedType.I1)] bool value);
 }
 
 /// <summary>
