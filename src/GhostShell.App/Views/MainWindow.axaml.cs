@@ -226,6 +226,9 @@ public sealed partial class MainWindow : Window
     private void RequestBackdrop()
     {
         var radius = (Avalonia.Application.Current as App)?.WindowBackdropBlurRadius ?? 0;
+        // Before the blur: the base surface has to reach the top edge before
+        // there is any point blurring what shows through it.
+        var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(this);
         var blurred = OperatingSystem.IsMacOS()
             && MacOsQuickTerminalBackdrop.TryApply(this, radius);
         var negotiated = ActualTransparencyLevel;
@@ -236,15 +239,17 @@ public sealed partial class MainWindow : Window
 
         // Only when something did not take. Every appearance republish comes
         // back through here, so a line each time is eight lines a start.
-        if (blurred && negotiated != WindowTransparencyLevel.None)
+        var titleBarQuiet = !OperatingSystem.IsMacOS()
+            || titleBar is MacOsTitleBarOutcome.Hidden;
+        if (blurred && titleBarQuiet && negotiated != WindowTransparencyLevel.None)
         {
             return;
         }
 
         Console.Error.WriteLine(
-            $"[ghostshell:appearance] backdrop incomplete — native blur "
-            + $"{blurred}, transparency {negotiated}, decoration margin "
-            + $"{WindowDecorationMargin.Top:0}");
+            $"[ghostshell:appearance] backdrop incomplete — title bar "
+            + $"{titleBar}, native blur {blurred}, transparency {negotiated}, "
+            + $"decoration margin {WindowDecorationMargin.Top:0}");
     }
 
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;
@@ -256,6 +261,14 @@ public sealed partial class MainWindow : Window
             || change.Property == WindowStateProperty)
         {
             RefreshWindowChromeMetrics();
+        }
+
+        if (change.Property == WindowStateProperty)
+        {
+            // Leaving full screen rebuilds the decorations, and Avalonia shows
+            // the title-bar material again on the way out. Hiding it once at
+            // startup is not enough.
+            RequestBackdrop();
         }
     }
 

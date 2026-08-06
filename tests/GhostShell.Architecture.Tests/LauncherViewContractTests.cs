@@ -452,6 +452,18 @@ public sealed class LauncherViewContractTests
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
             "public sealed partial class MainWindow : Window");
 
+        // Extending under the decorations is only half of it on macOS: the
+        // same switch that extends the client area also tells Avalonia's
+        // content view to show a title-bar material and a separator, and
+        // there is no managed way to ask for one without the other. Left
+        // alone they paint behind the translucent base and read as a title
+        // bar. The window has to put them back to sleep, and again whenever
+        // the decorations are rebuilt.
+        Assert.Contains(
+            "MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(this)",
+            codeBehind,
+            StringComparison.Ordinal);
+
         Assert.Contains("TitleBarChromeHeightProperty", codeBehind, StringComparison.Ordinal);
         Assert.Contains(
             "WindowTitleBarContentMarginProperty",
