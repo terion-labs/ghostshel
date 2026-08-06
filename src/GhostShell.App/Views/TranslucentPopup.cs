@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Media;
 
 namespace GhostShell.App.Views;
 
@@ -57,6 +58,12 @@ internal static class TranslucentPopup
             return;
         }
 
+        // The popup's own root paints a square behind the card it holds. With
+        // an opaque theme brush on it that square is what shows at the corners,
+        // outside the card's radius and in front of the glass — which is the
+        // block that survived masking the effect view, because the effect view
+        // was never what was drawing it.
+        popup.Background = Brushes.Transparent;
         popup.TransparencyLevelHint =
         [
             WindowTransparencyLevel.AcrylicBlur,
