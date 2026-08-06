@@ -156,39 +156,29 @@ public static class Concentric
 /// <summary>
 /// Keeps one control's corners answering to the surface it sits inside.
 ///
-/// Owned by the control rather than applied to it, because it has to remember
-/// whether it set the radius: when the rule stops applying — the element moves
-/// away from the corner, or the surface it was measuring against goes square —
-/// the value it wrote has to be given back rather than left behind.
+/// Owned by the control rather than applied to it, so the theme's own value
+/// stays reachable: the rule needs it both as the answer for corners that are
+/// not concentric and as the thing to fall back to when it stops applying at
+/// all.
 /// </summary>
 internal sealed class ConcentricCornerReconciler(Control owner, double minimumRadius)
 {
-    private bool _applied;
-
     public void OnLayoutUpdated(object? sender, EventArgs args) => Reconcile();
 
     public void Reconcile()
     {
-        var derived = ConcentricCorners.DeriveFor(owner, minimumRadius);
-        if (derived is { } radius)
-        {
-            _applied = true;
-            if (!radius.Equals(owner.GetValue(Border.CornerRadiusProperty)))
-            {
-                owner.SetValue(Border.CornerRadiusProperty, radius);
-            }
-
-            return;
-        }
-
-        if (!_applied)
-        {
-            return;
-        }
-
-        // Back to whatever the theme says, not to whatever was last worked out.
-        _applied = false;
+        // Back to the theme's value before reading it. The corners that are
+        // not concentric fall back to what the element was given, and what it
+        // was given is a style — not whatever this worked out last time, which
+        // is what it would read if the value it wrote were left in place.
         owner.ClearValue(Border.CornerRadiusProperty);
+        var authored = owner.GetValue(Border.CornerRadiusProperty);
+
+        var derived = ConcentricCorners.DeriveFor(owner, minimumRadius);
+        if (derived is { } radius && !radius.Equals(authored))
+        {
+            owner.SetValue(Border.CornerRadiusProperty, radius);
+        }
     }
 }
 
@@ -213,7 +203,12 @@ public static class ConcentricCorners
             return null;
         }
 
-        return Derive(outer, container.Bounds.Size, offset, element.Bounds.Size, minimumRadius);
+        return Derive(
+            outer,
+            container.Bounds.Size,
+            offset,
+            element.Bounds.Size,
+            minimumRadius);
     }
 
     private static (Visual? Container, double Radius) FindContainer(Control element)
@@ -280,41 +275,25 @@ public static class ConcentricCorners
             return null;
         }
 
-        var left = offsetInContainer.X;
-        var top = offsetInContainer.Y;
-        var right = containerSize.Width - (offsetInContainer.X + size.Width);
-        var bottom = containerSize.Height - (offsetInContainer.Y + size.Height);
+        // The shortest way to the container, whichever side that is.
+        //
+        // Corner by corner reads wrong on anything tall or wide: a sidebar
+        // below a tab strip is far from the window's top corners and hard
+        // against its bottom ones, and giving it two tight corners and two
+        // round ones makes one shape look like two. It is one surface sitting
+        // one distance inside another, so it takes one radius — the one that
+        // its closest edge earns.
+        var gap = Math.Max(0, Math.Min(
+            Math.Min(offsetInContainer.X, offsetInContainer.Y),
+            Math.Min(
+                containerSize.Width - (offsetInContainer.X + size.Width),
+                containerSize.Height - (offsetInContainer.Y + size.Height))));
 
-        // An element only shares its container's corners if it is inside all
-        // four of them. A notice pinned to one corner of a panel is nowhere
-        // near the other three, and stepping in by those distances would floor
-        // every corner and quietly square something meant to be round. Where
-        // the rule does not apply, it declines rather than guessing.
-        if (left < 0 || top < 0 || right < 0 || bottom < 0
-            || left >= outerRadius || top >= outerRadius
-            || right >= outerRadius || bottom >= outerRadius)
-        {
-            return null;
-        }
-
-        return new CornerRadius(
-            Step(outerRadius, left, top, minimumRadius),
-            Step(outerRadius, right, top, minimumRadius),
-            Step(outerRadius, right, bottom, minimumRadius),
-            Step(outerRadius, left, bottom, minimumRadius));
+        // Further out than the radius itself is not near the container's
+        // corners at all, and stepping in by that distance would square
+        // something meant to be round. There it keeps what it was given.
+        return gap >= outerRadius
+            ? null
+            : new CornerRadius(Math.Max(minimumRadius, outerRadius - gap));
     }
-
-    /// <summary>
-    /// Where the two edges meeting at a corner are inset by different amounts
-    /// the curves cannot truly share a centre, because a corner carries one
-    /// radius and not two. The smaller distance wins: a corner that is too
-    /// tight reads as deliberate, one that is too round bulges past the shape
-    /// it is meant to sit inside.
-    /// </summary>
-    private static double Step(
-        double outer,
-        double first,
-        double second,
-        double minimum) =>
-        Math.Max(minimum, outer - Math.Max(0, Math.Min(first, second)));
 }
