@@ -19,6 +19,8 @@
           x:Name="HomeTabButton"
           Width="22"
           Height="22"
+          MinWidth="22"
+          MinHeight="22"
           Padding="0"
           Classes="RuntimeHomeTab"
           Classes.active="{Binding IsHomeActive, ElementName=Root}"

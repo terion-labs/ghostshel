@@ -14,10 +14,17 @@ namespace GhostShell.Core;
 /// </summary>
 public static class DensityCornerScale
 {
+    /// <summary>
+    /// Half and three-quarters again were too far in both directions. A radius
+    /// past half of what it sits on stops being a corner and becomes a pill —
+    /// a sidebar row turns into a lozenge and a square button into a circle —
+    /// and the platform's own sidebar rows stay modest however roomy the
+    /// window gets. Compact was reported tight at half, too.
+    /// </summary>
     public static double For(InterfaceDensity density) => density switch
     {
-        InterfaceDensity.Compact => 0.5,
-        InterfaceDensity.Comfortable => 1.75,
+        InterfaceDensity.Compact => 0.7,
+        InterfaceDensity.Comfortable => 1.3,
         _ => 1,
     };
 
