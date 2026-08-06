@@ -244,6 +244,18 @@ public sealed partial class MainWindow : Window
         // window's, so the glass reads wrong for a dark shell and dulls
         // whenever focus moves away. Both are answered there.
         MacOsWindowMaterial.TrySit(this, MacOsMaterial.UnderWindowBackground);
+        // Asking to be a different kind of window moves the standard buttons,
+        // and the band is measured from where they are. Nothing else notices:
+        // the decoration margin does not move when the toolbar style does, so
+        // without this the band keeps whatever it measured first and the
+        // density setting appears to change everything but the chrome.
+        //
+        // Deferred, because the platform has not applied the new kind yet at
+        // the point it is asked for.
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            RefreshWindowChromeMetrics,
+            Avalonia.Threading.DispatcherPriority.Background);
+
         var negotiated = ActualTransparencyLevel;
         if (negotiated != WindowTransparencyLevel.None)
         {
