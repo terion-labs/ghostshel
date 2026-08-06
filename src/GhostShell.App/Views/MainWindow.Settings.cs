@@ -759,7 +759,8 @@ public sealed partial class MainWindow
                     selection.WorkspacePanelPlacement,
                     selection.IsTranslucent,
                     selection.BackdropOpacityPercent,
-                    selection.HasGlassPanels));
+                    selection.HasGlassPanels,
+                    selection.OverridesBackdropOpacity));
             if (!result.IsSuccess)
             {
                 return;

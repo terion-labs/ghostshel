@@ -17,7 +17,8 @@ internal sealed record AppearanceSelection(
     WorkspacePanelPlacement WorkspacePanelPlacement,
     bool IsTranslucent,
     int BackdropOpacityPercent,
-    bool HasGlassPanels);
+    bool HasGlassPanels,
+    bool OverridesBackdropOpacity);
 
 internal sealed record AppearanceTextScaleOption(string DisplayName, double? Scale);
 
@@ -94,6 +95,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             CornerRadiusSlider.Value = theme.CornerRadiusOverride ?? DefaultCornerRadius;
             TranslucencyToggle.IsChecked = theme.IsTranslucent;
             GlassPanelsToggle.IsChecked = theme.HasGlassPanels;
+            OverrideOpacityToggle.IsChecked = theme.OverridesBackdropOpacity;
             BackdropOpacitySlider.Value = theme.BackdropOpacityPercent;
             DensityCompact.IsChecked = theme.Density == InterfaceDensity.Compact;
             DensityCozy.IsChecked = theme.Density == InterfaceDensity.Cozy;
@@ -152,7 +154,8 @@ public sealed partial class AppearanceSettingsPageView : UserControl
                 : WorkspacePanelPlacement.Left,
             TranslucencyToggle.IsChecked == true,
             (int)Math.Round(BackdropOpacitySlider.Value),
-            GlassPanelsToggle.IsChecked == true);
+            GlassPanelsToggle.IsChecked == true,
+            OverrideOpacityToggle.IsChecked == true);
     }
 
     /// <summary>

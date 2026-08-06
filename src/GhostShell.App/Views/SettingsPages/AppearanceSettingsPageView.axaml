@@ -457,37 +457,45 @@
           </controls:LabeledField>
         </controls:SurfaceCard>
         <controls:SurfaceCard Tone="Raised" Grid.Column="1">
-          <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
             <controls:LabeledField
                 Label="Translucency"
-                Hint="Sit the shell on the platform's own material, so the desktop shows through it. How far it blurs is the platform's to decide.">
+                Hint="Sit the shell on the platform's own material, so the desktop shows through it.">
               <ToggleSwitch
                   x:Name="TranslucencyToggle"
                   IsCheckedChanged="OnAppearanceChanged"
                   AutomationProperties.Name="Translucency" />
             </controls:LabeledField>
             <controls:LabeledField
+                Grid.Column="1"
                 Label="Glass panels"
-                Hint="Carry the same material through the panels, so the shell reads as one sheet of glass rather than slabs standing on it.">
+                Hint="Carry the material through the panels, so the shell reads as one sheet rather than slabs standing on it.">
               <ToggleSwitch
                   x:Name="GlassPanelsToggle"
                   IsEnabled="{Binding #TranslucencyToggle.IsChecked}"
                   IsCheckedChanged="OnAppearanceChanged"
                   AutomationProperties.Name="Glass panels" />
             </controls:LabeledField>
-          </StackPanel>
+          </Grid>
         </controls:SurfaceCard>
       </Grid>
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
               Label="Background opacity"
-              Hint="How solid the base surface is. Lower lets more of the desktop through; at full it reads as a frame around the panels rather than as glass.">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-              <Slider
-                  x:Name="BackdropOpacitySlider"
+              Hint="Off leaves the material's own translucency alone. On paints the shell's colour over it: lower lets more of the desktop through, at full it reads as a frame around the panels rather than as glass.">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <ToggleSwitch
+                  x:Name="OverrideOpacityToggle"
                   VerticalAlignment="Center"
                   IsEnabled="{Binding #TranslucencyToggle.IsChecked}"
+                  IsCheckedChanged="OnAppearanceChanged"
+                  AutomationProperties.Name="Override background opacity" />
+              <Slider
+                  x:Name="BackdropOpacitySlider"
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  IsEnabled="{Binding #OverrideOpacityToggle.IsChecked}"
                   ValueChanged="OnAppearanceChanged"
                   Minimum="40"
                   Maximum="100"
@@ -495,7 +503,7 @@
                   IsSnapToTickEnabled="True"
                   AutomationProperties.Name="Background opacity" />
               <TextBlock
-                  Grid.Column="1"
+                  Grid.Column="2"
                   VerticalAlignment="Center"
                   FontSize="{DynamicResource ShellFontSize12}"
                   FontWeight="SemiBold"

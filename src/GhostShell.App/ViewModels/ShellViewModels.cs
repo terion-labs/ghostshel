@@ -3495,7 +3495,8 @@ public sealed record ThemeChromePreference(
     WorkspacePanelPlacement WorkspacePanelPlacement,
     bool IsTranslucent,
     int BackdropOpacityPercent,
-    bool HasGlassPanels)
+    bool HasGlassPanels,
+    bool OverridesBackdropOpacity)
 {
     public static ThemeChromePreference From(ThemePreference theme)
     {
@@ -3509,6 +3510,7 @@ public sealed record ThemeChromePreference(
             theme.WorkspacePanelPlacement,
             theme.IsTranslucent,
             theme.BackdropOpacityPercent,
-            theme.HasGlassPanels);
+            theme.HasGlassPanels,
+            theme.OverridesBackdropOpacity);
     }
 }

@@ -78,6 +78,14 @@ public sealed record ThemePreference : IDurableDefinition
     public const bool DefaultHasGlassPanels = false;
 
     /// <summary>
+    /// Whether the shell paints its own opacity over the material, rather than
+    /// letting the material's own translucency stand. On by default: the shell
+    /// has a colour it means to be, and the platform's glass is lighter than
+    /// it.
+    /// </summary>
+    public const bool DefaultOverridesBackdropOpacity = true;
+
+    /// <summary>
     /// How solid the shell's base surface is, as a percentage. The blur is
     /// only half of glass; the other half is how much of the blurred desktop
     /// is allowed through. Near 100 the surface reads as a painted frame
@@ -116,7 +124,8 @@ public sealed record ThemePreference : IDurableDefinition
         WorkspacePanelPlacement workspacePanelPlacement = WorkspacePanelPlacement.Left,
         bool isTranslucent = DefaultIsTranslucent,
         int backdropOpacityPercent = DefaultBackdropOpacityPercent,
-        bool hasGlassPanels = DefaultHasGlassPanels)
+        bool hasGlassPanels = DefaultHasGlassPanels,
+        bool overridesBackdropOpacity = DefaultOverridesBackdropOpacity)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(accent);
@@ -185,6 +194,7 @@ public sealed record ThemePreference : IDurableDefinition
         WorkspacePanelPlacement = workspacePanelPlacement;
         IsTranslucent = isTranslucent;
         HasGlassPanels = hasGlassPanels;
+        OverridesBackdropOpacity = overridesBackdropOpacity;
         BackdropOpacityPercent = backdropOpacityPercent;
     }
 
@@ -240,6 +250,12 @@ public sealed record ThemePreference : IDurableDefinition
     /// solid over it.
     /// </summary>
     public bool HasGlassPanels { get; }
+
+    /// <summary>
+    /// Whether the stored opacity is painted over the material, or the
+    /// material's own translucency is left to stand.
+    /// </summary>
+    public bool OverridesBackdropOpacity { get; }
 
     [JsonIgnore]
     public DefinitionKey Key => new(Kind, Id.Value);

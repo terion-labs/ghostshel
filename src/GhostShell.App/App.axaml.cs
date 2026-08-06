@@ -462,7 +462,22 @@ public sealed partial class App : Avalonia.Application
     /// window was still opaque at the time and none of it was reaching the
     /// screen. This is the number to move in either direction.
     /// </summary>
-    private byte ShellBackdropAlpha => (byte)Math.Clamp(
+    /// <summary>
+    /// How solid the base surface is painted.
+    ///
+    /// Nothing at all when the material's own translucency is left to stand:
+    /// the platform's glass is then what shows, and painting over it is the
+    /// whole of what there is to switch off.
+    /// </summary>
+    private byte ShellBackdropAlpha => WindowOverridesBackdropOpacity
+        ? StoredOpacityAlpha
+        : (byte)0;
+
+    /// <summary>
+    /// The stored opacity as an alpha, whether or not the base is painted with
+    /// it — the panels use it as their glass even when the base does not.
+    /// </summary>
+    private byte StoredOpacityAlpha => (byte)Math.Clamp(
         (int)Math.Round(WindowBackdropOpacityPercent * byte.MaxValue / 100.0),
         0,
         byte.MaxValue);
@@ -486,9 +501,9 @@ public sealed partial class App : Avalonia.Application
     /// read on them.
     /// </summary>
     private byte ShellSurfaceAlpha => WindowHasGlassPanels
-        ? ShellBackdropAlpha
+        ? StoredOpacityAlpha
         : (byte)Math.Clamp(
-            ShellBackdropAlpha + ((byte.MaxValue - ShellBackdropAlpha) / 2),
+            StoredOpacityAlpha + ((byte.MaxValue - StoredOpacityAlpha) / 2),
             0,
             byte.MaxValue);
 
@@ -522,6 +537,14 @@ public sealed partial class App : Avalonia.Application
     /// </summary>
     public bool WindowHasGlassPanels =>
         WindowIsTranslucent && StoredTheme.HasGlassPanels;
+
+    /// <summary>
+    /// Whether the shell paints its own opacity over the material. A host
+    /// asking for reduced transparency gets it painted regardless: there is no
+    /// material to leave standing.
+    /// </summary>
+    public bool WindowOverridesBackdropOpacity =>
+        !WindowIsTranslucent || StoredTheme.OverridesBackdropOpacity;
 
     private ThemePreference StoredTheme =>
         _definitionCatalog?.Snapshot.Themes
