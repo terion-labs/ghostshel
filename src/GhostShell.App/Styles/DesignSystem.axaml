@@ -88,7 +88,7 @@
       </Style>
 
       <Style Selector="^:overlay">
-        <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceOverlayBrush}" />
       </Style>
       <!-- The shadow belongs to the shape, so it is set on the template's border. -->
       <Style Selector="^:overlay /template/ Border#PART_Surface">

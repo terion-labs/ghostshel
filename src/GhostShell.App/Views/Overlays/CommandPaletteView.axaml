@@ -44,11 +44,19 @@
           <Style Selector="ListBoxItem">
             <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
           </Style>
+          <!--
+            The row is a button inside a list item and both light up on hover,
+            one inset inside the other, which reads as a doubled rectangle
+            rather than a highlighted row. The item owns the highlight: it is
+            the full width of the row, and the button is what is clicked.
+          -->
+          <Style Selector="ListBoxItem > Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+          </Style>
         </ListBox.Styles>
         <ListBox.ItemTemplate>
           <DataTemplate>
             <Button
-                Margin="{controls:Inset Horizontal=Xs}"
                 Padding="{controls:Inset Sm}"
                 Background="Transparent"
                 BorderThickness="0"

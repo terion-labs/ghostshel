@@ -582,6 +582,17 @@ public sealed partial class App : Avalonia.Application
         Publish("ShellSidebarSelectionBrush", Brush(resources.SidebarSelectionSurface));
         Publish("ShellSurfaceBrush", Translucent(resources.Surface));
         Publish("ShellSurfaceRaisedBrush", Translucent(resources.RaisedSurface));
+        // An overlay floats over the shell rather than standing on it, so it is
+        // glass whenever there is any to be — not only when the panels are.
+        // Something that hangs in front of the window is where the material
+        // reads best, and it is not one of the surfaces that switch governs.
+        Publish(
+            "ShellSurfaceOverlayBrush",
+            new SolidColorBrush(Color.FromArgb(
+                WindowIsTranslucent ? StoredOpacityAlpha : byte.MaxValue,
+                resources.RaisedSurface.R,
+                resources.RaisedSurface.G,
+                resources.RaisedSurface.B)));
         Publish("ShellSurfaceHoverBrush", Brush(resources.HoverSurface));
         Publish("ShellBorderBrush", Brush(resources.Border));
         Publish("ShellControlSurfaceBrush", Brush(resources.ControlSurface));
