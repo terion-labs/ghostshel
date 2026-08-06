@@ -124,6 +124,67 @@ internal static class MacOsWindowMaterial
     /// The flag itself belongs to the view and cannot be answered for it, but
     /// what governs the backing store is the layer, and that can be told.
     /// </summary>
+    /// <summary>
+    /// Hides the chrome a popup inherits but never wanted.
+    ///
+    /// Avalonia builds a popup's window from the same content view as a real
+    /// one, so a popup gets the title bar's own material and its underline —
+    /// square, full width, and unrounded. Behind a rounded card they are what
+    /// fills the corners, which is the block that survived masking the glass,
+    /// clearing the root, and letting the drawing view compose: none of those
+    /// were drawing it.
+    ///
+    /// The window's own material is the one left alone. It is told apart the
+    /// same way it is everywhere else, by what it blends with.
+    /// </summary>
+    public static bool TryHideInheritedChrome(TopLevel window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (!OperatingSystem.IsMacOS()
+            || window.TryGetPlatformHandle() is not IMacOSTopLevelPlatformHandle handle
+            || handle.NSWindow == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var contentView = SendId(handle.NSWindow, Selector("contentView"));
+            var avaloniaContent = contentView == 0
+                ? 0
+                : FindDescendantOfClass(contentView, AvaloniaContentView);
+            if (avaloniaContent == 0)
+            {
+                return false;
+            }
+
+            var hidAny = false;
+            foreach (var subview in SubviewsOf(avaloniaContent))
+            {
+                var className = ClassNameOf(subview);
+                var isForeignMaterial =
+                    string.Equals(className, "NSVisualEffectView", StringComparison.Ordinal)
+                    && SendNInt(subview, Selector("blendingMode")) != BlendsBehindWindow;
+                if (!isForeignMaterial
+                    && !string.Equals(className, "NSBox", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                SendBoolArgument(subview, Selector("setHidden:"), true);
+                hidAny = true;
+            }
+
+            return hidAny;
+        }
+        catch (Exception exception) when (exception is DllNotFoundException
+            or EntryPointNotFoundException
+            or BadImageFormatException)
+        {
+            return false;
+        }
+    }
+
     private static void TryLetTheGlassThrough(nint avaloniaContent)
     {
         var view = FindDescendantOfClass(avaloniaContent, AvaloniaDrawingView);

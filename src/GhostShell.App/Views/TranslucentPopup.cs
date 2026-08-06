@@ -79,5 +79,10 @@ internal static class TranslucentPopup
             popup,
             MacOsMaterial.UnderWindowBackground,
             (control as TemplatedControl)?.CornerRadius.TopLeft);
+
+        // A popup is built from the same content view as a real window, so it
+        // arrives carrying that window's title-bar chrome. Square and unrounded,
+        // it is what shows in the corners of a rounded card.
+        MacOsWindowMaterial.TryHideInheritedChrome(popup);
     }
 }
