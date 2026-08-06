@@ -207,13 +207,13 @@
         </Grid>
       </Border>
   
-      <!-- The pages float on the same panel surface the workspaces sidebar
-           uses, so the cards inside them sit on a panel rather than directly on
-           the window background. -->
-      <Border Grid.Column="1" Classes="FloatingSidebar routeContent">
-        <Panel>
+      <!-- The pages sit on the window's own surface, as the settings pages do.
+           Wrapping them in a panel gave the shell two visual languages: cards
+           on a panel here, cards on the window there, for the same kind of
+           page. -->
+      <Panel Grid.Column="1">
       <ScrollViewer x:Name="LauncherScrollViewer" IsVisible="{Binding IsLauncherOverviewVisible}">
-        <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceXl}">
+        <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Sm, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceXl}">
           <Grid
               x:Name="LauncherHomeSection"
               ColumnDefinitions="*,Auto"
@@ -435,7 +435,7 @@
       <ScrollViewer
           x:Name="LauncherConnectionsScrollViewer"
           IsVisible="{Binding IsLauncherConnectionsVisible}">
-        <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceLg}">
+        <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Sm, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceLg}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
@@ -499,7 +499,7 @@
       <ScrollViewer
           x:Name="LauncherScreensScrollViewer"
           IsVisible="{Binding IsLauncherScreensVisible}">
-        <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceLg}">
+        <StackPanel Margin="{controls:Inset Horizontal=Xxl, Top=Sm, Bottom=Xxl}" Spacing="{DynamicResource ShellSpaceLg}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
@@ -539,7 +539,7 @@
       </ScrollViewer>
 
       <Grid
-          Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}"
+          Margin="{controls:Inset Horizontal=Xxl, Top=Sm, Bottom=Xxl}"
           RowDefinitions="Auto,*,Auto"
           RowSpacing="{DynamicResource ShellSpaceLg}"
           IsVisible="{Binding IsLauncherHistoryVisible}">
@@ -689,8 +689,7 @@
           </Grid>
         </controls:SurfaceCard>
       </Grid>
-        </Panel>
-      </Border>
+      </Panel>
     </Grid>
   </Grid>
 </UserControl>
