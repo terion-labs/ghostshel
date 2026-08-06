@@ -162,7 +162,15 @@
        cards over it stay opaque, which is what keeps them legible and keeps
        the translucency reading as one surface rather than as see-through
        chrome. -->
-  <Grid Background="{DynamicResource ShellWindowBackdropBrush}">
+  <!--
+    The window's own corners, declared so everything inside can be concentric
+    with the frame rather than guessing at it. The platform draws them; this
+    only says what it drew.
+  -->
+  <Grid
+      Background="{DynamicResource ShellWindowBackdropBrush}"
+      controls:ConcentricBorder.IsContainer="True"
+      controls:ConcentricBorder.ContainerRadius="{DynamicResource ShellWindowCornerRadius}">
     <!-- Everything the app draws lives inside this one layer so that
          locking can collapse it whole. The veil alone cannot cover native
          surfaces — a webview or a terminal is hosted above every Avalonia

@@ -460,9 +460,12 @@ public sealed class LauncherViewContractTests
         // bar. The window has to put them back to sleep, and again whenever
         // the decorations are rebuilt.
         Assert.Contains(
-            "MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(this)",
+            "MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(",
             codeBehind,
             StringComparison.Ordinal);
+        // The corners the platform draws are decided by which kind of window
+        // it is asked to be, so the ask travels with the corner setting.
+        Assert.Contains("MacOsWindowKind.Toolbar", codeBehind, StringComparison.Ordinal);
 
         Assert.Contains("TitleBarChromeHeightProperty", codeBehind, StringComparison.Ordinal);
         Assert.Contains(

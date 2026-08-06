@@ -546,6 +546,20 @@ public sealed partial class App : Avalonia.Application
     public bool WindowOverridesBackdropOpacity =>
         !WindowIsTranslucent || StoredTheme.OverridesBackdropOpacity;
 
+    /// <summary>
+    /// What the platform draws the window's own corners at, in points. Not a
+    /// number of ours: this desktop has three, one per kind of window, and the
+    /// corner style decides which kind the shell asks to be.
+    /// </summary>
+    public double WindowCornerRadius => StoredTheme.CornerStyle switch
+    {
+        CornerStyle.Sharp => 16,
+        CornerStyle.Soft => 26,
+        _ => 20,
+    };
+
+    public CornerStyle WindowCornerStyle => StoredTheme.CornerStyle;
+
     private ThemePreference StoredTheme =>
         _definitionCatalog?.Snapshot.Themes
             .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)
@@ -668,6 +682,9 @@ public sealed partial class App : Avalonia.Application
         Publish("ShellSignalDotSize", Math.Round(resources.ControlMinHeight * 0.28));
         Publish("ShellSignalDotRing", new Thickness(
             Math.Max(1, Math.Round(resources.ControlMinHeight * 0.06))));
+        // The window's own corners, so the outermost surface inside it can be
+        // concentric with the frame rather than guessing at it.
+        Publish("ShellWindowCornerRadius", WindowCornerRadius);
         Publish("ShellControlCornerRadius", resources.ControlCornerRadius);
         Publish("ShellControlPadding", resources.ControlPadding);
         Publish("ShellButtonPadding", resources.ButtonPadding);

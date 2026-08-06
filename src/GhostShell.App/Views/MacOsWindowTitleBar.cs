@@ -33,6 +33,53 @@ internal static class MacOsWindowTitleBar
     /// <summary>Avalonia's macOS content view, the parent of both views.</summary>
     private const string AvaloniaContentView = "AutoFitContentView";
 
+    /// <summary>
+    /// This desktop sizes a window's corners by what kind of window it is —
+    /// 26pt with a toolbar, 20pt with a compact one, 16pt with only a title
+    /// bar. The shell had 16 because it had no toolbar, which was the platform
+    /// being right about what it had been asked to be.
+    ///
+    /// Unified, so the toolbar merges into the band the shell already draws
+    /// its tabs across. Expanded is the older separate strip, and asking for
+    /// that made the chrome taller without moving the corners.
+    /// </summary>
+    private static void SitAsTheWindowKind(nint nsWindow, MacOsWindowKind kind)
+    {
+        if (kind is MacOsWindowKind.TitleBarOnly)
+        {
+            SendIdArgument(nsWindow, Selector("setToolbar:"), 0);
+            return;
+        }
+
+        if (SendId(nsWindow, Selector("toolbar")) == 0)
+        {
+            var toolbar = SendId(
+                SendId(objc_getClass("NSToolbar"), Selector("alloc")),
+                Selector("init"));
+            if (toolbar == 0)
+            {
+                return;
+            }
+
+            SendBool(toolbar, Selector("setShowsBaselineSeparator:"), false);
+            SendIdArgument(nsWindow, Selector("setToolbar:"), toolbar);
+        }
+
+        SendNIntArgument(
+            nsWindow,
+            Selector("setToolbarStyle:"),
+            kind is MacOsWindowKind.CompactToolbar ? UnifiedCompactToolbar : UnifiedToolbar);
+    }
+
+    /// <summary>NSWindowToolbarStyleUnified: merged into the title bar, not a strip below it.</summary>
+    private const nint UnifiedToolbar = 3;
+
+    /// <summary>NSWindowToolbarStyleUnifiedCompact.</summary>
+    private const nint UnifiedCompactToolbar = 4;
+
+    /// <summary>NSWindowStyleMaskTexturedBackground, deprecated since 10.12.</summary>
+    private const nuint TexturedBackground = 1 << 8;
+
     /// <summary>NSVisualEffectBlendingModeWithinWindow.</summary>
     private const nint BlendsWithinWindow = 1;
 
@@ -41,7 +88,9 @@ internal static class MacOsWindowTitleBar
     /// found. Safe to call repeatedly: Avalonia re-shows them when the
     /// decorations or the full-screen state change.
     /// </summary>
-    public static MacOsTitleBarOutcome TryLetTheBaseSurfaceRunToTheTop(Window window)
+    public static MacOsTitleBarOutcome TryLetTheBaseSurfaceRunToTheTop(
+        Window window,
+        MacOsWindowKind kind)
     {
         ArgumentNullException.ThrowIfNull(window);
         if (!OperatingSystem.IsMacOS()
@@ -72,6 +121,29 @@ internal static class MacOsWindowTitleBar
             {
                 return MacOsTitleBarOutcome.NoContentView;
             }
+
+            // Avalonia flags an extended client area as a textured window:
+            //
+            //     if (_isClientAreaExtended)
+            //         s |= FullSizeContentView | TexturedBackground;
+            //
+            // TexturedBackground has been deprecated since 10.12 and marks the
+            // window as the old metal style, which is chrome this desktop no
+            // longer draws the way it draws everything else. Extending the
+            // client area is wanted; being treated as a window from four
+            // designs ago is not, so the bit is taken back off. Avalonia sets
+            // it again whenever it recalculates the mask, which is why this
+            // runs on every backdrop pass rather than once.
+            var mask = SendNUInt(handle.NSWindow, Selector("styleMask"));
+            if ((mask & TexturedBackground) != 0)
+            {
+                SendNUIntArgument(
+                    handle.NSWindow,
+                    Selector("setStyleMask:"),
+                    mask & ~TexturedBackground);
+            }
+
+            SitAsTheWindowKind(handle.NSWindow, kind);
 
             var found = 0;
             foreach (var subview in SubviewsOf(avaloniaContent))
@@ -238,6 +310,12 @@ internal static class MacOsWindowTitleBar
     private static extern void SendIdArgument(nint receiver, nint selector, nint value);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendNIntArgument(nint receiver, nint selector, nint value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendNUIntArgument(nint receiver, nint selector, nuint value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern nint SendIdArgumentReturningId(
         nint receiver,
         nint selector,
@@ -285,4 +363,20 @@ internal enum MacOsTitleBarOutcome
 
     /// <summary>The material and its underline are hidden.</summary>
     Hidden,
+}
+
+/// <summary>
+/// What kind of window the shell asks to be, which is what decides the radius
+/// the platform draws its corners at.
+/// </summary>
+internal enum MacOsWindowKind
+{
+    /// <summary>A title bar and nothing above it: 16pt.</summary>
+    TitleBarOnly,
+
+    /// <summary>A compact toolbar merged into the title bar: 20pt.</summary>
+    CompactToolbar,
+
+    /// <summary>A toolbar merged into the title bar: 26pt.</summary>
+    Toolbar,
 }

@@ -229,7 +229,16 @@ public sealed partial class MainWindow : Window
     {
         // The base surface has to reach the top edge; the material behind it
         // does the rest.
-        var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(this);
+        var style = (Avalonia.Application.Current as App)?.WindowCornerStyle
+            ?? CornerStyle.System;
+        var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(
+            this,
+            style switch
+            {
+                CornerStyle.Sharp => MacOsWindowKind.TitleBarOnly,
+                CornerStyle.Soft => MacOsWindowKind.Toolbar,
+                _ => MacOsWindowKind.CompactToolbar,
+            });
         // The platform's own material for a window's base. Avalonia pins the
         // view it creates to a fixed light one and lets its state follow the
         // window's, so the glass reads wrong for a dark shell and dulls
