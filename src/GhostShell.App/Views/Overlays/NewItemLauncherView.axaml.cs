@@ -27,6 +27,8 @@ public sealed partial class NewItemLauncherView : UserControl
 
     public event EventHandler<RoutedEventArgs>? OpenConnectionRequested;
 
+    public event EventHandler<RoutedEventArgs>? OpenRecentSessionRequested;
+
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
 
     public event EventHandler<RoutedEventArgs>? OpenWorkspaceRequested;
@@ -60,6 +62,9 @@ public sealed partial class NewItemLauncherView : UserControl
 
     private void OnNewStatisticsClick(object? sender, RoutedEventArgs e) =>
         NewStatisticsRequested?.Invoke(sender, e);
+
+    private void OnOpenRecentSessionClick(object? sender, RoutedEventArgs e) =>
+        OpenRecentSessionRequested?.Invoke(sender, e);
 
     private void OnOpenConnectionClick(object? sender, RoutedEventArgs e) =>
         OpenConnectionRequested?.Invoke(sender, e);

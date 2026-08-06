@@ -40,6 +40,8 @@ public sealed partial class NewItemChooserView : UserControl
     public event EventHandler<RoutedEventArgs>? NewProcessMonitorRequested;
     public event EventHandler<RoutedEventArgs>? NewStatisticsRequested;
     public event EventHandler<RoutedEventArgs>? OpenConnectionRequested;
+
+    public event EventHandler<RoutedEventArgs>? OpenRecentSessionRequested;
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
     public event EventHandler<RoutedEventArgs>? OpenWorkspaceRequested;
     public event EventHandler<RoutedEventArgs>? ShowCommandPaletteRequested;
@@ -74,6 +76,9 @@ public sealed partial class NewItemChooserView : UserControl
 
     private void OnOpenConnectionClick(object? sender, RoutedEventArgs e) =>
         OpenConnectionRequested?.Invoke(sender, e);
+
+    private void OnOpenRecentSessionClick(object? sender, RoutedEventArgs e) =>
+        OpenRecentSessionRequested?.Invoke(sender, e);
 
     private void OnOpenScreenClick(object? sender, RoutedEventArgs e) =>
         OpenScreenRequested?.Invoke(sender, e);

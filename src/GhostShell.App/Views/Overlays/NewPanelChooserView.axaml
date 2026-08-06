@@ -145,40 +145,6 @@
         </Grid>
       </Grid>
 
-      <!-- What has been open before, beside what can be opened now. The chooser
-           is already the one answer to "what do I open"; history was the last
-           thing that answer lived somewhere else. -->
-      <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasRecentSessions}">
-        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-          <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="Recent" />
-          <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Content="{Binding RecentSessions.Count}" />
-        </StackPanel>
-        <controls:SurfaceCard Padding="0" Grid.Row="1">
-          <ScrollViewer MaxHeight="210" HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding RecentSessions}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Button
-                      Classes="ListRow"
-                      Click="OnOpenRecentSessionClick"
-                      IsEnabled="{Binding CanOpen}"
-                      AutomationProperties.Name="{Binding Title, StringFormat=Reopen recent session {0}}">
-                    <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                      <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
-                      <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding PanelKindName}" />
-                    </Grid>
-                  </Button>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-        </controls:SurfaceCard>
-      </Grid>
-
       <Button Classes="TextButton Accent" Click="OnShowLayoutDesignerClick" Content="Open layout designer instead" />
     </StackPanel>
   </controls:SurfaceCard>

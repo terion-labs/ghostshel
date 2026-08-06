@@ -29,6 +29,7 @@
         NewProcessMonitorRequested="OnNewProcessMonitorClick"
         NewStatisticsRequested="OnNewStatisticsClick"
         OpenConnectionRequested="OnOpenConnectionClick"
+        OpenRecentSessionRequested="OnOpenRecentSessionClick"
         OpenScreenRequested="OnOpenScreenClick"
         OpenWorkspaceRequested="OnOpenWorkspaceClick"
         ShowCommandPaletteRequested="OnShowCommandPaletteClick"

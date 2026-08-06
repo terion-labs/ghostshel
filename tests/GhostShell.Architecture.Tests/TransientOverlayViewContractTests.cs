@@ -336,6 +336,10 @@ public sealed class TransientOverlayViewContractTests
                      "{Binding Workspaces}",
                      "{Binding Connections}",
                      "{Binding Screens}",
+                     // What has been open before belongs to the same catalog:
+                     // the chooser is the one answer to what to open, and
+                     // history was the last thing answering it elsewhere.
+                     "{Binding RecentSessions}",
                  })
         {
             Assert.Contains(
@@ -348,11 +352,11 @@ public sealed class TransientOverlayViewContractTests
         }
 
         Assert.Equal(
-            3,
+            4,
             catalogRoot.Descendants()
                 .Count(element => element.Name.LocalName == "CountPill"));
         Assert.Equal(
-            2,
+            3,
             catalogRoot.Descendants()
                 .Count(element => element.Name.LocalName == "Button"
                     && HasClasses(element, "ListRow", "ChooserListRow")));

@@ -26,7 +26,6 @@ public sealed partial class NewPanelChooserView : UserControl
     /// <summary>Raised with the chosen connection row as the sender.</summary>
     public event EventHandler<RoutedEventArgs>? AddConnectionPanelRequested;
 
-    public event EventHandler<RoutedEventArgs>? OpenRecentSessionRequested;
 
     /// <summary>Raised with the chosen saved-screen row as the sender.</summary>
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
@@ -59,8 +58,6 @@ public sealed partial class NewPanelChooserView : UserControl
     private void OnAddConnectionPanelClick(object? sender, RoutedEventArgs e) =>
         AddConnectionPanelRequested?.Invoke(sender, e);
 
-    private void OnOpenRecentSessionClick(object? sender, RoutedEventArgs e) =>
-        OpenRecentSessionRequested?.Invoke(sender, e);
 
     private void OnOpenScreenClick(object? sender, RoutedEventArgs e) =>
         OpenScreenRequested?.Invoke(sender, e);
