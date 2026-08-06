@@ -2172,7 +2172,14 @@ public sealed partial class MainWindow : Window
     private void RefreshWindowChromeMetrics()
     {
         const double horizontalSpacing = 14;
-        var reportedHeight = WindowDecorationMargin.Top;
+        // Twice the standard buttons' own centre, so anything centred in this
+        // band sits on the same axis they do. They move with the window's
+        // corner — a rounder window puts them lower — and the shell has to
+        // follow rather than pick a height and hope.
+        var reportedHeight = MacOsWindowChromeMetrics.TryGetButtonCentreFromTop(this)
+            is { } centre
+            ? centre * 2
+            : WindowDecorationMargin.Top;
         TitleBarChromeHeight = double.IsFinite(reportedHeight) && reportedHeight > 0
             ? reportedHeight
             : 44;

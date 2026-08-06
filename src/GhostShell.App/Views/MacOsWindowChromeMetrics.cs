@@ -13,6 +13,7 @@ internal static class MacOsWindowChromeMetrics
 {
     private const string ObjectiveCLibrary = "/usr/lib/libobjc.A.dylib";
     private const nint ZoomButton = 2;
+    private const nint CloseButton = 0;
 
     public static double? TryGetTrafficLightRightEdge(Window window)
     {
@@ -40,6 +41,51 @@ internal static class MacOsWindowChromeMetrics
             : null;
     }
 
+    /// <summary>
+    /// How far down the window the standard buttons are centred.
+    ///
+    /// They do not sit at a fixed height: this desktop places them against the
+    /// window's corner, so a rounder window puts them lower. Everything the
+    /// shell draws in that band has to sit on the same axis or it reads as
+    /// crooked, and the axis is not ours to choose.
+    ///
+    /// Measured from the button's own centre within the title bar it sits in,
+    /// which is at the top of the window — so the distance from the top is the
+    /// title bar's height less that centre.
+    /// </summary>
+    public static double? TryGetButtonCentreFromTop(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (!OperatingSystem.IsMacOS()
+            || window.TryGetPlatformHandle() is not IMacOSTopLevelPlatformHandle handle
+            || handle.NSWindow == 0)
+        {
+            return null;
+        }
+
+        var button = SendObject(
+            handle.NSWindow,
+            Selector("standardWindowButton:"),
+            CloseButton);
+        if (button == 0)
+        {
+            return null;
+        }
+
+        var titleBar = SendMessage(button, Selector("superview"));
+        if (titleBar == 0)
+        {
+            return null;
+        }
+
+        var frame = SendRect(button, Selector("frame"));
+        var titleBarFrame = SendRect(titleBar, Selector("frame"));
+        // AppKit measures up from the bottom; the shell lays out down from the
+        // top.
+        var centre = titleBarFrame.Height - (frame.Y + (frame.Height / 2));
+        return double.IsFinite(centre) && centre is > 0 and < 200 ? centre : null;
+    }
+
     private static NativeRect SendRect(nint receiver, nint selector) =>
         RuntimeInformation.ProcessArchitecture == Architecture.X64
             ? SendRectX64(receiver, selector)
@@ -63,6 +109,9 @@ internal static class MacOsWindowChromeMetrics
     [DllImport(ObjectiveCLibrary, EntryPoint = "sel_registerName")]
     private static extern nint sel_registerName(
         [MarshalAs(UnmanagedType.LPStr)] string name);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern nint SendMessage(nint receiver, nint selector);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern nint SendObject(
