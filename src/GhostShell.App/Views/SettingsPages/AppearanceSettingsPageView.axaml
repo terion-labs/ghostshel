@@ -91,7 +91,19 @@
           <controls:LabeledField
               Label="Platform profile"
               Hint="Closest host-native chrome, radii, and density.">
-            <ComboBox x:Name="PlatformProfilePicker" SelectionChanged="OnPlatformProfileChanged" AutomationProperties.Name="Platform profile" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+              <ComboBox x:Name="PlatformProfilePicker" SelectionChanged="OnPlatformProfileChanged" AutomationProperties.Name="Platform profile" />
+              <TextBlock
+                  x:Name="ProfileDepartureMarker"
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  FontWeight="SemiBold"
+                  Foreground="{DynamicResource ShellAccentBrush}"
+                  Text="*"
+                  IsVisible="False"
+                  ToolTip.Tip="Density or translucency has been changed from what this profile arrives with."
+                  AutomationProperties.Name="Profile settings changed" />
+            </Grid>
           </controls:LabeledField>
         </controls:SurfaceCard>
       </StackPanel>

@@ -112,6 +112,8 @@ public sealed partial class AppearanceSettingsPageView : UserControl
         {
             _isLoading = false;
         }
+
+        RefreshProfileDepartureMarker();
     }
 
     internal AppearanceSelection CaptureAppearance()
@@ -190,16 +192,11 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             return;
         }
 
-        switch (PlatformProfilePicker.SelectedItem)
+        if (PlatformProfilePicker.SelectedItem is PlatformProfile picked
+            && PlatformProfileDefaults.For(picked) is { } defaults)
         {
-            case PlatformProfile.MacOsClassic:
-                ApplyDensity(InterfaceDensity.Compact);
-                TranslucencyToggle.IsChecked = false;
-                break;
-            case PlatformProfile.MacOsLiquidGlass:
-                ApplyDensity(InterfaceDensity.Comfortable);
-                TranslucencyToggle.IsChecked = true;
-                break;
+            ApplyDensity(defaults.Density);
+            TranslucencyToggle.IsChecked = defaults.IsTranslucent;
         }
 
         OnAppearanceChanged(sender, e);
@@ -246,6 +243,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
 
     private void OnAppearanceChanged(object? sender, RoutedEventArgs e)
     {
+        RefreshProfileDepartureMarker();
         if (_isLoading)
         {
             return;
@@ -253,6 +251,19 @@ public sealed partial class AppearanceSettingsPageView : UserControl
 
         AppearanceChanged?.Invoke(sender, e);
     }
+
+    /// <summary>
+    /// Says when the shell has been taken away from what its profile arrived
+    /// with. A preset that can be departed from silently is one nobody can
+    /// tell they have departed from.
+    /// </summary>
+    private void RefreshProfileDepartureMarker() =>
+        ProfileDepartureMarker.IsVisible =
+            PlatformProfilePicker.SelectedItem is PlatformProfile profile
+            && PlatformProfileDefaults.IsDepartedFrom(
+                profile,
+                SelectedDensity(),
+                TranslucencyToggle.IsChecked == true);
 
     /// <summary>
     /// Changing the accent source both re-enables the custom colour and is itself
