@@ -663,6 +663,16 @@ public sealed partial class App : Avalonia.Application
         Publish("ShellTileSizeMd", Math.Round(resources.ControlMinHeight * 1.05));
         Publish("ShellTileSizeLg", Math.Round(resources.ControlMinHeight * 1.75));
 
+        // How wide the workspace rail is: a tile, the inset its column keeps on
+        // either side, and the rail's own hairline border. Written down as a
+        // number it was right at one density and held the rail open at the
+        // others, because the tiles moved with the setting and it did not.
+        Publish(
+            "ShellRailWidth",
+            Math.Round(resources.ControlMinHeight * 1.05)
+            + (resources.Spacing.ExtraSmall * 2)
+            + 2);
+
         // The rail tile's outline, and how wide it opens when it offers to close
         // the workspace. Twice its own width, so the action it reveals is the
         // same size as the tile it belongs to rather than a sliver beside it.

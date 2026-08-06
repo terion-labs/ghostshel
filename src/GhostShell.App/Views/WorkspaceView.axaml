@@ -132,7 +132,7 @@
            above the canvas it opens over. Widening the rail instead would move
            every panel beside it on a hover. -->
       <Border
-          Width="56"
+          Width="{DynamicResource ShellRailWidth}"
           ZIndex="1"
           ClipToBounds="False"
           Classes="FloatingSidebar"
@@ -144,10 +144,10 @@
         <!-- The add button belongs under the last workspace, not pinned to the
              far end of the rail: with two workspaces it was stranded most of a
              screen below them, reading as an unrelated control. -->
-        <!-- Horizontal inset stays smaller than the vertical one: the 56 DIP
-             rail minus its border leaves the 40 DIP tiles only 38 DIP at the
-             larger inset, and the clipped sides read as flattened circles once
-             the corner radius rounds the tiles. -->
+        <!-- Horizontal inset stays smaller than the vertical one, and the rail
+             is measured from it: a tile plus this inset on either side plus the
+             border. At the larger inset the tiles would be clipped, and clipped
+             sides read as flattened circles once the corners round them. -->
         <StackPanel ClipToBounds="False" Margin="{controls:Inset Horizontal=Xs, Vertical=Sm}" Spacing="{DynamicResource ShellSpaceSm}">
           <ItemsControl ClipToBounds="False" ItemsSource="{Binding Workspaces}">
             <ItemsControl.ItemsPanel>
