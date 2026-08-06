@@ -1651,7 +1651,14 @@ public sealed class RuntimeTabViewModel : ObservableObject
         // The user is answering a placeholder, so the host's idea of the active
         // panel is behind theirs. Leaving the selection where they put it keeps the
         // cell they are filling from jumping away under them.
-        if (ActivePanel is PanelPlaceholderViewModel)
+        //
+        // Only while the host is saying what it already said. A projection that
+        // names a different panel is the answer to someone asking for it — the
+        // way out of a placeholder is to click another panel, and refusing that
+        // left the selection stuck on the cell with the chooser over it while
+        // the host had already moved on.
+        if (ActivePanel is PanelPlaceholderViewModel
+            && projection.ActivePanelId == HostActivePanelId)
         {
             return;
         }

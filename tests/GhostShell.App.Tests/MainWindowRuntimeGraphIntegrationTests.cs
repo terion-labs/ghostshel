@@ -775,6 +775,32 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A placeholder holds a cell the host has never heard of, and the chooser
+    /// that fills it sits over one. Reaching past it to another panel is the
+    /// ordinary way out of that state, and it came back as an invalid receipt.
+    /// </summary>
+    [Fact]
+    public async Task A_panel_can_be_activated_while_a_placeholder_holds_a_cell()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        var requestedPanel = Assert.Single(
+            tab.Panels,
+            panel => panel.Kind == PanelKind.Browser);
+
+        var placeholder = tab.AddPlaceholder(PanelSide.Right);
+        Assert.True(await viewModel.ActivatePanelAsync(placeholder.Id));
+        Assert.Same(placeholder, tab.ActivePanel);
+
+        Assert.True(await viewModel.ActivatePanelAsync(requestedPanel.Id));
+        Assert.Same(requestedPanel, tab.ActivePanel);
+        Assert.Null(viewModel.OperationError);
+    }
+
     [Fact]
     public async Task Panel_activation_receipt_must_bind_the_requested_tab_and_panel()
     {
