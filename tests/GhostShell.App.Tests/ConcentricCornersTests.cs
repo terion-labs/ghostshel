@@ -1,10 +1,27 @@
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using GhostShell.App.Controls;
 
 namespace GhostShell.App.Tests;
 
+[Collection(AvaloniaUiCollection.Name)]
 public sealed class ConcentricCornersTests
 {
+    /// <summary>
+    /// Corners that changed as the page scrolled: the surface outside the
+    /// scroll area was still being measured against, and the distance to it is
+    /// the scroll position.
+    /// </summary>
+    [Fact]
+    public void A_scroll_boundary_ends_the_search()
+    {
+        Assert.True(ConcentricCorners.StopsTheSearch(new ScrollViewer()));
+        Assert.True(ConcentricCorners.StopsTheSearch(new ScrollContentPresenter()));
+        Assert.False(ConcentricCorners.StopsTheSearch(new Grid()));
+        Assert.False(ConcentricCorners.StopsTheSearch(new Border()));
+    }
+
     [Fact]
     public void An_evenly_inset_child_steps_in_by_its_inset()
     {

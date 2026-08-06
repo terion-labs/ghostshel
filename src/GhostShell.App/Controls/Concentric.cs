@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 
@@ -287,6 +288,17 @@ public static class ConcentricCorners
     {
         foreach (var ancestor in element.GetVisualAncestors())
         {
+            // A scroll boundary ends the search. Past it the distance to
+            // anything outside is whatever the scroll position happens to be,
+            // so a radius derived from it would change as the content moved —
+            // corners quietly growing and shrinking while you scroll. A
+            // container found before the boundary is still good: it scrolls
+            // with the element, so the gap between them holds.
+            if (StopsTheSearch(ancestor))
+            {
+                return (null, 0);
+            }
+
             if (Concentric.GetIsContainer(ancestor))
             {
                 return (ancestor, LargestCorner(ancestor));
@@ -305,6 +317,15 @@ public static class ConcentricCorners
 
         return (null, 0);
     }
+
+    /// <summary>
+    /// Whether an ancestor ends the search for something to be concentric
+    /// with. A scroll boundary does: past it the distance to anything outside
+    /// is whatever the scroll position happens to be, so a radius taken from
+    /// it would grow and shrink as the content moved.
+    /// </summary>
+    internal static bool StopsTheSearch(Visual ancestor) =>
+        ancestor is ScrollViewer or ScrollContentPresenter;
 
     private static double LargestCorner(Visual element)
     {
