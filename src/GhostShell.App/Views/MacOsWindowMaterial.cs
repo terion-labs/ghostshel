@@ -23,39 +23,13 @@ internal static class MacOsWindowMaterial
     /// <summary>Avalonia's macOS content view, the parent of the material.</summary>
     private const string AvaloniaContentView = "AutoFitContentView";
 
-    /// <summary>The view Avalonia draws into, a sibling of the material.</summary>
-    private const string AvaloniaDrawingView = "AvnView";
-
     /// <summary>NSVisualEffectBlendingModeBehindWindow.</summary>
     private const nint BlendsBehindWindow = 0;
 
     /// <summary>NSVisualEffectStateActive: the glass does not dull when unfocused.</summary>
     private const nint AlwaysActive = 1;
 
-    /// <summary>
-    /// Any top level, not only the window: a flyout is a window of its own on
-    /// this platform, and the glass behind one is the same glass.
-    /// </summary>
-    public static bool TrySit(TopLevel window, MacOsMaterial material) =>
-        TrySit(window, material, cornerRadius: null);
-
-    /// <summary>
-    /// A popup's window is a square, and the effect view fills it. The card
-    /// inside is rounded, so without masking the blur to the same radius the
-    /// square corners of the window stand outside it — which is the block that
-    /// appeared at the corner of every menu once the glass went in.
-    ///
-    /// The window itself is left alone: rounding that would take the platform's
-    /// shadow with it.
-    /// </summary>
-    public static bool TrySit(TopLevel window, MacOsMaterial material, double? cornerRadius) =>
-        TrySit(window, material, cornerRadius, contentFrame: null);
-
-    public static bool TrySit(
-        TopLevel window,
-        MacOsMaterial material,
-        double? cornerRadius,
-        CoreRect? contentFrame)
+    public static bool TrySit(Window window, MacOsMaterial material)
     {
         ArgumentNullException.ThrowIfNull(window);
         if (!OperatingSystem.IsMacOS()
@@ -67,16 +41,6 @@ internal static class MacOsWindowMaterial
 
         try
         {
-            // A transparent window still paints its background colour, and the
-            // default is an opaque system grey covering the whole square frame.
-            // That is the block outside a rounded card: not the glass, not the
-            // root, not the drawing view — the window's own fill.
-            var clear = SendId(GetClass("NSColor"), Selector("clearColor"));
-            if (clear != 0)
-            {
-                SendIdArgument(handle.NSWindow, Selector("setBackgroundColor:"), clear);
-            }
-
             var contentView = SendId(handle.NSWindow, Selector("contentView"));
             if (contentView == 0)
             {
@@ -109,23 +73,6 @@ internal static class MacOsWindowMaterial
 
                 SendNIntArgument(subview, Selector("setMaterial:"), (nint)material);
                 SendNIntArgument(subview, Selector("setState:"), AlwaysActive);
-                if (cornerRadius is > 0 and { } radius
-                    && SendId(subview, Selector("layer")) is var layer and not 0)
-                {
-                    // Fitted to the card, not to the window. A popup's window is
-                    // bigger than the surface inside it, so a full-window sheet
-                    // of glass rounded to the card's radius still leaves its own
-                    // square corners standing outside the card.
-                    if (contentFrame is { } fitted)
-                    {
-                        SendRectArgument(subview, Selector("setFrame:"), fitted);
-                    }
-
-                    SendDoubleArgument(layer, Selector("setCornerRadius:"), radius);
-                    SendBoolArgument(layer, Selector("setMasksToBounds:"), true);
-                }
-
-                TryLetTheGlassThrough(avaloniaContent);
                 return true;
             }
 
@@ -137,102 +84,6 @@ internal static class MacOsWindowMaterial
         {
             return false;
         }
-    }
-
-    /// <summary>
-    /// Avalonia's drawing view answers YES to <c>isOpaque</c>, which tells the
-    /// platform not to compose anything behind it. Where the shell then draws
-    /// nothing — outside a rounded card, in the corners of the square window a
-    /// popup gets — the pixels are whatever the backing store last held, and
-    /// that is the block that appeared at each corner once there was glass
-    /// behind it to be hidden.
-    ///
-    /// The flag itself belongs to the view and cannot be answered for it, but
-    /// what governs the backing store is the layer, and that can be told.
-    /// </summary>
-    /// <summary>
-    /// Hides the chrome a popup inherits but never wanted.
-    ///
-    /// Avalonia builds a popup's window from the same content view as a real
-    /// one, so a popup gets the title bar's own material and its underline —
-    /// square, full width, and unrounded. Behind a rounded card they are what
-    /// fills the corners, which is the block that survived masking the glass,
-    /// clearing the root, and letting the drawing view compose: none of those
-    /// were drawing it.
-    ///
-    /// The window's own material is the one left alone. It is told apart the
-    /// same way it is everywhere else, by what it blends with.
-    /// </summary>
-    public static bool TryHideInheritedChrome(TopLevel window)
-    {
-        ArgumentNullException.ThrowIfNull(window);
-        if (!OperatingSystem.IsMacOS()
-            || window.TryGetPlatformHandle() is not IMacOSTopLevelPlatformHandle handle
-            || handle.NSWindow == 0)
-        {
-            return false;
-        }
-
-        try
-        {
-            var contentView = SendId(handle.NSWindow, Selector("contentView"));
-            var avaloniaContent = contentView == 0
-                ? 0
-                : FindDescendantOfClass(contentView, AvaloniaContentView);
-            if (avaloniaContent == 0)
-            {
-                return false;
-            }
-
-            var hidAny = false;
-            foreach (var subview in SubviewsOf(avaloniaContent))
-            {
-                var className = ClassNameOf(subview);
-                var isForeignMaterial =
-                    string.Equals(className, "NSVisualEffectView", StringComparison.Ordinal)
-                    && SendNInt(subview, Selector("blendingMode")) != BlendsBehindWindow;
-                if (!isForeignMaterial
-                    && !string.Equals(className, "NSBox", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                SendBoolArgument(subview, Selector("setHidden:"), true);
-                hidAny = true;
-            }
-
-            return hidAny;
-        }
-        catch (Exception exception) when (exception is DllNotFoundException
-            or EntryPointNotFoundException
-            or BadImageFormatException)
-        {
-            return false;
-        }
-    }
-
-    private static void TryLetTheGlassThrough(nint avaloniaContent)
-    {
-        var view = FindDescendantOfClass(avaloniaContent, AvaloniaDrawingView);
-        if (view == 0)
-        {
-            return;
-        }
-
-        SendBoolArgument(view, Selector("setWantsLayer:"), true);
-        if (SendId(view, Selector("layer")) is var layer and not 0)
-        {
-            SendBoolArgument(layer, Selector("setOpaque:"), false);
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct CoreRect
-    {
-        public double X;
-        public double Y;
-        public double Width;
-        public double Height;
     }
 
     private static nint FindDescendantOfClass(nint view, string className)
@@ -279,12 +130,6 @@ internal static class MacOsWindowMaterial
 
     private static nint Selector(string name) => sel_registerName(name);
 
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_getClass", CharSet = CharSet.Ansi)]
-    private static extern nint GetClass(string name);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    private static extern void SendIdArgument(nint receiver, nint selector, nint value);
-
     [DllImport(ObjectiveCLibrary, EntryPoint = "sel_registerName")]
     private static extern nint sel_registerName(
         [MarshalAs(UnmanagedType.LPStr)] string name);
@@ -306,28 +151,6 @@ internal static class MacOsWindowMaterial
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern nint SendIdAtIndex(nint receiver, nint selector, nuint index);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    private static extern void SendDoubleArgument(nint receiver, nint selector, double value);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    private static extern void SendRectArgument(nint receiver, nint selector, CoreRect value);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    private static extern double SendDouble(nint receiver, nint selector);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    [return: MarshalAs(UnmanagedType.I1)]
-    private static extern bool SendBool(nint receiver, nint selector);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    private static extern CoreRect SendRect(nint receiver, nint selector);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    private static extern void SendBoolArgument(
-        nint receiver,
-        nint selector,
-        [MarshalAs(UnmanagedType.I1)] bool value);
 }
 
 /// <summary>

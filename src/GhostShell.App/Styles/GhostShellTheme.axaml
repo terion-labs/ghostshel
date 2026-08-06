@@ -4,7 +4,6 @@
     xmlns:avaloniaConverters="using:Avalonia.Controls.Converters"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:converters="using:GhostShell.App.Converters"
-    xmlns:views="using:GhostShell.App.Views"
     xmlns:icons="using:FluentIcons.Avalonia">
   <Styles.Resources>
     <avaloniaConverters:ToBrushConverter x:Key="ColorBrushConverter" />
@@ -173,13 +172,6 @@
   <!-- Flyouts, menu flyouts, and ComboBox popups are the same transient surface.
        Keeping that surface here prevents each selector from inventing its own
        background, radius, and item density. -->
-  <!-- Every transient surface is its own window on some platforms, so each has
-       to ask for the glass behind it; asking once here keeps a new menu from
-       being the one that forgets. -->
-  <Style Selector="FlyoutPresenter, MenuFlyoutPresenter, ContextMenu">
-    <Setter Property="views:TranslucentPopup.IsEnabled" Value="True" />
-  </Style>
-
   <Style Selector="FlyoutPresenter">
     <Setter Property="Padding" Value="{DynamicResource ShellInsetXs}" />
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
