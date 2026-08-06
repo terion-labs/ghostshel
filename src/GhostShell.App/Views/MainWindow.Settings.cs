@@ -758,7 +758,8 @@ public sealed partial class MainWindow
                     selection.TabStripPlacement,
                     selection.WorkspacePanelPlacement,
                     selection.IsTranslucent,
-                    selection.BackdropOpacityPercent));
+                    selection.BackdropOpacityPercent,
+                    selection.HasGlassPanels));
             if (!result.IsSuccess)
             {
                 return;

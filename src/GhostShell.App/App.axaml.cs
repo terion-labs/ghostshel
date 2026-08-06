@@ -476,10 +476,21 @@ public sealed partial class App : Avalonia.Application
     /// system title bar was quietened and the band stayed, which is what ruled
     /// that out and left this. Nearly solid, because text is read on these.
     /// </summary>
-    private byte ShellSurfaceAlpha => (byte)Math.Clamp(
-        ShellBackdropAlpha + ((byte.MaxValue - ShellBackdropAlpha) / 2),
-        0,
-        byte.MaxValue);
+    /// <summary>
+    /// How solid the surfaces standing on the base are.
+    ///
+    /// As glass they carry the base's own opacity, so the shell reads as one
+    /// sheet of material rather than panels standing on it. Otherwise they sit
+    /// most of the way to solid — halfway between the base and opaque — which
+    /// is what the shell looked like before the choice existed, and text is
+    /// read on them.
+    /// </summary>
+    private byte ShellSurfaceAlpha => WindowHasGlassPanels
+        ? ShellBackdropAlpha
+        : (byte)Math.Clamp(
+            ShellBackdropAlpha + ((byte.MaxValue - ShellBackdropAlpha) / 2),
+            0,
+            byte.MaxValue);
 
 
     /// <summary>
@@ -504,6 +515,13 @@ public sealed partial class App : Avalonia.Application
     /// </summary>
     public int WindowBackdropOpacityPercent =>
         PrefersReducedTransparency ? 100 : StoredTheme.BackdropOpacityPercent;
+
+    /// <summary>
+    /// Whether the panels are glass. Reduced transparency says no, the same
+    /// way it says no to the base surface.
+    /// </summary>
+    public bool WindowHasGlassPanels =>
+        WindowIsTranslucent && StoredTheme.HasGlassPanels;
 
     private ThemePreference StoredTheme =>
         _definitionCatalog?.Snapshot.Themes

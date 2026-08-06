@@ -71,6 +71,13 @@ public sealed record ThemePreference : IDurableDefinition
     public const bool DefaultIsTranslucent = true;
 
     /// <summary>
+    /// Whether the panels standing on the base are glass too, rather than
+    /// near-solid slabs on it. Off by default: it is a different look, not a
+    /// better one, and the shell's is the one it already had.
+    /// </summary>
+    public const bool DefaultHasGlassPanels = false;
+
+    /// <summary>
     /// How solid the shell's base surface is, as a percentage. The blur is
     /// only half of glass; the other half is how much of the blurred desktop
     /// is allowed through. Near 100 the surface reads as a painted frame
@@ -108,7 +115,8 @@ public sealed record ThemePreference : IDurableDefinition
         TabStripPlacement tabStripPlacement = TabStripPlacement.Top,
         WorkspacePanelPlacement workspacePanelPlacement = WorkspacePanelPlacement.Left,
         bool isTranslucent = DefaultIsTranslucent,
-        int backdropOpacityPercent = DefaultBackdropOpacityPercent)
+        int backdropOpacityPercent = DefaultBackdropOpacityPercent,
+        bool hasGlassPanels = DefaultHasGlassPanels)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(accent);
@@ -176,6 +184,7 @@ public sealed record ThemePreference : IDurableDefinition
         TabStripPlacement = tabStripPlacement;
         WorkspacePanelPlacement = workspacePanelPlacement;
         IsTranslucent = isTranslucent;
+        HasGlassPanels = hasGlassPanels;
         BackdropOpacityPercent = backdropOpacityPercent;
     }
 
@@ -225,6 +234,12 @@ public sealed record ThemePreference : IDurableDefinition
 
     /// <summary>How solid the base surface is, as a percentage.</summary>
     public int BackdropOpacityPercent { get; }
+
+    /// <summary>
+    /// Whether the panels are the same glass as the base rather than nearly
+    /// solid over it.
+    /// </summary>
+    public bool HasGlassPanels { get; }
 
     [JsonIgnore]
     public DefinitionKey Key => new(Kind, Id.Value);

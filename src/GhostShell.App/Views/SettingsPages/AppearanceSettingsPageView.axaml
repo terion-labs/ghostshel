@@ -457,14 +457,25 @@
           </controls:LabeledField>
         </controls:SurfaceCard>
         <controls:SurfaceCard Tone="Raised" Grid.Column="1">
-          <controls:LabeledField
-              Label="Translucency"
-              Hint="Sit the shell on the platform's own material, so the desktop shows through it. How far it blurs is the platform's to decide.">
-            <ToggleSwitch
-                x:Name="TranslucencyToggle"
-                IsCheckedChanged="OnAppearanceChanged"
-                AutomationProperties.Name="Translucency" />
-          </controls:LabeledField>
+          <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+            <controls:LabeledField
+                Label="Translucency"
+                Hint="Sit the shell on the platform's own material, so the desktop shows through it. How far it blurs is the platform's to decide.">
+              <ToggleSwitch
+                  x:Name="TranslucencyToggle"
+                  IsCheckedChanged="OnAppearanceChanged"
+                  AutomationProperties.Name="Translucency" />
+            </controls:LabeledField>
+            <controls:LabeledField
+                Label="Glass panels"
+                Hint="Carry the same material through the panels, so the shell reads as one sheet of glass rather than slabs standing on it.">
+              <ToggleSwitch
+                  x:Name="GlassPanelsToggle"
+                  IsEnabled="{Binding #TranslucencyToggle.IsChecked}"
+                  IsCheckedChanged="OnAppearanceChanged"
+                  AutomationProperties.Name="Glass panels" />
+            </controls:LabeledField>
+          </StackPanel>
         </controls:SurfaceCard>
       </Grid>
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">

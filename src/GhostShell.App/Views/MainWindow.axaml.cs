@@ -230,6 +230,9 @@ public sealed partial class MainWindow : Window
         // The base surface has to reach the top edge; the material behind it
         // does the rest.
         var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(this);
+        // TRIAL
+        var material = MacOsWindowMaterial.TrySit(this, MacOsMaterial.UnderWindowBackground);
+        Console.Error.WriteLine($"[material] set = {material}");
         var negotiated = ActualTransparencyLevel;
         if (negotiated != WindowTransparencyLevel.None)
         {
