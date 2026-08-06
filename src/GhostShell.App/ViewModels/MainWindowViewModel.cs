@@ -1716,6 +1716,26 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool ShowWorkspacesPanel => ActiveTheme.ShowWorkspacesPanel;
 
+    /// <summary>
+    /// Shows or hides the workspace rail, leaving the rest of the theme where
+    /// it is. Saving from a surface that shows only this one switch must not
+    /// carry the other chrome settings back to their defaults.
+    /// </summary>
+    public ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>>
+        SetWorkspacesPanelVisibleAsync(
+            bool isVisible,
+            CancellationToken cancellationToken = default)
+    {
+        var theme = ActiveTheme;
+        return SaveThemeAsync(
+            theme.Appearance,
+            theme.PlatformProfile,
+            theme.Accent,
+            theme.TextScaleOverride,
+            cancellationToken,
+            ThemeChromePreference.From(theme) with { ShowWorkspacesPanel = isVisible });
+    }
+
     public bool IsWorkspacePanelOnLeft =>
         ActiveTheme.WorkspacePanelPlacement == WorkspacePanelPlacement.Left;
 

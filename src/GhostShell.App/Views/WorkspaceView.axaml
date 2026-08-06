@@ -15,18 +15,61 @@
         MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
         PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid ColumnDefinitions="*,Auto" Margin="{Binding $parent[Window].WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding $parent[Window].WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <!-- Where the home tab used to sit. Home was a screen you left the work
+             to visit; this is the same corner answering the question that screen
+             was mostly opened for — which workspace, and whether the rail that
+             lists them is on. -->
+        <Button
+            x:Name="WorkspacesMenuButton"
+            Classes="IconButton"
+            WindowDecorationProperties.ElementRole="User"
+            ToolTip.Tip="Workspaces"
+            AutomationProperties.Name="Workspaces">
+          <icons:SymbolIcon Symbol="CalendarWeekNumbers" FontSize="15" />
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="SavedConnectionMenu">
+              <StackPanel MinWidth="220" Spacing="{DynamicResource ShellSpaceXs}">
+                <ItemsControl ItemsSource="{Binding Workspaces}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button
+                          Classes="FlyoutMenuItem"
+                          Click="OnWorkspacesMenuOpenClick"
+                          HorizontalContentAlignment="Stretch"
+                          AutomationProperties.Name="{Binding Name, StringFormat=Open workspace {0}}">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{Binding Accent, Converter={StaticResource HexColorBrushConverter}}" />
+                          <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <icons:SymbolIcon Grid.Column="2" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" IsVisible="{Binding IsInFront}" />
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Border Height="1" Background="{DynamicResource ShellBorderBrush}" />
+                <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                  <TextBlock VerticalAlignment="Center" Text="Show workspaces panel" />
+                  <ToggleSwitch
+                      x:Name="WorkspacesPanelToggle"
+                      Grid.Column="1"
+                      IsChecked="{Binding ShowWorkspacesPanel, Mode=OneWay}"
+                      IsCheckedChanged="OnToggleWorkspacesPanel"
+                      AutomationProperties.Name="Show workspaces panel" />
+                </Grid>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
         <components:RuntimeTabStripView
             x:Name="RuntimeTabStrip"
+            Grid.Column="1"
             Tabs="{Binding RuntimeWorkspace.Tabs}"
             Orientation="Horizontal"
-            ShowHomeTab="True"
-            IsHomeActive="False"
             IsVisible="{Binding IsTabStripVisibleOnTop}"
             WindowDecorationProperties.ElementRole="User"
             AutomationProperties.Name="Open runtime tabs"
             AddTabRequested="OnShowNewItemClick"
-            HomeRequested="OnShowLauncherClick"
             ActivateRequested="OnActivateTabClick"
             CloseRequested="OnCloseRuntimeTabClick"
             TabDragEnter="OnRuntimeTabDragEnter"
@@ -39,7 +82,7 @@
             ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
         <StackPanel
             x:Name="WorkspaceTitleBarActions"
-            Grid.Column="1"
+            Grid.Column="2"
             Orientation="Horizontal"
             VerticalAlignment="Center"
             Spacing="{DynamicResource ShellSpaceXs}"
@@ -162,9 +205,9 @@
               Background="Transparent"
               BorderBrush="{DynamicResource ShellBorderBrush}"
               Foreground="{DynamicResource ShellMutedBrush}"
-              Click="OnShowNewItemClick"
-              ToolTip.Tip="New tab"
-              AutomationProperties.Name="Create a new tab">
+              Click="OnCreateWorkspaceClick"
+              ToolTip.Tip="New workspace"
+              AutomationProperties.Name="Create a new workspace">
             <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Add" FontSize="14" />
           </Button>
         </StackPanel>

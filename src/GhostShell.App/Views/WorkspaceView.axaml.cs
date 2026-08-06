@@ -85,6 +85,13 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? CloseWorkspaceRequested;
 
+    /// <summary>
+    /// The rail lists workspaces, so the button under them makes another one.
+    /// It used to add a tab, which is the one thing the rail has nothing to do
+    /// with.
+    /// </summary>
+    public event EventHandler<RoutedEventArgs>? CreateWorkspaceRequested;
+
     public event EventHandler<RoutedEventArgs>? RefreshAgentAuditRequested;
 
     public event EventHandler<RoutedEventArgs>? RetryFileTransferRequested;
@@ -115,6 +122,8 @@ public sealed partial class WorkspaceView : UserControl
     public event EventHandler<RoutedEventArgs>? ShowLauncherRequested;
 
     public event EventHandler<RoutedEventArgs>? ShowNewItemRequested;
+
+    public event EventHandler<RoutedEventArgs>? ToggleWorkspacesPanelRequested;
 
     public event EventHandler<RoutedEventArgs>? ShowNewPanelRequested;
 
@@ -186,6 +195,9 @@ public sealed partial class WorkspaceView : UserControl
     private void OnCloseWorkspaceClick(object? sender, RoutedEventArgs e) =>
         CloseWorkspaceRequested?.Invoke(sender, e);
 
+    private void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e) =>
+        CreateWorkspaceRequested?.Invoke(sender, e);
+
     private void OnRefreshAgentAuditClick(object? sender, RoutedEventArgs e) =>
         RefreshAgentAuditRequested?.Invoke(sender, e);
 
@@ -236,6 +248,19 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnShowNewItemClick(object? sender, RoutedEventArgs e) =>
         ShowNewItemRequested?.Invoke(sender, e);
+
+    private void OnWorkspacesMenuOpenClick(object? sender, RoutedEventArgs e)
+    {
+        if (WorkspacesMenuButton.Flyout is { } flyout)
+        {
+            flyout.Hide();
+        }
+
+        OpenWorkspaceRequested?.Invoke(sender, e);
+    }
+
+    private void OnToggleWorkspacesPanel(object? sender, RoutedEventArgs e) =>
+        ToggleWorkspacesPanelRequested?.Invoke(sender, e);
 
     private void OnShowNewPanelClick(object? sender, RoutedEventArgs e) =>
         ShowNewPanelRequested?.Invoke(sender, e);

@@ -135,9 +135,27 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(
             "{Binding RuntimeWorkspace.Tabs}",
             AttributeValue(tabStrip, "Tabs"));
-        Assert.Equal("True", AttributeValue(tabStrip, "ShowHomeTab"));
-        Assert.Equal("False", AttributeValue(tabStrip, "IsHomeActive"));
-        Assert.Equal("OnShowLauncherClick", AttributeValue(tabStrip, "HomeRequested"));
+        // The strip carries tabs and nothing else. A home button rode along in
+        // it while there was a screen to go to; what stands in that corner now
+        // is the workspace menu, which is the chrome's business rather than the
+        // strip's.
+        Assert.Null(AttributeValue(tabStrip, "ShowHomeTab"));
+        var workspacesMenu = FindNamedElement(root, "WorkspacesMenuButton");
+        Assert.Equal("Workspaces", AttributeValue(workspacesMenu, "ToolTip.Tip"));
+        Assert.Single(
+            workspacesMenu.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding Workspaces}",
+                    StringComparison.Ordinal));
+        Assert.Single(
+            workspacesMenu.Descendants(),
+            element => element.Name.LocalName == "ToggleSwitch"
+                && string.Equals(
+                    AttributeValue(element, "IsChecked"),
+                    "{Binding ShowWorkspacesPanel, Mode=OneWay}",
+                    StringComparison.Ordinal));
 
         // Every edge the setting offers has a host, and each is bound to the
         // stored placement rather than being always visible.
