@@ -179,7 +179,7 @@ public sealed class SettingsViewContractTests
         Assert.Equal("244,*", AttributeValue(body, "ColumnDefinitions"));
         Assert.Contains(
             body.Elements(),
-            element => element.Name.LocalName == "Border"
+            element => element.Name.LocalName == "ConcentricBorder"
                 && string.Equals(
                     AttributeValue(element, "Classes"),
                     "FloatingSidebar",

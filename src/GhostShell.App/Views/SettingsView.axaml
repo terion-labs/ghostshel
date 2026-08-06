@@ -39,7 +39,7 @@
         </Grid>
       </Border>
       <Grid Grid.Row="1" ColumnDefinitions="244,*">
-        <Border Classes="FloatingSidebar" Classes.routeSidebar="True">
+        <controls:ConcentricBorder Classes="FloatingSidebar" Classes.routeSidebar="True">
           <Grid RowDefinitions="Auto,*">
             <Button
                 Margin="{controls:Inset Md}"
@@ -131,7 +131,7 @@
               </StackPanel>
             </ScrollViewer>
           </Grid>
-        </Border>
+        </controls:ConcentricBorder>
 
         <ScrollViewer Grid.Column="1">
           <Grid Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}">

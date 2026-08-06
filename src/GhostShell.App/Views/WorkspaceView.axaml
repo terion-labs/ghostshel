@@ -131,7 +131,7 @@
            workspace, so this one sidebar does not clip its content and draws
            above the canvas it opens over. Widening the rail instead would move
            every panel beside it on a hover. -->
-      <Border
+      <controls:ConcentricBorder
           Width="56"
           ZIndex="1"
           ClipToBounds="False"
@@ -180,9 +180,9 @@
                beside filled workspace tiles and must read as an empty slot. -->
           <Button Width="40" Height="40" HorizontalAlignment="Center" Padding="0" Background="Transparent" BorderBrush="{DynamicResource ShellBorderBrush}" Foreground="{DynamicResource ShellMutedBrush}" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Add" FontSize="14" /></Button>
         </StackPanel>
-      </Border>
+      </controls:ConcentricBorder>
 
-      <Border
+      <controls:ConcentricBorder
           Width="190"
           Classes="FloatingSidebar"
           Padding="{controls:Inset Horizontal=Xs, Vertical=Sm}"
@@ -204,7 +204,7 @@
             ReorderPointerMoved="OnRuntimeTabDragPointerMoved"
             ReorderPointerPressed="OnRuntimeTabDragPointerPressed"
             ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
-      </Border>
+      </controls:ConcentricBorder>
 
       <views:AgentWorkspaceView
           x:Name="AgentWorkspaceSurface"

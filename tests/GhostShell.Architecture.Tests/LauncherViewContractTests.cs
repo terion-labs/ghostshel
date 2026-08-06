@@ -84,7 +84,7 @@ public sealed class LauncherViewContractTests
         AssertTitleBarDragRegion(root);
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
+            element => element.Name.LocalName == "ConcentricBorder"
                 && string.Equals(
                     AttributeValue(element, "Classes"),
                     "FloatingSidebar",
