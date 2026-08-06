@@ -418,7 +418,7 @@ public sealed partial class App : Avalonia.Application
     /// </summary>
     private SolidColorBrush Translucent(Color color) =>
         new(Color.FromArgb(
-            WindowBackdropBlurRadius == 0 ? byte.MaxValue : ShellSurfaceAlpha,
+            WindowIsTranslucent ? ShellSurfaceAlpha : byte.MaxValue,
             color.R,
             color.G,
             color.B));
@@ -428,7 +428,7 @@ public sealed partial class App : Avalonia.Application
     /// filled — a terminal paints its own background from its palette.
     /// </summary>
     private double SurfaceOpacity =>
-        WindowBackdropBlurRadius == 0 ? 1 : ShellSurfaceAlpha / (double)byte.MaxValue;
+        WindowIsTranslucent ? ShellSurfaceAlpha / (double)byte.MaxValue : 1;
 
     private void Publish(string key, object? value)
     {
@@ -494,8 +494,8 @@ public sealed partial class App : Avalonia.Application
     /// turned it off, and zero when the host asks for reduced transparency,
     /// which is the same answer arrived at two ways.
     /// </summary>
-    public int WindowBackdropBlurRadius =>
-        PrefersReducedTransparency ? 0 : StoredTheme.BackdropBlurRadius;
+    public bool WindowIsTranslucent =>
+        !PrefersReducedTransparency && StoredTheme.IsTranslucent;
 
     /// <summary>
     /// How solid the base surface is, as stored — fully solid when the host
@@ -520,9 +520,9 @@ public sealed partial class App : Avalonia.Application
         Publish(
             "ShellWindowBackdropBrush",
             new SolidColorBrush(Color.FromArgb(
-                WindowBackdropBlurRadius == 0
-                    ? byte.MaxValue
-                    : ShellBackdropAlpha,
+                WindowIsTranslucent
+                    ? ShellBackdropAlpha
+                    : byte.MaxValue,
                 resources.Background.R,
                 resources.Background.G,
                 resources.Background.B)));

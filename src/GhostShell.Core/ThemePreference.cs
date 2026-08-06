@@ -51,22 +51,14 @@ public sealed record ThemePreference : IDurableDefinition
     /// Version 2 adds the window-chrome settings. Every one of them is optional
     /// with a defined default, so a stored version 1 document still deserializes.
     /// </summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public const double MinimumCornerRadius = 0;
 
     public const double MaximumCornerRadius = 20;
 
-    /// <summary>
-    /// How far the desktop is blurred behind the shell's base surface, and
-    /// whether there is one at all: zero means an opaque shell with no blur
-    /// asked for, which is also how someone turns the effect off.
-    /// </summary>
-    public const int MinimumBackdropBlurRadius = 0;
-
-    public const int MaximumBackdropBlurRadius = 64;
-
-    public const int DefaultBackdropBlurRadius = 48;
+    /// <summary>Whether the shell sits on a translucent base surface at all.</summary>
+    public const bool DefaultIsTranslucent = true;
 
     /// <summary>
     /// How solid the shell's base surface is, as a percentage. The blur is
@@ -103,7 +95,7 @@ public sealed record ThemePreference : IDurableDefinition
         bool showWorkspacesPanel = true,
         TabStripPlacement tabStripPlacement = TabStripPlacement.Top,
         WorkspacePanelPlacement workspacePanelPlacement = WorkspacePanelPlacement.Left,
-        int backdropBlurRadius = DefaultBackdropBlurRadius,
+        bool isTranslucent = DefaultIsTranslucent,
         int backdropOpacityPercent = DefaultBackdropOpacityPercent)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -126,15 +118,6 @@ public sealed record ThemePreference : IDurableDefinition
                 nameof(cornerRadiusOverride),
                 cornerRadiusOverride,
                 $"Corner radius must be between {MinimumCornerRadius} and {MaximumCornerRadius}.");
-        }
-
-        if (backdropBlurRadius is < MinimumBackdropBlurRadius or > MaximumBackdropBlurRadius)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(backdropBlurRadius),
-                backdropBlurRadius,
-                $"Backdrop blur must be between {MinimumBackdropBlurRadius} and "
-                + $"{MaximumBackdropBlurRadius}.");
         }
 
         if (backdropOpacityPercent is < MinimumBackdropOpacityPercent
@@ -180,7 +163,7 @@ public sealed record ThemePreference : IDurableDefinition
         ShowWorkspacesPanel = showWorkspacesPanel;
         TabStripPlacement = tabStripPlacement;
         WorkspacePanelPlacement = workspacePanelPlacement;
-        BackdropBlurRadius = backdropBlurRadius;
+        IsTranslucent = isTranslucent;
         BackdropOpacityPercent = backdropOpacityPercent;
     }
 
@@ -217,7 +200,16 @@ public sealed record ThemePreference : IDurableDefinition
     /// How far the desktop is blurred behind the base surface. Zero turns the
     /// translucency off with it — an opaque shell has nothing to blur behind.
     /// </summary>
-    public int BackdropBlurRadius { get; }
+    /// <summary>
+    /// Whether the shell sits on a translucent base surface.
+    ///
+    /// This was a blur radius, which only ever meant pixels because macOS was
+    /// blurred by an explicit radius underneath. The shell now hands the
+    /// platform its own material, and every platform's is a capability rather
+    /// than a number — so the only part of that setting which still decided
+    /// anything was whether it was zero.
+    /// </summary>
+    public bool IsTranslucent { get; }
 
     /// <summary>How solid the base surface is, as a percentage.</summary>
     public int BackdropOpacityPercent { get; }

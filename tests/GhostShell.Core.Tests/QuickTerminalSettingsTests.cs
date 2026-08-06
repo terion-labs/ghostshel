@@ -14,31 +14,27 @@ public sealed class QuickTerminalSettingsTests
         Assert.Equal(QuickTerminalMonitorPolicy.MainWindow, settings.MonitorPolicy);
         Assert.Equal(0.55, settings.HeightFraction);
         Assert.Equal(0.82, settings.Opacity);
-        Assert.Equal(24, settings.BlurRadius);
+        Assert.True(settings.IsTranslucent);
         Assert.True(settings.AnimateSlide);
         Assert.True(settings.RestoreLastSession);
         Assert.True(settings.HideOnFocusLoss);
     }
 
     [Theory]
-    [InlineData(0.24, 0.82, 24, 180)]
-    [InlineData(0.91, 0.82, 24, 180)]
-    [InlineData(0.55, -0.01, 24, 180)]
-    [InlineData(0.55, 1.01, 24, 180)]
-    [InlineData(0.55, 0.82, -1, 180)]
-    [InlineData(0.55, 0.82, 101, 180)]
-    [InlineData(0.55, 0.82, 24, -1)]
-    [InlineData(0.55, 0.82, 24, 1001)]
+    [InlineData(0.24, 0.82, 180)]
+    [InlineData(0.91, 0.82, 180)]
+    [InlineData(0.55, -0.01, 180)]
+    [InlineData(0.55, 1.01, 180)]
+    [InlineData(0.55, 0.82, -1)]
+    [InlineData(0.55, 0.82, 1001)]
     public void Invalid_visual_ranges_are_rejected(
         double height,
         double opacity,
-        int blur,
         int duration)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => Create(
             height,
             opacity,
-            blur,
             duration));
     }
 
@@ -51,7 +47,6 @@ public sealed class QuickTerminalSettingsTests
         var settings = Create(
             height: 0.55,
             opacity,
-            blur: 24,
             duration: 180);
 
         Assert.Equal(opacity, settings.Opacity);
@@ -67,7 +62,7 @@ public sealed class QuickTerminalSettingsTests
             QuickTerminalMonitorPolicy.ActiveWindow,
             0.4,
             0.2,
-            0,
+            false,
             animateSlide: false,
             animationDurationMilliseconds: 0,
             reduceMotion: true,
@@ -83,7 +78,6 @@ public sealed class QuickTerminalSettingsTests
     private static QuickTerminalSettings Create(
         double height,
         double opacity,
-        int blur,
         int duration) => new(
             new QuickTerminalSettingsId("test"),
             "Test",
@@ -91,7 +85,7 @@ public sealed class QuickTerminalSettingsTests
             QuickTerminalMonitorPolicy.MainWindow,
             height,
             opacity,
-            blur,
+            isTranslucent: true,
             animateSlide: true,
             animationDurationMilliseconds: duration,
             reduceMotion: false,

@@ -204,7 +204,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (app.WindowBackdropBlurRadius == 0)
+        if (!app.WindowIsTranslucent)
         {
             // Declining is a decision, and it said nothing. A silent early
             // return is indistinguishable from a backdrop that was asked for

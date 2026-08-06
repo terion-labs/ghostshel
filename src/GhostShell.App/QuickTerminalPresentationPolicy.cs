@@ -22,7 +22,7 @@ internal static class QuickTerminalPresentationPolicy
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(hostPreferences);
-        return settings.BlurRadius > 0 && !hostPreferences.ReducedTransparency;
+        return settings.IsTranslucent && !hostPreferences.ReducedTransparency;
     }
 
     public static double EffectiveOpacity(

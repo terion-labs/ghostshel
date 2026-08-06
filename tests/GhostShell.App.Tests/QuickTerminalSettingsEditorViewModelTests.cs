@@ -17,7 +17,7 @@ public sealed class QuickTerminalSettingsEditorViewModelTests
             MonitorPolicy = QuickTerminalMonitorPolicy.ActiveWindow,
             HeightPercent = 40,
             OpacityPercent = 40,
-            BlurRadius = 0,
+            IsTranslucent = false,
             AnimateSlide = false,
             AnimationDurationMilliseconds = 90,
             ReduceMotion = true,

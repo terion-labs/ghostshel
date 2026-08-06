@@ -54,7 +54,7 @@ public sealed class QuickTerminalPresentationPolicyTests
             defaults.MonitorPolicy,
             defaults.HeightFraction,
             defaults.Opacity,
-            defaults.BlurRadius,
+            defaults.IsTranslucent,
             defaults.AnimateSlide,
             defaults.AnimationDurationMilliseconds,
             reduceMotion: true,

@@ -15,7 +15,7 @@ internal sealed record AppearanceSelection(
     bool ShowWorkspacesPanel,
     TabStripPlacement TabStripPlacement,
     WorkspacePanelPlacement WorkspacePanelPlacement,
-    int BackdropBlurRadius,
+    bool IsTranslucent,
     int BackdropOpacityPercent);
 
 internal sealed record AppearanceTextScaleOption(string DisplayName, double? Scale);
@@ -91,7 +91,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             // A null override means "follow the platform profile"; the slider has no
             // null, so it rests at the profile's own radius until the user moves it.
             CornerRadiusSlider.Value = theme.CornerRadiusOverride ?? DefaultCornerRadius;
-            BackdropBlurSlider.Value = theme.BackdropBlurRadius;
+            TranslucencyToggle.IsChecked = theme.IsTranslucent;
             BackdropOpacitySlider.Value = theme.BackdropOpacityPercent;
             DensityCompact.IsChecked = theme.Density == InterfaceDensity.Compact;
             DensityCozy.IsChecked = theme.Density == InterfaceDensity.Cozy;
@@ -148,7 +148,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             WorkspacePanelRight.IsChecked == true
                 ? WorkspacePanelPlacement.Right
                 : WorkspacePanelPlacement.Left,
-            (int)Math.Round(BackdropBlurSlider.Value),
+            TranslucencyToggle.IsChecked == true,
             (int)Math.Round(BackdropOpacitySlider.Value));
     }
 

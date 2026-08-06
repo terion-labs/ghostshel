@@ -14,6 +14,9 @@ namespace GhostShell.App.Views;
 public sealed partial class QuickTerminalWindow : Window
 {
     private static readonly CubicEaseOut SlideEasing = new();
+    // Not None: asking for no transparency at all makes the native window
+    // opaque, and the reveal animation slides a window that has already been
+    // composited. Transparent without a material is the "no blur" state.
     private static readonly IReadOnlyList<WindowTransparencyLevel> TransparentHint =
         [WindowTransparencyLevel.Transparent];
     private static readonly IReadOnlyList<WindowTransparencyLevel> BlurHint =
@@ -62,18 +65,21 @@ public sealed partial class QuickTerminalWindow : Window
         QuickTerminalStatusBackground.Opacity = backgroundOpacity;
         HideOnFocusLoss = settings.HideOnFocusLoss;
         var transparencyHint = QuickTerminalPresentationPolicy.ShouldUseBlur(
-                settings,
-                hostPreferences)
-            ? OperatingSystem.IsMacOS()
-                ? TransparentHint
-                : BlurHint
+            settings,
+            hostPreferences)
+            ? BlurHint
             : TransparentHint;
         ApplyTransparencyHint(transparencyHint);
     }
 
     /// <summary>
-    /// Applies the backdrop after the native window exists. macOS gets the
-    /// configured radius; unsupported paths fall back to Avalonia's blur tier.
+    /// Applies the backdrop after the native window exists.
+    ///
+    /// The platform's own material, as the shell does. macOS was blurred by an
+    /// explicit radius here instead, which left AppKit with no material to
+    /// shape the window from — and a window it takes to be a plain square gets
+    /// a shadow and an edge built from that square, standing proud of its own
+    /// rounded corners.
     /// </summary>
     public void ApplyBackdrop()
     {
@@ -82,17 +88,7 @@ public sealed partial class QuickTerminalWindow : Window
                 _settings,
                 _hostPreferences))
         {
-            if (OperatingSystem.IsMacOS())
-            {
-                _ = MacOsQuickTerminalBackdrop.TryApply(this, 0);
-            }
-
-            return;
-        }
-
-        if (OperatingSystem.IsMacOS()
-            && MacOsQuickTerminalBackdrop.TryApply(this, _settings.BlurRadius))
-        {
+            ApplyTransparencyHint(TransparentHint);
             return;
         }
 

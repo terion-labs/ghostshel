@@ -124,21 +124,11 @@
         </Grid>
       </controls:SettingRow>
       <controls:SettingRow
-          Label="Backdrop blur"
-          Description="Blur behind the terminal; zero disables the effect.">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <NumericUpDown
-              Minimum="0"
-              Maximum="100"
-              Increment="1"
-              Value="{Binding QuickTerminalSettingsEditor.BlurRadius}"
-              AutomationProperties.Name="Quick Terminal backdrop blur" />
-          <TextBlock
-              Grid.Column="1"
-              VerticalAlignment="Center"
-              Classes="Muted"
-              Text="px" />
-        </Grid>
+          Label="Translucency"
+          Description="Whether the terminal sits on the platform's own material, so the desktop shows through it. The amount of blur is the platform's to decide.">
+        <ToggleSwitch
+            IsChecked="{Binding QuickTerminalSettingsEditor.IsTranslucent}"
+            AutomationProperties.Name="Quick Terminal translucency" />
       </controls:SettingRow>
       <controls:SettingsGroup.Footer>
         <TextBlock

@@ -17,7 +17,7 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
     private QuickTerminalMonitorPolicy _monitorPolicy;
     private double _heightPercent;
     private double _opacityPercent;
-    private int _blurRadius;
+    private bool _isTranslucent;
     private bool _animateSlide;
     private int _animationDurationMilliseconds;
     private bool _reduceMotion;
@@ -38,7 +38,7 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
         _monitorPolicy = settings.MonitorPolicy;
         _heightPercent = settings.HeightFraction * 100;
         _opacityPercent = settings.Opacity * 100;
-        _blurRadius = settings.BlurRadius;
+        _isTranslucent = settings.IsTranslucent;
         _animateSlide = settings.AnimateSlide;
         _animationDurationMilliseconds = settings.AnimationDurationMilliseconds;
         _reduceMotion = settings.ReduceMotion;
@@ -106,10 +106,10 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
         set => SetProperty(ref _opacityPercent, value);
     }
 
-    public int BlurRadius
+    public bool IsTranslucent
     {
-        get => _blurRadius;
-        set => SetProperty(ref _blurRadius, value);
+        get => _isTranslucent;
+        set => SetProperty(ref _isTranslucent, value);
     }
 
     public bool AnimateSlide
@@ -163,7 +163,7 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
             MonitorPolicy,
             HeightPercent / 100,
             OpacityPercent / 100,
-            BlurRadius,
+            IsTranslucent,
             AnimateSlide,
             AnimationDurationMilliseconds,
             ReduceMotion,

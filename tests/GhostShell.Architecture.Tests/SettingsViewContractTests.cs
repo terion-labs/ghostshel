@@ -483,10 +483,11 @@ public sealed class SettingsViewContractTests
         var toggles = root.Descendants()
             .Where(element => element.Name.LocalName == "ToggleSwitch")
             .ToArray();
-        Assert.Equal(4, toggles.Length);
+        Assert.Equal(5, toggles.Length);
         Assert.Equal(
             new[]
             {
+                "{Binding QuickTerminalSettingsEditor.IsTranslucent}",
                 "{Binding QuickTerminalSettingsEditor.AnimateSlide}",
                 "{Binding QuickTerminalSettingsEditor.ReduceMotion}",
                 "{Binding QuickTerminalSettingsEditor.HideOnFocusLoss}",
@@ -667,7 +668,7 @@ public sealed class SettingsViewContractTests
         "Quick Terminal display",
         "Quick Terminal panel height",
         "Quick Terminal background opacity",
-        "Quick Terminal backdrop blur",
+        "Quick Terminal translucency",
         "Animate Quick Terminal",
         "Reduce Quick Terminal motion",
         "Quick Terminal animation duration",

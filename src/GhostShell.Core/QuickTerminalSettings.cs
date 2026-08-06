@@ -8,12 +8,12 @@ namespace GhostShell.Core;
 /// </summary>
 public sealed record QuickTerminalSettings : IDurableDefinition
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const double MinimumHeightFraction = 0.25;
     public const double MaximumHeightFraction = 0.90;
     public const double MinimumOpacity = 0.00;
     public const double MaximumOpacity = 1.00;
-    public const int MaximumBlurRadius = 100;
+    public const bool DefaultIsTranslucent = true;
     public const int MaximumAnimationDurationMilliseconds = 1_000;
 
     public static QuickTerminalSettingsId DefaultId { get; } =
@@ -26,7 +26,7 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         QuickTerminalMonitorPolicy.MainWindow,
         heightFraction: 0.55,
         opacity: 0.82,
-        blurRadius: 24,
+        isTranslucent: DefaultIsTranslucent,
         animateSlide: true,
         animationDurationMilliseconds: 180,
         reduceMotion: false,
@@ -41,7 +41,7 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         QuickTerminalMonitorPolicy monitorPolicy,
         double heightFraction,
         double opacity,
-        int blurRadius,
+        bool isTranslucent,
         bool animateSlide,
         int animationDurationMilliseconds,
         bool reduceMotion,
@@ -82,14 +82,6 @@ public sealed record QuickTerminalSettings : IDurableDefinition
                 $"Quick Terminal opacity must be between {MinimumOpacity:P0} and {MaximumOpacity:P0}.");
         }
 
-        if (blurRadius is < 0 or > MaximumBlurRadius)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(blurRadius),
-                blurRadius,
-                $"Quick Terminal blur must be between 0 and {MaximumBlurRadius} pixels.");
-        }
-
         if (animationDurationMilliseconds is < 0 or > MaximumAnimationDurationMilliseconds)
         {
             throw new ArgumentOutOfRangeException(
@@ -104,7 +96,7 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         MonitorPolicy = monitorPolicy;
         HeightFraction = heightFraction;
         Opacity = opacity;
-        BlurRadius = blurRadius;
+        IsTranslucent = isTranslucent;
         AnimateSlide = animateSlide;
         AnimationDurationMilliseconds = animationDurationMilliseconds;
         ReduceMotion = reduceMotion;
@@ -128,7 +120,15 @@ public sealed record QuickTerminalSettings : IDurableDefinition
 
     public double Opacity { get; }
 
-    public int BlurRadius { get; }
+    /// <summary>
+    /// Whether the Quick Terminal sits on the platform's own material.
+    ///
+    /// This was a blur radius applied by an explicit native call. The window
+    /// now hands the platform a material instead, as the shell does, and that
+    /// is a capability rather than a number — so all the radius still decided
+    /// was whether there was an effect at all.
+    /// </summary>
+    public bool IsTranslucent { get; }
 
     public bool AnimateSlide { get; }
 
