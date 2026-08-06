@@ -78,23 +78,27 @@ public sealed partial class MainWindow : Window
         // makes one; a hint arriving later is a request to change something
         // already built, which macOS simply declines.
         //
-        // On macOS the ask is only to be see-through. Asking for blur here as
-        // well adds Avalonia's own vibrancy layer on top of the native radius
-        // below, and two blurs of the same backdrop compound — the shell came
-        // out far blurrier at twenty than the Quick Terminal is at forty-eight,
-        // which is what gave it away. Elsewhere there is no native radius to
-        // apply, so the hint is the blur.
-        TransparencyLevelHint = OperatingSystem.IsMacOS()
-            ?
-            [
-                WindowTransparencyLevel.Transparent,
-            ]
-            :
-            [
-                WindowTransparencyLevel.AcrylicBlur,
-                WindowTransparencyLevel.Blur,
-                WindowTransparencyLevel.Transparent,
-            ];
+        // The platform's own material, on every platform.
+        //
+        // macOS was asked only to be see-through, with the blur applied
+        // underneath by radius, because two blurs of the same backdrop
+        // compound and the shell came out far blurrier than the Quick
+        // Terminal. That worked for the blur and was wrong about the window:
+        // a translucent fill over a bare window gives AppKit nothing to shape
+        // the frame from, so it took the content to be a plain square, and
+        // the shadow and edge it built from that square stood proud of the
+        // rounded corners. That is the dark outline, and the reason it was
+        // heaviest at the corners and barely there along the straight runs.
+        //
+        // A visual-effect view is what the platform expects to be handed. It
+        // masks it to the window's shape and works the shadow out from it,
+        // which is why every other window gets this right without asking.
+        TransparencyLevelHint =
+        [
+            WindowTransparencyLevel.AcrylicBlur,
+            WindowTransparencyLevel.Blur,
+            WindowTransparencyLevel.Transparent,
+        ];
     }
 
     private void OnAnyActivity(object? sender, RoutedEventArgs e)
@@ -179,14 +183,12 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Puts a blur behind the window so the translucent base surface has
-    /// something to be translucent against.
+    /// Puts the platform's material behind the window so the translucent base
+    /// surface has something to be translucent against.
     ///
-    /// The native radius first, which is what the Quick Terminal already uses
-    /// and what terminal applications on this platform do; Avalonia's own hint
-    /// is the fallback, and it is a capability tier rather than a radius. A
-    /// host asking for reduced transparency gets neither — its base surface is
-    /// published opaque, and blurring behind an opaque surface is only cost.
+    /// A host asking for reduced transparency gets none of it: the base
+    /// surface is published opaque, and a material behind an opaque surface
+    /// is only cost.
     /// </summary>
     /// <summary>
     /// Re-reads the stored backdrop and applies it. Called when the appearance
@@ -225,14 +227,11 @@ public sealed partial class MainWindow : Window
 
     private void RequestBackdrop()
     {
-        var radius = (Avalonia.Application.Current as App)?.WindowBackdropBlurRadius ?? 0;
-        // Before the blur: the base surface has to reach the top edge before
-        // there is any point blurring what shows through it.
+        // The base surface has to reach the top edge; the material behind it
+        // does the rest.
         var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(this);
-        var blurred = OperatingSystem.IsMacOS()
-            && MacOsQuickTerminalBackdrop.TryApply(this, radius);
         var negotiated = ActualTransparencyLevel;
-        if (blurred || negotiated != WindowTransparencyLevel.None)
+        if (negotiated != WindowTransparencyLevel.None)
         {
             LetTheBackdropThrough();
         }
@@ -241,15 +240,15 @@ public sealed partial class MainWindow : Window
         // back through here, so a line each time is eight lines a start.
         var titleBarQuiet = !OperatingSystem.IsMacOS()
             || titleBar is MacOsTitleBarOutcome.Hidden;
-        if (blurred && titleBarQuiet && negotiated != WindowTransparencyLevel.None)
+        if (titleBarQuiet && negotiated != WindowTransparencyLevel.None)
         {
             return;
         }
 
         Console.Error.WriteLine(
             $"[ghostshell:appearance] backdrop incomplete — title bar "
-            + $"{titleBar}, native blur {blurred}, transparency {negotiated}, "
-            + $"decoration margin {WindowDecorationMargin.Top:0}");
+            + $"{titleBar}, transparency {negotiated}, decoration margin "
+            + $"{WindowDecorationMargin.Top:0}");
     }
 
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;

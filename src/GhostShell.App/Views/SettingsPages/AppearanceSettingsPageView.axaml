@@ -460,7 +460,7 @@
         <controls:SurfaceCard Tone="Raised" Grid.Column="1">
           <controls:LabeledField
               Label="Background blur"
-              Hint="How far the desktop is blurred behind the shell. None turns the translucency off with it.">
+              Hint="Whether the desktop is blurred behind the shell. None turns the translucency off; above that the amount is the platform's own, not this number.">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
               <Slider
                   x:Name="BackdropBlurSlider"
