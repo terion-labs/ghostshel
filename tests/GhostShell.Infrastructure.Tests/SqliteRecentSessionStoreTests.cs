@@ -159,8 +159,13 @@ public sealed class SqliteRecentSessionStoreTests
         Assert.Equal(0, await CountRowsAsync(temporary));
     }
 
+    /// <summary>
+    /// A fresh database retains nothing. Keeping a record of every session
+    /// someone opens is theirs to ask for, so the store starts with it off and
+    /// the opt-in migration is what set the revision.
+    /// </summary>
     [Fact]
-    public async Task DynamicStoreStartsWithRevisionedDefaultRetention()
+    public async Task DynamicStoreStartsWithHistoryTurnedOff()
     {
         await using var temporary = TemporaryDatabase.Create();
         var store = new SqliteRecentSessionStore(
@@ -169,8 +174,23 @@ public sealed class SqliteRecentSessionStoreTests
 
         var stored = Success(await store.GetRetentionAsync(CancellationToken.None));
 
-        Assert.Equal(1, stored.Revision);
-        Assert.Equal(RecentSessionRetentionPolicy.Default, stored.Policy);
+        Assert.False(stored.Policy.IsEnabled);
+        Assert.Equal(0, stored.Policy.MaximumEntries);
+    }
+
+    /// <summary>
+    /// History is off until it is asked for, so every test that expects a
+    /// session to be kept has to ask first. It returns the revision that opting
+    /// in produced, because the next update has to be made against it.
+    /// </summary>
+    private static async Task<long> EnableRetentionAsync(SqliteRecentSessionStore store)
+    {
+        var current = Success(await store.GetRetentionAsync(CancellationToken.None));
+        var update = Success(await store.UpdateRetentionAsync(
+            RecentSessionRetentionPolicy.Default,
+            current.Revision,
+            CancellationToken.None));
+        return update.StoredPolicy.Revision;
     }
 
     [Fact]
@@ -179,6 +199,7 @@ public sealed class SqliteRecentSessionStoreTests
         await using var temporary = TemporaryDatabase.Create();
         var time = new MutableTimeProvider(ReferenceTime);
         var store = new SqliteRecentSessionStore(temporary.Database, time);
+        var enabledRevision = await EnableRetentionAsync(store);
         for (var i = 0; i < 3; i++)
         {
             AssertSuccess(await store.RecordStartedAsync(
@@ -193,11 +214,11 @@ public sealed class SqliteRecentSessionStoreTests
 
         var update = Success(await store.UpdateRetentionAsync(
             new RecentSessionRetentionPolicy(1, TimeSpan.FromDays(30)),
-            expectedRevision: 1,
+            enabledRevision,
             CancellationToken.None));
         var staleUpdate = await store.UpdateRetentionAsync(
             new RecentSessionRetentionPolicy(2, TimeSpan.FromDays(30)),
-            expectedRevision: 1,
+            enabledRevision,
             CancellationToken.None);
         AssertSuccess(await store.RecordStartedAsync(
             Started(
@@ -213,7 +234,7 @@ public sealed class SqliteRecentSessionStoreTests
         var stored = Success(await store.GetRetentionAsync(CancellationToken.None));
 
         Assert.Equal(2, update.PrunedSessionCount);
-        Assert.Equal(2, update.StoredPolicy.Revision);
+        Assert.Equal(enabledRevision + 1, update.StoredPolicy.Revision);
         Assert.Equal(1, update.StoredPolicy.Policy.MaximumEntries);
         Assert.False(staleUpdate.IsSuccess);
         Assert.Equal(RecentSessionStoreErrorCode.Conflict, staleUpdate.Error!.Code);
@@ -230,6 +251,7 @@ public sealed class SqliteRecentSessionStoreTests
         await using var temporary = TemporaryDatabase.Create();
         var time = new MutableTimeProvider(ReferenceTime);
         var store = new SqliteRecentSessionStore(temporary.Database, time);
+        var enabledRevision = await EnableRetentionAsync(store);
         AssertSuccess(await store.RecordStartedAsync(
             Started(
                 "session-before-disable",
@@ -241,7 +263,7 @@ public sealed class SqliteRecentSessionStoreTests
 
         var update = Success(await store.UpdateRetentionAsync(
             new RecentSessionRetentionPolicy(0, TimeSpan.FromDays(30)),
-            expectedRevision: 1,
+            enabledRevision,
             CancellationToken.None));
         AssertSuccess(await store.RecordStartedAsync(
             Started(
@@ -271,6 +293,7 @@ public sealed class SqliteRecentSessionStoreTests
         await using var temporary = TemporaryDatabase.Create();
         var time = new MutableTimeProvider(ReferenceTime);
         var store = new SqliteRecentSessionStore(temporary.Database, time);
+        _ = await EnableRetentionAsync(store);
         AssertSuccess(await store.RecordStartedAsync(
             Started(
                 "session-preserved",
@@ -312,6 +335,7 @@ public sealed class SqliteRecentSessionStoreTests
         await using var temporary = TemporaryDatabase.Create();
         var time = new MutableTimeProvider(ReferenceTime);
         var store = new SqliteRecentSessionStore(temporary.Database, time);
+        var enabledRevision = await EnableRetentionAsync(store);
         AssertSuccess(await store.RecordStartedAsync(
             Started(
                 "session-protected",
@@ -336,7 +360,7 @@ public sealed class SqliteRecentSessionStoreTests
 
         var update = await store.UpdateRetentionAsync(
             new RecentSessionRetentionPolicy(0, TimeSpan.FromDays(30)),
-            expectedRevision: 1,
+            enabledRevision,
             CancellationToken.None);
         var stored = Success(await store.GetRetentionAsync(CancellationToken.None));
 
@@ -345,7 +369,7 @@ public sealed class SqliteRecentSessionStoreTests
         Assert.Equal(
             new StoredRecentSessionRetentionPolicy(
                 RecentSessionRetentionPolicy.Default,
-                revision: 1),
+                enabledRevision),
             stored);
         Assert.Equal(1, await CountRowsAsync(temporary));
     }

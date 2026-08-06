@@ -113,6 +113,11 @@ public sealed class RecentSessionHistory
                 nameof(record));
         }
 
+        if (!await IsRetainingAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return RecentSessionStoreResult<Unit>.Success(default);
+        }
+
         var initialization = await InitializeAsync(cancellationToken).ConfigureAwait(false);
         if (!initialization.IsSuccess)
         {
@@ -120,6 +125,29 @@ public sealed class RecentSessionHistory
         }
 
         return await _store.RecordStartedAsync(record, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Whether session metadata is being retained at all.
+    ///
+    /// Retention of zero records is not "write it and prune it afterwards" — it
+    /// is "do not write it". A row that exists between the insert and the next
+    /// prune is a row that was on disk, which is the thing someone turning this
+    /// off is asking not to happen.
+    ///
+    /// A store that carries no retention settings has none to disobey, and its
+    /// own enforcement is the only policy there is; refusing to record for it
+    /// would turn a missing capability into silent data loss.
+    /// </summary>
+    private async ValueTask<bool> IsRetainingAsync(CancellationToken cancellationToken)
+    {
+        if (_retentionStore is null)
+        {
+            return true;
+        }
+
+        var retention = await GetRetentionAsync(cancellationToken).ConfigureAwait(false);
+        return !retention.IsSuccess || retention.Value!.Policy.IsEnabled;
     }
 
     public RecentSessionCompletion CaptureCompletion(
@@ -144,7 +172,7 @@ public sealed class RecentSessionHistory
             CaptureCompletion(sessionId, outcome),
             cancellationToken);
 
-    public ValueTask<RecentSessionStoreResult<Unit>> RecordCompletedAsync(
+    public async ValueTask<RecentSessionStoreResult<Unit>> RecordCompletedAsync(
         RecentSessionCompletion completion,
         CancellationToken cancellationToken)
     {
@@ -156,7 +184,14 @@ public sealed class RecentSessionHistory
                 "A current session can only be completed with an allowlisted terminal outcome.");
         }
 
-        return _store.RecordCompletedAsync(completion, cancellationToken);
+        // Nothing was written when it started, so there is nothing to complete.
+        if (!await IsRetainingAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return RecentSessionStoreResult<Unit>.Success(default);
+        }
+
+        return await _store.RecordCompletedAsync(completion, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>>

@@ -54,6 +54,10 @@ internal static class HistoricalDatabaseFixture
                 "file-preview-settings",
                 "09E65A4C7D6B42B9398454CB500D9E841591A1A1A83D10DA6B32B200AAEDF33E",
                 IsDestructive: false),
+            [9] = new(
+                "session-history-is-opt-in",
+                "E22939EC49C7784C21CF680A1EDC0F09D10349582050D368130C4930DFFAC905",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -103,10 +107,22 @@ internal static class HistoricalDatabaseFixture
         await using var connection = await OpenAsync(databasePath);
         await ExecuteAsync(
             connection,
-            currentVersion == 5
-                ? $"CREATE INDEX {schemaObjectName} ON audit_events(sequence);"
-                : $"CREATE TABLE {schemaObjectName} "
-                  + "(incompatible_column TEXT NOT NULL);");
+            currentVersion switch
+            {
+                5 => $"CREATE INDEX {schemaObjectName} ON audit_events(sequence);",
+                // Migration 9 adds no schema object of its own — it rewrites a
+                // row — so there is no name to collide with. A trigger that
+                // refuses the write is the same obstruction by other means.
+                8 => $"""
+                    CREATE TRIGGER {schemaObjectName}
+                    BEFORE UPDATE ON recent_session_retention
+                    BEGIN
+                        SELECT RAISE(ABORT, 'next migration collision');
+                    END;
+                    """,
+                _ => $"CREATE TABLE {schemaObjectName} "
+                     + "(incompatible_column TEXT NOT NULL);",
+            });
     }
 
     public static async Task RemoveNextMigrationCollisionAsync(
@@ -117,9 +133,12 @@ internal static class HistoricalDatabaseFixture
         await using var connection = await OpenAsync(databasePath);
         await ExecuteAsync(
             connection,
-            currentVersion == 5
-                ? $"DROP INDEX {schemaObjectName};"
-                : $"DROP TABLE {schemaObjectName};");
+            currentVersion switch
+            {
+                5 => $"DROP INDEX {schemaObjectName};",
+                8 => $"DROP TRIGGER {schemaObjectName};",
+                _ => $"DROP TABLE {schemaObjectName};",
+            });
     }
 
     public static async Task<SqliteConnection> OpenAsync(string databasePath)
@@ -297,6 +316,7 @@ internal static class HistoricalDatabaseFixture
             5 => "audit_events_agent_run_idx",
             6 => "session_restore_preference",
             7 => "file_preview_settings",
+            8 => "session_history_opt_in_collision",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

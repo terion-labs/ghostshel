@@ -257,5 +257,18 @@ internal static class SqliteSchema
                 cache_budget_bytes)
             VALUES (1, 2097152, 1, 536870912);
             """),
+        // Retaining a record of every session someone opened is not something to
+        // start doing on their behalf. Migration 3 seeded it on; this turns it
+        // off wherever it was never deliberately chosen, and leaves it off for
+        // new installs. Anyone who wants history turns it on, once.
+        new(
+            9,
+            "session-history-is-opt-in",
+            """
+            UPDATE recent_session_retention
+            SET revision = revision + 1,
+                maximum_entries = 0
+            WHERE singleton_id = 1;
+            """),
     ];
 }

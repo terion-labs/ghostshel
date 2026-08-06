@@ -143,8 +143,11 @@ public sealed class SqliteDatabaseTests
                     FROM recent_sessions
                     WHERE session_id = '{HistoricalDatabaseFixture.RecentSessionId}';
                     """));
+            // Upgrading turns session history off wherever it was never
+            // deliberately chosen: retaining a record of every session opened is
+            // opt-in, and an upgrade is not the user opting in.
             Assert.Equal(
-                "100",
+                "0",
                 await ScalarAsync(
                     connection,
                     """
@@ -210,9 +213,15 @@ public sealed class SqliteDatabaseTests
             temporary.DatabasePath,
             sourceVersion);
 
+        // Most migrations are obstructed by pre-creating the object they create;
+        // one that only rewrites a row is obstructed by refusing the write. What
+        // matters either way is that it failed and left the schema where it was.
         var error = await Assert.ThrowsAsync<SqliteException>(async () =>
             await temporary.Database.EnsureInitializedAsync(CancellationToken.None));
-        Assert.Contains("already exists", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            sourceVersion == 8 ? "next migration collision" : "already exists",
+            error.Message,
+            StringComparison.OrdinalIgnoreCase);
 
         await using (var unchanged = await HistoricalDatabaseFixture.OpenAsync(
             temporary.DatabasePath))
