@@ -75,25 +75,10 @@ internal static class TranslucentPopup
         // the same correction the window needs applies here — and the glass is
         // masked to the shape of the surface it sits behind, because the window
         // holding it is a square and its corners would stand outside the card.
-        // The glass is fitted to the card, in the window's own coordinates: a
-        // popup's window is bigger than the surface inside it, and AppKit
-        // measures up from the bottom while Avalonia measures down from the top.
-        var card = control.Bounds;
-        var origin = control.TranslatePoint(default, popup) ?? default;
-        var fitted = card.Width > 0 && card.Height > 0
-            ? new MacOsWindowMaterial.CoreRect
-            {
-                X = origin.X,
-                Y = popup.Bounds.Height - (origin.Y + card.Height),
-                Width = card.Width,
-                Height = card.Height,
-            }
-            : (MacOsWindowMaterial.CoreRect?)null;
         MacOsWindowMaterial.TrySit(
             popup,
             MacOsMaterial.UnderWindowBackground,
-            (control as TemplatedControl)?.CornerRadius.TopLeft,
-            fitted);
+            (control as TemplatedControl)?.CornerRadius.TopLeft);
 
         // A popup is built from the same content view as a real window, so it
         // arrives carrying that window's title-bar chrome. Square and unrounded,
