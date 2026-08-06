@@ -179,6 +179,17 @@ public sealed partial class AppearanceSettingsPageView : UserControl
     /// </summary>
     private void OnPlatformProfileChanged(object? sender, SelectionChangedEventArgs e)
     {
+        // Only when someone picked it. Loading the stored theme sets this
+        // selection too, and applying the preset there would put the preset's
+        // density and translucency back every time anything at all was saved —
+        // so a preset stopped being a starting point and started being a lock
+        // on two settings that are still meant to be settings.
+        if (_isLoading)
+        {
+            OnAppearanceChanged(sender, e);
+            return;
+        }
+
         switch (PlatformProfilePicker.SelectedItem)
         {
             case PlatformProfile.MacOsClassic:
