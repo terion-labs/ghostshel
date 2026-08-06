@@ -165,6 +165,42 @@ public sealed partial class AppearanceSettingsPageView : UserControl
                     ? TabStripPlacement.Right
                     : TabStripPlacement.Top;
 
+    /// <summary>
+    /// A platform profile is a preset, not just a set of metrics.
+    ///
+    /// Picking one says which desktop the shell is dressing as, and those
+    /// desktops differ in more than their radii: the older one is tight and
+    /// solid, the current one roomy and made of glass. Leaving density and
+    /// translucency where they were let the shell claim one and look like the
+    /// other.
+    ///
+    /// Only the two that name a specific desktop. Automatic follows the host
+    /// and has no opinion of its own to apply.
+    /// </summary>
+    private void OnPlatformProfileChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        switch (PlatformProfilePicker.SelectedItem)
+        {
+            case PlatformProfile.MacOsClassic:
+                ApplyDensity(InterfaceDensity.Compact);
+                TranslucencyToggle.IsChecked = false;
+                break;
+            case PlatformProfile.MacOsLiquidGlass:
+                ApplyDensity(InterfaceDensity.Comfortable);
+                TranslucencyToggle.IsChecked = true;
+                break;
+        }
+
+        OnAppearanceChanged(sender, e);
+    }
+
+    private void ApplyDensity(InterfaceDensity density)
+    {
+        DensityCompact.IsChecked = density == InterfaceDensity.Compact;
+        DensityCozy.IsChecked = density == InterfaceDensity.Cozy;
+        DensityComfortable.IsChecked = density == InterfaceDensity.Comfortable;
+    }
+
     private InterfaceDensity SelectedDensity() =>
         DensityCompact.IsChecked == true
             ? InterfaceDensity.Compact

@@ -91,7 +91,7 @@
           <controls:LabeledField
               Label="Platform profile"
               Hint="Closest host-native chrome, radii, and density.">
-            <ComboBox x:Name="PlatformProfilePicker" SelectionChanged="OnAppearanceChanged" AutomationProperties.Name="Platform profile" />
+            <ComboBox x:Name="PlatformProfilePicker" SelectionChanged="OnPlatformProfileChanged" AutomationProperties.Name="Platform profile" />
           </controls:LabeledField>
         </controls:SurfaceCard>
       </StackPanel>
