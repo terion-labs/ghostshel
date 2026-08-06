@@ -135,7 +135,12 @@
         </Border>
 
         <ScrollViewer Grid.Column="1">
-          <Grid Margin="{controls:Inset Horizontal=Xxl, Top=Xl, Bottom=Xxl}">
+          <!-- The top inset matches the sidebar's, so both columns start at the
+               same height. A page inset on top of the chrome band above it put
+               the first heading a section's worth below everything beside it,
+               which reads as the page having been pushed down rather than as
+               room to breathe. -->
+          <Grid Margin="{controls:Inset Horizontal=Xxl, Top=Sm, Bottom=Xxl}">
             <settingsPages:AppearanceSettingsPageView
                 x:Name="AppearanceSettingsPage"
                 IsVisible="{Binding IsAppearanceSettingsVisible}"
