@@ -23,6 +23,9 @@ internal static class MacOsWindowMaterial
     /// <summary>Avalonia's macOS content view, the parent of the material.</summary>
     private const string AvaloniaContentView = "AutoFitContentView";
 
+    /// <summary>The view Avalonia draws into, a sibling of the material.</summary>
+    private const string AvaloniaDrawingView = "AvnView";
+
     /// <summary>NSVisualEffectBlendingModeBehindWindow.</summary>
     private const nint BlendsBehindWindow = 0;
 
@@ -96,6 +99,7 @@ internal static class MacOsWindowMaterial
                     SendBoolArgument(layer, Selector("setMasksToBounds:"), true);
                 }
 
+                TryLetTheGlassThrough(avaloniaContent);
                 return true;
             }
 
@@ -106,6 +110,32 @@ internal static class MacOsWindowMaterial
             or BadImageFormatException)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Avalonia's drawing view answers YES to <c>isOpaque</c>, which tells the
+    /// platform not to compose anything behind it. Where the shell then draws
+    /// nothing — outside a rounded card, in the corners of the square window a
+    /// popup gets — the pixels are whatever the backing store last held, and
+    /// that is the block that appeared at each corner once there was glass
+    /// behind it to be hidden.
+    ///
+    /// The flag itself belongs to the view and cannot be answered for it, but
+    /// what governs the backing store is the layer, and that can be told.
+    /// </summary>
+    private static void TryLetTheGlassThrough(nint avaloniaContent)
+    {
+        var view = FindDescendantOfClass(avaloniaContent, AvaloniaDrawingView);
+        if (view == 0)
+        {
+            return;
+        }
+
+        SendBoolArgument(view, Selector("setWantsLayer:"), true);
+        if (SendId(view, Selector("layer")) is var layer and not 0)
+        {
+            SendBoolArgument(layer, Selector("setOpaque:"), false);
         }
     }
 
