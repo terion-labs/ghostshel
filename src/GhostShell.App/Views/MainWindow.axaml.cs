@@ -2202,10 +2202,17 @@ public sealed partial class MainWindow : Window
                 ? 0
                 : MacOsWindowChromeMetrics.TryGetTrafficLightRightEdge(this)
                     ?? Math.Max(92, TitleBarChromeHeight * 2.25);
+            // The trailing edge owes what the leading one does. The buttons sit
+            // clear of the window's corner, and the corner is a setting now, so
+            // whatever they are inset by is what the shell's own controls need
+            // in the opposite corner — otherwise the band leans.
+            var trailingInset =
+                MacOsWindowChromeMetrics.TryGetButtonLeadingInset(this)
+                ?? horizontalSpacing;
             WindowTitleBarContentMargin = new Thickness(
                 trafficLightRightEdge + horizontalSpacing,
                 0,
-                horizontalSpacing,
+                trailingInset,
                 0);
             return;
         }

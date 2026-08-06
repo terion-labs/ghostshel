@@ -86,6 +86,37 @@ internal static class MacOsWindowChromeMetrics
         return double.IsFinite(centre) && centre is > 0 and < 200 ? centre : null;
     }
 
+    /// <summary>
+    /// How far in from the window's edge the standard buttons start.
+    ///
+    /// The same distance the shell owes its own controls at the other end: the
+    /// buttons are placed clear of the corner, and a corner that is now a
+    /// setting moves them. Anything sitting in the opposite corner has to keep
+    /// the same distance or the band reads as leaning to one side.
+    /// </summary>
+    public static double? TryGetButtonLeadingInset(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (!OperatingSystem.IsMacOS()
+            || window.TryGetPlatformHandle() is not IMacOSTopLevelPlatformHandle handle
+            || handle.NSWindow == 0)
+        {
+            return null;
+        }
+
+        var button = SendObject(
+            handle.NSWindow,
+            Selector("standardWindowButton:"),
+            CloseButton);
+        if (button == 0)
+        {
+            return null;
+        }
+
+        var frame = SendRect(button, Selector("frame"));
+        return double.IsFinite(frame.X) && frame.X is > 0 and < 200 ? frame.X : null;
+    }
+
     private static NativeRect SendRect(nint receiver, nint selector) =>
         RuntimeInformation.ProcessArchitecture == Architecture.X64
             ? SendRectX64(receiver, selector)
