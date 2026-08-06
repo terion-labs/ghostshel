@@ -29,7 +29,11 @@ internal static class MacOsWindowMaterial
     /// <summary>NSVisualEffectStateActive: the glass does not dull when unfocused.</summary>
     private const nint AlwaysActive = 1;
 
-    public static bool TrySit(Window window, MacOsMaterial material)
+    /// <summary>
+    /// Any top level, not only the window: a flyout is a window of its own on
+    /// this platform, and the glass behind one is the same glass.
+    /// </summary>
+    public static bool TrySit(TopLevel window, MacOsMaterial material)
     {
         ArgumentNullException.ThrowIfNull(window);
         if (!OperatingSystem.IsMacOS()
