@@ -233,12 +233,15 @@ public sealed partial class MainWindow : Window
             ?? InterfaceDensity.Cozy;
         var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(
             this,
-            density switch
-            {
-                InterfaceDensity.Compact => MacOsWindowKind.TitleBarOnly,
-                InterfaceDensity.Comfortable => MacOsWindowKind.Toolbar,
-                _ => MacOsWindowKind.CompactToolbar,
-            });
+            // Not the title-bar kind, even at the tightest setting. Its 16pt
+            // is the sharpest corner this desktop draws, and a surface inside
+            // it keeps that less the gap it stands off by — which left the
+            // inner corner nearly square while the window around it was still
+            // visibly round. The compact toolbar's 20pt leaves enough for the
+            // surfaces within to still read as rounded.
+            density is InterfaceDensity.Comfortable
+                ? MacOsWindowKind.Toolbar
+                : MacOsWindowKind.CompactToolbar);
         // The platform's own material for a window's base. Avalonia pins the
         // view it creates to a fixed light one and lets its state follow the
         // window's, so the glass reads wrong for a dark shell and dulls

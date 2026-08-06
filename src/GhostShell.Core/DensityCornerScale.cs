@@ -35,7 +35,6 @@ public static class DensityCornerScale
     /// </summary>
     public static double WindowRadius(InterfaceDensity density) => density switch
     {
-        InterfaceDensity.Compact => 16,
         InterfaceDensity.Comfortable => 26,
         _ => 20,
     };
