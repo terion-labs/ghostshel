@@ -117,8 +117,6 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ShowLauncherRequested;
 
-    public event EventHandler<RoutedEventArgs>? OpenRecentSessionRequested;
-
     public event EventHandler<RoutedEventArgs>? ShowNewItemRequested;
 
     public event EventHandler<RoutedEventArgs>? ShowNewPanelRequested;
@@ -243,9 +241,6 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnShowLauncherClick(object? sender, RoutedEventArgs e) =>
         ShowLauncherRequested?.Invoke(sender, e);
-
-    private void OnOpenRecentSessionClick(object? sender, RoutedEventArgs e) =>
-        OpenRecentSessionRequested?.Invoke(sender, e);
 
     private void OnShowNewItemClick(object? sender, RoutedEventArgs e) =>
         ShowNewItemRequested?.Invoke(sender, e);

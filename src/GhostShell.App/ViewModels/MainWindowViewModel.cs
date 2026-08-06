@@ -6954,17 +6954,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        // Launch, not open: reopening something joins the workspace you are in
+        // rather than standing up one of its own beside it. Opening has never
+        // been allowed to replace what is already running, and arriving
+        // detached from the workspace the request came from is the same
+        // surprise wearing a different coat.
         var source = recentSession.SourceDefinition;
         if (source.Kind == ConnectionProfile.Kind)
         {
-            return await OpenConnectionAsync(
+            return await LaunchConnectionAsync(
                 new ConnectionId(source.Value),
                 cancellationToken);
         }
 
         if (source.Kind == ScreenDefinition.Kind)
         {
-            return await OpenScreenAsync(new ScreenId(source.Value), cancellationToken);
+            return await LaunchScreenAsync(new ScreenId(source.Value), cancellationToken);
         }
 
         if (source.Kind == WorkspaceDefinition.Kind)

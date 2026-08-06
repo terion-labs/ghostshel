@@ -36,6 +36,7 @@ public sealed partial class CountBindingContractTests
         "IconChoices",
         "Entries",
         "Panels",
+        "RecentSessions",
     ];
 
     [Fact]

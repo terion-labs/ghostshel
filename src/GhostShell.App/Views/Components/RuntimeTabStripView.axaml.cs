@@ -30,31 +30,9 @@ public sealed partial class RuntimeTabStripView : UserControl
     public static readonly StyledProperty<bool> IsHomeActiveProperty =
         AvaloniaProperty.Register<RuntimeTabStripView, bool>(nameof(IsHomeActive));
 
-    /// <summary>
-    /// What has been open before, offered where it is reopened from rather than
-    /// on a page of its own.
-    /// </summary>
-    public static readonly StyledProperty<IEnumerable?> RecentSessionsProperty =
-        AvaloniaProperty.Register<RuntimeTabStripView, IEnumerable?>(nameof(RecentSessions));
-
-    public static readonly StyledProperty<bool> ShowHistoryTabProperty =
-        AvaloniaProperty.Register<RuntimeTabStripView, bool>(nameof(ShowHistoryTab));
-
     public RuntimeTabStripView()
     {
         InitializeComponent();
-    }
-
-    public IEnumerable? RecentSessions
-    {
-        get => GetValue(RecentSessionsProperty);
-        set => SetValue(RecentSessionsProperty, value);
-    }
-
-    public bool ShowHistoryTab
-    {
-        get => GetValue(ShowHistoryTabProperty);
-        set => SetValue(ShowHistoryTabProperty, value);
     }
 
     public IEnumerable? Tabs
@@ -100,8 +78,6 @@ public sealed partial class RuntimeTabStripView : UserControl
     public event EventHandler<RoutedEventArgs>? AddTabRequested;
 
     public event EventHandler<RoutedEventArgs>? HomeRequested;
-
-    public event EventHandler<RoutedEventArgs>? RecentSessionRequested;
 
     public event EventHandler<RoutedEventArgs>? ActivateRequested;
 
@@ -153,21 +129,6 @@ public sealed partial class RuntimeTabStripView : UserControl
 
     private void OnHome(object? sender, RoutedEventArgs e) =>
         HomeRequested?.Invoke(sender, e);
-
-    /// <summary>
-    /// The flyout closes itself: reopening something is a navigation, and a
-    /// menu left standing over what it just opened has to be dismissed by hand.
-    /// </summary>
-    private void OnRecentSession(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Control control)
-        {
-            FlyoutBase.GetAttachedFlyout(HistoryTab)?.Hide();
-            _ = control;
-        }
-
-        RecentSessionRequested?.Invoke(sender, e);
-    }
 
     private void OnActivate(object? sender, RoutedEventArgs e) =>
         ActivateRequested?.Invoke(sender, e);

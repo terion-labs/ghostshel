@@ -32,67 +32,6 @@
           AutomationProperties.ItemStatus="{Binding HomeItemStatus, ElementName=Root}">
         <icons:SymbolIcon VerticalAlignment="Center" Symbol="Home" FontSize="11" />
       </Button>
-      <!--
-        What was open before, offered where it is reopened from. A page of its
-        own put the shell's history behind a screen that otherwise repeated the
-        chooser.
-      -->
-      <Button
-          x:Name="HistoryTab"
-          Width="22"
-          Height="22"
-          MinWidth="22"
-          MinHeight="22"
-          Padding="0"
-          Classes="RuntimeHomeTab"
-          HorizontalContentAlignment="Center"
-          IsVisible="{Binding ShowHistoryTab, ElementName=Root}"
-          ToolTip.Tip="Recent sessions"
-          AutomationProperties.Name="Recent sessions">
-        <icons:SymbolIcon VerticalAlignment="Center" Symbol="History" FontSize="11" />
-        <Button.Flyout>
-          <Flyout Placement="BottomEdgeAlignedLeft">
-            <ScrollViewer MaxHeight="360">
-              <ItemsControl
-                  MinWidth="280"
-                  ItemsSource="{Binding RecentSessions, ElementName=Root}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Button
-                        Classes="ListRow"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Click="OnRecentSession"
-                        IsEnabled="{Binding CanOpen}"
-                        AutomationProperties.Name="{Binding Title, StringFormat=Reopen recent session {0}}">
-                      <Grid
-                          Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-                          ColumnDefinitions="Auto,*"
-                          ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                        <Border Classes="IconTile Neutral" Width="26" Height="26" VerticalAlignment="Center">
-                          <icons:SymbolIcon
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              Symbol="{Binding SourceGlyph}"
-                              FontSize="13" />
-                        </Border>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                          <TextBlock
-                              Classes="Muted"
-                              FontSize="{DynamicResource ShellFontSize10}"
-                              Text="{Binding Detail}"
-                              TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                      </Grid>
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </Flyout>
-        </Button.Flyout>
-      </Button>
       <ItemsControl ItemsSource="{Binding Tabs, ElementName=Root}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
