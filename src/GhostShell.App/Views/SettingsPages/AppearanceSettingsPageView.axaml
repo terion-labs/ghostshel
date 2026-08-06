@@ -484,6 +484,31 @@
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
+              Label="Background opacity"
+              Hint="How solid the shell's base surface is. Lower lets more of the blurred desktop through; at full it reads as a frame around the panels rather than as glass.">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <Slider
+                  x:Name="BackdropOpacitySlider"
+                  VerticalAlignment="Center"
+                  ValueChanged="OnAppearanceChanged"
+                  Minimum="40"
+                  Maximum="100"
+                  TickFrequency="2"
+                  IsSnapToTickEnabled="True"
+                  AutomationProperties.Name="Background opacity" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize12}"
+                  FontWeight="SemiBold"
+                  Text="{Binding #BackdropOpacitySlider.Value, StringFormat={}{0:0}%}" />
+            </Grid>
+          </controls:LabeledField>
+        </controls:SurfaceCard>
+      </Grid>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+        <controls:SurfaceCard Tone="Raised">
+          <controls:LabeledField
               Label="Padding density">
             <Border Classes="Segmented">
               <UniformGrid Columns="3">

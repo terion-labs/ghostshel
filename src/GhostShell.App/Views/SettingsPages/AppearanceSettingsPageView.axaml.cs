@@ -15,7 +15,8 @@ internal sealed record AppearanceSelection(
     bool ShowWorkspacesPanel,
     TabStripPlacement TabStripPlacement,
     WorkspacePanelPlacement WorkspacePanelPlacement,
-    int BackdropBlurRadius);
+    int BackdropBlurRadius,
+    int BackdropOpacityPercent);
 
 internal sealed record AppearanceTextScaleOption(string DisplayName, double? Scale);
 
@@ -91,6 +92,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             // null, so it rests at the profile's own radius until the user moves it.
             CornerRadiusSlider.Value = theme.CornerRadiusOverride ?? DefaultCornerRadius;
             BackdropBlurSlider.Value = theme.BackdropBlurRadius;
+            BackdropOpacitySlider.Value = theme.BackdropOpacityPercent;
             DensityCompact.IsChecked = theme.Density == InterfaceDensity.Compact;
             DensityCozy.IsChecked = theme.Density == InterfaceDensity.Cozy;
             DensityComfortable.IsChecked = theme.Density == InterfaceDensity.Comfortable;
@@ -146,7 +148,8 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             WorkspacePanelRight.IsChecked == true
                 ? WorkspacePanelPlacement.Right
                 : WorkspacePanelPlacement.Left,
-            (int)Math.Round(BackdropBlurSlider.Value));
+            (int)Math.Round(BackdropBlurSlider.Value),
+            (int)Math.Round(BackdropOpacitySlider.Value));
     }
 
     private const double DefaultCornerRadius = 8;

@@ -462,7 +462,10 @@ public sealed partial class App : Avalonia.Application
     /// window was still opaque at the time and none of it was reaching the
     /// screen. This is the number to move in either direction.
     /// </summary>
-    private const byte ShellBackdropAlpha = 0xE0;
+    private byte ShellBackdropAlpha => (byte)Math.Clamp(
+        (int)Math.Round(WindowBackdropOpacityPercent * byte.MaxValue / 100.0),
+        0,
+        byte.MaxValue);
 
     /// <summary>
     /// How solid the surfaces standing on the base are.
@@ -473,7 +476,10 @@ public sealed partial class App : Avalonia.Application
     /// system title bar was quietened and the band stayed, which is what ruled
     /// that out and left this. Nearly solid, because text is read on these.
     /// </summary>
-    private const byte ShellSurfaceAlpha = 0xF0;
+    private byte ShellSurfaceAlpha => (byte)Math.Clamp(
+        ShellBackdropAlpha + ((byte.MaxValue - ShellBackdropAlpha) / 2),
+        0,
+        byte.MaxValue);
 
 
     /// <summary>
@@ -489,11 +495,20 @@ public sealed partial class App : Avalonia.Application
     /// which is the same answer arrived at two ways.
     /// </summary>
     public int WindowBackdropBlurRadius =>
-        PrefersReducedTransparency
-            ? 0
-            : (_definitionCatalog?.Snapshot.Themes
-                .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)
-                ?.Value ?? ThemePreference.Default).BackdropBlurRadius;
+        PrefersReducedTransparency ? 0 : StoredTheme.BackdropBlurRadius;
+
+    /// <summary>
+    /// How solid the base surface is, as stored — fully solid when the host
+    /// asks for reduced transparency, which is the same answer the blur gives
+    /// to the same question.
+    /// </summary>
+    public int WindowBackdropOpacityPercent =>
+        PrefersReducedTransparency ? 100 : StoredTheme.BackdropOpacityPercent;
+
+    private ThemePreference StoredTheme =>
+        _definitionCatalog?.Snapshot.Themes
+            .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)
+            ?.Value ?? ThemePreference.Default;
 
     private void ApplyApplicationResources(EffectiveAppearanceResources resources)
     {

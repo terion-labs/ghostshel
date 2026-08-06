@@ -68,6 +68,19 @@ public sealed record ThemePreference : IDurableDefinition
 
     public const int DefaultBackdropBlurRadius = 48;
 
+    /// <summary>
+    /// How solid the shell's base surface is, as a percentage. The blur is
+    /// only half of glass; the other half is how much of the blurred desktop
+    /// is allowed through. Near 100 the surface reads as a painted frame
+    /// around the panels rather than as a material, which is the difference
+    /// between a dark gutter and a window you can see into.
+    /// </summary>
+    public const int MinimumBackdropOpacityPercent = 40;
+
+    public const int MaximumBackdropOpacityPercent = 100;
+
+    public const int DefaultBackdropOpacityPercent = 72;
+
     public static RgbColor BronzeFallback { get; } = RgbColor.Parse("#B8793A");
 
     public static ThemePreference Default { get; } = new(
@@ -90,7 +103,8 @@ public sealed record ThemePreference : IDurableDefinition
         bool showWorkspacesPanel = true,
         TabStripPlacement tabStripPlacement = TabStripPlacement.Top,
         WorkspacePanelPlacement workspacePanelPlacement = WorkspacePanelPlacement.Left,
-        int backdropBlurRadius = DefaultBackdropBlurRadius)
+        int backdropBlurRadius = DefaultBackdropBlurRadius,
+        int backdropOpacityPercent = DefaultBackdropOpacityPercent)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(accent);
@@ -121,6 +135,16 @@ public sealed record ThemePreference : IDurableDefinition
                 backdropBlurRadius,
                 $"Backdrop blur must be between {MinimumBackdropBlurRadius} and "
                 + $"{MaximumBackdropBlurRadius}.");
+        }
+
+        if (backdropOpacityPercent is < MinimumBackdropOpacityPercent
+            or > MaximumBackdropOpacityPercent)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(backdropOpacityPercent),
+                backdropOpacityPercent,
+                $"Backdrop opacity must be between {MinimumBackdropOpacityPercent} and "
+                + $"{MaximumBackdropOpacityPercent}.");
         }
 
         if (!Enum.IsDefined(density))
@@ -157,6 +181,7 @@ public sealed record ThemePreference : IDurableDefinition
         TabStripPlacement = tabStripPlacement;
         WorkspacePanelPlacement = workspacePanelPlacement;
         BackdropBlurRadius = backdropBlurRadius;
+        BackdropOpacityPercent = backdropOpacityPercent;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Theme;
@@ -193,6 +218,9 @@ public sealed record ThemePreference : IDurableDefinition
     /// translucency off with it — an opaque shell has nothing to blur behind.
     /// </summary>
     public int BackdropBlurRadius { get; }
+
+    /// <summary>How solid the base surface is, as a percentage.</summary>
+    public int BackdropOpacityPercent { get; }
 
     [JsonIgnore]
     public DefinitionKey Key => new(Kind, Id.Value);
