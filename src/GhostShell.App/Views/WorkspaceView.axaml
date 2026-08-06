@@ -9,6 +9,23 @@
     xmlns:views="using:GhostShell.App.Views"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
+  <UserControl.Styles>
+    <!-- A workspace calling for attention. Slow and shallow on purpose: this
+         sits in a menu the user opened to read, and anything sharper reads as
+         an error rather than as activity. -->
+    <Style Selector="Ellipse.calling">
+      <Style.Animations>
+        <Animation Duration="0:0:1.4" IterationCount="INFINITE" PlaybackDirection="Alternate">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="0.3" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+  </UserControl.Styles>
   <Grid RowDefinitions="Auto,*,Auto,26">
     <Border
         Classes="TopChrome"
@@ -46,23 +63,26 @@
                           HorizontalContentAlignment="Stretch"
                           AutomationProperties.Name="{Binding Name, StringFormat=Open workspace {0}}">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                          <!-- The same three things the rail tile says: whose
-                               colour it is, whether it is running, and whether
-                               it is calling. -->
-                          <Panel VerticalAlignment="Center">
-                            <Ellipse Width="8" Height="8" Fill="{Binding Accent, Converter={StaticResource HexColorBrushConverter}}" />
+                          <!-- One mark, read by its fill: an idle workspace is
+                               an outline, a running one is solid, and one that
+                               is calling breathes. All three in the workspace's
+                               own colour, so the row still says whose it is. -->
+                          <Panel VerticalAlignment="Center" Width="12" Height="12">
                             <Ellipse
-                                Width="8"
-                                Height="8"
-                                Stroke="{DynamicResource ShellSuccessBrush}"
-                                StrokeThickness="1.5"
+                                Width="12"
+                                Height="12"
+                                Stroke="{Binding Accent, Converter={StaticResource HexColorBrushConverter}}"
+                                StrokeThickness="2"
+                                IsVisible="{Binding !IsOpen}" />
+                            <Ellipse
+                                Width="12"
+                                Height="12"
+                                Classes.calling="{Binding HasAttention}"
+                                Fill="{Binding Accent, Converter={StaticResource HexColorBrushConverter}}"
                                 IsVisible="{Binding IsOpen}" />
                           </Panel>
                           <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-                            <controls:SignalDot VerticalAlignment="Center" IsVisible="{Binding HasAttention}" />
-                            <icons:SymbolIcon VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" IsVisible="{Binding IsInFront}" />
-                          </StackPanel>
+                          <icons:SymbolIcon Grid.Column="2" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" IsVisible="{Binding IsInFront}" />
                         </Grid>
                       </Button>
                       <Button
@@ -70,8 +90,8 @@
                           Classes="IconButton"
                           Click="OnWorkspacesMenuCloseClick"
                           IsVisible="{Binding IsOpen}"
-                          ToolTip.Tip="Close workspace"
-                          AutomationProperties.Name="{Binding Name, StringFormat=Close workspace {0}}">
+                          ToolTip.Tip="Terminate this workspace and everything running in it"
+                          AutomationProperties.Name="{Binding Name, StringFormat=Terminate workspace {0}}">
                         <icons:SymbolIcon Symbol="Dismiss" FontSize="11" />
                       </Button>
                       </Grid>
