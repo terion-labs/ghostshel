@@ -4153,7 +4153,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             platformProfile,
             accent,
             textScaleOverride,
-            effective.CornerRadiusOverride,
+            effective.CornerStyle,
             effective.Density,
             effective.ShowTabBar,
             effective.ShowWorkspacesPanel,

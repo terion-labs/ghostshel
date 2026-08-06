@@ -370,15 +370,15 @@ internal static class EffectiveAppearanceResourceMapper
         var accentSoft = Blend(accent, background, theme.HighContrast ? 0.24 : 0.18);
         var metrics = PlatformMetrics.For(theme.PlatformProfile);
         var densityScale = DensityScale(theme.Density);
-        // A stored radius override replaces the profile radius for controls and
-        // keeps cards proportionally rounder, as the reference preview shows.
-        var controlRadius = theme.CornerRadiusOverride ?? metrics.ControlCornerRadius;
-        var cardRadius = theme.CornerRadiusOverride is { } requested
-            ? requested + 2
-            : metrics.CardCornerRadius;
-        var sidebarRadius = theme.CornerRadiusOverride is { } requestedRadius
-            ? requestedRadius + Math.Max(0, metrics.SidebarCornerRadius - metrics.CardCornerRadius)
-            : metrics.SidebarCornerRadius;
+        // The profile says what each role is worth and the style scales the set,
+        // so the distances between roles survive being adjusted. One number
+        // standing for every role was the thing that could not be right: a
+        // control and a window's base surface do not want the same corner, and
+        // the old override gave them the same one plus a fixed nudge.
+        var cornerScale = CornerStyleScale.For(theme.CornerStyle);
+        var controlRadius = metrics.ControlCornerRadius * cornerScale;
+        var cardRadius = metrics.CardCornerRadius * cornerScale;
+        var sidebarRadius = metrics.SidebarCornerRadius * cornerScale;
         var source = theme.AccentSource switch
         {
             AccentSource.Custom => "custom accent",

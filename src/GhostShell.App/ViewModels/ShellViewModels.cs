@@ -3487,7 +3487,7 @@ public sealed class UnavailableRuntimePanelViewModel(
 /// not present these settings can leave the stored values untouched.
 /// </summary>
 public sealed record ThemeChromePreference(
-    double? CornerRadiusOverride,
+    CornerStyle CornerStyle,
     InterfaceDensity Density,
     bool ShowTabBar,
     bool ShowWorkspacesPanel,
@@ -3502,7 +3502,7 @@ public sealed record ThemeChromePreference(
     {
         ArgumentNullException.ThrowIfNull(theme);
         return new(
-            theme.CornerRadiusOverride,
+            theme.CornerStyle,
             theme.Density,
             theme.ShowTabBar,
             theme.ShowWorkspacesPanel,

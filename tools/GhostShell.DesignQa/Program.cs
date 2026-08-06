@@ -331,11 +331,11 @@ internal sealed class QaApplication : Avalonia.Application
         new(
             "appearance-corners-tight",
             vm => vm.ShowLauncher(),
-            Theme: AppearanceExtreme(cornerRadius: 0, InterfaceDensity.Compact)),
+            Theme: AppearanceExtreme(CornerStyle.Sharp, InterfaceDensity.Compact)),
         new(
             "appearance-corners-round",
             vm => vm.ShowLauncher(),
-            Theme: AppearanceExtreme(cornerRadius: 20, InterfaceDensity.Comfortable)),
+            Theme: AppearanceExtreme(CornerStyle.Soft, InterfaceDensity.Comfortable)),
     ];
 
     /// <summary>
@@ -343,7 +343,7 @@ internal sealed class QaApplication : Avalonia.Application
     /// so a comparison between the two captures isolates those two settings.
     /// </summary>
     private static ThemePreference AppearanceExtreme(
-        double cornerRadius,
+        CornerStyle cornerStyle,
         InterfaceDensity density) =>
         new(
             ThemePreference.Default.Id,
@@ -351,7 +351,7 @@ internal sealed class QaApplication : Avalonia.Application
             AppearanceMode.Dark,
             PlatformProfile.Automatic,
             AccentPreference.FollowHost,
-            cornerRadiusOverride: cornerRadius,
+            cornerStyle: cornerStyle,
             density: density);
 
     private static void ShowSampleDragGhost(MainWindow window)
@@ -1439,10 +1439,10 @@ internal sealed class QaApplication : Avalonia.Application
         // only way to notice that a token quietly went back to being a literal.
         ("design-system-compact",
             static () => new DesignSystemGalleryWindow(),
-            AppearanceExtreme(cornerRadius: 0, InterfaceDensity.Compact)),
+            AppearanceExtreme(CornerStyle.Sharp, InterfaceDensity.Compact)),
         ("design-system-comfortable",
             static () => new DesignSystemGalleryWindow(),
-            AppearanceExtreme(cornerRadius: 20, InterfaceDensity.Comfortable)),
+            AppearanceExtreme(CornerStyle.Soft, InterfaceDensity.Comfortable)),
         // The light appearance, which otherwise only exists on user machines.
         ("design-system-light",
             static () => new DesignSystemGalleryWindow(),

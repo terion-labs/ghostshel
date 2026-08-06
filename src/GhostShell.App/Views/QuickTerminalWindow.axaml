@@ -25,7 +25,7 @@
         BorderBrush="{DynamicResource ShellAccentBrush}"
         BorderThickness="0,0,0,1"
         ClipToBounds="True"
-        CornerRadius="0,0,20,20">
+        CornerRadius="{DynamicResource ShellPanelBottomCornerRadius}">
       <Grid RowDefinitions="*,36">
         <Grid>
           <controls:TerminalPresentationHost

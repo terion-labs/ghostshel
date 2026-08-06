@@ -22,7 +22,7 @@ public sealed record EffectiveTheme(
     bool MotionEnabled,
     bool AdvancedMaterialsEnabled,
     double TextScale,
-    double? CornerRadiusOverride = null,
+    CornerStyle CornerStyle = CornerStyle.System,
     InterfaceDensity Density = InterfaceDensity.Cozy,
     bool ShowTabBar = true,
     bool ShowWorkspacesPanel = true,

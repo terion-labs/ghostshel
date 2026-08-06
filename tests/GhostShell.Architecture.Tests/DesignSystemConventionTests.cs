@@ -42,7 +42,7 @@ public sealed partial class DesignSystemConventionTests
     /// becomes the thing that broke the product. Lowering this number is the unit
     /// of progress; raising it needs a reason written down here.
     /// </summary>
-    private const int LiteralLayoutBudget = 16;
+    private const int LiteralLayoutBudget = 15;
 
     /// <summary>
     /// The design system defines what a value means, so it cannot contain one. A

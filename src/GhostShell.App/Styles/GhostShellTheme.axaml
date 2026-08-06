@@ -10,7 +10,6 @@
     <converters:EnumDisplayConverter x:Key="EnumDisplayConverter" />
     <converters:HexColorBrushConverter x:Key="HexColorBrushConverter" />
     <converters:OnOffConverter x:Key="OnOffConverter" />
-    <converters:CornerRadiusConverter x:Key="CornerRadiusConverter" />
   </Styles.Resources>
 
   <Style Selector="Window">

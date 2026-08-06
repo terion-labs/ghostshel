@@ -5,7 +5,7 @@ namespace GhostShell.Core.Tests;
 public sealed class ThemeChromePreferenceTests
 {
     private static ThemePreference Theme(
-        double? cornerRadius = null,
+        CornerStyle cornerStyle = CornerStyle.System,
         InterfaceDensity density = InterfaceDensity.Cozy,
         bool showTabBar = true,
         bool showWorkspacesPanel = true,
@@ -18,7 +18,7 @@ public sealed class ThemeChromePreferenceTests
             PlatformProfile.Automatic,
             AccentPreference.FollowHost,
             null,
-            cornerRadius,
+            cornerStyle,
             density,
             showTabBar,
             showWorkspacesPanel,
@@ -40,7 +40,7 @@ public sealed class ThemeChromePreferenceTests
     {
         var theme = ThemePreference.Default;
 
-        Assert.Null(theme.CornerRadiusOverride);
+        Assert.Equal(CornerStyle.System, theme.CornerStyle);
         Assert.Equal(InterfaceDensity.Cozy, theme.Density);
         Assert.True(theme.ShowTabBar);
         Assert.True(theme.ShowWorkspacesPanel);
@@ -48,18 +48,15 @@ public sealed class ThemeChromePreferenceTests
         Assert.Equal(WorkspacePanelPlacement.Left, theme.WorkspacePanelPlacement);
     }
 
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(33)]
-    [InlineData(double.NaN)]
-    public void An_out_of_range_corner_radius_is_rejected(double radius) =>
-        Assert.Throws<ArgumentOutOfRangeException>(() => Theme(cornerRadius: radius));
+    [Fact]
+    public void An_unknown_corner_style_is_rejected() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => Theme(cornerStyle: (CornerStyle)99));
 
     [Fact]
     public void Resolving_carries_every_chrome_setting_through()
     {
         var resolved = Theme(
-                cornerRadius: 12,
+                cornerStyle: CornerStyle.Soft,
                 density: InterfaceDensity.Compact,
                 showTabBar: false,
                 showWorkspacesPanel: false,
@@ -67,7 +64,7 @@ public sealed class ThemeChromePreferenceTests
                 workspacePanelPlacement: WorkspacePanelPlacement.Right)
             .Resolve(Host());
 
-        Assert.Equal(12, resolved.CornerRadiusOverride);
+        Assert.Equal(CornerStyle.Soft, resolved.CornerStyle);
         Assert.Equal(InterfaceDensity.Compact, resolved.Density);
         Assert.False(resolved.ShowTabBar);
         Assert.False(resolved.ShowWorkspacesPanel);

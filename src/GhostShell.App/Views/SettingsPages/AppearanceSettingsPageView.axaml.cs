@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using GhostShell.Core;
 
@@ -9,7 +10,7 @@ internal sealed record AppearanceSelection(
     PlatformProfile PlatformProfile,
     AccentPreference Accent,
     double? TextScale,
-    double? CornerRadius,
+    CornerStyle CornerStyle,
     InterfaceDensity Density,
     bool ShowTabBar,
     bool ShowWorkspacesPanel,
@@ -92,7 +93,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
 
             // A null override means "follow the platform profile"; the slider has no
             // null, so it rests at the profile's own radius until the user moves it.
-            CornerRadiusSlider.Value = theme.CornerRadiusOverride ?? DefaultCornerRadius;
+            SyncCornerStyle(theme.CornerStyle);
             TranslucencyToggle.IsChecked = theme.IsTranslucent;
             GlassPanelsToggle.IsChecked = theme.HasGlassPanels;
             OverrideOpacityToggle.IsChecked = theme.OverridesBackdropOpacity;
@@ -144,7 +145,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             profile,
             accent,
             textScale,
-            CornerRadiusSlider.Value,
+            _cornerStyle,
             SelectedDensity(),
             ShowTabBarSwitch.IsChecked == true,
             ShowWorkspacesPanelSwitch.IsChecked == true,
@@ -158,17 +159,27 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             OverrideOpacityToggle.IsChecked == true);
     }
 
-    /// <summary>
-    /// What the slider shows when the theme carries no radius of its own.
-    ///
-    /// Eight was every platform's answer, and on macOS 26 it is nobody's: the
-    /// system rounds windows far harder, and concentrically — the radius
-    /// follows whatever sits at the top of the window, so Apple publishes no
-    /// single number to copy. This is the shell's own answer for that look,
-    /// not a value read from the system.
-    /// </summary>
-    private static double DefaultCornerRadius =>
-        OperatingSystem.IsMacOSVersionAtLeast(26) ? 26 : 8;
+    private CornerStyle _cornerStyle = ThemePreference.DefaultCornerStyle;
+
+    private void SyncCornerStyle(CornerStyle style)
+    {
+        _cornerStyle = style;
+        CornerStyleSharp.IsChecked = style == CornerStyle.Sharp;
+        CornerStyleSystem.IsChecked = style == CornerStyle.System;
+        CornerStyleSoft.IsChecked = style == CornerStyle.Soft;
+    }
+
+    private void OnCornerStyleClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton { Tag: string tag }
+            || !Enum.TryParse<CornerStyle>(tag, out var style))
+        {
+            return;
+        }
+
+        SyncCornerStyle(style);
+        OnAppearanceChanged(sender, e);
+    }
 
     private TabStripPlacement SelectedTabStripPlacement() =>
         TabPlacementBottom.IsChecked == true

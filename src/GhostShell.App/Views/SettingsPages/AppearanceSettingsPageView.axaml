@@ -431,29 +431,15 @@
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
-              Label="Corner radius">
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-              <Slider
-                  x:Name="CornerRadiusSlider"
-                  VerticalAlignment="Center"
-                  ValueChanged="OnAppearanceChanged"
-                  Minimum="0"
-                  Maximum="32"
-                  TickFrequency="1"
-                  IsSnapToTickEnabled="True"
-                  AutomationProperties.Name="Corner radius" />
-              <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding #CornerRadiusSlider.Value, StringFormat={}{0:0}pt}" />
-              <Border
-                  Grid.Column="2"
-                  Width="30"
-                  Height="30"
-                  VerticalAlignment="Center"
-                  Background="{DynamicResource ShellSurfaceRaisedBrush}"
-                  BorderBrush="{DynamicResource ShellAccentBrush}"
-                  BorderThickness="1"
-                  CornerRadius="{Binding #CornerRadiusSlider.Value, Converter={StaticResource CornerRadiusConverter}}" />
-            </Grid>
-
+              Label="Corners"
+              Hint="How rounded the shell is. The platform decides what each surface is worth; this takes the whole set sharper or softer together.">
+            <Border Classes="Segmented">
+              <UniformGrid Columns="3">
+                <ToggleButton x:Name="CornerStyleSharp" Classes="Segment" Tag="Sharp" Click="OnCornerStyleClick" Content="Sharp" AutomationProperties.Name="Sharp corners" />
+                <ToggleButton x:Name="CornerStyleSystem" Classes="Segment" Tag="System" Click="OnCornerStyleClick" Content="System" AutomationProperties.Name="System corners" />
+                <ToggleButton x:Name="CornerStyleSoft" Classes="Segment" Tag="Soft" Click="OnCornerStyleClick" Content="Soft" AutomationProperties.Name="Soft corners" />
+              </UniformGrid>
+            </Border>
           </controls:LabeledField>
         </controls:SurfaceCard>
         <controls:SurfaceCard Tone="Raised" Grid.Column="1">
