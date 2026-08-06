@@ -988,14 +988,49 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// The launcher row names a target rather than carrying the card the editor
+    /// wants, so the card is looked up here. A row whose target has since been
+    /// deleted simply has nothing to edit.
+    /// </summary>
+    private LauncherConnectionViewModel? FindSavedConnection(
+        SavedConnectionShortcutViewModel shortcut) =>
+        shortcut.Target is PanelConnectionOptionViewModel.Target.Connection target
+            ? ViewModel.Connections.FirstOrDefault(item => item.Id == target.Id)
+            : null;
+
+    private async void OnEditSavedConnectionRequested(
+        object? sender,
+        SavedConnectionShortcutViewModel shortcut)
+    {
+        _ = sender;
+        if (FindSavedConnection(shortcut) is { } connection)
+        {
+            await ShowConnectionEditorAsync(connection);
+        }
+    }
+
+    private async void OnDeleteSavedConnectionRequested(
+        object? sender,
+        SavedConnectionShortcutViewModel shortcut)
+    {
+        if (FindSavedConnection(shortcut) is { } connection)
+        {
+            await DeleteSavedConnectionAsync(connection);
+        }
+    }
+
     private async void OnDeleteConnectionClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is not Control { DataContext: LauncherConnectionViewModel connection })
+        if (sender is Control { DataContext: LauncherConnectionViewModel connection })
         {
-            return;
+            await DeleteSavedConnectionAsync(connection);
         }
+    }
 
+    private async Task DeleteSavedConnectionAsync(LauncherConnectionViewModel connection)
+    {
         var noun = connection.Family switch
         {
             SavedConnectionFamily.Files => "file connection",

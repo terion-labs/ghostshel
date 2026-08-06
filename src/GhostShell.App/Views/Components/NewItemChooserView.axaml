@@ -19,7 +19,7 @@
       <Setter Property="BorderThickness" Value="0" />
     </Style>
   </UserControl.Styles>
-  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
     <Grid ColumnDefinitions="*,Auto">
       <Button
           Classes="SearchButton"
@@ -52,7 +52,63 @@
       </Button>
     </Grid>
 
-    <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceSm}">
+    <!-- What is set up and what is not, until it is. It greets you here because
+         this is the first thing open, rather than on a screen of its own that
+         existed mostly to carry it. -->
+    <controls:SurfaceCard
+        Grid.Row="1"
+        Padding="0"
+        IsVisible="{Binding Onboarding.IsVisible, FallbackValue=False}"
+        AutomationProperties.Name="Getting started">
+      <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+          <TextBlock FontSize="{DynamicResource ShellFontSize16}" FontWeight="SemiBold" Text="{Binding Onboarding.Title}" />
+          <TextBlock Classes="Muted" Text="{Binding Onboarding.Introduction}" TextWrapping="Wrap" />
+        </StackPanel>
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <controls:SurfaceCard Tone="Notice" Padding="0">
+            <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <icons:SymbolIcon Symbol="WindowConsole" FontSize="15" />
+                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Local shell" />
+              </Grid>
+              <TextBlock Classes="Eyebrow" Text="{Binding Onboarding.LocalTerminalState}" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Onboarding.LocalTerminalDetail}" TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Notice" Padding="0" Grid.Column="1">
+            <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <icons:SymbolIcon Symbol="Shield" FontSize="15" />
+                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Credential vault" />
+              </Grid>
+              <TextBlock Classes="Eyebrow" Text="{Binding Onboarding.CredentialVaultState}" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Onboarding.CredentialVaultDetail}" TextWrapping="Wrap" />
+            </StackPanel>
+          </controls:SurfaceCard>
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+          <TextBlock
+              VerticalAlignment="Center"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="{Binding Onboarding.StatusMessage}"
+              TextWrapping="Wrap"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="Getting started status" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+            <Button
+                Classes="TextButton"
+                Click="OnRetryOnboardingClick"
+                IsVisible="{Binding Onboarding.CanRetry, FallbackValue=False}"
+                Content="Retry" />
+            <Button Classes="PrimaryButton" Click="OnFinishOnboardingClick" Content="Got it" />
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </controls:SurfaceCard>
+
+    <StackPanel Grid.Row="2" Spacing="{DynamicResource ShellSpaceSm}">
       <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Start something new" />
       <controls:CardGridPanel MinItemWidth="150" Spacing="{DynamicResource ShellSpaceSm}">
         <Button x:Name="NewTerminalButton" Classes="ChooserButton LauncherChooser" Click="OnNewLocalTerminalClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new local terminal">
@@ -101,7 +157,7 @@
     </StackPanel>
 
     <Grid
-        Grid.Row="2"
+        Grid.Row="3"
         ColumnDefinitions="Auto,*"
         ColumnSpacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
@@ -136,7 +192,7 @@
       <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" IsVisible="{Binding HasNoWorkspaces}" Text="No saved workspaces yet." />
     </Grid>
 
-    <Grid Grid.Row="3" VerticalAlignment="Top" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+    <Grid Grid.Row="4" VerticalAlignment="Top" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceLg}">
       <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
@@ -150,7 +206,10 @@
             <ItemsControl ItemsSource="{Binding SavedConnectionShortcuts}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <components:SavedConnectionShortcutView LaunchRequested="OnConnectionLaunchRequested" />
+                  <components:SavedConnectionShortcutView
+                      LaunchRequested="OnConnectionLaunchRequested"
+                      EditRequested="OnEditConnectionRequested"
+                      DeleteRequested="OnDeleteConnectionRequested" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -206,37 +265,70 @@
       </Grid>
     </Grid>
 
-    <!-- What has been open before, beside what can be opened now. The chooser
-         is the one answer to "what do I open"; history was the last thing that
-         answer lived somewhere else. -->
-    <Grid Grid.Row="4" RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasRecentSessions}">
-      <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
-        <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Recent" />
-        <components:CountPill Value="{Binding RecentSessions.Count}" />
-      </StackPanel>
+    <!-- What has been open before, beside what can be opened now. One answer to
+         "what do I open", rather than a shortcut list here and a browser for it
+         somewhere else. Retaining any of this is opt-in, so with it turned off
+         there is nothing to show and the section says nothing. -->
+    <Grid Grid.Row="5" RowDefinitions="Auto,*" RowSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasHistorySessions}">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="History" />
+          <components:CountPill Value="{Binding HistoryResultCount}" />
+        </StackPanel>
+        <Grid Grid.Column="1" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <icons:SymbolIcon VerticalAlignment="Center" Symbol="Search" FontSize="14" />
+          <TextBox
+              x:Name="HistorySearchBox"
+              Grid.Column="1"
+              PlaceholderText="Search title, source, kind, outcome, or session ID…"
+              AutomationProperties.Name="Search session history"
+              KeyDown="OnHistorySearchKeyDown"
+              Text="{Binding HistorySearchQuery}" />
+        </Grid>
+      </Grid>
       <controls:SurfaceCard Tone="Sunken" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="260">
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-          <ItemsControl ItemsSource="{Binding RecentSessions}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Button
-                    Classes="ListRow ChooserListRow"
-                    Click="OnOpenRecentSessionClick"
-                    IsEnabled="{Binding CanOpen}"
-                    AutomationProperties.Name="{Binding Title, StringFormat=Reopen recent session {0}}">
-                  <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                    <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                      <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                    <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding PanelKindName}" />
-                  </Grid>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
+        <Panel>
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <!-- Realized as it scrolls. History is bounded by the retention
+                 policy rather than by anything on screen, so the list has to
+                 cope with the largest a user may have chosen to keep. -->
+            <ItemsControl ItemsSource="{Binding FilteredHistorySessions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button
+                      Classes="ListRow ChooserListRow"
+                      Click="OnOpenRecentSessionClick"
+                      IsEnabled="{Binding CanOpen}"
+                      HorizontalContentAlignment="Stretch"
+                      AutomationProperties.Name="{Binding Title, StringFormat=Reopen session {0}}">
+                    <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                      <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding PanelKindName}" />
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+          <StackPanel
+              Margin="{controls:Inset Lg}"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Spacing="{DynamicResource ShellSpaceXs}"
+              IsVisible="{Binding HasNoFilteredHistorySessions}"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="Session history has no results">
+            <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="No history results" />
+            <TextBlock MaxWidth="430" HorizontalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HistorySearchEmptyState}" TextAlignment="Center" TextWrapping="Wrap" />
+          </StackPanel>
+        </Panel>
       </controls:SurfaceCard>
     </Grid>
   </Grid>

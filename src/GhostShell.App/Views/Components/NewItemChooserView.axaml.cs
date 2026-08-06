@@ -37,6 +37,16 @@ public sealed partial class NewItemChooserView : UserControl
     /// </summary>
     public event EventHandler<SavedConnectionLaunchViewModel>? ConnectionLaunchRequested;
 
+    public event EventHandler<SavedConnectionShortcutViewModel>? EditConnectionRequested;
+
+    public event EventHandler<SavedConnectionShortcutViewModel>? DeleteConnectionRequested;
+
+    public event EventHandler<RoutedEventArgs>? FinishOnboardingRequested;
+
+    public event EventHandler<RoutedEventArgs>? RetryOnboardingRequested;
+
+    public event EventHandler<KeyEventArgs>? HistorySearchKeyDownRequested;
+
     public event EventHandler<RoutedEventArgs>? OpenRecentSessionRequested;
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
     public event EventHandler<RoutedEventArgs>? OpenWorkspaceRequested;
@@ -74,6 +84,25 @@ public sealed partial class NewItemChooserView : UserControl
         object? sender,
         SavedConnectionLaunchViewModel launch) =>
         ConnectionLaunchRequested?.Invoke(sender, launch);
+
+    private void OnEditConnectionRequested(
+        object? sender,
+        SavedConnectionShortcutViewModel shortcut) =>
+        EditConnectionRequested?.Invoke(sender, shortcut);
+
+    private void OnDeleteConnectionRequested(
+        object? sender,
+        SavedConnectionShortcutViewModel shortcut) =>
+        DeleteConnectionRequested?.Invoke(sender, shortcut);
+
+    private void OnFinishOnboardingClick(object? sender, RoutedEventArgs e) =>
+        FinishOnboardingRequested?.Invoke(sender, e);
+
+    private void OnRetryOnboardingClick(object? sender, RoutedEventArgs e) =>
+        RetryOnboardingRequested?.Invoke(sender, e);
+
+    private void OnHistorySearchKeyDown(object? sender, KeyEventArgs e) =>
+        HistorySearchKeyDownRequested?.Invoke(sender, e);
 
     private void OnOpenRecentSessionClick(object? sender, RoutedEventArgs e) =>
         OpenRecentSessionRequested?.Invoke(sender, e);

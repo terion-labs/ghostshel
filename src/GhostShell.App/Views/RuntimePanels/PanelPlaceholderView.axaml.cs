@@ -32,6 +32,16 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     public event EventHandler<SavedConnectionLaunchViewModel>? ConnectionLaunchRequested;
 
+    public event EventHandler<SavedConnectionShortcutViewModel>? EditConnectionRequested;
+
+    public event EventHandler<SavedConnectionShortcutViewModel>? DeleteConnectionRequested;
+
+    public event EventHandler<RoutedEventArgs>? FinishOnboardingRequested;
+
+    public event EventHandler<RoutedEventArgs>? RetryOnboardingRequested;
+
+    public event EventHandler<Avalonia.Input.KeyEventArgs>? HistorySearchKeyDownRequested;
+
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
 
     public event EventHandler<RoutedEventArgs>? ShowCommandPaletteRequested;
@@ -68,6 +78,25 @@ public sealed partial class PanelPlaceholderView : UserControl
         object? sender,
         SavedConnectionLaunchViewModel launch) =>
         ConnectionLaunchRequested?.Invoke(sender, launch);
+
+    private void OnEditConnectionRequested(
+        object? sender,
+        SavedConnectionShortcutViewModel shortcut) =>
+        EditConnectionRequested?.Invoke(sender, shortcut);
+
+    private void OnDeleteConnectionRequested(
+        object? sender,
+        SavedConnectionShortcutViewModel shortcut) =>
+        DeleteConnectionRequested?.Invoke(sender, shortcut);
+
+    private void OnFinishOnboardingClick(object? sender, RoutedEventArgs e) =>
+        FinishOnboardingRequested?.Invoke(sender, e);
+
+    private void OnRetryOnboardingClick(object? sender, RoutedEventArgs e) =>
+        RetryOnboardingRequested?.Invoke(sender, e);
+
+    private void OnHistorySearchKeyDown(object? sender, Avalonia.Input.KeyEventArgs e) =>
+        HistorySearchKeyDownRequested?.Invoke(sender, e);
 
     private void OnOpenScreenClick(object? sender, RoutedEventArgs e) =>
         OpenScreenRequested?.Invoke(sender, e);

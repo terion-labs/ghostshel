@@ -309,9 +309,11 @@ public sealed class TransientOverlayViewContractTests
                      "{Binding SavedConnectionShortcuts}",
                      "{Binding Screens}",
                      // What has been open before belongs to the same catalog:
-                     // the chooser is the one answer to what to open, and
-                     // history was the last thing answering it elsewhere.
-                     "{Binding RecentSessions}",
+                     // the launcher is the one answer to what to open, and
+                     // history was the last thing answering it elsewhere. It is
+                     // the searched list, not the raw one — history is bounded
+                     // by the retention policy, not by what fits on screen.
+                     "{Binding FilteredHistorySessions}",
                  })
         {
             Assert.Contains(
@@ -336,11 +338,14 @@ public sealed class TransientOverlayViewContractTests
                 .Count(element => element.Name.LocalName == "Button"
                     && HasClasses(element, "ListRow", "ChooserListRow")));
 
-        // No inline create form: the overlay opens things, and creating a screen
-        // or workspace belongs to the page that owns that list.
-        Assert.DoesNotContain(
+        // No inline create form: the launcher opens things, and creating a
+        // screen or workspace belongs to the page that owns that list. The one
+        // text box narrows what is already there rather than adding to it.
+        var textBox = Assert.Single(
             catalogRoot.Descendants(),
             element => element.Name.LocalName == "TextBox");
+        Assert.Equal("HistorySearchBox", AttributeValue(textBox, "Name"));
+        Assert.Equal("{Binding HistorySearchQuery}", AttributeValue(textBox, "Text"));
 
         var workspaceList = Assert.Single(
             catalogRoot.Descendants(),

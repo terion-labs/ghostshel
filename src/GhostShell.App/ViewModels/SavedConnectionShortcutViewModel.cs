@@ -21,6 +21,13 @@ public sealed record SavedConnectionShortcutViewModel(
     IReadOnlyList<SavedConnectionLaunchViewModel> AlternativeLaunches)
 {
     public bool HasAlternatives => AlternativeLaunches.Count > 0;
+
+    /// <summary>
+    /// Whether this row can be edited where it stands. A saved connection can;
+    /// a file provider profile is configured on its own settings page, and
+    /// offering to edit it here would open something else entirely.
+    /// </summary>
+    public bool CanEdit => Target is PanelConnectionOptionViewModel.Target.Connection;
 }
 
 public sealed record SavedConnectionLaunchViewModel(

@@ -20,6 +20,15 @@
         IsEnabled="{Binding CanOpen}"
         ToolTip.Tip="{Binding DefaultLaunch.Label}"
         AutomationProperties.Name="{Binding Name}">
+      <!-- Managed where it is used. A saved connection had to be edited from a
+           screen of its own, which meant leaving the place you were opening it
+           from to change the thing you were opening. -->
+      <Button.ContextMenu>
+        <ContextMenu IsVisible="{Binding CanEdit}">
+          <MenuItem Header="Edit connection…" Click="OnEditClick" />
+          <MenuItem Header="Delete connection" Click="OnDeleteClick" />
+        </ContextMenu>
+      </Button.ContextMenu>
       <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
         <StackPanel Grid.Column="1" VerticalAlignment="Center">

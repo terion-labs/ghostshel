@@ -46,6 +46,11 @@
             NewProcessMonitorRequested="OnChooseProcessMonitorClick"
             NewStatisticsRequested="OnChooseStatisticsClick"
             ConnectionLaunchRequested="OnConnectionLaunchRequested"
+            DeleteConnectionRequested="OnDeleteConnectionRequested"
+            EditConnectionRequested="OnEditConnectionRequested"
+            FinishOnboardingRequested="OnFinishOnboardingClick"
+            HistorySearchKeyDownRequested="OnHistorySearchKeyDown"
+            RetryOnboardingRequested="OnRetryOnboardingClick"
             OpenScreenRequested="OnOpenScreenClick"
             ShowCommandPaletteRequested="OnShowCommandPaletteClick"
             ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />
