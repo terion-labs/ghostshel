@@ -7606,7 +7606,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             item.IsInFront = runtime is not null && ReferenceEquals(runtime, RuntimeWorkspace);
             item.HasAttention = runtime?.HasAttention == true;
         }
+
+        OnPropertyChanged(nameof(HasWorkspaceAttention));
     }
+
+    /// <summary>
+    /// Whether anything in any workspace wants attention.
+    ///
+    /// The rail marks the workspace it happened in, but the rail can be turned
+    /// off — and then nothing said so at all. The menu that lists workspaces
+    /// carries the mark instead, so a workspace calling from behind a hidden
+    /// rail is still visible from the chrome.
+    /// </summary>
+    public bool HasWorkspaceAttention =>
+        !ShowWorkspacesPanel && Workspaces.Any(item => item.HasAttention);
 
     /// <summary>
     /// The running instance of a saved workspace, if it is running. The rail
@@ -9578,6 +9591,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ThemeAccent));
         OnPropertyChanged(nameof(ShowTabBar));
         OnPropertyChanged(nameof(ShowWorkspacesPanel));
+        // The mark on the menu stands in for the rail, so turning the rail on
+        // or off decides whether it is needed.
+        OnPropertyChanged(nameof(HasWorkspaceAttention));
         OnPropertyChanged(nameof(IsWorkspacePanelOnLeft));
         OnPropertyChanged(nameof(IsWorkspacePanelOnRight));
         OnPropertyChanged(nameof(WorkspacePanelDock));

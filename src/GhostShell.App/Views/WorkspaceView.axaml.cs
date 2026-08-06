@@ -258,6 +258,12 @@ public sealed partial class WorkspaceView : UserControl
         WorkspacesMenuButton.Flyout?.Hide();
     }
 
+    private void OnWorkspacesMenuCloseClick(object? sender, RoutedEventArgs e)
+    {
+        CloseWorkspaceRequested?.Invoke(sender, e);
+        WorkspacesMenuButton.Flyout?.Hide();
+    }
+
 
     private void OnShowNewPanelClick(object? sender, RoutedEventArgs e) =>
         ShowNewPanelRequested?.Invoke(sender, e);

@@ -26,24 +26,55 @@
             WindowDecorationProperties.ElementRole="User"
             ToolTip.Tip="Workspaces"
             AutomationProperties.Name="Workspaces">
-          <icons:SymbolIcon Symbol="CalendarWeekNumbers" FontSize="15" />
+          <Panel>
+            <icons:SymbolIcon Symbol="CalendarWeekNumbers" FontSize="15" />
+            <controls:SignalDot
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                IsVisible="{Binding HasWorkspaceAttention}" />
+          </Panel>
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="SavedConnectionMenu">
               <StackPanel MinWidth="220" Spacing="{DynamicResource ShellSpaceXs}">
                 <ItemsControl ItemsSource="{Binding Workspaces}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
+                      <Grid ColumnDefinitions="*,Auto">
                       <Button
                           Classes="FlyoutMenuItem"
                           Click="OnWorkspacesMenuOpenClick"
                           HorizontalContentAlignment="Stretch"
                           AutomationProperties.Name="{Binding Name, StringFormat=Open workspace {0}}">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                          <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{Binding Accent, Converter={StaticResource HexColorBrushConverter}}" />
+                          <!-- The same three things the rail tile says: whose
+                               colour it is, whether it is running, and whether
+                               it is calling. -->
+                          <Panel VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="{Binding Accent, Converter={StaticResource HexColorBrushConverter}}" />
+                            <Ellipse
+                                Width="8"
+                                Height="8"
+                                Stroke="{DynamicResource ShellSuccessBrush}"
+                                StrokeThickness="1.5"
+                                IsVisible="{Binding IsOpen}" />
+                          </Panel>
                           <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                          <icons:SymbolIcon Grid.Column="2" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" IsVisible="{Binding IsInFront}" />
+                          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                            <controls:SignalDot VerticalAlignment="Center" IsVisible="{Binding HasAttention}" />
+                            <icons:SymbolIcon VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" IsVisible="{Binding IsInFront}" />
+                          </StackPanel>
                         </Grid>
                       </Button>
+                      <Button
+                          Grid.Column="1"
+                          Classes="IconButton"
+                          Click="OnWorkspacesMenuCloseClick"
+                          IsVisible="{Binding IsOpen}"
+                          ToolTip.Tip="Close workspace"
+                          AutomationProperties.Name="{Binding Name, StringFormat=Close workspace {0}}">
+                        <icons:SymbolIcon Symbol="Dismiss" FontSize="11" />
+                      </Button>
+                      </Grid>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
