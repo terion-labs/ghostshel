@@ -218,6 +218,7 @@
           </ScrollViewer>
         </controls:SurfaceCard>
       </Grid>
+    </Grid>
 
     <!-- What has been open before, beside what can be opened now. The chooser
          is the one answer to "what do I open"; history was the last thing that
@@ -251,7 +252,6 @@
           </ItemsControl>
         </ScrollViewer>
       </controls:SurfaceCard>
-    </Grid>
     </Grid>
   </Grid>
 </UserControl>
