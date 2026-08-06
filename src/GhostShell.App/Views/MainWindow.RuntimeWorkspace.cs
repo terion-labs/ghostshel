@@ -993,17 +993,13 @@ public sealed partial class MainWindow
             () => ViewModel.AddDatabasePanelAsync(_lifetime.Token));
     }
 
-    private async void OnPlaceholderConnectionClick(object? sender, RoutedEventArgs e)
+    private async void OnPlaceholderConnectionLaunchRequested(
+        object? sender,
+        SavedConnectionLaunchViewModel launch)
     {
-        _ = e;
-        if (sender is not Control { DataContext: LauncherConnectionViewModel connection })
-        {
-            return;
-        }
-
         await ChoosePlaceholderAsync(
             sender,
-            () => ViewModel.AddConnectionPanelAsync(connection.Id, _lifetime.Token));
+            () => ViewModel.AddSavedConnectionPanelAsync(launch, _lifetime.Token));
     }
 
     private async void OnCloseRuntimePanelClick(object? sender, RoutedEventArgs e)

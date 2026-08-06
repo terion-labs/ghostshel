@@ -142,29 +142,16 @@
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
             <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Saved connections" />
-            <components:CountPill Value="{Binding Connections.Count}" />
+            <components:CountPill Value="{Binding SavedConnectionShortcutCount}" />
           </StackPanel>
           <Button Grid.Column="1" VerticalAlignment="Center" MinHeight="0" Padding="0" Classes="TextButton" Click="OnAddConnectionClick" Content="Add" />
         </Grid>
         <controls:SurfaceCard Tone="Sunken" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
           <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding Connections}">
+            <ItemsControl ItemsSource="{Binding SavedConnectionShortcuts}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Button
-                      Classes="ListRow ChooserListRow"
-                      Click="OnOpenConnectionClick"
-                      IsEnabled="{Binding CanOpen}"
-                      AutomationProperties.Name="{Binding Name, StringFormat=Open saved connection {0} in a tab}">
-                    <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                      <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
-                      <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding Kind}" />
-                    </Grid>
-                  </Button>
+                  <components:SavedConnectionShortcutView LaunchRequested="OnConnectionLaunchRequested" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>

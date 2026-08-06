@@ -168,7 +168,6 @@
       <Thickness x:Key="ShellRowPadding">16,12</Thickness>
       <Thickness x:Key="ShellPillPadding">8,4</Thickness>
       <Thickness x:Key="ShellTabStripTopClearance">0,1,0,0</Thickness>
-      <Thickness x:Key="ShellSavedConnectionStripPadding">0,2,0,1</Thickness>
       <Thickness x:Key="ShellToolbarSeparatorMargin">0,7</Thickness>
       <BoxShadows x:Key="ShellOverlayShadow">0 18 54 0 #A0000000</BoxShadows>
       <BoxShadows x:Key="ShellFocusRingShadow">0 0 0 3 #59FF8400</BoxShadows>

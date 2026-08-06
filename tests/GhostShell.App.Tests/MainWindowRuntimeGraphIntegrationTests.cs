@@ -1590,7 +1590,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 && target.Id == s3Id);
         Assert.Equal(PanelKind.FileViewer, s3Shortcut.DefaultLaunch.Panel);
         Assert.Empty(s3Shortcut.AlternativeLaunches);
-        Assert.True(s3Shortcut.IsSingleAction);
+        Assert.False(s3Shortcut.HasAlternatives);
         Assert.True(s3Shortcut.CanOpen);
     }
 
@@ -1626,6 +1626,49 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             workspace.ActiveTab!.ActivePanel);
         Assert.Equal(PanelKind.FileViewer, panel.Kind);
         Assert.Equal(connection.Name, panel.ConnectionDisplayName);
+    }
+
+    /// <summary>
+    /// The same row means two things depending on where it was clicked. From a
+    /// cell the user has already placed, choosing an adapter has to fill that
+    /// cell — opening a tab instead left the cell empty and put the panel
+    /// somewhere the user was not looking.
+    /// </summary>
+    [Fact]
+    public async Task Saved_connection_file_action_fills_a_placed_cell_rather_than_a_tab()
+    {
+        var files = new EmptyFileClients(
+        [
+            FileProfile(
+                BuiltInFileProviders.HomeId,
+                "Local",
+                FileProviderFamily.Posix,
+                "local"),
+        ]);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            filePanelClient: files,
+            fileTransferQueueClient: files);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var tabCount = workspace.Tabs.Count;
+        var tab = workspace.ActiveTab!;
+        var panelCount = tab.Panels.Count;
+        var launch = Assert.Single(
+            Assert.Single(viewModel.SavedConnectionShortcuts).AlternativeLaunches,
+            candidate => candidate.Panel == PanelKind.FileViewer);
+
+        Assert.True(await viewModel.AddSavedConnectionPanelAsync(launch));
+
+        Assert.Equal(tabCount, workspace.Tabs.Count);
+        Assert.Same(tab, workspace.ActiveTab);
+        Assert.Equal(panelCount + 1, tab.Panels.Count);
+        Assert.Equal(
+            PanelKind.FileViewer,
+            Assert.IsType<FileRuntimePanelViewModel>(tab.ActivePanel).Kind);
     }
 
     [Fact]

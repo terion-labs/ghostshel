@@ -205,8 +205,8 @@ public sealed class RuntimePanelViewContractTests
             "{Binding $parent[Window].DataContext}",
             AttributeValue(chooser, "DataContext"));
         Assert.Equal(
-            "OnOpenConnectionClick",
-            AttributeValue(chooser, "OpenConnectionRequested"));
+            "OnConnectionLaunchRequested",
+            AttributeValue(chooser, "ConnectionLaunchRequested"));
         Assert.Equal(
             "OnOpenScreenClick",
             AttributeValue(chooser, "OpenScreenRequested"));

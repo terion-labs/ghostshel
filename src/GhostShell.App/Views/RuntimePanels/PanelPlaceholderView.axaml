@@ -46,7 +46,7 @@
             NewLocalTerminalRequested="OnChooseTerminalClick"
             NewProcessMonitorRequested="OnChooseProcessMonitorClick"
             NewStatisticsRequested="OnChooseStatisticsClick"
-            OpenConnectionRequested="OnOpenConnectionClick"
+            ConnectionLaunchRequested="OnConnectionLaunchRequested"
             OpenScreenRequested="OnOpenScreenClick"
             ShowCommandPaletteRequested="OnShowCommandPaletteClick"
             ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />

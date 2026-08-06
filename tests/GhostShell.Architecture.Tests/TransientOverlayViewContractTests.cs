@@ -57,7 +57,7 @@ public sealed class TransientOverlayViewContractTests
                 ["NewLocalTerminalRequested"] = "OnNewLocalTerminalClick",
                 ["NewProcessMonitorRequested"] = "OnNewProcessMonitorClick",
                 ["NewStatisticsRequested"] = "OnNewStatisticsClick",
-                ["OpenConnectionRequested"] = "OnOpenConnectionClick",
+                ["ConnectionLaunchRequested"] = "OnSavedConnectionLaunchRequested",
                 ["OpenScreenRequested"] = "OnOpenScreenClick",
                 ["OpenWorkspaceRequested"] = "OnOpenWorkspaceClick",
                 ["ShowCommandPaletteRequested"] = "OnShowCommandPaletteClick",
@@ -334,7 +334,10 @@ public sealed class TransientOverlayViewContractTests
         foreach (var catalogBinding in new[]
                  {
                      "{Binding Workspaces}",
-                     "{Binding Connections}",
+                     // Saved targets, not saved connection cards: one row per
+                     // target carrying every adapter it supports, rather than
+                     // one row per (target, adapter) pair.
+                     "{Binding SavedConnectionShortcuts}",
                      "{Binding Screens}",
                      // What has been open before belongs to the same catalog:
                      // the chooser is the one answer to what to open, and
@@ -355,8 +358,11 @@ public sealed class TransientOverlayViewContractTests
             4,
             catalogRoot.Descendants()
                 .Count(element => element.Name.LocalName == "CountPill"));
+        // Screens and recent sessions. The saved-connection row is the same
+        // list row, but it lives in its own component because it also carries
+        // the other adapters its target supports.
         Assert.Equal(
-            3,
+            2,
             catalogRoot.Descendants()
                 .Count(element => element.Name.LocalName == "Button"
                     && HasClasses(element, "ListRow", "ChooserListRow")));
@@ -710,8 +716,13 @@ public sealed class TransientOverlayViewContractTests
         foreach (var interaction in interactions)
         {
             Assert.Contains($" {interaction};", codeBehind);
+
+            // The payload is named, not spelled: most overlays forward the
+            // routed args as `e`, and the ones carrying a typed choice forward
+            // that choice under its own name. What matters either way is that
+            // the original sender and payload go on untouched.
             Assert.Contains(
-                $"{interaction}?.Invoke(sender, e);",
+                $"{interaction}?.Invoke(sender, ",
                 codeBehind);
         }
 

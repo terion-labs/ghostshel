@@ -100,7 +100,7 @@ public sealed class WorkspaceViewContractTests
         var surface = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "Grid");
-        Assert.Equal("Auto,34,*,Auto,26", AttributeValue(surface, "RowDefinitions"));
+        Assert.Equal("Auto,*,Auto,26", AttributeValue(surface, "RowDefinitions"));
 
         foreach (var extractedName in WorkspaceControlNames)
         {
@@ -304,7 +304,7 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "IsVisible"),
                     "False",
                     StringComparison.Ordinal));
-        Assert.Equal("2", AttributeValue(transferManager, "Grid.Row"));
+        Assert.Equal("1", AttributeValue(transferManager, "Grid.Row"));
         Assert.Equal(
             "Cycle",
             AttributeValue(

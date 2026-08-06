@@ -89,9 +89,6 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? RetryFileTransferRequested;
 
-    public event EventHandler<SavedConnectionLaunchViewModel>?
-        SavedConnectionLaunchRequested;
-
     public event EventHandler<DragEventArgs>? RuntimeTabDragEnterRequested;
 
     public event EventHandler<DragEventArgs>? RuntimeTabDragLeaveRequested;
@@ -194,11 +191,6 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnRetryFileTransferClick(object? sender, RoutedEventArgs e) =>
         RetryFileTransferRequested?.Invoke(sender, e);
-
-    private void OnSavedConnectionLaunchRequested(
-        object? sender,
-        SavedConnectionLaunchViewModel launch) =>
-        SavedConnectionLaunchRequested?.Invoke(sender, launch);
 
     private void OnRuntimeTabDragEnter(object? sender, DragEventArgs e) =>
         RuntimeTabDragEnterRequested?.Invoke(sender, e);

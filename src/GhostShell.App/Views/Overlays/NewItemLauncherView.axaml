@@ -28,7 +28,7 @@
         NewLocalTerminalRequested="OnNewLocalTerminalClick"
         NewProcessMonitorRequested="OnNewProcessMonitorClick"
         NewStatisticsRequested="OnNewStatisticsClick"
-        OpenConnectionRequested="OnOpenConnectionClick"
+        ConnectionLaunchRequested="OnConnectionLaunchRequested"
         OpenRecentSessionRequested="OnOpenRecentSessionClick"
         OpenScreenRequested="OnOpenScreenClick"
         OpenWorkspaceRequested="OnOpenWorkspaceClick"

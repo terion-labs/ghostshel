@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views.RuntimePanels;
 
@@ -29,7 +30,7 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     public event EventHandler<RoutedEventArgs>? AddConnectionRequested;
 
-    public event EventHandler<RoutedEventArgs>? OpenConnectionRequested;
+    public event EventHandler<SavedConnectionLaunchViewModel>? ConnectionLaunchRequested;
 
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
 
@@ -63,8 +64,10 @@ public sealed partial class PanelPlaceholderView : UserControl
     private void OnAddConnectionClick(object? sender, RoutedEventArgs e) =>
         AddConnectionRequested?.Invoke(sender, e);
 
-    private void OnOpenConnectionClick(object? sender, RoutedEventArgs e) =>
-        OpenConnectionRequested?.Invoke(sender, e);
+    private void OnConnectionLaunchRequested(
+        object? sender,
+        SavedConnectionLaunchViewModel launch) =>
+        ConnectionLaunchRequested?.Invoke(sender, launch);
 
     private void OnOpenScreenClick(object? sender, RoutedEventArgs e) =>
         OpenScreenRequested?.Invoke(sender, e);

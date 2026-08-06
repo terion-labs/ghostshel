@@ -391,6 +391,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<SavedConnectionShortcutViewModel> SavedConnectionShortcuts =>
         BuildSavedConnectionShortcuts();
 
+    /// <summary>
+    /// Counted here rather than as <c>SavedConnectionShortcuts.Count</c> in the
+    /// view: the list is an array behind an interface, whose runtime type has
+    /// no public Count for a binding to reflect over, so the pill would render
+    /// empty and say nothing about it.
+    /// </summary>
+    public int SavedConnectionShortcutCount => SavedConnectionShortcuts.Count;
+
     public IEnumerable<PanelConnectionOptionViewModel> PanelConnectionOptions =>
         Connections.Select(connection => new PanelConnectionOptionViewModel(
             new PanelConnectionOptionViewModel.Target.Connection(connection.Id),
@@ -4837,6 +4845,156 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 _ = tab.ActivatePanel(panel.Id);
                 StartTrackingRecovery(panel);
                 TrackRecentSession(panel);
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Opens a saved target as a panel in the active tab, with the adapter the
+    /// chooser asked for.
+    ///
+    /// The tab-level counterpart is <see cref="AddSavedConnectionTabAsync"/>.
+    /// Both exist because the same row means two things depending on where it
+    /// was clicked: from a placed cell it fills that cell, and from the tab
+    /// launcher it opens a tab.
+    /// </summary>
+    public Task<bool> AddSavedConnectionPanelAsync(
+        SavedConnectionLaunchViewModel launch,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(launch);
+        return launch.Target switch
+        {
+            PanelConnectionOptionViewModel.Target.Connection connection =>
+                AddConnectionPanelAsync(connection.Id, launch.Panel, cancellationToken),
+            PanelConnectionOptionViewModel.Target.FileProvider fileProvider =>
+                AddFileProviderPanelAsync(fileProvider.Id, launch.Panel, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(launch),
+                launch.Target.GetType(),
+                "The saved connection target is unsupported."),
+        };
+    }
+
+    private async Task<bool> AddConnectionPanelAsync(
+        ConnectionId id,
+        PanelKind kind,
+        CancellationToken cancellationToken)
+    {
+        if (kind == PanelKind.Terminal)
+        {
+            return await AddConnectionPanelAsync(id, cancellationToken);
+        }
+
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        var connection = FindConnection(id);
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace before adding a panel.");
+            return false;
+        }
+
+        if (connection is null)
+        {
+            SetError("That connection no longer exists.");
+            return false;
+        }
+
+        if (!connection.Endpoint.PanelLaunchCapabilities.Supports(kind))
+        {
+            SetError($"{connection.Name} cannot open {PanelTitle(kind)}.");
+            return false;
+        }
+
+        var title = PanelTitle(kind);
+        var panel = kind switch
+        {
+            PanelKind.FileViewer => CreateFilePanel(
+                workspace.Id,
+                tab.Id,
+                PanelInstanceId.New(),
+                title,
+                connection.Endpoint is ConnectionEndpoint.Ssh
+                    ? ConnectionFileProviderProfiles.Id(connection.Id)
+                    : BuiltInFileProviders.HomeId,
+                deferInitialization: true,
+                connection: connection),
+            PanelKind.Statistics or PanelKind.ProcessMonitor => CreateMonitorPanel(
+                workspace.Id,
+                tab.Id,
+                PanelInstanceId.New(),
+                title,
+                kind,
+                connection),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            panel,
+            $"{title} panel creation",
+            () =>
+            {
+                tab.AddPanel(panel);
+                StartTrackingRecovery(panel);
+                TrackRecentSession(panel);
+                _ = tab.ActivatePanel(panel.Id);
+            },
+            cancellationToken);
+    }
+
+    private async Task<bool> AddFileProviderPanelAsync(
+        FileProviderProfileId profileId,
+        PanelKind kind,
+        CancellationToken cancellationToken)
+    {
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace before adding a panel.");
+            return false;
+        }
+
+        var storedProfile = _catalog.Snapshot.FileProviderProfiles
+            .SingleOrDefault(item => item.Value.Id == profileId);
+        if (storedProfile is null)
+        {
+            SetError("That file connection no longer exists.");
+            return false;
+        }
+
+        if (!storedProfile.Value.Configuration.PanelLaunchCapabilities.Supports(kind))
+        {
+            SetError($"{storedProfile.Value.Name} cannot open {PanelTitle(kind)}.");
+            return false;
+        }
+
+        if (_filePanelClient.Profiles.All(profile => profile.Id != profileId.Value))
+        {
+            SetError("That file connection is not ready yet.");
+            return false;
+        }
+
+        var panel = CreateFilePanel(
+            workspace.Id,
+            tab.Id,
+            PanelInstanceId.New(),
+            PanelTitle(PanelKind.FileViewer),
+            profileId,
+            deferInitialization: true);
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            panel,
+            "File Viewer creation",
+            () =>
+            {
+                tab.AddPanel(panel);
+                StartTrackingRecovery(panel);
+                TrackRecentSession(panel);
+                _ = tab.ActivatePanel(panel.Id);
             },
             cancellationToken);
     }
@@ -9296,6 +9454,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FileProviderProfiles));
         OnPropertyChanged(nameof(FileConnectionOptions));
         OnPropertyChanged(nameof(SavedConnectionShortcuts));
+        OnPropertyChanged(nameof(SavedConnectionShortcutCount));
     }
 
     private IReadOnlyList<SavedConnectionShortcutViewModel> BuildSavedConnectionShortcuts()
@@ -9310,6 +9469,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     new PanelConnectionOptionViewModel.Target.Connection(item.Value.Id),
                     item.Value.Name,
                     KindBadges.Connection(item.Value.ConnectionKind),
+                    launchItem?.Detail ?? string.Empty,
                     launchItem is { CanOpen: true },
                     item.Value.Endpoint.PanelLaunchCapabilities);
             })
@@ -9324,6 +9484,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 new PanelConnectionOptionViewModel.Target.FileProvider(item.Value.Id),
                 item.Value.Name,
                 FileProviderKindLabel(item.Value.ProviderKind),
+                FileProviderEndpoint(item.Value.Configuration),
                 liveFileProfiles.Contains(item.Value.Id.Value),
                 item.Value.Configuration.PanelLaunchCapabilities)));
         return shortcuts
@@ -9336,6 +9497,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelConnectionOptionViewModel.Target target,
         string name,
         string kind,
+        string detail,
         bool canOpen,
         PanelLaunchCapabilities capabilities)
     {
@@ -9352,6 +9514,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             target,
             name,
             kind,
+            detail,
             canOpen,
             defaultLaunch,
             launches.Where(launch => launch != defaultLaunch).ToArray());

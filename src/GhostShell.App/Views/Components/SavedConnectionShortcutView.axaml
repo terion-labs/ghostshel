@@ -4,72 +4,59 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
-    ClipToBounds="False"
-    HorizontalContentAlignment="Left"
+    HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Center">
-  <Grid ClipToBounds="False">
-    <Border
-        Height="26"
-        Classes="SavedConnectionShortcutSurface"
+  <!--
+    One saved target, one row. The row opens it the usual way; the chevron
+    appears only where the target supports more than one adapter, and offers
+    the rest. Listing a host once per adapter instead said the same thing four
+    times and buried the ordinary case.
+  -->
+  <Grid ColumnDefinitions="*,Auto">
+    <Button
+        Classes="ListRow ChooserListRow"
+        Click="OnPrimaryClick"
+        HorizontalContentAlignment="Stretch"
         IsEnabled="{Binding CanOpen}"
-        IsVisible="{Binding IsSingleAction}">
-      <Button
-          Classes="SavedConnectionShortcutPrimary"
-          Click="OnPrimaryClick"
-          ToolTip.Tip="{Binding DefaultLaunch.Label}"
-          AutomationProperties.Name="{Binding Name}">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-          <Ellipse Width="6" Height="6" VerticalAlignment="Center" Fill="{DynamicResource ShellSuccessBrush}" />
-          <TextBlock Text="{Binding Name}" />
+        ToolTip.Tip="{Binding DefaultLaunch.Label}"
+        AutomationProperties.Name="{Binding Name}">
+      <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding CanOpen}" />
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock FontSize="{DynamicResource ShellFontSize13}" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-      </Button>
-    </Border>
-
-    <Border
-        Height="26"
-        Classes="SavedConnectionShortcutSurface"
-        IsEnabled="{Binding CanOpen}"
-        IsVisible="{Binding HasAlternatives}">
-      <Grid ColumnDefinitions="*,1,31">
-        <Button
-            Classes="SavedConnectionShortcutPrimary"
-            Click="OnPrimaryClick"
-            ToolTip.Tip="{Binding DefaultLaunch.Label}"
-            AutomationProperties.Name="{Binding Name}">
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-            <Ellipse Width="6" Height="6" VerticalAlignment="Center" Fill="{DynamicResource ShellSuccessBrush}" />
-            <TextBlock Text="{Binding Name}" />
-          </StackPanel>
-        </Button>
-        <Border Grid.Column="1" Background="{DynamicResource ShellBorderBrush}" />
-        <Button
-            x:Name="ShortcutMenuButton"
-            Grid.Column="2"
-            Classes="SavedConnectionShortcutMenu"
-            ToolTip.Tip="Open with"
-            AutomationProperties.Name="{Binding Name, StringFormat={}More ways to open {0}}">
-          <icons:SymbolIcon Symbol="ChevronDown" FontSize="12" />
-          <Button.Flyout>
-            <Flyout Placement="Bottom" FlyoutPresenterClasses="SavedConnectionMenu">
-              <ItemsControl ItemsSource="{Binding AlternativeLaunches}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Button
-                        Classes="FlyoutMenuItem"
-                        Click="OnAlternativeClick"
-                        AutomationProperties.Name="{Binding Label}">
-                      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                        <icons:SymbolIcon VerticalAlignment="Center" Symbol="{Binding Icon}" FontSize="14" />
-                        <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
-                      </StackPanel>
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </Flyout>
-          </Button.Flyout>
-        </Button>
+        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" Content="{Binding Kind}" />
       </Grid>
-    </Border>
+    </Button>
+    <Button
+        x:Name="ShortcutMenuButton"
+        Grid.Column="1"
+        Classes="IconButton"
+        IsEnabled="{Binding CanOpen}"
+        IsVisible="{Binding HasAlternatives}"
+        ToolTip.Tip="Open with"
+        AutomationProperties.Name="{Binding Name, StringFormat={}More ways to open {0}}">
+      <icons:SymbolIcon Symbol="ChevronDown" FontSize="12" />
+      <Button.Flyout>
+        <Flyout Placement="Bottom" FlyoutPresenterClasses="SavedConnectionMenu">
+          <ItemsControl ItemsSource="{Binding AlternativeLaunches}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button
+                    Classes="FlyoutMenuItem"
+                    Click="OnAlternativeClick"
+                    AutomationProperties.Name="{Binding Label}">
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                    <icons:SymbolIcon VerticalAlignment="Center" Symbol="{Binding Icon}" FontSize="14" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
+                  </StackPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Flyout>
+      </Button.Flyout>
+    </Button>
   </Grid>
 </UserControl>

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views.Overlays;
 
@@ -25,7 +26,7 @@ public sealed partial class NewItemLauncherView : UserControl
 
     public event EventHandler<RoutedEventArgs>? NewStatisticsRequested;
 
-    public event EventHandler<RoutedEventArgs>? OpenConnectionRequested;
+    public event EventHandler<SavedConnectionLaunchViewModel>? ConnectionLaunchRequested;
 
     public event EventHandler<RoutedEventArgs>? OpenRecentSessionRequested;
 
@@ -66,8 +67,10 @@ public sealed partial class NewItemLauncherView : UserControl
     private void OnOpenRecentSessionClick(object? sender, RoutedEventArgs e) =>
         OpenRecentSessionRequested?.Invoke(sender, e);
 
-    private void OnOpenConnectionClick(object? sender, RoutedEventArgs e) =>
-        OpenConnectionRequested?.Invoke(sender, e);
+    private void OnConnectionLaunchRequested(
+        object? sender,
+        SavedConnectionLaunchViewModel launch) =>
+        ConnectionLaunchRequested?.Invoke(sender, launch);
 
     private void OnOpenScreenClick(object? sender, RoutedEventArgs e) =>
         OpenScreenRequested?.Invoke(sender, e);

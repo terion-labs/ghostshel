@@ -225,26 +225,33 @@ public sealed class LauncherViewContractTests
             element => element.Name.LocalName == "TextBlock");
     }
 
+    /// <summary>
+    /// A saved target is one row, whichever way it can be opened. Listing it
+    /// once per supported adapter said the same host four times and buried the
+    /// ordinary case; the chevron carries the rest, and appears only where
+    /// there are any.
+    /// </summary>
     [Fact]
-    public void Saved_connection_shortcuts_use_one_rounded_menu_surface()
+    public void A_saved_connection_is_one_row_with_its_other_adapters_behind_a_chevron()
     {
         var shortcut = LoadComponent("SavedConnectionShortcutView");
         var root = Assert.IsType<XElement>(shortcut.Root);
-        Assert.Equal("False", AttributeValue(root, "ClipToBounds"));
-        Assert.Equal(
-            "False",
-            AttributeValue(Assert.Single(root.Elements()), "ClipToBounds"));
         Assert.DoesNotContain(
             root.Descendants(),
             element => element.Name.LocalName == "SplitButton");
-        Assert.Equal(
-            2,
-            root.Descendants().Count(element =>
-                element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "Classes"),
-                    "SavedConnectionShortcutSurface",
-                    StringComparison.Ordinal)));
+
+        var buttons = root.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToArray();
+        var row = Assert.Single(
+            buttons,
+            element => AttributeValue(element, "Classes") == "ListRow ChooserListRow");
+        Assert.Equal("OnPrimaryClick", AttributeValue(row, "Click"));
+
+        var chevron = Assert.Single(
+            buttons,
+            element => AttributeValue(element, "Name") == "ShortcutMenuButton");
+        Assert.Equal("{Binding HasAlternatives}", AttributeValue(chevron, "IsVisible"));
 
         var flyout = Assert.Single(
             root.Descendants(),
@@ -260,21 +267,24 @@ public sealed class LauncherViewContractTests
             element => Assert.Equal(
                 "FlyoutMenuItem",
                 AttributeValue(element, "Classes")));
+    }
 
-        var workspace = LoadView("WorkspaceView");
-        var viewport = FindNamedElement(
-            Assert.IsType<XElement>(workspace.Root),
-            "SavedConnectionStripViewport");
-        Assert.Equal("False", AttributeValue(viewport, "ClipToBounds"));
-        Assert.Equal(
-            "{DynamicResource ShellSavedConnectionStripPadding}",
-            AttributeValue(viewport, "Padding"));
-        Assert.Equal(
-            "False",
-            AttributeValue(Assert.Single(
-                viewport.Elements(),
-                element => element.Name.LocalName == "ItemsControl"),
-                "ClipToBounds"));
+    /// <summary>
+    /// The chooser is the one place a saved connection is opened from. A second
+    /// strip above the workspace offered the same targets in a second shape,
+    /// and every capability had to be taught to both.
+    /// </summary>
+    [Fact]
+    public void The_chooser_is_the_only_place_saved_connections_are_launched_from()
+    {
+        var chooser = LoadComponent("NewItemChooserView");
+        Assert.Single(
+            Assert.IsType<XElement>(chooser.Root).Descendants(),
+            element => element.Name.LocalName == "SavedConnectionShortcutView");
+
+        Assert.DoesNotContain(
+            Assert.IsType<XElement>(LoadView("WorkspaceView").Root).Descendants(),
+            element => element.Name.LocalName == "SavedConnectionShortcutView");
     }
 
     [Fact]
@@ -286,25 +296,6 @@ public sealed class LauncherViewContractTests
             "GhostShell.App",
             "Styles",
             "GhostShellTheme.axaml"));
-
-        var shortcutStyle = Assert.Single(
-            theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
-                    AttributeValue(element, "Selector"),
-                    "Border.SavedConnectionShortcutSurface",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            shortcutStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && string.Equals(
-                    AttributeValue(element, "Property"),
-                    "ClipToBounds",
-                    StringComparison.Ordinal)
-                && string.Equals(
-                    AttributeValue(element, "Value"),
-                    "True",
-                    StringComparison.Ordinal));
 
         foreach (var selector in new[]
                  {

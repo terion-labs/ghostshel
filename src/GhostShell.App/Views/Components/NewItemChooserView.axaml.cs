@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views.Components;
 
@@ -39,7 +40,13 @@ public sealed partial class NewItemChooserView : UserControl
     public event EventHandler<RoutedEventArgs>? NewLocalTerminalRequested;
     public event EventHandler<RoutedEventArgs>? NewProcessMonitorRequested;
     public event EventHandler<RoutedEventArgs>? NewStatisticsRequested;
-    public event EventHandler<RoutedEventArgs>? OpenConnectionRequested;
+
+    /// <summary>
+    /// A saved connection, together with which adapter to open it with. The
+    /// target alone is not enough: the same host opens as a terminal, a file
+    /// browser or a monitor, and the row says which was asked for.
+    /// </summary>
+    public event EventHandler<SavedConnectionLaunchViewModel>? ConnectionLaunchRequested;
 
     public event EventHandler<RoutedEventArgs>? OpenRecentSessionRequested;
     public event EventHandler<RoutedEventArgs>? OpenScreenRequested;
@@ -74,8 +81,10 @@ public sealed partial class NewItemChooserView : UserControl
     private void OnNewStatisticsClick(object? sender, RoutedEventArgs e) =>
         NewStatisticsRequested?.Invoke(sender, e);
 
-    private void OnOpenConnectionClick(object? sender, RoutedEventArgs e) =>
-        OpenConnectionRequested?.Invoke(sender, e);
+    private void OnConnectionLaunchRequested(
+        object? sender,
+        SavedConnectionLaunchViewModel launch) =>
+        ConnectionLaunchRequested?.Invoke(sender, launch);
 
     private void OnOpenRecentSessionClick(object? sender, RoutedEventArgs e) =>
         OpenRecentSessionRequested?.Invoke(sender, e);
