@@ -383,11 +383,6 @@ public sealed partial class MainWindow : Window
         ?? throw new InvalidOperationException(
             "The layout designer overlay view is unavailable.");
 
-    private NewItemLauncherView NewItemLauncherOverlay =>
-        this.FindControl<NewItemLauncherView>("NewItemLauncherOverlayView")
-        ?? throw new InvalidOperationException(
-            "The new item launcher overlay view is unavailable.");
-
     private NewPanelChooserView NewPanelChooserOverlay =>
         this.FindControl<NewPanelChooserView>("NewPanelChooserOverlayView")
         ?? throw new InvalidOperationException(
@@ -445,20 +440,32 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    public void ShowNewItemLauncher()
+    /// <summary>
+    /// Opens a tab that asks what to open.
+    ///
+    /// This was a modal over the whole window. A tab is the same question asked
+    /// where the answer will land: it can be left open while something else is
+    /// looked at, and it closes like any other tab rather than needing to be
+    /// dismissed before the shell can be used again.
+    /// </summary>
+    public async Task ShowNewItemLauncherAsync()
     {
-        ViewModel.ShowOverlay(ShellOverlay.NewItem);
-        FocusNewTerminalButton();
-        Avalonia.Threading.DispatcherTimer.RunOnce(
-            FocusNewTerminalButton,
-            TimeSpan.FromMilliseconds(100));
-    }
-
-    private void FocusNewTerminalButton()
-    {
-        if (ViewModel.IsNewItemVisible)
+        if (ViewModel.HasOverlay && !await TryCloseOverlayAsync())
         {
-            NewItemLauncherOverlay.FocusInitialAction();
+            return;
+        }
+
+        if (!ViewModel.HasRuntimeWorkspace
+            && ViewModel.Workspaces.FirstOrDefault() is { } workspace)
+        {
+            await OpenRuntimeWorkspaceAsync(token =>
+                ViewModel.OpenWorkspaceAsync(workspace.Id, token));
+        }
+
+        ViewModel.ShowWorkspace();
+        if (await ViewModel.AddLauncherTabAsync(_lifetime.Token))
+        {
+            FocusActivePanel();
         }
     }
 
@@ -774,11 +781,17 @@ public sealed partial class MainWindow : Window
         ShowCommandPalette();
     }
 
-    private void OnShowNewItemClick(object? sender, RoutedEventArgs e)
+    private async void OnShowNewItemClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        ShowNewItemLauncher();
+        try
+        {
+            await ShowNewItemLauncherAsync();
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
     }
 
     private async void OnShowNewPanelClick(object? sender, RoutedEventArgs e)

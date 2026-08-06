@@ -103,8 +103,7 @@
     <Grid
         Grid.Row="2"
         ColumnDefinitions="Auto,*"
-        ColumnSpacing="{DynamicResource ShellSpaceMd}"
-        IsVisible="{Binding ShowWorkspaces, ElementName=Root}">
+        ColumnSpacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
         <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Workspaces" />
         <components:CountPill Value="{Binding Workspaces.Count}" />

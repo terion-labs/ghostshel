@@ -302,7 +302,7 @@ public sealed partial class MainWindow
         if (connection is null)
         {
             ViewModel.SetError("Create an available connection before opening a terminal.");
-            ShowNewItemLauncher();
+            await ShowNewItemLauncherAsync();
             return;
         }
 
@@ -882,29 +882,46 @@ public sealed partial class MainWindow
     /// Places an empty panel against an edge of the canvas. It asks what to open
     /// once it is there, so the choice happens in the space the panel will fill.
     /// </summary>
-    private void OnAddPanelToSideRequested(object? sender, PanelSide side)
+    private async void OnAddPanelToSideRequested(object? sender, PanelSide side)
     {
         _ = sender;
-        if (ViewModel.RuntimeWorkspace?.ActiveTab is { } tab)
+        try
         {
-            _ = tab.AddPlaceholder(side);
-            FocusActivePanel();
+            if (await ViewModel.AddPlaceholderPanelAsync(side, _lifetime.Token))
+            {
+                FocusActivePanel();
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
         }
     }
 
     /// <summary>
     /// Splits a panel, leaving an empty one beside it for the user to fill.
     /// </summary>
-    private void OnSplitRuntimePanelRequested(object? sender, PanelSplitOrientation orientation)
+    private async void OnSplitRuntimePanelRequested(
+        object? sender,
+        PanelSplitOrientation orientation)
     {
-        if (sender is not Control { DataContext: RuntimePanelViewModel panel }
-            || ViewModel.RuntimeWorkspace?.ActiveTab is not { } tab)
+        if (sender is not Control { DataContext: RuntimePanelViewModel panel })
         {
             return;
         }
 
-        _ = tab.SplitWithPlaceholder(panel.Id, orientation);
-        FocusActivePanel();
+        try
+        {
+            if (await ViewModel.SplitPanelWithPlaceholderAsync(
+                panel.Id,
+                orientation,
+                _lifetime.Token))
+            {
+                FocusActivePanel();
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
     }
 
     /// <summary>

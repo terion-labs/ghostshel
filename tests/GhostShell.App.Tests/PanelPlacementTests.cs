@@ -252,23 +252,22 @@ public sealed class PanelPlacementTests
     }
 
     /// <summary>
-    /// Selecting a placeholder must not change what the host is told is active.
-    /// Reporting the placeholder's selection made a no-op activation of the panel
-    /// the host already held compare against the wrong id and come back as an
-    /// invalid receipt.
+    /// A placed cell is a panel, and selecting it selects it — on both sides. It
+    /// was once withheld from the host, which meant the two had to agree on when
+    /// they were allowed to disagree; selection then snapped back to the cell
+    /// after the user had clicked past it.
     /// </summary>
     [Fact]
-    public void Selecting_a_placeholder_leaves_the_hosts_active_panel_alone()
+    public void A_placed_cell_becomes_the_active_panel()
     {
         var tab = Tab();
         var panel = tab.Panels[0];
         Assert.True(tab.ActivatePanel(panel.Id));
-        Assert.Equal(panel.Id, tab.HostActivePanelId);
 
         var placeholder = tab.AddPlaceholder(PanelSide.Right);
 
         Assert.Same(placeholder, tab.ActivePanel);
-        Assert.Equal(panel.Id, tab.HostActivePanelId);
+        Assert.Equal(placeholder.Id, tab.ActivePanelId);
     }
 
     [Fact]
@@ -304,22 +303,33 @@ public sealed class PanelPlacementTests
     /// activation came back reading as an invalid receipt.
     /// </summary>
     [Fact]
-    public void A_host_projection_that_omits_a_placeholder_still_validates()
+    public void A_host_projection_carries_the_placed_cell()
     {
         var tab = Tab();
         var placeholder = tab.AddPlaceholder(PanelSide.Right);
         Assert.Same(placeholder, tab.ActivePanel);
 
+        // The cell is a panel the host holds, so a projection that leaves it out
+        // describes a different tab and must be refused rather than absorbed.
+        Assert.Throws<InvalidOperationException>(() => tab.ValidateHostProjection(
+            new TabInstance(
+                new TabInstanceId("tab"),
+                "Tab",
+                [new PanelInstance(new PanelInstanceId("panel-0"), PanelKind.Terminal, "Panel 0")],
+                new PanelInstanceId("panel-0"))));
+
         var projection = new TabInstance(
             new TabInstanceId("tab"),
             "Tab",
-            [new PanelInstance(new PanelInstanceId("panel-0"), PanelKind.Terminal, "Panel 0")],
-            new PanelInstanceId("panel-0"));
+            [
+                new PanelInstance(new PanelInstanceId("panel-0"), PanelKind.Terminal, "Panel 0"),
+                new PanelInstance(placeholder.Id, PanelKind.Placeholder, placeholder.Title),
+            ],
+            placeholder.Id);
 
         tab.ValidateHostProjection(projection);
         tab.ApplyHostProjection(projection);
 
-        // The user is still answering the placeholder, so the selection stays put.
         Assert.Same(placeholder, tab.ActivePanel);
     }
 

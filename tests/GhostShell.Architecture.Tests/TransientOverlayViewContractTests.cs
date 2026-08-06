@@ -46,26 +46,8 @@ public sealed class TransientOverlayViewContractTests
                 ["ShowLayoutDesignerRequested"] = "OnShowLayoutDesignerClick",
             };
 
-    private static readonly IReadOnlyDictionary<string, string>
-        NewItemLauncherInteractions =
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["AddConnectionRequested"] = "OnAddConnectionClick",
-                ["CloseRequested"] = "OnCloseOverlayClick",
-                ["NewBrowserRequested"] = "OnNewBrowserClick",
-                ["NewFileViewerRequested"] = "OnNewFileViewerClick",
-                ["NewLocalTerminalRequested"] = "OnNewLocalTerminalClick",
-                ["NewProcessMonitorRequested"] = "OnNewProcessMonitorClick",
-                ["NewStatisticsRequested"] = "OnNewStatisticsClick",
-                ["ConnectionLaunchRequested"] = "OnSavedConnectionLaunchRequested",
-                ["OpenScreenRequested"] = "OnOpenScreenClick",
-                ["OpenWorkspaceRequested"] = "OnOpenWorkspaceClick",
-                ["ShowCommandPaletteRequested"] = "OnShowCommandPaletteClick",
-                ["ShowLayoutDesignerRequested"] = "OnShowLayoutDesignerClick",
-            };
-
     [Fact]
-    public void Main_window_delegates_four_transient_overlays_to_named_views()
+    public void Main_window_delegates_three_transient_overlays_to_named_views()
     {
         var mainWindow = LoadView("MainWindow");
         AssertDelegatedOverlay(
@@ -80,12 +62,6 @@ public sealed class TransientOverlayViewContractTests
             "LayoutDesignerOverlayView",
             "{Binding IsLayoutDesignerVisible}",
             LayoutDesignerInteractions);
-        AssertDelegatedOverlay(
-            mainWindow,
-            "NewItemLauncherView",
-            "NewItemLauncherOverlayView",
-            "{Binding IsNewItemVisible}",
-            NewItemLauncherInteractions);
         AssertDelegatedOverlay(
             mainWindow,
             "NewPanelChooserView",
@@ -273,24 +249,17 @@ public sealed class TransientOverlayViewContractTests
     }
 
     [Fact]
-    public void New_item_launcher_preserves_geometry_catalogs_and_creation_inputs()
+    public void New_item_catalog_preserves_its_collections_and_creation_inputs()
     {
-        var launcher = LoadOverlay("NewItemLauncherView");
-        var root = Assert.IsType<XElement>(launcher.Root);
-        AssertStretchingUserControl(root);
-
-        var card = AssertOverlayCard(root);
-        Assert.Equal("90,54", AttributeValue(card, "Margin"));
-        Assert.Equal("1120", AttributeValue(card, "MaxWidth"));
-        Assert.Equal("760", AttributeValue(card, "MaxHeight"));
-        Assert.Equal("Stretch", AttributeValue(card, "HorizontalAlignment"));
-        Assert.Equal("Stretch", AttributeValue(card, "VerticalAlignment"));
-
+        // The catalog had an overlay wrapper of its own, with a margin and a
+        // maximum size, because asking what to open was a modal. It is a panel
+        // now, so it fills whatever cell it is placed in and the only host left
+        // is the placed cell itself.
+        var placeholder = LoadRuntimePanel("PanelPlaceholderView");
         var hostedChooser = Assert.Single(
-            card.Elements(),
+            Assert.IsType<XElement>(placeholder.Root).Descendants(),
             element => element.Name.LocalName == "NewItemChooserView");
-        Assert.Equal("True", AttributeValue(hostedChooser, "ShowWorkspaces"));
-        Assert.Equal("True", AttributeValue(hostedChooser, "ShowCloseAction"));
+        Assert.Equal("False", AttributeValue(hostedChooser, "ShowCloseAction"));
 
         var catalog = LoadComponent("NewItemChooserView");
         var catalogRoot = Assert.IsType<XElement>(catalog.Root);
@@ -489,19 +458,6 @@ public sealed class TransientOverlayViewContractTests
         Assert.DoesNotContain("DismissLayoutDesigner()", layoutDesignerCode);
         Assert.DoesNotContain("SaveLayoutDesignerAsync(", layoutDesignerCode);
 
-        var newItemLauncherCode = ApplicationViews
-            .FindUniqueCodeBehindSourceContaining(
-                "public sealed partial class NewItemLauncherView");
-        AssertForwardingContract(
-            newItemLauncherCode,
-            NewItemLauncherInteractions.Keys);
-        Assert.Contains(
-            "internal void FocusInitialAction()",
-            newItemLauncherCode);
-        Assert.Contains(
-            "Chooser.FocusInitialAction();",
-            newItemLauncherCode);
-
         var newItemChooserCode = ApplicationViews
             .FindUniqueCodeBehindSourceContaining(
                 "public sealed partial class NewItemChooserView");
@@ -535,9 +491,6 @@ public sealed class TransientOverlayViewContractTests
             "this.FindControl<LayoutDesignerView>(\"LayoutDesignerOverlayView\")",
             mainWindowCode);
         Assert.Contains(
-            "this.FindControl<NewItemLauncherView>(\"NewItemLauncherOverlayView\")",
-            mainWindowCode);
-        Assert.Contains(
             "this.FindControl<NewPanelChooserView>(\"NewPanelChooserOverlayView\")",
             mainWindowCode);
         Assert.Contains("CommandPaletteOverlay.FocusSearch();", mainWindowCode);
@@ -546,9 +499,6 @@ public sealed class TransientOverlayViewContractTests
             mainWindowCode);
         Assert.Contains(
             "LayoutDesignerOverlay.FocusNameEditor();",
-            mainWindowCode);
-        Assert.Contains(
-            "NewItemLauncherOverlay.FocusInitialAction();",
             mainWindowCode);
         Assert.Contains(
             "NewPanelChooserOverlay.FocusInitialAction();",
@@ -773,6 +723,15 @@ public sealed class TransientOverlayViewContractTests
             "GhostShell.App",
             "Views",
             "Components",
+            $"{view}.axaml"));
+
+    private static XDocument LoadRuntimePanel(string view) =>
+        XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "RuntimePanels",
             $"{view}.axaml"));
 
     private static string? AttributeValue(XElement element, string name) =>

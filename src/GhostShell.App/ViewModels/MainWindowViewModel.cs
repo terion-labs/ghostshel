@@ -905,7 +905,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 _overlayRevision++;
                 OnPropertyChanged(nameof(HasOverlay));
                 OnPropertyChanged(nameof(IsCommandPaletteVisible));
-                OnPropertyChanged(nameof(IsNewItemVisible));
                 OnPropertyChanged(nameof(IsNewPanelVisible));
                 OnPropertyChanged(nameof(IsLayoutDesignerVisible));
                 OnPropertyChanged(nameof(IsDefinitionEditorVisible));
@@ -1472,8 +1471,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasOverlay => Overlay != ShellOverlay.None;
 
     public bool IsCommandPaletteVisible => Overlay == ShellOverlay.CommandPalette;
-
-    public bool IsNewItemVisible => Overlay == ShellOverlay.NewItem;
 
     public bool IsNewPanelVisible => Overlay == ShellOverlay.NewPanel;
 
@@ -2465,12 +2462,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ? OpenConnectionAsync(connectionId, cancellationToken)
             : AddConnectionTabAsync(connectionId, cancellationToken);
 
+    /// <summary>
+    /// A saved screen brings its own tab. Asked for from a tab that is nothing
+    /// but the launcher, it takes that tab over rather than opening beside it:
+    /// the launcher tab was the question, and this is the answer.
+    /// </summary>
     public Task<bool> LaunchScreenAsync(
         ScreenId screenId,
-        CancellationToken cancellationToken = default) =>
-        RuntimeWorkspace is null
-            ? OpenScreenAsync(screenId, cancellationToken)
+        CancellationToken cancellationToken = default)
+    {
+        if (RuntimeWorkspace is null)
+        {
+            return OpenScreenAsync(screenId, cancellationToken);
+        }
+
+        return RuntimeWorkspace.ActiveTab is { } tab && IsLauncherTab(tab)
+            ? ReplaceScreenTabAsync(tab, screenId, cancellationToken)
             : AddScreenTabAsync(screenId, cancellationToken);
+    }
 
     /// <summary>Opens a saved file provider in a tab, like a terminal connection.</summary>
     public async Task<bool> LaunchFileProviderAsync(
@@ -2801,22 +2810,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (workspace is null || tab is null)
         {
             return false;
-        }
-
-        // A placeholder is a cell the user has placed but not yet filled. It has no
-        // session behind it, and the host's workspace graph has never heard of its
-        // id — asking the host to activate one fails as not_found, and that failure
-        // propagated: the activation error left the client and host revisions out of
-        // step, so the attachment that grants keyboard authority was never
-        // established and the terminal drew output while refusing every keystroke.
-        // A placeholder is activated locally, and the host learns about the panel
-        // when the user chooses what it becomes.
-        if (tab.Panels.SingleOrDefault(panel => panel.Id == panelId)
-            is PanelPlaceholderViewModel)
-        {
-            var activated = tab.ActivatePanel(panelId);
-            Notifications.MarkVisibleSeen();
-            return activated;
         }
 
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -4436,15 +4429,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            // An unfilled placeholder exists only on this side, so discarding one is
-            // a local edit. Asking the host to remove a panel it never had fails the
-            // same way activating one does.
-            if (panel is PanelPlaceholderViewModel)
-            {
-                tab.RemovePanel(panelId);
-                return true;
-            }
-
             if (tab.Panels.Count == 1)
             {
                 return await RemoveTabUnderGateAsync(
@@ -4848,6 +4832,105 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             },
             cancellationToken);
     }
+
+    /// <summary>
+    /// Places an empty cell against one edge of the active tab.
+    ///
+    /// A placed cell is part of the workspace graph, so placing one is a graph
+    /// mutation like any other rather than a local edit — the two sides holding
+    /// different cells is what every placeholder bug has been made of.
+    /// </summary>
+    public async Task<bool> AddPlaceholderPanelAsync(
+        PanelSide side,
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace tab before adding a panel.");
+            return false;
+        }
+
+        var placeholder = RuntimeTabViewModel.NewPlaceholder();
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            placeholder,
+            "panel placement",
+            () => tab.AddPlaceholder(side, placeholder),
+            cancellationToken);
+    }
+
+    /// <summary>Divides a panel's own cell, leaving the new half empty.</summary>
+    public async Task<bool> SplitPanelWithPlaceholderAsync(
+        PanelInstanceId panelId,
+        PanelSplitOrientation orientation,
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace tab before splitting a panel.");
+            return false;
+        }
+
+        if (tab.Panels.All(panel => panel.Id != panelId))
+        {
+            return false;
+        }
+
+        var placeholder = RuntimeTabViewModel.NewPlaceholder();
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            placeholder,
+            "panel split",
+            () => tab.SplitWithPlaceholder(panelId, orientation, placeholder),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Opens a tab that is nothing but the launcher.
+    ///
+    /// Asking what to open used to be a modal over the whole window. A tab whose
+    /// one cell is unanswered says the same thing in the place the answer will
+    /// land, and it can be left open, switched away from, and closed like any
+    /// other tab.
+    /// </summary>
+    public Task<bool> AddLauncherTabAsync(CancellationToken cancellationToken = default)
+    {
+        ClearError();
+        var workspace = RuntimeWorkspace;
+        if (workspace is null)
+        {
+            SetError("Open a workspace before creating a tab.");
+            return Task.FromResult(false);
+        }
+
+        return AppendRuntimeTabAsync(
+            workspace,
+            _ =>
+            {
+                var tab = new RuntimeTabViewModel(
+                    TabInstanceId.New(),
+                    "New tab",
+                    "Launcher");
+                tab.AddPlaceholder(PanelSide.Right);
+                return tab;
+            },
+            "launcher tab creation",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Whether this tab is only the launcher: one cell, still unanswered. What
+    /// opens as a tab of its own opens here instead, because the user asked for
+    /// something to open and this tab is the asking.
+    /// </summary>
+    private static bool IsLauncherTab(RuntimeTabViewModel tab) =>
+        tab.Panels is [PanelPlaceholderViewModel];
 
     /// <summary>
     /// Opens a saved target as a panel in the active tab, with the adapter the
@@ -5387,10 +5470,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return await ReplaceRuntimeWorkspaceGraphAsync(
                 workspace,
                 operation,
-                currentWorkspace => AppendRuntimePanel(
-                    CaptureRuntimeWorkspaceGraph(currentWorkspace),
-                    tab.Id,
-                    new PanelInstance(panel.Id, panel.Kind, panel.Title)),
+                // Answering a placed cell swaps that cell for the panel; anything
+                // else grows the tab. The two must not be confused: proposing an
+                // append while the commit replaces would leave the host holding a
+                // panel the client had already dropped.
+                currentWorkspace => tab.ReplaceTarget is { } replacedPanelId
+                    ? ReplaceRuntimePanel(
+                        CaptureRuntimeWorkspaceGraph(currentWorkspace),
+                        tab.Id,
+                        replacedPanelId,
+                        new PanelInstance(panel.Id, panel.Kind, panel.Title))
+                    : AppendRuntimePanel(
+                        CaptureRuntimeWorkspaceGraph(currentWorkspace),
+                        tab.Id,
+                        new PanelInstance(panel.Id, panel.Kind, panel.Title)),
                 () =>
                 {
                     try
@@ -5635,7 +5728,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public Task<bool> AddScreenTabAsync(
         ScreenId screenId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        OpenScreenTabAsync(screenId, replacedTab: null, cancellationToken);
+
+    private Task<bool> ReplaceScreenTabAsync(
+        RuntimeTabViewModel replacedTab,
+        ScreenId screenId,
+        CancellationToken cancellationToken) =>
+        OpenScreenTabAsync(screenId, replacedTab, cancellationToken);
+
+    private Task<bool> OpenScreenTabAsync(
+        ScreenId screenId,
+        RuntimeTabViewModel? replacedTab,
+        CancellationToken cancellationToken)
     {
         ClearError();
         if (!CanAppendSavedDefinitionTab())
@@ -5658,34 +5763,39 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return Task.FromResult(false);
         }
 
-        return AppendRuntimeTabAsync(
-            workspace,
-            runtime =>
-            {
-                var currentStoredScreen = _catalog.Snapshot.Screens
-                    .SingleOrDefault(item => item.Value.Id == screenId);
-                if (currentStoredScreen is null)
-                {
-                    SetError("That saved screen no longer exists.");
-                    return null;
-                }
+        return replacedTab is null
+            ? AppendRuntimeTabAsync(workspace, CreateScreenTab, "saved-screen tab creation", cancellationToken)
+            : ReplaceRuntimeTabAsync(
+                workspace,
+                replacedTab,
+                CreateScreenTab,
+                "saved-screen tab creation",
+                cancellationToken);
 
-                var currentScreen = currentStoredScreen.Value;
-                return CreateRuntimeTab(
-                    runtime.Id,
-                    currentScreen.Name,
-                    "Saved screen",
-                    currentScreen.LayoutId,
-                    currentScreen.Panels,
+        RuntimeTabViewModel? CreateScreenTab(RuntimeWorkspaceViewModel runtime)
+        {
+            var currentStoredScreen = _catalog.Snapshot.Screens
+                .SingleOrDefault(item => item.Value.Id == screenId);
+            if (currentStoredScreen is null)
+            {
+                SetError("That saved screen no longer exists.");
+                return null;
+            }
+
+            var currentScreen = currentStoredScreen.Value;
+            return CreateRuntimeTab(
+                runtime.Id,
+                currentScreen.Name,
+                "Saved screen",
+                currentScreen.LayoutId,
+                currentScreen.Panels,
+                currentScreen.Key,
+                currentScreen.Name,
+                runtime.AgentPolicy.WithOverride(
+                    currentScreen.AgentPolicyOverride,
                     currentScreen.Key,
-                    currentScreen.Name,
-                    runtime.AgentPolicy.WithOverride(
-                        currentScreen.AgentPolicyOverride,
-                        currentScreen.Key,
-                        currentStoredScreen.Revision));
-            },
-            "saved-screen tab creation",
-            cancellationToken);
+                    currentStoredScreen.Revision));
+        }
     }
 
     public Task<bool> AddLocalTerminalTabAsync(
@@ -5863,9 +5973,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private bool CanAppendSavedDefinitionTab()
     {
-        if (Overlay is ShellOverlay.None
-            or ShellOverlay.NewItem
-            or ShellOverlay.CommandPalette)
+        if (Overlay is ShellOverlay.None or ShellOverlay.CommandPalette)
         {
             return true;
         }
@@ -5939,6 +6047,113 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Puts a tab where a launcher tab was standing.
+    ///
+    /// A launcher tab is the question "what do I open"; a saved screen is an
+    /// answer to it. Appending beside it instead left the question sitting there
+    /// next to its own answer, and the user closing it by hand every time.
+    ///
+    /// Only a launcher tab is ever replaced this way. It holds one unanswered
+    /// cell and therefore no session, so nothing is lost when it goes.
+    /// </summary>
+    private async Task<bool> ReplaceRuntimeTabAsync(
+        RuntimeWorkspaceViewModel workspace,
+        RuntimeTabViewModel replacedTab,
+        Func<RuntimeWorkspaceViewModel, RuntimeTabViewModel?> createTab,
+        string operation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(replacedTab);
+        ArgumentNullException.ThrowIfNull(createTab);
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+
+        var navigation = CaptureRuntimeMutationNavigation();
+        RuntimeTabViewModel? tab = null;
+        var committed = false;
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _runtimeGraphLifetime.Token);
+        await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
+        try
+        {
+            if (!ReferenceEquals(RuntimeWorkspace, workspace)
+                || !workspace.Tabs.Contains(replacedTab))
+            {
+                return false;
+            }
+
+            tab = createTab(workspace);
+            if (tab is null)
+            {
+                return false;
+            }
+
+            return await ReplaceRuntimeWorkspaceGraphUnderGateAsync(
+                workspace,
+                BuildTabReplacementProposal(workspace, replacedTab, tab)!,
+                operation,
+                () =>
+                {
+                    committed = true;
+                    var at = workspace.Tabs.IndexOf(replacedTab);
+                    workspace.Tabs[at] = tab;
+                    replacedTab.DisposePanels();
+                    foreach (var panel in tab.Panels)
+                    {
+                        StartTrackingRecovery(panel);
+                    }
+
+                    TrackRecentSessions(tab.Panels);
+                    workspace.ActiveTab = tab;
+                    foreach (var panel in tab.Panels)
+                    {
+                        StartAcceptedRuntimePanel(panel);
+                    }
+
+                    OnPropertyChanged(nameof(WorkspaceStatus));
+                    CompleteRuntimeMutationNavigation(navigation);
+                },
+                RuntimeGraphStaleProposalHandling.RefreshAndRetry,
+                linkedCancellation.Token,
+                currentWorkspace => BuildTabReplacementProposal(
+                    currentWorkspace,
+                    replacedTab,
+                    tab));
+        }
+        finally
+        {
+            _runtimeGraphGate.Release();
+            if (!committed)
+            {
+                tab?.DisposePanels();
+            }
+        }
+    }
+
+    private static WorkspaceInstance? BuildTabReplacementProposal(
+        RuntimeWorkspaceViewModel workspace,
+        RuntimeTabViewModel replacedTab,
+        RuntimeTabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(replacedTab);
+        ArgumentNullException.ThrowIfNull(tab);
+        var current = CaptureRuntimeWorkspaceGraph(workspace);
+        if (current.Tabs.All(item => item.Id != replacedTab.Id))
+        {
+            return null;
+        }
+
+        var captured = CaptureRuntimeTab(tab);
+        return new WorkspaceInstance(
+            current.Id,
+            current.Title,
+            current.Tabs.Select(item => item.Id == replacedTab.Id ? captured : item),
+            tab.Id);
+    }
+
     private void CommitRuntimeTabAppend(
         RuntimeWorkspaceViewModel workspace,
         RuntimeTabViewModel tab)
@@ -5997,7 +6212,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         Route = ShellRoute.Workspace;
         if (initiatingOverlayStillOpen
             && initiatingState.Overlay is ShellOverlay.CommandPalette
-                or ShellOverlay.NewItem
                 or ShellOverlay.NewPanel)
         {
             CloseOverlay();
@@ -8505,34 +8719,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>
     /// The tab as the session host knows it.
     ///
-    /// An unfilled placeholder is a cell the user has placed but not yet answered:
-    /// there is no session behind it and the host has never been told it exists, so
-    /// it is left out here. Including one made the captured graph a panel wider than
-    /// the host's, and every receipt compared against it read as invalid — which is
-    /// what surfaced after a few splits.
+    /// A placed but unanswered cell is a panel like any other. It carries no
+    /// session — a panel's session has always been optional — but it occupies the
+    /// layout, it can be selected, and it can be the only thing in a tab, which is
+    /// what a tab opened straight onto the launcher is.
+    ///
+    /// It was once left out, so the host would not be asked to activate a cell it
+    /// had never heard of. That bought three rules about when the two sides were
+    /// allowed to disagree, and the disagreement leaked anyway.
     /// </summary>
     private static TabInstance CaptureRuntimeTab(RuntimeTabViewModel tab)
     {
         ArgumentNullException.ThrowIfNull(tab);
-        var panels = tab.Panels
-            .Where(panel => panel is not PanelPlaceholderViewModel)
-            .ToArray();
+        var panels = tab.Panels.ToArray();
         if (panels.Length == 0)
         {
-            throw new InvalidOperationException(
-                "A runtime tab must have a panel the session host knows about.");
+            throw new InvalidOperationException("A runtime tab must have a panel.");
         }
 
-        // While the user sits on a placeholder there is no host-backed active panel
-        // to name. The one the host last had is the honest answer — naming some
-        // other panel instead made a no-op activation compare against the wrong id
-        // and come back as an invalid receipt.
-        var activePanelId = HostBackedId(tab.ActivePanelId)
-            ?? HostBackedId(tab.HostActivePanelId)
-            ?? panels[0].Id;
-
-        PanelInstanceId? HostBackedId(PanelInstanceId? candidate) =>
-            candidate is { } id && panels.Any(panel => panel.Id == id) ? id : null;
         return new TabInstance(
             tab.Id,
             tab.Title,
@@ -8540,7 +8744,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 panel.Id,
                 panel.Kind,
                 panel.Title)),
-            activePanelId);
+            tab.ActivePanelId ?? panels[0].Id);
     }
 
     private static WorkspaceInstance? BuildTabAppendProposal(
@@ -8629,6 +8833,27 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             tab.Id,
             tab.Title,
             tab.Panels.Append(panel),
+            panel.Id);
+        return ReplaceRuntimeTab(workspace, replacement, tabId);
+    }
+
+    /// <summary>
+    /// Swaps one panel for another in place, which is what answering a placed cell
+    /// does: the cell was already part of the graph, so the tab does not grow.
+    /// </summary>
+    private static WorkspaceInstance ReplaceRuntimePanel(
+        WorkspaceInstance workspace,
+        TabInstanceId tabId,
+        PanelInstanceId replacedPanelId,
+        PanelInstance panel)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(panel);
+        var tab = workspace.Tabs.Single(item => item.Id == tabId);
+        var replacement = new TabInstance(
+            tab.Id,
+            tab.Title,
+            tab.Panels.Select(item => item.Id == replacedPanelId ? panel : item),
             panel.Id);
         return ReplaceRuntimeTab(workspace, replacement, tabId);
     }

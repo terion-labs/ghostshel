@@ -792,12 +792,84 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             tab.Panels,
             panel => panel.Kind == PanelKind.Browser);
 
-        var placeholder = tab.AddPlaceholder(PanelSide.Right);
-        Assert.True(await viewModel.ActivatePanelAsync(placeholder.Id));
+        Assert.True(await viewModel.AddPlaceholderPanelAsync(PanelSide.Right));
+        var placeholder = Assert.Single(tab.Panels.OfType<PanelPlaceholderViewModel>());
         Assert.Same(placeholder, tab.ActivePanel);
 
         Assert.True(await viewModel.ActivatePanelAsync(requestedPanel.Id));
         Assert.Same(requestedPanel, tab.ActivePanel);
+        Assert.Null(viewModel.OperationError);
+    }
+
+    /// <summary>
+    /// Asking what to open used to be a modal over the whole window. It is a tab
+    /// now, holding one unanswered cell — so it lives in the workspace graph like
+    /// any other tab, and the host holds the same cell the client draws.
+    /// </summary>
+    [Fact]
+    public async Task A_launcher_tab_is_one_unanswered_cell()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var tabCount = runtime.Tabs.Count;
+
+        Assert.True(await viewModel.AddLauncherTabAsync());
+
+        Assert.Equal(tabCount + 1, runtime.Tabs.Count);
+        var tab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        var placeholder = Assert.IsType<PanelPlaceholderViewModel>(Assert.Single(tab.Panels));
+        Assert.Same(placeholder, tab.ActivePanel);
+        Assert.Null(viewModel.OperationError);
+    }
+
+    /// <summary>
+    /// A launcher tab is the question; a saved screen is an answer to it. Opening
+    /// beside it left the question sitting next to its own answer for the user to
+    /// close by hand.
+    /// </summary>
+    [Fact]
+    public async Task A_saved_screen_takes_over_the_launcher_tab_that_asked_for_it()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateTabAppendCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        Assert.True(await viewModel.AddLauncherTabAsync());
+        var launcherTab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        var tabCount = runtime.Tabs.Count;
+        var at = runtime.Tabs.IndexOf(launcherTab);
+
+        Assert.True(await viewModel.LaunchScreenAsync(AppendedScreenId));
+
+        Assert.Equal(tabCount, runtime.Tabs.Count);
+        Assert.DoesNotContain(launcherTab, runtime.Tabs);
+        Assert.Same(runtime.Tabs[at], runtime.ActiveTab);
+        Assert.DoesNotContain(
+            runtime.ActiveTab!.Panels,
+            panel => panel is PanelPlaceholderViewModel);
+        Assert.Null(viewModel.OperationError);
+    }
+
+    /// <summary>
+    /// Anywhere else a saved screen still brings its own tab: only the tab that
+    /// exists to ask the question gets taken over.
+    /// </summary>
+    [Fact]
+    public async Task A_saved_screen_opens_beside_a_tab_that_holds_real_panels()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateTabAppendCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var existingTab = Assert.IsType<RuntimeTabViewModel>(runtime.ActiveTab);
+        var tabCount = runtime.Tabs.Count;
+
+        Assert.True(await viewModel.LaunchScreenAsync(AppendedScreenId));
+
+        Assert.Equal(tabCount + 1, runtime.Tabs.Count);
+        Assert.Contains(existingTab, runtime.Tabs);
         Assert.Null(viewModel.OperationError);
     }
 
@@ -1038,7 +1110,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
     [Theory]
     [InlineData(ShellOverlay.CommandPalette)]
-    [InlineData(ShellOverlay.NewItem)]
     [InlineData(ShellOverlay.NewPanel)]
     public async Task Navigation_dismisses_clean_transient_overlays(
         ShellOverlay overlay)
@@ -1081,7 +1152,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
     [Theory]
     [InlineData(ShellOverlay.CommandPalette)]
-    [InlineData(ShellOverlay.NewItem)]
     public async Task Saved_tab_completion_closes_its_initiating_overlay_and_shows_workspace(
         ShellOverlay overlay)
     {
@@ -1285,7 +1355,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
         var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
         var initialTabCount = runtime.Tabs.Count;
-        viewModel.ShowOverlay(ShellOverlay.NewItem);
+        viewModel.ShowOverlay(ShellOverlay.CommandPalette);
         recorder.DelayNextRegistration = true;
 
         var append = viewModel.LaunchConnectionAsync(AppendedConnectionId);
@@ -3199,7 +3269,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         new[]
         {
             viewModel.IsCommandPaletteVisible,
-            viewModel.IsNewItemVisible,
             viewModel.IsNewPanelVisible,
             viewModel.IsLayoutDesignerVisible,
             viewModel.IsDefinitionEditorVisible,

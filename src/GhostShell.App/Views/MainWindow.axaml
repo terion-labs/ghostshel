@@ -336,24 +336,6 @@
           IsVisible="{Binding IsCommandPaletteVisible}"
           SearchKeyDownRequested="OnCommandSearchKeyDown" />
 
-      <overlays:NewItemLauncherView
-          x:Name="NewItemLauncherOverlayView"
-          AddConnectionRequested="OnAddConnectionClick"
-          CloseRequested="OnCloseOverlayClick"
-          IsVisible="{Binding IsNewItemVisible}"
-          NewBrowserRequested="OnNewBrowserClick"
-          NewDatabaseRequested="OnNewDatabaseClick"
-          NewFileViewerRequested="OnNewFileViewerClick"
-          NewLocalTerminalRequested="OnNewLocalTerminalClick"
-          NewProcessMonitorRequested="OnNewProcessMonitorClick"
-          NewStatisticsRequested="OnNewStatisticsClick"
-          ConnectionLaunchRequested="OnSavedConnectionLaunchRequested"
-          OpenRecentSessionRequested="OnOpenRecentSessionClick"
-          OpenScreenRequested="OnOpenScreenClick"
-          OpenWorkspaceRequested="OnOpenWorkspaceClick"
-          ShowCommandPaletteRequested="OnShowCommandPaletteClick"
-          ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />
-
       <overlays:NewPanelChooserView
           x:Name="NewPanelChooserOverlayView"
           AddBrowserPanelRequested="OnAddBrowserPanelClick"

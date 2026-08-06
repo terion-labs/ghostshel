@@ -13,23 +13,12 @@ public sealed partial class NewItemChooserView : UserControl
             nameof(ShowCloseAction),
             defaultValue: true);
 
-    public static readonly StyledProperty<bool> ShowWorkspacesProperty =
-        AvaloniaProperty.Register<NewItemChooserView, bool>(
-            nameof(ShowWorkspaces),
-            defaultValue: true);
-
     public NewItemChooserView() => InitializeComponent();
 
     public bool ShowCloseAction
     {
         get => GetValue(ShowCloseActionProperty);
         set => SetValue(ShowCloseActionProperty, value);
-    }
-
-    public bool ShowWorkspaces
-    {
-        get => GetValue(ShowWorkspacesProperty);
-        set => SetValue(ShowWorkspacesProperty, value);
     }
 
     public event EventHandler<RoutedEventArgs>? AddConnectionRequested;

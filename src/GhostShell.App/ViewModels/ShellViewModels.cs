@@ -131,7 +131,6 @@ public enum ShellOverlay
 {
     None,
     CommandPalette,
-    NewItem,
     NewPanel,
     LayoutDesigner,
     DefinitionEditor,
@@ -1599,17 +1598,6 @@ public sealed class RuntimeTabViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>
-    /// The panel the session host has as active.
-    ///
-    /// Selecting a placeholder is a local move — the host has never heard of one —
-    /// so it must not change this. Reporting a placeholder's selection to the host
-    /// as though it were a real panel made a no-op activation of the panel the host
-    /// already held be compared against the wrong id and rejected as an invalid
-    /// receipt.
-    /// </summary>
-    public PanelInstanceId? HostActivePanelId { get; private set; }
-
     public bool ActivatePanel(PanelInstanceId panelId)
     {
         if (Panels.All(panel => panel.Id != panelId))
@@ -1619,11 +1607,6 @@ public sealed class RuntimeTabViewModel : ObservableObject
 
         ActivePanelId = panelId;
         _dockLayout.Activate(panelId);
-        if (Panels.SingleOrDefault(panel => panel.Id == panelId) is not PanelPlaceholderViewModel)
-        {
-            HostActivePanelId = panelId;
-        }
-
         if (ZoomedPanelId is not null)
         {
             ZoomedPanelId = panelId;
@@ -1633,35 +1616,9 @@ public sealed class RuntimeTabViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>
-    /// The panels the session host knows about. An unfilled placeholder is a cell
-    /// the user has placed but not yet answered: it has no session behind it and the
-    /// host has never been told it exists, so it must be left out of every
-    /// comparison against a host projection. Counting it made the client's graph
-    /// look one panel wider than the host's and every activation came back reading
-    /// as an invalid receipt.
-    /// </summary>
-    private IEnumerable<RuntimePanelViewModel> HostBackedPanels =>
-        Panels.Where(panel => panel is not PanelPlaceholderViewModel);
-
     internal void ApplyHostProjection(TabInstance projection)
     {
         ValidateHostProjection(projection);
-
-        // The user is answering a placeholder, so the host's idea of the active
-        // panel is behind theirs. Leaving the selection where they put it keeps the
-        // cell they are filling from jumping away under them.
-        //
-        // Only while the host is saying what it already said. A projection that
-        // names a different panel is the answer to someone asking for it — the
-        // way out of a placeholder is to click another panel, and refusing that
-        // left the selection stuck on the cell with the chooser over it while
-        // the host had already moved on.
-        if (ActivePanel is PanelPlaceholderViewModel
-            && projection.ActivePanelId == HostActivePanelId)
-        {
-            return;
-        }
 
         if (!ActivatePanel(projection.ActivePanelId))
         {
@@ -1673,12 +1630,12 @@ public sealed class RuntimeTabViewModel : ObservableObject
     internal void ValidateHostProjection(TabInstance projection)
     {
         ArgumentNullException.ThrowIfNull(projection);
-        var hostBacked = HostBackedPanels.ToArray();
+        var panels = Panels.ToArray();
         if (projection.Id != Id
             || !string.Equals(projection.Title, Title, StringComparison.Ordinal)
-            || projection.Panels.Count != hostBacked.Length
+            || projection.Panels.Count != panels.Length
             || projection.Panels.Any(projectedPanel =>
-                hostBacked.All(panel =>
+                panels.All(panel =>
                     panel.Id != projectedPanel.Id
                     || panel.Kind != projectedPanel.Kind
                     || !string.Equals(
@@ -1690,7 +1647,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
                 "The session host returned a different runtime tab graph.");
         }
 
-        if (hostBacked.All(panel => panel.Id != projection.ActivePanelId))
+        if (panels.All(panel => panel.Id != projection.ActivePanelId))
         {
             throw new InvalidOperationException(
                 "The session host returned an unknown active runtime panel.");
@@ -1957,12 +1914,23 @@ public sealed class RuntimeTabViewModel : ObservableObject
     /// </summary>
     public PanelInstanceId? ReplaceTarget { get; set; }
 
-    /// <summary>Places an empty panel against one edge of the canvas.</summary>
-    public PanelPlaceholderViewModel AddPlaceholder(PanelSide side)
+    /// <summary>An empty cell, before it is anywhere.</summary>
+    public static PanelPlaceholderViewModel NewPlaceholder() =>
+        new(new PanelInstanceId($"placeholder-{Guid.NewGuid():n}"));
+
+    /// <summary>
+    /// Places an empty panel against one edge of the canvas.
+    ///
+    /// The caller may bring its own cell. A placed cell is part of the workspace
+    /// graph, so the shell has to name it before proposing it and place this very
+    /// one once the host agrees.
+    /// </summary>
+    public PanelPlaceholderViewModel AddPlaceholder(
+        PanelSide side,
+        PanelPlaceholderViewModel? placeholder = null)
     {
         ClearZoom();
-        var placeholder = new PanelPlaceholderViewModel(
-            new PanelInstanceId($"placeholder-{Guid.NewGuid():n}"));
+        placeholder ??= NewPlaceholder();
 
         var column = side is PanelSide.Left or PanelSide.Right;
         var at = side switch
@@ -1991,7 +1959,8 @@ public sealed class RuntimeTabViewModel : ObservableObject
     /// <summary>Places an empty panel beside an existing one.</summary>
     public PanelPlaceholderViewModel? SplitWithPlaceholder(
         PanelInstanceId panelId,
-        PanelSplitOrientation orientation)
+        PanelSplitOrientation orientation,
+        PanelPlaceholderViewModel? placeholder = null)
     {
         var target = Panels.SingleOrDefault(panel => panel.Id == panelId);
         if (target is null)
@@ -2026,8 +1995,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
             InsertTrack(column, placeholderStart, target);
         }
 
-        var placeholder = new PanelPlaceholderViewModel(
-            new PanelInstanceId($"placeholder-{Guid.NewGuid():n}"));
+        placeholder ??= NewPlaceholder();
         placeholder.AssignLayout(
             _columns,
             _rows,

@@ -180,11 +180,6 @@ internal sealed class QaApplication : Avalonia.Application
             vm.ShowWorkspace();
             vm.ShowOverlay(ShellOverlay.CommandPalette);
         }),
-        new("overlay-new-item", vm =>
-        {
-            vm.ShowLauncher();
-            vm.ShowOverlay(ShellOverlay.NewItem);
-        }),
         new("overlay-new-panel", vm =>
         {
             vm.ShowWorkspace();

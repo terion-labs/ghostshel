@@ -191,7 +191,7 @@ public sealed class RuntimePanelViewContractTests
     }
 
     [Fact]
-    public void Empty_panel_reuses_the_new_item_catalog_without_workspaces()
+    public void Empty_panel_reuses_the_new_item_catalog()
     {
         var document = LoadRuntimePanelView("PanelPlaceholderView");
         var root = Assert.IsType<XElement>(document.Root);
@@ -199,7 +199,8 @@ public sealed class RuntimePanelViewContractTests
         var chooser = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "NewItemChooserView");
-        Assert.Equal("False", AttributeValue(chooser, "ShowWorkspaces"));
+        // The cell has its own close button in its header, so the catalog does
+        // not offer a second one.
         Assert.Equal("False", AttributeValue(chooser, "ShowCloseAction"));
         Assert.Equal(
             "{Binding $parent[Window].DataContext}",
