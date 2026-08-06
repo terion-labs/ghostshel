@@ -846,7 +846,27 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
             {
                 tab.AdoptPolicyLineage(AgentPolicy);
             }
+
+            RefreshTabClosability();
         };
+    }
+
+    /// <summary>
+    /// A lone launcher tab cannot be closed.
+    ///
+    /// Closing it would leave a window with nothing in it and no tab to open
+    /// anything from — and the workspace would then have to be reopened, which
+    /// is how a stale set of tabs came back. Finishing a workspace is the rail's
+    /// job; the tab strip closes what is in one.
+    /// </summary>
+    private void RefreshTabClosability()
+    {
+        var onlyLauncher = Tabs.Count == 1
+            && Tabs[0].Panels is [PanelPlaceholderViewModel];
+        foreach (var tab in Tabs)
+        {
+            tab.CanClose = !onlyLauncher;
+        }
     }
 
     public WorkspaceInstanceId Id { get; }
@@ -1097,6 +1117,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
     private PanelInstanceId? _zoomedPanelId;
     private string _title;
     private bool _isActive;
+    private bool _canClose = true;
     private bool _hasAttention;
     private bool _usesAutomaticLayout;
     private int _columns;
@@ -1225,6 +1246,17 @@ public sealed class RuntimeTabViewModel : ObservableObject
     {
         get => _isActive;
         set => SetProperty(ref _isActive, value);
+    }
+
+    /// <summary>
+    /// Whether the strip offers to close this tab. A lone launcher tab does not:
+    /// the workspace it is in would be left with nothing, and no way to open
+    /// anything without reopening the workspace itself.
+    /// </summary>
+    public bool CanClose
+    {
+        get => _canClose;
+        internal set => SetProperty(ref _canClose, value);
     }
 
     /// <summary>

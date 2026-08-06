@@ -124,6 +124,7 @@
                 Height="18"
                 Classes="IconButton"
                 Click="OnClose"
+                IsVisible="{Binding CanClose}"
                 ToolTip.Tip="Close tab"
                 AutomationProperties.Name="{Binding Title, StringFormat={}Close tab {0}}"
                 AutomationProperties.HelpText="Close this runtime tab using the normal session close policy.">

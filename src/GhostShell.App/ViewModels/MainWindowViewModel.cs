@@ -4450,24 +4450,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 cancellationToken);
         }
 
+        // The last launcher tab stays. Closing it would leave the window with
+        // nothing in it and nothing to open anything from; ending the workspace
+        // is the rail's job.
         if (workspace.Tabs.Count == 1)
         {
-            return await UnregisterRuntimeWorkspaceUnderGateAsync(
-                workspace,
-                "workspace removal",
-                () =>
-                {
-                    foreach (var panel in tab.Panels)
-                    {
-                        StopTrackingRecovery(panel);
-                        QueueRecentSessionCompletion(
-                            panel.Id,
-                            RecentSessionOutcome.GracefullyClosed);
-                    }
-
-                    CloseActiveRuntimeWorkspace();
-                },
-                cancellationToken);
+            return false;
         }
 
         var proposal = BuildTabRemovalProposal(workspace, tab.Id)
@@ -4487,11 +4475,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         RecentSessionOutcome.GracefullyClosed);
                 }
 
+                // The tab before this one, or the one that took its place at the
+                // front. Jumping to the first tab sent the user across the strip
+                // every time they closed something near the end.
+                var at = workspace.Tabs.IndexOf(tab);
                 tab.DisposePanels();
                 workspace.Tabs.Remove(tab);
                 if (ReferenceEquals(workspace.ActiveTab, tab))
                 {
-                    workspace.ActiveTab = workspace.Tabs[0];
+                    workspace.ActiveTab = workspace.Tabs[Math.Max(0, at - 1)];
                 }
 
                 OnPropertyChanged(nameof(WorkspaceStatus));
@@ -7033,13 +7025,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     .ToArray()));
         }
 
-        // Every tab was the launcher, so there is nothing durable open. Writing
-        // that out would empty a definition on the way past a transient state;
-        // the next pass, once something is opened, has the answer.
-        if (entries.Count == 0)
-        {
-            return null;
-        }
+        // Every tab is the launcher, so nothing durable is open and the
+        // definition says so. Holding the previous entries back instead left the
+        // workspace describing tabs the user had closed, and reopening it
+        // brought them all back.
 
         // Connection and saved-screen references materialized into the live tabs
         // above; under autosave the definition is the live state, so the entry
@@ -8795,8 +8784,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var remainingTabs = current.Tabs.Where(item => item.Id != tabId).ToArray();
+        // The tab before the one going, or the one that takes its place at the
+        // front. This has to be the same choice the commit makes, or the client
+        // activates one tab while the host was told another.
+        var removedAt = 0;
+        for (var index = 0; index < current.Tabs.Count; index++)
+        {
+            if (current.Tabs[index].Id == tabId)
+            {
+                removedAt = index;
+                break;
+            }
+        }
+
         var activeTabId = current.ActiveTabId == tabId
-            ? remainingTabs[0].Id
+            ? remainingTabs[Math.Max(0, removedAt - 1)].Id
             : current.ActiveTabId;
         return new WorkspaceInstance(
             current.Id,

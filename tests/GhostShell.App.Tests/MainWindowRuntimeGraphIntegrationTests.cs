@@ -849,22 +849,49 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     /// <summary>
-    /// And closing that one finishes the workspace, so the button on a launcher
-    /// tab always does something rather than sitting there inert.
+    /// And that one stays. Closing it would leave a window with nothing in it
+    /// and nothing to open anything from, and the workspace would have to be
+    /// reopened — which is how a set of closed tabs came back. The strip stops
+    /// offering to close it, and refuses if asked anyway.
     /// </summary>
     [Fact]
-    public async Task Closing_the_launcher_tab_alone_closes_the_workspace()
+    public async Task The_last_launcher_tab_cannot_be_closed()
     {
         var (client, _) = CreateSessionClient();
         using var viewModel = CreateViewModel(client, CreateSinglePanelCatalogSnapshot());
         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
         var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
         Assert.True(await viewModel.RemoveTabAsync(Assert.Single(runtime.Tabs).Id));
+        var launcher = Assert.Single(runtime.Tabs);
+        Assert.False(launcher.CanClose);
 
-        Assert.True(await viewModel.RemoveTabAsync(Assert.Single(runtime.Tabs).Id));
+        Assert.False(await viewModel.RemoveTabAsync(launcher.Id));
 
-        Assert.Null(viewModel.RuntimeWorkspace);
-        Assert.Null(viewModel.OperationError);
+        Assert.Same(runtime, viewModel.RuntimeWorkspace);
+        Assert.Same(launcher, Assert.Single(runtime.Tabs));
+    }
+
+    /// <summary>
+    /// Closing a tab moves to the one before it. Jumping to the first tab sent
+    /// the user across the strip every time they closed something near the end.
+    /// </summary>
+    [Fact]
+    public async Task Closing_a_tab_activates_the_one_before_it()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        Assert.True(await viewModel.AddLauncherTabAsync());
+        Assert.True(await viewModel.AddLauncherTabAsync());
+        Assert.True(runtime.Tabs.Count >= 3);
+        var last = runtime.Tabs[^1];
+        var before = runtime.Tabs[^2];
+        Assert.Same(last, runtime.ActiveTab);
+
+        Assert.True(await viewModel.RemoveTabAsync(last.Id));
+
+        Assert.Same(before, runtime.ActiveTab);
     }
 
     /// <summary>
@@ -1978,27 +2005,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Same(runtime, viewModel.RuntimeWorkspace);
         Assert.IsType<PanelPlaceholderViewModel>(
             Assert.Single(Assert.Single(runtime.Tabs).Panels));
-        Assert.Null(viewModel.OperationError);
-    }
-
-    [Fact]
-    public async Task Closing_the_last_launcher_tab_reconciles_a_lost_unregistration_receipt()
-    {
-        var (client, recorder) = CreateSessionClient();
-        using var viewModel = CreateViewModel(client, CreateSinglePanelCatalogSnapshot());
-        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
-        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
-        var panelId = Assert.Single(Assert.Single(runtime.Tabs).Panels).Id;
-        Assert.True(await viewModel.RemovePanelAsync(panelId));
-        recorder.AcceptThenCancelNextUnregistration = true;
-
-        Assert.True(await viewModel.RemoveTabAsync(Assert.Single(runtime.Tabs).Id));
-
-        Assert.Single(recorder.Unregistrations);
-        Assert.Null(recorder.CurrentWorkspace);
-        Assert.Null(viewModel.RuntimeWorkspace);
-        Assert.False(viewModel.HasRuntimeWorkspace);
-        Assert.True(viewModel.IsWorkspaceVisible);
         Assert.Null(viewModel.OperationError);
     }
 
