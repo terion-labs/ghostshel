@@ -681,7 +681,7 @@ public sealed partial class App : Avalonia.Application
         Publish(
             "ShellRailWidth",
             Math.Round(resources.ControlMinHeight * 1.05)
-            + (resources.Spacing.ExtraSmall * 2)
+            + (resources.Spacing.Small * 2)
             + 2);
 
         // The rail tile's outline, and how wide it opens when it offers to close
