@@ -4433,6 +4433,23 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        // Closing the last tab leaves the question "what do I open" in its
+        // place. A workspace with nothing in it is a blank window with a button
+        // on it, which is what closing tabs one by one used to arrive at.
+        //
+        // Unless that is already all it holds: closing the launcher itself is
+        // how a workspace is finished from the tab strip, so the button on it
+        // always does something.
+        if (workspace.Tabs.Count == 1 && !IsLauncherTab(tab))
+        {
+            return await ReplaceRuntimeTabUnderGateAsync(
+                workspace,
+                tab,
+                _ => CreateLauncherTab(),
+                "last tab removal",
+                cancellationToken);
+        }
+
         if (workspace.Tabs.Count == 1)
         {
             return await UnregisterRuntimeWorkspaceUnderGateAsync(
@@ -4827,17 +4844,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         return AppendRuntimeTabAsync(
             workspace,
-            _ =>
-            {
-                var tab = new RuntimeTabViewModel(
-                    TabInstanceId.New(),
-                    "New tab",
-                    "Launcher");
-                tab.AddPlaceholder(PanelSide.Right);
-                return tab;
-            },
+            _ => CreateLauncherTab(),
             "launcher tab creation",
             cancellationToken);
+    }
+
+    private static RuntimeTabViewModel CreateLauncherTab()
+    {
+        var tab = new RuntimeTabViewModel(TabInstanceId.New(), "New tab", "Launcher");
+        tab.AddPlaceholder(PanelSide.Right);
+        return tab;
     }
 
     /// <summary>
@@ -5980,6 +5996,37 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string operation,
         CancellationToken cancellationToken)
     {
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _runtimeGraphLifetime.Token);
+        await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
+        try
+        {
+            return await ReplaceRuntimeTabUnderGateAsync(
+                workspace,
+                replacedTab,
+                createTab,
+                operation,
+                linkedCancellation.Token);
+        }
+        finally
+        {
+            _runtimeGraphGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The gate is already held. Closing the last tab reaches this from inside
+    /// tab removal, and the gate is not reentrant — taking it a second time
+    /// waits for a release that cannot come until the wait returns.
+    /// </summary>
+    private async Task<bool> ReplaceRuntimeTabUnderGateAsync(
+        RuntimeWorkspaceViewModel workspace,
+        RuntimeTabViewModel replacedTab,
+        Func<RuntimeWorkspaceViewModel, RuntimeTabViewModel?> createTab,
+        string operation,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(replacedTab);
         ArgumentNullException.ThrowIfNull(createTab);
@@ -5988,10 +6035,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var navigation = CaptureRuntimeMutationNavigation();
         RuntimeTabViewModel? tab = null;
         var committed = false;
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _runtimeGraphLifetime.Token);
-        await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
         try
         {
             if (!ReferenceEquals(RuntimeWorkspace, workspace)
@@ -6015,6 +6058,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     committed = true;
                     var at = workspace.Tabs.IndexOf(replacedTab);
                     workspace.Tabs[at] = tab;
+                    foreach (var panel in replacedTab.Panels)
+                    {
+                        StopTrackingRecovery(panel);
+                        QueueRecentSessionCompletion(
+                            panel.Id,
+                            RecentSessionOutcome.GracefullyClosed);
+                    }
+
                     replacedTab.DisposePanels();
                     foreach (var panel in tab.Panels)
                     {
@@ -6032,7 +6083,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     CompleteRuntimeMutationNavigation(navigation);
                 },
                 RuntimeGraphStaleProposalHandling.RefreshAndRetry,
-                linkedCancellation.Token,
+                cancellationToken,
                 currentWorkspace => BuildTabReplacementProposal(
                     currentWorkspace,
                     replacedTab,
@@ -6040,7 +6091,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            _runtimeGraphGate.Release();
             if (!committed)
             {
                 tab?.DisposePanels();
@@ -6893,6 +6943,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         for (var index = 0; index < runtime.Tabs.Count; index++)
         {
             var tab = runtime.Tabs[index];
+            if (IsLauncherTab(tab))
+            {
+                // A launcher tab is a question, not content: there is nothing
+                // in it to describe. Deferring the whole pass for one froze the
+                // definition for as long as it stayed open, and the workspace
+                // then reopened from whatever had been saved before it appeared
+                // — which reads as closed tabs coming back.
+                continue;
+            }
+
             // Dock documents are the durable slot identities: a restored panel
             // keeps its saved document id, so capturing by document keeps slot
             // ids stable across sessions. The document's context is the live
@@ -6971,6 +7031,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         storedTab,
                         usedStoredPanels))
                     .ToArray()));
+        }
+
+        // Every tab was the launcher, so there is nothing durable open. Writing
+        // that out would empty a definition on the way past a transient state;
+        // the next pass, once something is opened, has the answer.
+        if (entries.Count == 0)
+        {
+            return null;
         }
 
         // Connection and saved-screen references materialized into the live tabs
