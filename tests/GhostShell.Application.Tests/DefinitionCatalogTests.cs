@@ -337,7 +337,6 @@ public sealed class DefinitionCatalogTests
             QuickTerminalMonitorPolicy.Primary,
             0.42,
             0.75,
-            true,
             animateSlide: false,
             animationDurationMilliseconds: 0,
             reduceMotion: true,

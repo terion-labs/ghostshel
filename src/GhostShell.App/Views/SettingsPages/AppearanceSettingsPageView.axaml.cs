@@ -152,7 +152,17 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             (int)Math.Round(BackdropOpacitySlider.Value));
     }
 
-    private const double DefaultCornerRadius = 8;
+    /// <summary>
+    /// What the slider shows when the theme carries no radius of its own.
+    ///
+    /// Eight was every platform's answer, and on macOS 26 it is nobody's: the
+    /// system rounds windows far harder, and concentrically — the radius
+    /// follows whatever sits at the top of the window, so Apple publishes no
+    /// single number to copy. This is the shell's own answer for that look,
+    /// not a value read from the system.
+    /// </summary>
+    private static double DefaultCornerRadius =>
+        OperatingSystem.IsMacOSVersionAtLeast(26) ? 26 : 8;
 
     private TabStripPlacement SelectedTabStripPlacement() =>
         TabPlacementBottom.IsChecked == true

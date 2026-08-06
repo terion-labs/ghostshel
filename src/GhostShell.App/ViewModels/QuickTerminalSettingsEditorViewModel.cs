@@ -163,12 +163,12 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
             MonitorPolicy,
             HeightPercent / 100,
             OpacityPercent / 100,
-            IsTranslucent,
             AnimateSlide,
             AnimationDurationMilliseconds,
             ReduceMotion,
             RestoreLastSession,
-            HideOnFocusLoss);
+            HideOnFocusLoss,
+            IsTranslucent);
         return new QuickTerminalSettingsSaveRequest(settings, ExpectedRevision);
     }
 

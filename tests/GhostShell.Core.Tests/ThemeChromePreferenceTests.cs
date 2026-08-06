@@ -50,7 +50,7 @@ public sealed class ThemeChromePreferenceTests
 
     [Theory]
     [InlineData(-1)]
-    [InlineData(21)]
+    [InlineData(33)]
     [InlineData(double.NaN)]
     public void An_out_of_range_corner_radius_is_rejected(double radius) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => Theme(cornerRadius: radius));

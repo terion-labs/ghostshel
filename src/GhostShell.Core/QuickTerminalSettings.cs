@@ -8,7 +8,9 @@ namespace GhostShell.Core;
 /// </summary>
 public sealed record QuickTerminalSettings : IDurableDefinition
 {
-    public const int CurrentSchemaVersion = 2;
+    // Not moved: see ThemePreference. The switch is optional so a stored
+    // payload without it still constructs.
+    public const int CurrentSchemaVersion = 1;
     public const double MinimumHeightFraction = 0.25;
     public const double MaximumHeightFraction = 0.90;
     public const double MinimumOpacity = 0.00;
@@ -26,12 +28,12 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         QuickTerminalMonitorPolicy.MainWindow,
         heightFraction: 0.55,
         opacity: 0.82,
-        isTranslucent: DefaultIsTranslucent,
         animateSlide: true,
         animationDurationMilliseconds: 180,
         reduceMotion: false,
         restoreLastSession: true,
-        hideOnFocusLoss: true);
+        hideOnFocusLoss: true,
+        isTranslucent: DefaultIsTranslucent);
 
     [JsonConstructor]
     public QuickTerminalSettings(
@@ -41,12 +43,12 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         QuickTerminalMonitorPolicy monitorPolicy,
         double heightFraction,
         double opacity,
-        bool isTranslucent,
         bool animateSlide,
         int animationDurationMilliseconds,
         bool reduceMotion,
         bool restoreLastSession,
-        bool hideOnFocusLoss)
+        bool hideOnFocusLoss,
+        bool isTranslucent = DefaultIsTranslucent)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (string.IsNullOrWhiteSpace(hotkey.Key)

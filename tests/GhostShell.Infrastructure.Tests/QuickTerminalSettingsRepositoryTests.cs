@@ -19,7 +19,6 @@ public sealed class QuickTerminalSettingsRepositoryTests
             QuickTerminalMonitorPolicy.ActiveWindow,
             0.48,
             0.74,
-            true,
             animateSlide: true,
             animationDurationMilliseconds: 240,
             reduceMotion: false,

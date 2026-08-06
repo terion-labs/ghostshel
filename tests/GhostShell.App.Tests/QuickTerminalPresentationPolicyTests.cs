@@ -54,12 +54,12 @@ public sealed class QuickTerminalPresentationPolicyTests
             defaults.MonitorPolicy,
             defaults.HeightFraction,
             defaults.Opacity,
-            defaults.IsTranslucent,
             defaults.AnimateSlide,
             defaults.AnimationDurationMilliseconds,
             reduceMotion: true,
-            defaults.RestoreLastSession,
-            defaults.HideOnFocusLoss);
+            restoreLastSession: defaults.RestoreLastSession,
+            hideOnFocusLoss: defaults.HideOnFocusLoss,
+            isTranslucent: defaults.IsTranslucent);
 
         Assert.False(QuickTerminalPresentationPolicy.ShouldAnimate(
             settings,

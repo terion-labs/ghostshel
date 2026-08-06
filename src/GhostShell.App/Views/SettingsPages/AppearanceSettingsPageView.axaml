@@ -438,11 +438,11 @@
                   VerticalAlignment="Center"
                   ValueChanged="OnAppearanceChanged"
                   Minimum="0"
-                  Maximum="20"
+                  Maximum="32"
                   TickFrequency="1"
                   IsSnapToTickEnabled="True"
                   AutomationProperties.Name="Corner radius" />
-              <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding #CornerRadiusSlider.Value, StringFormat={}{0:0}px}" />
+              <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="{Binding #CornerRadiusSlider.Value, StringFormat={}{0:0}pt}" />
               <Border
                   Grid.Column="2"
                   Width="30"
@@ -456,45 +456,43 @@
 
           </controls:LabeledField>
         </controls:SurfaceCard>
-      </Grid>
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-        <controls:SurfaceCard Tone="Raised" Grid.ColumnSpan="2">
-          <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-            <controls:LabeledField
-                Label="Translucency"
-                Hint="Whether the shell sits on the platform's own material, so the desktop shows through it. The amount of blur is the platform's to decide.">
-              <ToggleSwitch
-                  x:Name="TranslucencyToggle"
-                  IsCheckedChanged="OnAppearanceChanged"
-                  AutomationProperties.Name="Translucency" />
-            </controls:LabeledField>
-            <controls:LabeledField
-                Label="Background opacity"
-                Hint="How solid the shell's base surface is. Lower lets more of the desktop through; at full it reads as a frame around the panels rather than as glass.">
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                <Slider
-                    x:Name="BackdropOpacitySlider"
-                    VerticalAlignment="Center"
-                    IsEnabled="{Binding #TranslucencyToggle.IsChecked}"
-                    ValueChanged="OnAppearanceChanged"
-                    Minimum="40"
-                    Maximum="100"
-                    TickFrequency="2"
-                    IsSnapToTickEnabled="True"
-                    AutomationProperties.Name="Background opacity" />
-                <TextBlock
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    FontSize="{DynamicResource ShellFontSize12}"
-                    FontWeight="SemiBold"
-                    Text="{Binding #BackdropOpacitySlider.Value, StringFormat={}{0:0}%}" />
-              </Grid>
-            </controls:LabeledField>
-          </StackPanel>
+        <controls:SurfaceCard Tone="Raised" Grid.Column="1">
+          <controls:LabeledField
+              Label="Translucency"
+              Hint="Sit the shell on the platform's own material, so the desktop shows through it. How far it blurs is the platform's to decide.">
+            <ToggleSwitch
+                x:Name="TranslucencyToggle"
+                IsCheckedChanged="OnAppearanceChanged"
+                AutomationProperties.Name="Translucency" />
+          </controls:LabeledField>
         </controls:SurfaceCard>
       </Grid>
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
+          <controls:LabeledField
+              Label="Background opacity"
+              Hint="How solid the base surface is. Lower lets more of the desktop through; at full it reads as a frame around the panels rather than as glass.">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <Slider
+                  x:Name="BackdropOpacitySlider"
+                  VerticalAlignment="Center"
+                  IsEnabled="{Binding #TranslucencyToggle.IsChecked}"
+                  ValueChanged="OnAppearanceChanged"
+                  Minimum="40"
+                  Maximum="100"
+                  TickFrequency="2"
+                  IsSnapToTickEnabled="True"
+                  AutomationProperties.Name="Background opacity" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize12}"
+                  FontWeight="SemiBold"
+                  Text="{Binding #BackdropOpacitySlider.Value, StringFormat={}{0:0}%}" />
+            </Grid>
+          </controls:LabeledField>
+        </controls:SurfaceCard>
+        <controls:SurfaceCard Tone="Raised" Grid.Column="1">
           <controls:LabeledField
               Label="Padding density">
             <Border Classes="Segmented">

@@ -51,11 +51,21 @@ public sealed record ThemePreference : IDurableDefinition
     /// Version 2 adds the window-chrome settings. Every one of them is optional
     /// with a defined default, so a stored version 1 document still deserializes.
     /// </summary>
-    public const int CurrentSchemaVersion = 3;
+    // Not moved for the translucency change. A stored payload that still
+    // carries a blur radius reads correctly: the property is ignored and the
+    // switch takes its default. Moving it would have every saved theme fail
+    // validation as an unsupported schema and be replaced by defaults, which
+    // is how a corner radius someone had chosen came back as the fallback.
+    public const int CurrentSchemaVersion = 2;
 
     public const double MinimumCornerRadius = 0;
 
-    public const double MaximumCornerRadius = 20;
+    // Twenty could not express what the platform itself now uses. macOS 26
+    // rounds windows far harder than that, and concentrically — the radius
+    // follows whatever sits at the top of the window, so there is no single
+    // published number to copy and this has to be reachable rather than
+    // guessed at.
+    public const double MaximumCornerRadius = 32;
 
     /// <summary>Whether the shell sits on a translucent base surface at all.</summary>
     public const bool DefaultIsTranslucent = true;
@@ -71,7 +81,9 @@ public sealed record ThemePreference : IDurableDefinition
 
     public const int MaximumBackdropOpacityPercent = 100;
 
-    public const int DefaultBackdropOpacityPercent = 72;
+    // Seventy-eight is where the dark shell sits against the platform's own
+    // glass rather than in front of it.
+    public const int DefaultBackdropOpacityPercent = 78;
 
     public static RgbColor BronzeFallback { get; } = RgbColor.Parse("#B8793A");
 
