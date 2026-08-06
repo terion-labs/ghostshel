@@ -348,7 +348,7 @@ public sealed class MainWindowKeybindingEditorTests
 
         viewModel.ShowSettings(SettingsPage.Workspaces);
 
-        Assert.Equal(ShellRoute.Launcher, viewModel.Route);
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
         Assert.Equal(ShellOverlay.DefinitionEditor, viewModel.Overlay);
         Assert.NotNull(viewModel.WorkspaceEditor);
         Assert.Contains("discard", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);

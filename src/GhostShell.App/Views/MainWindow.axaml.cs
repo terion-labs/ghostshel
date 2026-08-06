@@ -469,15 +469,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    public void NavigateToLauncher()
-    {
-        ViewModel.ShowLauncher();
-        if (ViewModel.IsLauncherVisible && !ViewModel.HasOverlay)
-        {
-            FocusLauncherWhenReady(static launcher =>
-                launcher.FocusHomeNavigation());
-        }
-    }
+    /// <summary>
+    /// Opens a tab that asks what to open. There was a screen for this, reached
+    /// by leaving whatever was on it; it is a tab now, so nothing has to be left.
+    /// </summary>
+    public async Task NavigateToLauncherAsync() => await ShowNewItemLauncherAsync();
 
 
     public async Task ShowNewPanelChooserAsync()
@@ -534,67 +530,18 @@ public sealed partial class MainWindow : Window
         AvaloniaKeyModifiers commandModifier) =>
         actualKey == expectedKey && actualModifiers == commandModifier;
 
-    private void OnShowLauncherClick(object? sender, RoutedEventArgs e)
+    private async void OnShowLauncherClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        NavigateToLauncher();
-    }
-
-    private void OnLauncherHomeClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        ViewModel.ShowLauncherOverview();
-        if (!ViewModel.IsLauncherOverviewVisible)
+        try
         {
-            return;
+            await NavigateToLauncherAsync();
         }
-
-        FocusLauncherOverviewSection(
-            LauncherOverviewSection.Home,
-            resetScroll: true);
-    }
-
-    private void OnLauncherConnectionsClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        ViewModel.ShowLauncherConnections();
-        if (ViewModel.IsLauncherConnectionsVisible)
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
-            FocusLauncherWhenReady(static launcher => launcher.FocusConnectionsPage());
         }
     }
-
-    private void OnLauncherScreensClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        ViewModel.ShowLauncherScreens();
-        if (ViewModel.IsLauncherScreensVisible)
-        {
-            FocusLauncherWhenReady(static launcher => launcher.FocusScreensPage());
-        }
-    }
-
-    private void OnLauncherHistoryClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        ViewModel.ShowLauncherHistory();
-        if (ViewModel.IsLauncherHistoryVisible)
-        {
-            FocusLauncherWhenReady(static launcher =>
-                launcher.FocusHistorySearch());
-        }
-    }
-
-    private void FocusLauncherOverviewSection(
-        LauncherOverviewSection section,
-        bool resetScroll = false) =>
-        this.FindControl<LauncherView>("LauncherRouteView")
-            ?.FocusOverviewSection(section, resetScroll);
 
     private async void OnHistorySearchKeyDown(object? sender, KeyEventArgs e)
     {
@@ -620,9 +567,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        ViewModel.ShowLauncherOverview();
-        FocusLauncherWhenReady(static launcher =>
-            launcher.FocusHistoryNavigation());
+        ViewModel.HistorySearchQuery = string.Empty;
     }
 
     private void OnShowSettingsClick(object? sender, RoutedEventArgs e)
@@ -755,22 +700,16 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        NavigateToLauncher();
         ViewModel.Onboarding?.ShowReview();
-        FocusLauncherWhenReady(static launcher =>
-            launcher.FocusOnboardingFinish());
+        _ = NavigateToLauncherAsync();
     }
 
     private void OnReviewHistoryPrivacyClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        ViewModel.ShowLauncherHistory();
-        if (ViewModel.IsLauncherHistoryVisible)
-        {
-            FocusLauncherWhenReady(static launcher =>
-                launcher.FocusHistorySearch());
-        }
+        NavigateToSettings();
+        SetSettingsPage(SettingsPage.Secrets);
     }
 
 
@@ -1920,7 +1859,7 @@ public sealed partial class MainWindow : Window
         }
         else if (IsExactGlobalGesture(e.Key, e.KeyModifiers, Key.D1, commandModifier))
         {
-            NavigateToLauncher();
+            _ = NavigateToLauncherAsync();
             e.Handled = true;
         }
         else if (IsExactGlobalGesture(
@@ -2097,19 +2036,7 @@ public sealed partial class MainWindow : Window
         {
             FocusActivePanel();
         }
-        else if (ViewModel.IsLauncherVisible)
-        {
-            if (ViewModel.IsLauncherHistoryVisible)
-            {
-                FocusLauncherWhenReady(static launcher =>
-                    launcher.FocusHistorySearch());
-            }
-            else
-            {
-                FocusLauncherWhenReady(static launcher =>
-                    launcher.FocusHomeNavigation());
-            }
-        }
+
         else if (ViewModel.IsSettingsVisible)
         {
             FocusSettingsWhenReady(static settings =>
@@ -2120,15 +2047,6 @@ public sealed partial class MainWindow : Window
     private void FocusControlWhenReady(string controlName) =>
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             this.FindControl<Control>(controlName)?.Focus(NavigationMethod.Tab));
-
-    private void FocusLauncherWhenReady(Action<LauncherView> focus) =>
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-        {
-            if (this.FindControl<LauncherView>("LauncherRouteView") is { } launcher)
-            {
-                focus(launcher);
-            }
-        });
 
     private void FocusLayoutDesignerNameWhenReady() =>
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>

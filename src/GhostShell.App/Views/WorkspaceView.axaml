@@ -62,7 +62,7 @@
           </Button>
           <!-- The band under this row used to carry the search affordance beside
                a strip of saved connections. The strip is gone — a saved
-               connection is opened from the chooser that a new panel already
+               connection is opened from the launcher that a new panel already
                shows — so search keeps its place here rather than losing its
                only visible affordance with it. -->
           <Button Classes="IconButton" Click="OnShowCommandPaletteClick" ToolTip.Tip="{Binding CommandPaletteAction}" AutomationProperties.Name="Search commands, connections, screens, workspaces, and session history"><icons:SymbolIcon Symbol="Search" FontSize="15" /></Button>

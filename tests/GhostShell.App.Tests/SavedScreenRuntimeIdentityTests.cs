@@ -1746,7 +1746,7 @@ public sealed class SavedScreenRuntimeIdentityTests
 
         Assert.False(await viewModel.ApplyStartupRecoveryAsync(startup));
         Assert.Null(viewModel.RuntimeWorkspace);
-        Assert.Equal(ShellRoute.Launcher, viewModel.Route);
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
     }
 
     [Fact]
@@ -2192,7 +2192,7 @@ public sealed class SavedScreenRuntimeIdentityTests
 
         Assert.False(await viewModel.ApplyStartupRecoveryAsync(startup));
         Assert.Null(viewModel.RuntimeWorkspace);
-        Assert.Equal(ShellRoute.Launcher, viewModel.Route);
+        Assert.Equal(ShellRoute.Workspace, viewModel.Route);
         Assert.True(viewModel.HasOperationError);
         Assert.Contains("not supported", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);
     }

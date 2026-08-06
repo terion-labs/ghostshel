@@ -193,7 +193,7 @@ public sealed partial class App : Avalonia.Application
     {
         _ = sender;
         _ = e;
-        MainWindow.NavigateToLauncher();
+        _ = MainWindow.NavigateToLauncherAsync();
     }
 
     private void OnQuickTerminalMenuClick(object? sender, EventArgs e)

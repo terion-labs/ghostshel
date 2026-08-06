@@ -1,5 +1,5 @@
 <UserControl
-    x:Class="GhostShell.App.Views.Components.NewItemChooserView"
+    x:Class="GhostShell.App.Views.Components.LauncherView"
     x:Name="Root"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -15,7 +15,7 @@
       border, so this compact catalog lets the card provide the surrounding
       chrome.
     -->
-    <Style Selector="Button.ListRow.ChooserListRow">
+    <Style Selector="Button.ListRow.LauncherListRow">
       <Setter Property="BorderThickness" Value="0" />
     </Style>
   </UserControl.Styles>
@@ -111,42 +111,42 @@
     <StackPanel Grid.Row="2" Spacing="{DynamicResource ShellSpaceSm}">
       <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Start something new" />
       <controls:CardGridPanel MinItemWidth="150" Spacing="{DynamicResource ShellSpaceSm}">
-        <Button x:Name="NewTerminalButton" Classes="ChooserButton LauncherChooser" Click="OnNewLocalTerminalClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new local terminal">
+        <Button x:Name="NewTerminalButton" Classes="ChooserButton LauncherTile" Click="OnNewLocalTerminalClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new local terminal">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="WindowConsole" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="New terminal" TextTrimming="CharacterEllipsis" />
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Open the default local shell" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
-        <Button Classes="ChooserButton LauncherChooser" AutomationProperties.Name="Open a new native browser" Click="OnNewBrowserClick" HorizontalContentAlignment="Stretch" IsEnabled="{Binding CanStartBrowserSession}">
+        <Button Classes="ChooserButton LauncherTile" AutomationProperties.Name="Open a new native browser" Click="OnNewBrowserClick" HorizontalContentAlignment="Stretch" IsEnabled="{Binding CanStartBrowserSession}">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="New browser" TextTrimming="CharacterEllipsis" />
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Operating-system webview panel" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
-        <Button Classes="ChooserButton LauncherChooser" Click="OnNewStatisticsClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open local host statistics">
+        <Button Classes="ChooserButton LauncherTile" Click="OnNewStatisticsClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open local host statistics">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="PulseSquare" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="Statistics" TextTrimming="CharacterEllipsis" />
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Live system metrics" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
-        <Button Classes="ChooserButton LauncherChooser" Click="OnNewFileViewerClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new File Viewer">
+        <Button Classes="ChooserButton LauncherTile" Click="OnNewFileViewerClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new File Viewer">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Folder" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="File Viewer" TextTrimming="CharacterEllipsis" />
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Browse configured providers" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
-        <Button Classes="ChooserButton LauncherChooser" Click="OnNewProcessMonitorClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open local process monitor">
+        <Button Classes="ChooserButton LauncherTile" Click="OnNewProcessMonitorClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open local process monitor">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Gauge" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="Process monitor" TextTrimming="CharacterEllipsis" />
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Watch running processes" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
-        <Button Classes="ChooserButton LauncherChooser" Click="OnNewDatabaseClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new database viewer">
+        <Button Classes="ChooserButton LauncherTile" Click="OnNewDatabaseClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a new database viewer">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Database" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="Database" TextTrimming="CharacterEllipsis" />
@@ -174,7 +174,7 @@
           <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <!-- The same tile the rail draws. The chooser is where you pick a
+              <!-- The same tile the rail draws. The launcher is where you pick a
                    workspace, not where you end one, so it offers no close. -->
               <controls:WorkspaceRailTile
                   Accent="{Binding Accent}"
@@ -231,7 +231,7 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Button
-                      Classes="ListRow ChooserListRow"
+                      Classes="ListRow LauncherListRow"
                       Click="OnOpenScreenClick"
                       AutomationProperties.Name="{Binding Name, StringFormat=Open saved screen {0} in a tab}">
                     <Grid Margin="{controls:Inset Horizontal=Md, Vertical=Sm}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -299,7 +299,7 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Button
-                      Classes="ListRow ChooserListRow"
+                      Classes="ListRow LauncherListRow"
                       Click="OnOpenRecentSessionClick"
                       IsEnabled="{Binding CanOpen}"
                       HorizontalContentAlignment="Stretch"

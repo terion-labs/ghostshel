@@ -159,6 +159,18 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ShowLayoutDesignerRequested;
 
+    public event EventHandler<RoutedEventArgs>? SaveHistoryRetentionRequested;
+
+    public event EventHandler<RoutedEventArgs>? RetryRecentSessionHistoryRequested;
+
+    public event EventHandler<RoutedEventArgs>? ExportAllHistoryRequested;
+
+    public event EventHandler<RoutedEventArgs>? CancelHistoryExportRequested;
+
+    public event EventHandler<RoutedEventArgs>? ClearRecentSessionsRequested;
+
+    public event EventHandler<RoutedEventArgs>? ResetRecentSessionHistoryRequested;
+
     public event EventHandler<RoutedEventArgs>? ShowNewItemRequested;
 
     public event EventHandler<RoutedEventArgs>? TerminalSettingsRequested;
@@ -449,6 +461,24 @@ public sealed partial class SettingsView : UserControl
 
     private void OnShowNewItemClick(object? sender, RoutedEventArgs e) =>
         ShowNewItemRequested?.Invoke(sender, e);
+
+    private void OnSaveHistoryRetentionClick(object? sender, RoutedEventArgs e) =>
+        SaveHistoryRetentionRequested?.Invoke(sender, e);
+
+    private void OnRetryRecentSessionHistoryClick(object? sender, RoutedEventArgs e) =>
+        RetryRecentSessionHistoryRequested?.Invoke(sender, e);
+
+    private void OnExportAllHistoryClick(object? sender, RoutedEventArgs e) =>
+        ExportAllHistoryRequested?.Invoke(sender, e);
+
+    private void OnCancelHistoryExportClick(object? sender, RoutedEventArgs e) =>
+        CancelHistoryExportRequested?.Invoke(sender, e);
+
+    private void OnClearRecentSessionsClick(object? sender, RoutedEventArgs e) =>
+        ClearRecentSessionsRequested?.Invoke(sender, e);
+
+    private void OnResetRecentSessionHistoryClick(object? sender, RoutedEventArgs e) =>
+        ResetRecentSessionHistoryRequested?.Invoke(sender, e);
 
     private void OnTerminalSettingsClick(object? sender, RoutedEventArgs e) =>
         TerminalSettingsRequested?.Invoke(sender, e);

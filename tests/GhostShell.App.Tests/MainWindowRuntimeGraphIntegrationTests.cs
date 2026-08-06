@@ -1076,14 +1076,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
 
         Assert.Equal(1, VisibleRouteCount(viewModel));
-        Assert.True(viewModel.IsLauncherOverviewVisible);
-        Assert.False(viewModel.IsLauncherHistoryVisible);
-
-        viewModel.ShowLauncherHistory();
-
-        Assert.Equal(1, VisibleRouteCount(viewModel));
-        Assert.False(viewModel.IsLauncherOverviewVisible);
-        Assert.True(viewModel.IsLauncherHistoryVisible);
+        Assert.True(viewModel.IsWorkspaceVisible);
 
         foreach (var page in Enum.GetValues<SettingsPage>())
         {
@@ -1940,7 +1933,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.NotNull(unregistration.Context.IdempotencyKey);
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.False(viewModel.HasRuntimeWorkspace);
-        Assert.True(viewModel.IsLauncherVisible);
+        Assert.True(viewModel.IsWorkspaceVisible);
     }
 
     [Fact]
@@ -1959,7 +1952,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Null(recorder.CurrentWorkspace);
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.False(viewModel.HasRuntimeWorkspace);
-        Assert.True(viewModel.IsLauncherVisible);
+        Assert.True(viewModel.IsWorkspaceVisible);
         Assert.Null(viewModel.OperationError);
     }
 
@@ -3134,48 +3127,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     /// <summary>
-    /// Saved Connections and Screens are real destinations, not scroll positions
-    /// inside Home. The launcher page has to be exclusive, or the sidebar can
-    /// highlight two entries and two pages can render at once.
-    /// </summary>
-    [Theory]
-    [InlineData(LauncherPage.Overview)]
-    [InlineData(LauncherPage.Connections)]
-    [InlineData(LauncherPage.Screens)]
-    [InlineData(LauncherPage.History)]
-    public void Exactly_one_launcher_page_is_visible_at_a_time(LauncherPage page)
-    {
-        var (client, _) = CreateSessionClient();
-        using var viewModel = CreateViewModel(client, CreateFixedCatalog(CreateCatalogSnapshot()));
-
-        switch (page)
-        {
-            case LauncherPage.Overview: viewModel.ShowLauncherOverview(); break;
-            case LauncherPage.Connections: viewModel.ShowLauncherConnections(); break;
-            case LauncherPage.Screens: viewModel.ShowLauncherScreens(); break;
-            default: viewModel.ShowLauncherHistory(); break;
-        }
-
-        Assert.Equal(ShellRoute.Launcher, viewModel.Route);
-        Assert.Equal(page, viewModel.LauncherPage);
-        Assert.Equal(1, VisibleLauncherPageCount(viewModel));
-    }
-
-    [Fact]
-    public void Navigating_to_a_launcher_page_leaves_the_other_shell_routes_hidden()
-    {
-        var (client, _) = CreateSessionClient();
-        using var viewModel = CreateViewModel(client, CreateFixedCatalog(CreateCatalogSnapshot()));
-        viewModel.ShowSettings(SettingsPage.Appearance);
-
-        viewModel.ShowLauncherConnections();
-
-        Assert.Equal(1, VisibleRouteCount(viewModel));
-        Assert.True(viewModel.IsLauncherConnectionsVisible);
-        Assert.False(viewModel.IsSettingsVisible);
-    }
-
-    /// <summary>
     /// Home is a summary. Without a bound preview a profile with many saved
     /// definitions would push every later section off the page, and the "View
     /// all" link would have nothing left to reveal.
@@ -3210,15 +3161,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.False(viewModel.HasMoreConnectionsThanPreview);
     }
 
-    private static int VisibleLauncherPageCount(MainWindowViewModel viewModel) =>
-        new[]
-        {
-            viewModel.IsLauncherOverviewVisible,
-            viewModel.IsLauncherConnectionsVisible,
-            viewModel.IsLauncherScreensVisible,
-            viewModel.IsLauncherHistoryVisible,
-        }.Count(isVisible => isVisible);
-
     private static DefinitionCatalogSnapshot CreateManyConnectionsSnapshot(int connectionCount)
     {
         var connections = Enumerable.Range(0, connectionCount)
@@ -3244,7 +3186,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     private static int VisibleRouteCount(MainWindowViewModel viewModel) =>
         new[]
         {
-            viewModel.IsLauncherVisible,
             viewModel.IsWorkspaceVisible,
             viewModel.IsSettingsVisible,
         }.Count(isVisible => isVisible);

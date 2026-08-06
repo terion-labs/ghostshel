@@ -406,7 +406,7 @@
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
   </Style>
 
-  <Style Selector="Button.ChooserButton.LauncherChooser">
+  <Style Selector="Button.ChooserButton.LauncherTile">
     <Setter Property="MinHeight" Value="124" />
     <Setter Property="Padding" Value="16" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />

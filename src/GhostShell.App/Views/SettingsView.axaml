@@ -654,6 +654,49 @@
                   </StackPanel>
                 </controls:SurfaceCard>
               </StackPanel>
+              <!-- Kept here rather than beside the history it governs: whether
+                   a record of every session is written down at all is a
+                   question about this machine, not about the list. -->
+              <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock Classes="SectionHeading" Text="Session history" />
+                <controls:SurfaceCard Padding="0">
+                  <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontWeight="SemiBold" Text="Retain session metadata" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="Off unless you ask for it. When on, the launcher remembers what was opened — definition metadata only, never commands, output, environment values, or credentials." />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="{Binding HistoryRetentionStatus}"
+                          AutomationProperties.LiveSetting="Polite"
+                          AutomationProperties.Name="History retention status" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" TextWrapping="Wrap"
+                          Text="{Binding HistoryExportStatus}"
+                          AutomationProperties.LiveSetting="Polite"
+                          AutomationProperties.Name="History export status" />
+                    </StackPanel>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                      <ComboBox
+                          x:Name="HistoryRetentionPicker"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding HistoryRetentionOptions}"
+                          SelectedItem="{Binding SelectedHistoryRetentionOption, Mode=TwoWay}"
+                          IsEnabled="{Binding CanManageHistoryRetention}"
+                          AutomationProperties.Name="Session history retention">
+                        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <Button Grid.Column="1" Classes="SecondaryButton" Click="OnSaveHistoryRetentionClick" Content="Apply" IsEnabled="{Binding CanApplyHistoryRetention}" AutomationProperties.Name="Apply history retention" />
+                    </Grid>
+                    <WrapPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnReviewHistoryPrivacyClick" Content="Review privacy" AutomationProperties.Name="Review session history privacy" />
+                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnRetryRecentSessionHistoryClick" Content="Retry" IsEnabled="{Binding CanRetryRecentSessionHistory}" IsVisible="{Binding HasRecentSessionFailure}" AutomationProperties.Name="Retry loading session history" />
+                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnExportAllHistoryClick" Content="Export all" IsEnabled="{Binding CanExportAllHistory}" AutomationProperties.Name="Export all retained history metadata" />
+                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnCancelHistoryExportClick" Content="Cancel export" IsVisible="{Binding IsHistoryExporting}" AutomationProperties.Name="Cancel session history export" />
+                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="DestructiveButton" Click="OnClearRecentSessionsClick" Content="Clear" IsEnabled="{Binding CanClearRecentSessionHistory}" AutomationProperties.Name="Clear retained session history" />
+                      <Button Margin="{controls:Inset Bottom=Xs}" Classes="DestructiveButton" Click="OnResetRecentSessionHistoryClick" Content="Reset unreadable history" IsEnabled="{Binding CanResetRecentSessionHistory}" IsVisible="{Binding HasUnreadableRecentSessionHistory}" AutomationProperties.Name="Reset unreadable session history" />
+                    </WrapPanel>
+                  </StackPanel>
+                </controls:SurfaceCard>
+              </StackPanel>
               <controls:SurfaceCard Tone="Notice" Padding="0"><Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}"><icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" /><TextBlock Grid.Column="1" Classes="Muted" Text="{Binding SecretVaultStatus}" TextWrapping="Wrap" /></Grid></controls:SurfaceCard>
               <controls:SurfaceCard Padding="0">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">

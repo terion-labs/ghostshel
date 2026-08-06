@@ -156,14 +156,7 @@ internal sealed class QaApplication : Avalonia.Application
 
     private static readonly RouteCapture[] Routes =
     [
-        new("launcher-home", vm => vm.ShowLauncher()),
-        new("launcher-connections", vm => vm.ShowLauncherConnections()),
-        new(
-            "launcher-connections-hover",
-            vm => vm.ShowLauncherConnections(),
-            PrepareCapture: ShowFirstLaunchCardHover),
-        new("launcher-screens", vm => vm.ShowLauncherScreens()),
-        new("launcher-history", vm => vm.ShowLauncherHistory()),
+        new("settings-security", vm => vm.ShowSettings(SettingsPage.Secrets)),
         new("settings-appearance", vm => vm.ShowSettings(SettingsPage.Appearance)),
         new("settings-workspaces", vm => vm.ShowSettings(SettingsPage.Workspaces)),
         new("settings-terminal", vm => vm.ShowSettings(SettingsPage.Terminal)),
@@ -325,11 +318,11 @@ internal sealed class QaApplication : Avalonia.Application
         // silently disconnects them show up as two identical images.
         new(
             "appearance-corners-tight",
-            vm => vm.ShowLauncher(),
+            vm => vm.ShowWorkspace(),
             Theme: AppearanceExtreme(InterfaceDensity.Compact)),
         new(
             "appearance-corners-round",
-            vm => vm.ShowLauncher(),
+            vm => vm.ShowWorkspace(),
             Theme: AppearanceExtreme(InterfaceDensity.Comfortable)),
     ];
 
@@ -510,20 +503,6 @@ internal sealed class QaApplication : Avalonia.Application
         }
     }
 
-    private static void ShowFirstLaunchCardHover(MainWindow window)
-    {
-        var cardSurface = window.GetVisualDescendants()
-            .OfType<Button>()
-            .FirstOrDefault(button => button.Classes.Contains("CardSurface"))
-            ?? throw new InvalidOperationException(
-                "The launcher no longer exposes a CardSurface button for hover QA.");
-        ForcePointerOver(cardSurface);
-    }
-
-    /// <summary>
-    /// Puts a control into its hovered state without a pointer, so a hover-only
-    /// affordance can be captured at all.
-    /// </summary>
     private static void ForcePointerOver(StyledElement element)
     {
         var pseudoClasses = typeof(StyledElement).GetProperty(
@@ -1379,7 +1358,7 @@ internal sealed class QaApplication : Avalonia.Application
             {
                 Classes = { "FloatingSidebar" },
                 Padding = new Thickness(16),
-                Child = new GhostShell.App.Views.Components.NewItemChooserView
+                Child = new GhostShell.App.Views.Components.LauncherView
                 {
                     DataContext = CreateViewModel(),
                 },

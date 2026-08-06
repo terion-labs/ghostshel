@@ -198,7 +198,7 @@ public sealed class RuntimePanelViewContractTests
 
         var chooser = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "NewItemChooserView");
+            element => element.Name.LocalName == "LauncherView");
         // The cell has its own close button in its header, so the catalog does
         // not offer a second one.
         Assert.Equal("False", AttributeValue(chooser, "ShowCloseAction"));

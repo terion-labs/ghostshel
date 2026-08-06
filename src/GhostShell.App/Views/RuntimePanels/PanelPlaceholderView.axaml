@@ -34,7 +34,7 @@
           Grid.Row="1"
           HorizontalScrollBarVisibility="Disabled"
           VerticalScrollBarVisibility="Auto">
-        <components:NewItemChooserView
+        <components:LauncherView
             Margin="{controls:Inset Xl}"
             DataContext="{Binding $parent[Window].DataContext}"
             ShowCloseAction="False"

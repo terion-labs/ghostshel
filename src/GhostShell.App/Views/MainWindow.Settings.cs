@@ -56,7 +56,7 @@ public sealed partial class MainWindow
         }
         else
         {
-            NavigateToLauncher();
+            _ = NavigateToLauncherAsync();
         }
     }
 

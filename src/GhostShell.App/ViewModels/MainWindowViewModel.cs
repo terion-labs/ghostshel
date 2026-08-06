@@ -114,8 +114,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _runtimeGraphWatchCancellation;
     private CancellationTokenSource? _workspaceAutoSaveDebounce;
     private RuntimeHistorySource? _runtimeHistorySource;
-    private ShellRoute _route = ShellRoute.Launcher;
-    private LauncherPage _launcherPage;
+    private ShellRoute _route = ShellRoute.Workspace;
     private SettingsPage _settingsPage = SettingsPage.Appearance;
     private ShellOverlay _overlay;
     private long _overlayRevision;
@@ -842,11 +841,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _route, value))
             {
-                OnPropertyChanged(nameof(IsLauncherVisible));
-                OnPropertyChanged(nameof(IsLauncherOverviewVisible));
-                OnPropertyChanged(nameof(IsLauncherConnectionsVisible));
-                OnPropertyChanged(nameof(IsLauncherScreensVisible));
-                OnPropertyChanged(nameof(IsLauncherHistoryVisible));
                 OnPropertyChanged(nameof(IsWorkspaceVisible));
                 OnPropertyChanged(nameof(IsSettingsVisible));
                 OnPropertyChanged(nameof(IsWorkspaceCanvasVisible));
@@ -854,20 +848,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    public LauncherPage LauncherPage
-    {
-        get => _launcherPage;
-        private set
-        {
-            if (SetProperty(ref _launcherPage, value))
-            {
-                OnPropertyChanged(nameof(IsLauncherOverviewVisible));
-                OnPropertyChanged(nameof(IsLauncherConnectionsVisible));
-                OnPropertyChanged(nameof(IsLauncherScreensVisible));
-                OnPropertyChanged(nameof(IsLauncherHistoryVisible));
-            }
-        }
-    }
 
     public SettingsPage SettingsPage
     {
@@ -1410,20 +1390,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool IsLauncherVisible => Route == ShellRoute.Launcher;
-
-    public bool IsLauncherOverviewVisible =>
-        IsLauncherVisible && LauncherPage == LauncherPage.Overview;
-
-    public bool IsLauncherConnectionsVisible =>
-        IsLauncherVisible && LauncherPage == LauncherPage.Connections;
-
-    public bool IsLauncherScreensVisible =>
-        IsLauncherVisible && LauncherPage == LauncherPage.Screens;
-
-    public bool IsLauncherHistoryVisible =>
-        IsLauncherVisible && LauncherPage == LauncherPage.History;
-
     public bool IsWorkspaceVisible => Route == ShellRoute.Workspace;
 
     public bool IsSettingsVisible => Route == ShellRoute.Settings;
@@ -1781,53 +1747,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         : "Follow system accent";
 
     public int KeybindingConflictCount => Keybindings.Count(item => item.HasConflict);
-
-    public void ShowLauncher()
-    {
-        if (!TryDismissOverlayForNavigation())
-        {
-            return;
-        }
-
-        LauncherPage = LauncherPage.Overview;
-        Route = ShellRoute.Launcher;
-    }
-
-    public void ShowLauncherOverview() => ShowLauncher();
-
-    public void ShowLauncherConnections()
-    {
-        if (!TryDismissOverlayForNavigation())
-        {
-            return;
-        }
-
-        LauncherPage = LauncherPage.Connections;
-        Route = ShellRoute.Launcher;
-    }
-
-    public void ShowLauncherScreens()
-    {
-        if (!TryDismissOverlayForNavigation())
-        {
-            return;
-        }
-
-        LauncherPage = LauncherPage.Screens;
-        Route = ShellRoute.Launcher;
-    }
-
-    public void ShowLauncherHistory()
-    {
-        if (!TryDismissOverlayForNavigation())
-        {
-            return;
-        }
-
-        LauncherPage = LauncherPage.History;
-        Route = ShellRoute.Launcher;
-        RefreshHistorySearchResults();
-    }
 
     public void ShowSettings(SettingsPage page = SettingsPage.Appearance)
     {
@@ -2939,7 +2858,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (RuntimeWorkspace is not null
             || HasOverlay
-            || Route != ShellRoute.Launcher
             || Onboarding?.IsVisible == true)
         {
             return false;
@@ -2971,7 +2889,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (!RestoreSessionsOnStart
             || RuntimeWorkspace is not null
-            || Route != ShellRoute.Launcher
             || HasOverlay)
         {
             return false;
@@ -2989,7 +2906,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         if (RuntimeWorkspace is not null
-            || Route != ShellRoute.Launcher
             || HasOverlay)
         {
             return false;
@@ -3040,7 +2956,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (payload!.Workspace is null)
         {
             RuntimeWorkspace = null;
-            ShowLauncher();
+            Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
         }
@@ -4790,7 +4706,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// Opens a saved connection as a new panel in the active tab.
     ///
     /// A blank adapter is only one of the things a new panel can become: the
-    /// panel chooser offers saved connections too, and choosing one has to open
+    /// launcher offers saved connections too, and choosing one has to open
     /// that connection rather than a default local shell.
     /// </summary>
     public async Task<bool> AddConnectionPanelAsync(
@@ -4934,7 +4850,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Opens a saved target as a panel in the active tab, with the adapter the
-    /// chooser asked for.
+    /// launcher asked for.
     ///
     /// The tab-level counterpart is <see cref="AddSavedConnectionTabAsync"/>.
     /// Both exist because the same row means two things depending on where it
@@ -7630,7 +7546,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CloseRuntimeWorkspace(runtime);
         if (RuntimeWorkspace is null)
         {
-            ShowLauncher();
+            Route = ShellRoute.Workspace;
         }
     }
 
@@ -7781,7 +7697,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (RuntimeWorkspace is null)
         {
-            ShowLauncher();
+            Route = ShellRoute.Workspace;
         }
     }
 
@@ -7981,7 +7897,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 CloseOverlay();
                 if (RuntimeWorkspace is null)
                 {
-                    Route = ShellRoute.Launcher;
+                    Route = ShellRoute.Workspace;
                 }
 
                 return true;

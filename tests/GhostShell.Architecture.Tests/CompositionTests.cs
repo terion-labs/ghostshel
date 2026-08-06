@@ -87,7 +87,7 @@ public sealed class CompositionTests
 
         Assert.Same(firstClient, secondClient);
         Assert.Same(firstClient, viewModel.SessionClient);
-        Assert.True(viewModel.IsLauncherVisible);
+        Assert.True(viewModel.IsWorkspaceVisible);
         Assert.NotNull(application);
         Assert.NotNull(definitions);
         Assert.NotNull(runStore);

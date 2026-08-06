@@ -256,12 +256,12 @@ public sealed class TransientOverlayViewContractTests
         // now, so it fills whatever cell it is placed in and the only host left
         // is the placed cell itself.
         var placeholder = LoadRuntimePanel("PanelPlaceholderView");
-        var hostedChooser = Assert.Single(
+        var hostedLauncher = Assert.Single(
             Assert.IsType<XElement>(placeholder.Root).Descendants(),
-            element => element.Name.LocalName == "NewItemChooserView");
-        Assert.Equal("False", AttributeValue(hostedChooser, "ShowCloseAction"));
+            element => element.Name.LocalName == "LauncherView");
+        Assert.Equal("False", AttributeValue(hostedLauncher, "ShowCloseAction"));
 
-        var catalog = LoadComponent("NewItemChooserView");
+        var catalog = LoadComponent("LauncherView");
         var catalogRoot = Assert.IsType<XElement>(catalog.Root);
 
         // The reference frame heads this overlay "Start something new" rather than
@@ -280,7 +280,7 @@ public sealed class TransientOverlayViewContractTests
             .Where(element => HasClasses(
                 element,
                 "ChooserButton",
-                "LauncherChooser"))
+                "LauncherTile"))
             .ToArray();
         Assert.Equal(6, choices.Length);
 
@@ -336,7 +336,7 @@ public sealed class TransientOverlayViewContractTests
             2,
             catalogRoot.Descendants()
                 .Count(element => element.Name.LocalName == "Button"
-                    && HasClasses(element, "ListRow", "ChooserListRow")));
+                    && HasClasses(element, "ListRow", "LauncherListRow")));
 
         // No inline create form: the launcher opens things, and creating a
         // screen or workspace belongs to the page that owns that list. The one
@@ -465,7 +465,7 @@ public sealed class TransientOverlayViewContractTests
 
         var newItemChooserCode = ApplicationViews
             .FindUniqueCodeBehindSourceContaining(
-                "public sealed partial class NewItemChooserView");
+                "public sealed partial class LauncherView");
         Assert.Contains(
             "NewTerminalButton.Focus(NavigationMethod.Tab);",
             newItemChooserCode);

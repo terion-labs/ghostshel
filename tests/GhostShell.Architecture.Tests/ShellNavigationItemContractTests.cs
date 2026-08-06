@@ -9,9 +9,8 @@ public sealed class ShellNavigationItemContractTests
         ApplicationViewCatalog.Load();
 
     [Fact]
-    public void Launcher_and_settings_share_the_concrete_navigation_item()
+    public void Settings_uses_the_concrete_navigation_item()
     {
-        Assert.Equal(5, CountItems("LauncherView"));
         Assert.Equal(11, CountItems("SettingsView"));
     }
 

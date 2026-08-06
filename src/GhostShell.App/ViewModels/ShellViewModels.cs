@@ -9,17 +9,8 @@ namespace GhostShell.App.ViewModels;
 
 public enum ShellRoute
 {
-    Launcher,
     Workspace,
     Settings,
-}
-
-public enum LauncherPage
-{
-    Overview,
-    Connections,
-    Screens,
-    History,
 }
 
 public enum HistoryExportScope

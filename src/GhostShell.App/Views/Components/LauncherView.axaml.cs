@@ -6,14 +6,14 @@ using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views.Components;
 
-public sealed partial class NewItemChooserView : UserControl
+public sealed partial class LauncherView : UserControl
 {
     public static readonly StyledProperty<bool> ShowCloseActionProperty =
-        AvaloniaProperty.Register<NewItemChooserView, bool>(
+        AvaloniaProperty.Register<LauncherView, bool>(
             nameof(ShowCloseAction),
             defaultValue: true);
 
-    public NewItemChooserView() => InitializeComponent();
+    public LauncherView() => InitializeComponent();
 
     public bool ShowCloseAction
     {

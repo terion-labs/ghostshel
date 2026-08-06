@@ -43,188 +43,6 @@ public sealed class LauncherViewContractTests
             ["TitleBarPointerPressedRequested"] = "OnTitleBarPointerPressed",
         };
 
-    [Fact]
-    public void Main_window_delegates_the_launcher_route_to_one_named_view()
-    {
-        var mainWindow = LoadView("MainWindow");
-        var launcher = Assert.Single(
-            mainWindow.Descendants(),
-            element => element.Name.LocalName == "LauncherView");
-
-        Assert.Equal("LauncherRouteView", AttributeValue(launcher, "Name"));
-        Assert.Equal(
-            "{Binding IsLauncherVisible}",
-            AttributeValue(launcher, "IsVisible"));
-
-        foreach (var (interaction, handler) in ShellInteractions)
-        {
-            Assert.Equal(handler, AttributeValue(launcher, interaction));
-        }
-
-        foreach (var extractedName in ExtractedControlNames)
-        {
-            Assert.DoesNotContain(
-                mainWindow.Descendants(),
-                element => string.Equals(
-                    AttributeValue(element, "Name"),
-                    extractedName,
-                    StringComparison.Ordinal));
-        }
-    }
-
-    [Fact]
-    public void Launcher_view_preserves_route_structure_state_and_accessibility()
-    {
-        var launcher = LoadView("LauncherView");
-        var root = Assert.IsType<XElement>(launcher.Root);
-
-        Assert.Equal("UserControl", root.Name.LocalName);
-        Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
-        Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
-        AssertTitleBarDragRegion(root);
-        Assert.Contains(
-            root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "Classes"),
-                    "FloatingSidebar",
-                    StringComparison.Ordinal)
-                // A Border, not a subclass of one: Avalonia's type selectors
-                // match one type exactly, so Border.FloatingSidebar stops
-                // dressing this the moment it stops being a Border, and a
-                // sidebar with no background reads as a missing sidebar.
-                && string.Equals(
-                    AttributeValue(element, "Concentric.IsEnabled"),
-                    "True",
-                    StringComparison.Ordinal));
-
-        var tabs = FindNamedElement(root, "LauncherTabStrip");
-        Assert.Equal("RuntimeTabStripView", tabs.Name.LocalName);
-        Assert.Equal(
-            "{Binding RuntimeWorkspace.Tabs}",
-            AttributeValue(tabs, "Tabs"));
-        Assert.Equal("True", AttributeValue(tabs, "ShowHomeTab"));
-        Assert.Equal("True", AttributeValue(tabs, "IsHomeActive"));
-        Assert.Equal("OnLauncherHomeClick", AttributeValue(tabs, "HomeRequested"));
-        Assert.Equal("OnActivateTabClick", AttributeValue(tabs, "ActivateRequested"));
-        Assert.Equal("OnCloseRuntimeTabClick", AttributeValue(tabs, "CloseRequested"));
-
-        foreach (var extractedName in ExtractedControlNames)
-        {
-            Assert.Single(
-                root.Descendants(),
-                element => string.Equals(
-                    AttributeValue(element, "Name"),
-                    extractedName,
-                    StringComparison.Ordinal));
-        }
-
-        var home = FindNamedElement(root, "LauncherHomeButton");
-        Assert.Equal("ShellNavigationItem", home.Name.LocalName);
-        Assert.Equal("Launcher home", AttributeValue(home, "AutomationName"));
-        Assert.Equal("OnLauncherHomeClick", AttributeValue(home, "Click"));
-        Assert.Equal(
-            "{Binding IsLauncherOverviewVisible}",
-            AttributeValue(home, "IsActive"));
-
-        foreach (var (name, automationName) in new[]
-                 {
-                     ("LauncherHomeSection", "Home overview"),
-                     ("LauncherConnectionsSection", "Saved connections section"),
-                     ("LauncherScreensSection", "Saved screens section"),
-                 })
-        {
-            var overviewTarget = FindNamedElement(root, name);
-            Assert.Equal("True", AttributeValue(overviewTarget, "Focusable"));
-            Assert.Equal(
-                automationName,
-                AttributeValue(overviewTarget, "AutomationProperties.Name"));
-        }
-
-        var historySearch = FindNamedElement(root, "HistorySearchBox");
-        Assert.Equal(
-            "Search session history",
-            AttributeValue(historySearch, "AutomationProperties.Name"));
-        Assert.Equal("OnHistorySearchKeyDown", AttributeValue(historySearch, "KeyDown"));
-        Assert.Equal(
-            "{Binding HistorySearchQuery}",
-            AttributeValue(historySearch, "Text"));
-
-        Assert.Equal(
-            "Polite",
-            AttributeValue(
-                FindUniqueAccessibleElement(root, "Getting started status"),
-                "AutomationProperties.LiveSetting"));
-        Assert.Equal(
-            "Polite",
-            AttributeValue(
-                FindUniqueAccessibleElement(root, "Session history has no results"),
-                "AutomationProperties.LiveSetting"));
-        Assert.Equal(
-            "Polite",
-            AttributeValue(
-                FindUniqueAccessibleElement(root, "History retention status"),
-                "AutomationProperties.LiveSetting"));
-
-        Assert.Contains(
-            root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding Connections}",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding Screens}",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding RecentSessions}",
-                    StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Home_runtime_tab_is_the_icon_only_predefined_tab()
-    {
-        var tabStrip = LoadComponent("RuntimeTabStripView");
-        var root = Assert.IsType<XElement>(tabStrip.Root);
-        Assert.Equal(
-            "{DynamicResource ShellTabStripTopClearance}",
-            AttributeValue(root, "Margin"));
-        var home = FindNamedElement(root, "HomeTabButton");
-
-        // A square as tall as the tabs beside it, whatever that is. The number
-        // used to be written here as well, which made every change to the
-        // strip's density a test edit and said nothing about what Home is.
-        var tab = Assert.Single(
-            root.Descendants(),
-            element => AttributeValue(element, "Classes") == "RuntimeTabDropTarget");
-        var tabHeight = AttributeValue(tab, "Height");
-        Assert.False(string.IsNullOrWhiteSpace(tabHeight));
-        Assert.Equal(tabHeight, AttributeValue(home, "Width"));
-        Assert.Equal(tabHeight, AttributeValue(home, "Height"));
-        Assert.Equal("0", AttributeValue(home, "Padding"));
-        Assert.Equal(
-            "Open Home tab",
-            AttributeValue(home, "AutomationProperties.Name"));
-        Assert.Single(
-            home.Elements(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && string.Equals(
-                    AttributeValue(element, "Symbol"),
-                    "Home",
-                    StringComparison.Ordinal));
-        Assert.DoesNotContain(
-            home.Descendants(),
-            element => element.Name.LocalName == "TextBlock");
-    }
-
     /// <summary>
     /// A saved target is one row, whichever way it can be opened. Listing it
     /// once per supported adapter said the same host four times and buried the
@@ -245,7 +63,7 @@ public sealed class LauncherViewContractTests
             .ToArray();
         var row = Assert.Single(
             buttons,
-            element => AttributeValue(element, "Classes") == "ListRow ChooserListRow");
+            element => AttributeValue(element, "Classes") == "ListRow LauncherListRow");
         Assert.Equal("OnPrimaryClick", AttributeValue(row, "Click"));
 
         var chevron = Assert.Single(
@@ -270,16 +88,16 @@ public sealed class LauncherViewContractTests
     }
 
     /// <summary>
-    /// The chooser is the one place a saved connection is opened from. A second
+    /// The launcher is the one place a saved connection is opened from. A second
     /// strip above the workspace offered the same targets in a second shape,
     /// and every capability had to be taught to both.
     /// </summary>
     [Fact]
-    public void The_chooser_is_the_only_place_saved_connections_are_launched_from()
+    public void The_launcher_is_the_only_place_saved_connections_are_launched_from()
     {
-        var chooser = LoadComponent("NewItemChooserView");
+        var launcher = LoadComponent("LauncherView");
         Assert.Single(
-            Assert.IsType<XElement>(chooser.Root).Descendants(),
+            Assert.IsType<XElement>(launcher.Root).Descendants(),
             element => element.Name.LocalName == "SavedConnectionShortcutView");
 
         Assert.DoesNotContain(
@@ -388,33 +206,6 @@ public sealed class LauncherViewContractTests
     }
 
     [Fact]
-    public void Launcher_view_forwards_leaf_interactions_without_taking_shell_ownership()
-    {
-        var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
-            "public sealed partial class LauncherView");
-
-        foreach (var interaction in ShellInteractions.Keys)
-        {
-            Assert.Contains(
-                $"? {interaction};",
-                codeBehind,
-                StringComparison.Ordinal);
-            Assert.Contains(
-                $"{interaction}?.Invoke(sender, e);",
-                codeBehind,
-                StringComparison.Ordinal);
-        }
-
-        Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("StorageProvider", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("Process.Start", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("_lifetime", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void Main_window_owns_the_titlebar_move_fallback()
     {
         var mainWindow = Assert.IsType<XElement>(LoadView("MainWindow").Root);
@@ -482,40 +273,25 @@ public sealed class LauncherViewContractTests
     }
 
     [Fact]
-    public void Main_window_uses_typed_launcher_focus_apis_across_the_namescope()
-    {
-        var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
-
-        foreach (var extractedName in ExtractedControlNames)
-        {
-            Assert.DoesNotContain(
-                $"\"{extractedName}\"",
-                mainWindowCode,
-                StringComparison.Ordinal);
-        }
-
-        Assert.Contains("FocusHomeNavigation()", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains("FocusHistoryNavigation()", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains("FocusHistorySearch()", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains("FocusOnboardingFinish()", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains("FocusOverviewSection(section, resetScroll)", mainWindowCode, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void Launcher_collection_counts_use_a_shared_noninteractive_component()
     {
-        var launcher = LoadView("LauncherView");
+        var launcher = LoadComponent("LauncherView");
         var root = Assert.IsType<XElement>(launcher.Root);
         var countPills = root.Descendants()
             .Where(element => element.Name.LocalName == "CountPill")
             .ToArray();
 
-        // The same count appears on Home and again on its dedicated page, so the
-        // assertion is on which counts exist rather than how many pills render
-        // them — a new page reusing a count is fine, a new kind of count is the
-        // thing worth catching.
+        // The assertion is on which counts exist rather than how many pills
+        // render them — a second place reusing a count is fine, a new kind of
+        // count is the thing worth catching.
         Assert.Equal(
-            new[] { "{Binding HistoryResultCount}", "{Binding Screens.Count}", "{Binding TotalConnectionCount}" },
+            new[]
+            {
+                "{Binding HistoryResultCount}",
+                "{Binding SavedConnectionShortcutCount}",
+                "{Binding Screens.Count}",
+                "{Binding Workspaces.Count}",
+            },
             countPills
                 .Select(element => AttributeValue(element, "Value") ?? string.Empty)
                 .Distinct(StringComparer.Ordinal)
@@ -532,27 +308,6 @@ public sealed class LauncherViewContractTests
         var countRoot = Assert.IsType<XElement>(countPill.Root);
         Assert.Equal("False", AttributeValue(countRoot, "Focusable"));
         Assert.Equal("False", AttributeValue(countRoot, "IsHitTestVisible"));
-    }
-
-    [Fact]
-    public void Launcher_card_hover_surface_stretches_across_the_full_card()
-    {
-        var theme = XDocument.Load(Path.Combine(
-            ApplicationViews.RepositoryRoot,
-            "src",
-            "GhostShell.App",
-            "Styles",
-            "GhostShellTheme.axaml"));
-        var cardSurfaceStyle = Assert.Single(
-            theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
-                    AttributeValue(element, "Selector"),
-                    "Button.CardSurface",
-                    StringComparison.Ordinal));
-
-        AssertStyleSetter(cardSurfaceStyle, "HorizontalAlignment", "Stretch");
-        AssertStyleSetter(cardSurfaceStyle, "HorizontalContentAlignment", "Stretch");
     }
 
     [Fact]

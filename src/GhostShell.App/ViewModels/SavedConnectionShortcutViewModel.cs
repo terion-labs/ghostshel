@@ -4,7 +4,7 @@ using GhostShell.Core;
 namespace GhostShell.App.ViewModels;
 
 /// <summary>
-/// One actionable saved target offered by the chooser.
+/// One actionable saved target offered by the launcher.
 /// The launch list is projected from the target's domain capabilities.
 ///
 /// A saved target is one thing whichever way it is opened, so it is one row with

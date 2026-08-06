@@ -14,7 +14,7 @@
   -->
   <Grid ColumnDefinitions="*,Auto">
     <Button
-        Classes="ListRow ChooserListRow"
+        Classes="ListRow LauncherListRow"
         Click="OnPrimaryClick"
         HorizontalContentAlignment="Stretch"
         IsEnabled="{Binding CanOpen}"
