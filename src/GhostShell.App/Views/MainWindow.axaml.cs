@@ -1345,26 +1345,6 @@ public sealed partial class MainWindow : Window
         ViewModel.LayoutDesignerEditor?.Reset();
     }
 
-    private async void OnToggleWorkspacesPanelClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        // No guard against the value it already holds: saving a theme that
-        // matches what is stored is already a no-op, and comparing here made
-        // the switch ignore the user whenever the two had drifted apart.
-        if (sender is not ToggleSwitch { IsChecked: { } isChecked })
-        {
-            return;
-        }
-
-        try
-        {
-            _ = await ViewModel.SetWorkspacesPanelVisibleAsync(isChecked, _lifetime.Token);
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-        {
-        }
-    }
-
     private void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

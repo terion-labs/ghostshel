@@ -154,7 +154,7 @@ public sealed class WorkspaceViewContractTests
             element => element.Name.LocalName == "ToggleSwitch"
                 && string.Equals(
                     AttributeValue(element, "IsChecked"),
-                    "{Binding ShowWorkspacesPanel, Mode=OneWay}",
+                    "{Binding ShowWorkspacesPanel, Mode=TwoWay}",
                     StringComparison.Ordinal));
 
         // Every edge the setting offers has a host, and each is bound to the

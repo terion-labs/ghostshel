@@ -1714,26 +1714,36 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>Window-chrome settings the shell layout binds to directly.</summary>
     public bool ShowTabBar => ActiveTheme.ShowTabBar;
 
-    public bool ShowWorkspacesPanel => ActiveTheme.ShowWorkspacesPanel;
-
     /// <summary>
-    /// Shows or hides the workspace rail, leaving the rest of the theme where
-    /// it is. Saving from a surface that shows only this one switch must not
-    /// carry the other chrome settings back to their defaults.
+    /// Whether the workspace rail is shown.
+    ///
+    /// Settable, so a switch can bind to it both ways like every other toggle
+    /// in the shell. Bound one way and driven by a changed event instead, the
+    /// binding pushed the stored value back over the user's flip and the switch
+    /// sprang shut again.
+    ///
+    /// Writing it saves only this field: a surface showing one switch must not
+    /// carry the rest of the chrome back to its defaults on the way past.
     /// </summary>
-    public ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>>
-        SetWorkspacesPanelVisibleAsync(
-            bool isVisible,
-            CancellationToken cancellationToken = default)
+    public bool ShowWorkspacesPanel
     {
-        var theme = ActiveTheme;
-        return SaveThemeAsync(
-            theme.Appearance,
-            theme.PlatformProfile,
-            theme.Accent,
-            theme.TextScaleOverride,
-            cancellationToken,
-            ThemeChromePreference.From(theme) with { ShowWorkspacesPanel = isVisible });
+        get => ActiveTheme.ShowWorkspacesPanel;
+        set
+        {
+            var theme = ActiveTheme;
+            if (value == theme.ShowWorkspacesPanel)
+            {
+                return;
+            }
+
+            _ = SaveThemeAsync(
+                theme.Appearance,
+                theme.PlatformProfile,
+                theme.Accent,
+                theme.TextScaleOverride,
+                CancellationToken.None,
+                ThemeChromePreference.From(theme) with { ShowWorkspacesPanel = value });
+        }
     }
 
     public bool IsWorkspacePanelOnLeft =>

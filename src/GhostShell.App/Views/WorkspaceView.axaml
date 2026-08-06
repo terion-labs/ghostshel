@@ -53,8 +53,7 @@
                   <ToggleSwitch
                       x:Name="WorkspacesPanelToggle"
                       Grid.Column="1"
-                      IsChecked="{Binding ShowWorkspacesPanel, Mode=OneWay}"
-                      IsCheckedChanged="OnToggleWorkspacesPanel"
+                      IsChecked="{Binding ShowWorkspacesPanel, Mode=TwoWay}"
                       AutomationProperties.Name="Show workspaces panel" />
                 </Grid>
               </StackPanel>

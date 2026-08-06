@@ -220,7 +220,6 @@
         ShowCommandPaletteRequested="OnShowCommandPaletteClick"
         ShowLauncherRequested="OnShowLauncherClick"
         ShowNewItemRequested="OnShowNewItemClick"
-        ToggleWorkspacesPanelRequested="OnToggleWorkspacesPanelClick"
         AddPanelToSideRequested="OnAddPanelToSideRequested"
         ShowNewPanelRequested="OnShowNewPanelClick"
         ShowSettingsRequested="OnShowSettingsClick"

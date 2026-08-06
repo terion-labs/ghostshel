@@ -123,8 +123,6 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ShowNewItemRequested;
 
-    public event EventHandler<RoutedEventArgs>? ToggleWorkspacesPanelRequested;
-
     public event EventHandler<RoutedEventArgs>? ShowNewPanelRequested;
 
     /// <summary>
@@ -260,8 +258,6 @@ public sealed partial class WorkspaceView : UserControl
         WorkspacesMenuButton.Flyout?.Hide();
     }
 
-    private void OnToggleWorkspacesPanel(object? sender, RoutedEventArgs e) =>
-        ToggleWorkspacesPanelRequested?.Invoke(sender, e);
 
     private void OnShowNewPanelClick(object? sender, RoutedEventArgs e) =>
         ShowNewPanelRequested?.Invoke(sender, e);
