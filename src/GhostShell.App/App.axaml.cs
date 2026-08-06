@@ -696,6 +696,12 @@ public sealed partial class App : Avalonia.Application
         // The attention dot, and the ring that keeps it legible on top of a
         // saturated tile. Derived like the tiles so a compact density does not
         // leave a mark sized for a roomier one.
+        // A panel's header: one control's height plus the clearance around it, so
+        // a compact density gives back the same proportion of the panel to its
+        // content rather than leaving a bar sized for a roomier setting.
+        Publish(
+            "ShellPanelHeaderHeight",
+            Math.Round(resources.ControlMinHeight * 1.3));
         Publish("ShellSignalDotSize", Math.Round(resources.ControlMinHeight * 0.28));
         Publish("ShellSignalDotRing", new Thickness(
             Math.Max(1, Math.Round(resources.ControlMinHeight * 0.06))));

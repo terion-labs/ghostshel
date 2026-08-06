@@ -157,6 +157,7 @@
           ProcessMonitorRequested="OnPlaceholderProcessMonitorClick"
           ShowCommandPaletteRequested="OnShowCommandPaletteClick"
           ShowLayoutDesignerRequested="OnShowLayoutDesignerClick"
+          SplitRequested="OnSplitRuntimePanelRequested"
           StatisticsRequested="OnPlaceholderStatisticsClick"
           TerminalRequested="OnPlaceholderTerminalClick" />
     </DataTemplate>

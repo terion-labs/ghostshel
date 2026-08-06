@@ -12,60 +12,37 @@
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
     AutomationProperties.Name="Database panel">
-  <controls:SurfaceCard Tone="Panel" ClipsContent="True" Padding="0"
-      Classes.active="{Binding IsActive}">
-    <Grid RowDefinitions="36,Auto,*">
-      <Border Classes="PanelHeader">
-        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <Border VerticalAlignment="Center" Classes="StatusDot" Classes.available="{Binding IsConnected}" />
-          <components:PanelConnectionSelectorView
-              Grid.Column="1"
-              Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
-              SelectedLabel="{Binding ConnectionDisplayName}"
-              ConnectionSelected="OnConnectionSelected"
-              NewConnectionRequested="OnNewConnectionRequested" />
-          <controls:PanelDockHandle
-              Grid.Column="2"
-              DataContext="{Binding $parent[dock:DockableControl].DataContext}">
-            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-              <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
-            </StackPanel>
-          </controls:PanelDockHandle>
-          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
-            <TextBlock
-                VerticalAlignment="Center"
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize9}"
-                Text="{Binding StatusText}"
-                AutomationProperties.LiveSetting="Polite"
-                AutomationProperties.Name="Database state" />
-            <Button
-                AutomationProperties.Name="Split this panel left and right"
-                Classes="IconButton"
-                Click="OnSplitLeftRightClick"
-                ToolTip.Tip="Split left/right">
-              <icons:SymbolIcon FontSize="12" Symbol="SplitVertical" />
-            </Button>
-            <Button
-                AutomationProperties.Name="Split this panel top and bottom"
-                Classes="IconButton"
-                Click="OnSplitTopBottomClick"
-                ToolTip.Tip="Split top/bottom">
-              <icons:SymbolIcon FontSize="12" Symbol="SplitHorizontal" />
-            </Button>
-            <Button
-                Classes="IconButton"
-                Click="OnCloseClick"
-                ToolTip.Tip="Close database viewer"
-                AutomationProperties.Name="Close database panel">
-              <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-            </Button>
-          </StackPanel>
-        </Grid>
-      </Border>
+  <controls:PanelChrome
+      CloseLabel="Close database panel"
+      CloseRequested="OnCloseClick"
+      IsActive="{Binding IsActive}"
+      IsZoomed="{Binding IsZoomed}"
+      SplitRequested="OnSplitRequested"
+      Title="{Binding Title}">
+    <controls:PanelChrome.Status>
+      <Border Classes="StatusDot" Classes.available="{Binding IsConnected}" />
+    </controls:PanelChrome.Status>
 
-      <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+    <controls:PanelChrome.Leading>
+      <components:PanelConnectionSelectorView
+          Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+          SelectedLabel="{Binding ConnectionDisplayName}"
+          ConnectionSelected="OnConnectionSelected"
+          NewConnectionRequested="OnNewConnectionRequested" />
+    </controls:PanelChrome.Leading>
+
+    <controls:PanelChrome.Actions>
+      <TextBlock
+          VerticalAlignment="Center"
+          Classes="Muted"
+          FontSize="{DynamicResource ShellFontSize9}"
+          Text="{Binding StatusText}"
+          AutomationProperties.LiveSetting="Polite"
+          AutomationProperties.Name="Database state" />
+    </controls:PanelChrome.Actions>
+
+    <Grid RowDefinitions="Auto,*">
+      <Border Grid.Row="0" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
         <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <ComboBox
               MinWidth="128"
@@ -107,7 +84,7 @@
         </Grid>
       </Border>
 
-      <components:DatabaseWorkspaceView Grid.Row="2" />
+      <components:DatabaseWorkspaceView Grid.Row="1" />
     </Grid>
-  </controls:SurfaceCard>
+  </controls:PanelChrome>
 </UserControl>

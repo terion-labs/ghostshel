@@ -11,76 +11,45 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}">
-  <controls:SurfaceCard Tone="Panel" ClipsContent="True" Padding="0"
-      Classes.active="{Binding IsActive}">
-    <Grid RowDefinitions="36,*">
-      <Border Grid.Row="0" Classes="PanelHeader">
-        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" Margin="{controls:Inset Horizontal=Md}">
-          <Ellipse
-              Width="7"
-              Height="7"
-              VerticalAlignment="Center"
-              Fill="{Binding StatusBrush, ElementName=RuntimeTerminal}" />
-          <components:PanelConnectionSelectorView
-              Grid.Column="1"
-              VerticalAlignment="Center"
-              Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
-              SelectedLabel="{Binding ConnectionDisplayName}"
-              ConnectionSelected="OnConnectionSelected"
-              NewConnectionRequested="OnNewConnectionRequested" />
-          <controls:PanelDockHandle
-              Grid.Column="2"
-              DataContext="{Binding $parent[dock:DockableControl].DataContext}">
-            <TextBlock
-              VerticalAlignment="Center"
-              FontSize="{DynamicResource ShellFontSize11}"
-              FontWeight="SemiBold"
-              Text="Terminal" />
-          </controls:PanelDockHandle>
-          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
-            <!-- The panel that actually asked. The tab and the rail aggregate
-                 it, so this is where the trail ends. -->
-            <controls:SignalDot
-                Margin="{controls:Inset Right=Xs}"
-                IsVisible="{Binding HasAttention}"
-                ToolTip.Tip="This panel asked for attention" />
-            <TextBlock
-                VerticalAlignment="Center"
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize9}"
-                Text="{Binding StatusText, ElementName=RuntimeTerminal}"
-                AutomationProperties.LiveSetting="Polite"
-                AutomationProperties.Name="Terminal session status" />
-            <StackPanel
-                VerticalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="{DynamicResource ShellSpaceXs}">
-              <Button
-                  AutomationProperties.Name="Split this panel left and right"
-                  Classes="IconButton"
-                  Click="OnSplitLeftRightClick"
-                  ToolTip.Tip="Split left/right">
-                <icons:SymbolIcon FontSize="12" Symbol="SplitVertical" />
-              </Button>
-              <Button
-                  AutomationProperties.Name="Split this panel top and bottom"
-                  Classes="IconButton"
-                  Click="OnSplitTopBottomClick"
-                  ToolTip.Tip="Split top/bottom">
-                <icons:SymbolIcon FontSize="12" Symbol="SplitHorizontal" />
-              </Button>
-              <Button
-                  Classes="IconButton"
-                  Click="OnCloseClick"
-                  ToolTip.Tip="Close panel"
-                  AutomationProperties.Name="Close panel">
-                <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-              </Button>
-            </StackPanel>
-          </StackPanel>
-        </Grid>
-      </Border>
-      <Grid Grid.Row="1">
+  <controls:PanelChrome
+      CloseRequested="OnCloseClick"
+      IsActive="{Binding IsActive}"
+      IsZoomed="{Binding IsZoomed}"
+      SplitRequested="OnSplitRequested"
+      Title="Terminal">
+    <controls:PanelChrome.Status>
+      <Ellipse
+          Width="7"
+          Height="7"
+          Fill="{Binding StatusBrush, ElementName=RuntimeTerminal}" />
+    </controls:PanelChrome.Status>
+
+    <controls:PanelChrome.Leading>
+      <components:PanelConnectionSelectorView
+          Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+          SelectedLabel="{Binding ConnectionDisplayName}"
+          ConnectionSelected="OnConnectionSelected"
+          NewConnectionRequested="OnNewConnectionRequested" />
+    </controls:PanelChrome.Leading>
+
+    <controls:PanelChrome.Actions>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
+        <!-- The panel that actually asked. The tab and the rail aggregate
+             it, so this is where the trail ends. -->
+        <controls:SignalDot
+            IsVisible="{Binding HasAttention}"
+            ToolTip.Tip="This panel asked for attention" />
+        <TextBlock
+            VerticalAlignment="Center"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize9}"
+            Text="{Binding StatusText, ElementName=RuntimeTerminal}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="Terminal session status" />
+      </StackPanel>
+    </controls:PanelChrome.Actions>
+
+    <Grid>
         <controls:TerminalPresentationHost
             x:Name="RuntimeTerminal"
             Margin="1"
@@ -201,7 +170,6 @@
             </StackPanel>
           </StackPanel>
         </Border>
-      </Grid>
     </Grid>
-  </controls:SurfaceCard>
+  </controls:PanelChrome>
 </UserControl>

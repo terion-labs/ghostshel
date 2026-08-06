@@ -110,17 +110,8 @@ public sealed partial class FileRuntimePanelView : UserControl
     private void OnNewConnectionRequested(object? sender, RoutedEventArgs e) =>
         NewConnectionRequested?.Invoke(this, e);
 
-    private void OnSplitLeftRightClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        SplitRequested?.Invoke(sender, PanelSplitOrientation.LeftRight);
-    }
-
-    private void OnSplitTopBottomClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        SplitRequested?.Invoke(sender, PanelSplitOrientation.TopBottom);
-    }
+    private void OnSplitRequested(object? sender, PanelSplitOrientation orientation) =>
+        SplitRequested?.Invoke(sender, orientation);
 
     private void OnCreateFolderClick(object? sender, RoutedEventArgs e) =>
         CreateFolderRequested?.Invoke(sender, e);

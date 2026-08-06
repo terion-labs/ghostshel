@@ -20,72 +20,46 @@
       <Setter Property="IsVisible" Value="False" />
     </Style>
   </UserControl.Styles>
-  <controls:SurfaceCard Tone="Panel" ClipsContent="True" Padding="0"
-      Classes.active="{Binding IsActive}">
-    <Grid RowDefinitions="36,46,28,*,25">
-      <Border Classes="PanelHeader">
-        <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{Binding StatusColor}" />
-          <components:PanelConnectionSelectorView
-              Grid.Column="1"
-              Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
-              SelectedLabel="{Binding ConnectionDisplayName}"
-              ConnectionSelected="OnConnectionSelected"
-              NewConnectionRequested="OnNewConnectionRequested" />
-          <controls:PanelDockHandle
-              Grid.Column="2"
-              DataContext="{Binding $parent[dock:DockableControl].DataContext}">
-            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-              <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
-            </StackPanel>
-          </controls:PanelDockHandle>
-          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
-            <TextBlock
-                VerticalAlignment="Center"
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize9}"
-                Text="{Binding StatusText}"
-                AutomationProperties.LiveSetting="Polite"
-                AutomationProperties.Name="Process monitor state" />
-            <Button
-                Classes="IconButton"
-                Command="{Binding RefreshCommand}"
-                ToolTip.Tip="Refresh processes"
-                AutomationProperties.Name="Refresh processes">
-              <icons:SymbolIcon Symbol="ArrowClockwise" FontSize="12" />
-            </Button>
-            <StackPanel
-                VerticalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="{DynamicResource ShellSpaceXs}">
-              <Button
-                  AutomationProperties.Name="Split this panel left and right"
-                  Classes="IconButton"
-                  Click="OnSplitLeftRightClick"
-                  ToolTip.Tip="Split left/right">
-                <icons:SymbolIcon FontSize="12" Symbol="SplitVertical" />
-              </Button>
-              <Button
-                  AutomationProperties.Name="Split this panel top and bottom"
-                  Classes="IconButton"
-                  Click="OnSplitTopBottomClick"
-                  ToolTip.Tip="Split top/bottom">
-                <icons:SymbolIcon FontSize="12" Symbol="SplitHorizontal" />
-              </Button>
-              <Button
-                  Classes="IconButton"
-                  Click="OnCloseClick"
-                  ToolTip.Tip="Close Process Monitor"
-                  AutomationProperties.Name="Close Process Monitor panel">
-                <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-              </Button>
-            </StackPanel>
-          </StackPanel>
-        </Grid>
-      </Border>
+  <controls:PanelChrome
+      CloseLabel="Close Process Monitor panel"
+      CloseRequested="OnCloseClick"
+      IsActive="{Binding IsActive}"
+      IsZoomed="{Binding IsZoomed}"
+      SplitRequested="OnSplitRequested"
+      Title="{Binding Title}">
+    <controls:PanelChrome.Status>
+      <Ellipse Width="7" Height="7" Fill="{Binding StatusColor}" />
+    </controls:PanelChrome.Status>
 
-      <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+    <controls:PanelChrome.Leading>
+      <components:PanelConnectionSelectorView
+          Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+          SelectedLabel="{Binding ConnectionDisplayName}"
+          ConnectionSelected="OnConnectionSelected"
+          NewConnectionRequested="OnNewConnectionRequested" />
+    </controls:PanelChrome.Leading>
+
+    <controls:PanelChrome.Actions>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
+        <TextBlock
+            VerticalAlignment="Center"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize9}"
+            Text="{Binding StatusText}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="Process monitor state" />
+        <Button
+            Classes="IconButton"
+            Command="{Binding RefreshCommand}"
+            ToolTip.Tip="Refresh processes"
+            AutomationProperties.Name="Refresh processes">
+          <icons:SymbolIcon Symbol="ArrowClockwise" FontSize="{DynamicResource ShellFontSize12}" />
+        </Button>
+      </StackPanel>
+    </controls:PanelChrome.Actions>
+
+    <Grid RowDefinitions="46,28,*,25">
+      <Border Grid.Row="0" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
         <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,190,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <TextBox Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter processes" />
           <ComboBox Grid.Column="1" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding Sort}" AutomationProperties.Name="Process sort order" />
@@ -93,7 +67,7 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="2" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+      <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
         <!-- Fixed-width cells docked from the right instead of grid columns:
              hiding a docked cell reclaims its width, so the Started column can
              fold away on narrow panels while every row stays aligned. -->
@@ -106,7 +80,7 @@
         </DockPanel>
       </Border>
 
-      <Grid Grid.Row="3">
+      <Grid Grid.Row="2">
         <ListBox
             Margin="{controls:Inset Xs}"
             Background="Transparent"
@@ -162,12 +136,12 @@
         </controls:SurfaceCard>
       </Grid>
 
-      <Border Grid.Row="4" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+      <Border Grid.Row="3" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
           <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ShowingText}" />
           <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
         </Grid>
       </Border>
     </Grid>
-  </controls:SurfaceCard>
+  </controls:PanelChrome>
 </UserControl>

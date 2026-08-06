@@ -16,6 +16,12 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;
 
+    /// <summary>
+    /// Splitting places an empty panel beside this one; what it becomes is chosen
+    /// there rather than in a modal over the window.
+    /// </summary>
+    public event EventHandler<PanelSplitOrientation>? SplitRequested;
+
     public event EventHandler<RoutedEventArgs>? TerminalRequested;
 
     public event EventHandler<RoutedEventArgs>? BrowserRequested;
@@ -52,6 +58,9 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(sender, e);
+
+    private void OnSplitRequested(object? sender, PanelSplitOrientation orientation) =>
+        SplitRequested?.Invoke(sender, orientation);
 
     private void OnChooseTerminalClick(object? sender, RoutedEventArgs e) =>
         TerminalRequested?.Invoke(sender, e);

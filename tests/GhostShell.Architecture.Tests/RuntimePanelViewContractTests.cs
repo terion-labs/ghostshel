@@ -8,6 +8,19 @@ public sealed class RuntimePanelViewContractTests
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();
 
+    /// <summary>
+    /// Every panel wears the same chrome, and it comes from the component rather
+    /// than from the view.
+    ///
+    /// It used to be written out in each of these eight views, and had drifted the
+    /// way duplicated markup does. The browser declared its split buttons with no
+    /// <c>Grid.Column</c>, so they rendered stacked on top of its status dot where
+    /// nobody could press them — the panel looked as though it simply had no split
+    /// controls. Its two split icons were also swapped relative to the other seven,
+    /// and two views set a header height the other six did not.
+    ///
+    /// None of that is reachable from a view any more, which is what this asserts.
+    /// </summary>
     [Theory]
     [InlineData("TerminalRuntimePanelView")]
     [InlineData("BrowserRuntimePanelView")]
@@ -17,17 +30,116 @@ public sealed class RuntimePanelViewContractTests
     [InlineData("DatabaseRuntimePanelView")]
     [InlineData("UnavailableRuntimePanelView")]
     [InlineData("PanelPlaceholderView")]
-    public void Panel_headers_are_the_dock_drag_surface_without_a_second_tab_strip(
+    public void Panels_take_their_chrome_from_the_component_rather_than_drawing_it(
         string viewName)
     {
-        var view = XDocument.Load(RuntimePanelPath(viewName, ".axaml"));
-        var handle = Assert.Single(
-            view.Descendants(),
-            element => element.Name.LocalName == "PanelDockHandle");
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath(viewName, ".axaml")).Root);
+        var chrome = Assert.Single(
+            root.Elements(),
+            element => element.Name.LocalName == "PanelChrome");
 
+        Assert.Equal("OnCloseClick", AttributeValue(chrome, "CloseRequested"));
+        Assert.Equal("OnSplitRequested", AttributeValue(chrome, "SplitRequested"));
+        Assert.Equal("{Binding IsActive}", AttributeValue(chrome, "IsActive"));
+        Assert.Equal("{Binding IsZoomed}", AttributeValue(chrome, "IsZoomed"));
+        Assert.NotNull(AttributeValue(chrome, "Title"));
+
+        foreach (var owned in new[] { "PanelDockHandle", "SurfaceCard" })
+        {
+            Assert.DoesNotContain(
+                root.Elements(),
+                element => element.Name.LocalName == owned);
+        }
+
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && HasClass(element, "PanelHeader"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => AttributeValue(element, "AutomationProperties.Name")
+                is "Split this panel left and right"
+                or "Split this panel top and bottom");
+    }
+
+    /// <summary>
+    /// And the component draws it: the card, the title as Dock's drag surface so
+    /// panels need no second tab strip, and split/split/close in that order.
+    /// </summary>
+    [Fact]
+    public void The_panel_component_owns_the_card_the_drag_handle_and_the_shared_actions()
+    {
+        var theme = Assert.Single(
+            DesignSystem().Descendants(),
+            element => element.Name.LocalName == "ControlTheme"
+                && string.Equals(
+                    AttributeValue(element, "TargetType"),
+                    "controls:PanelChrome",
+                    StringComparison.Ordinal));
+
+        var card = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "SurfaceCard");
+        Assert.Equal("Panel", AttributeValue(card, "Tone"));
+        Assert.Equal("True", AttributeValue(card, "ClipsContent"));
         Assert.Equal(
-            "{Binding $parent[dock:DockableControl].DataContext}",
-            AttributeValue(handle, "DataContext"));
+            "{TemplateBinding IsActive}",
+            AttributeValue(card, "Classes.active"));
+
+        // The title is the drag surface. It no longer needs a hand-set data
+        // context: a handle declared in a template cannot know where it will be
+        // used, so PanelDockHandle finds its dockable by walking to the ancestor
+        // that holds one.
+        var handle = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "PanelDockHandle");
+        Assert.Null(AttributeValue(handle, "DataContext"));
+        Assert.Contains(
+            "this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable",
+            File.ReadAllText(Path.Combine(
+                ApplicationViews.RepositoryRoot,
+                "src",
+                "GhostShell.App",
+                "Controls",
+                "PanelDockHandle.cs")),
+            StringComparison.Ordinal);
+
+        var actions = theme
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Select(element => AttributeValue(element, "Name") ?? string.Empty)
+            .ToArray();
+        Assert.Equal(
+            ["PART_SplitLeftRight", "PART_SplitTopBottom", "PART_Close"],
+            actions);
+
+        // The browser drew these two the other way round for as long as it drew
+        // them itself.
+        var splits = theme
+            .Descendants()
+            .Where(element => element.Name.LocalName == "SymbolIcon")
+            .Select(element => AttributeValue(element, "Symbol") ?? string.Empty)
+            .ToArray();
+        Assert.Equal(["SplitVertical", "SplitHorizontal", "Dismiss"], splits);
+
+        var chrome = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Controls",
+            "PanelChrome.cs"));
+        // Raised as the chrome, not as the button inside its template: the shell
+        // resolves which panel to act on from the sender's data context, and the
+        // chrome's is the panel.
+        Assert.Contains(
+            "CloseRequested?.Invoke(this, e);",
+            chrome,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SplitRequested?.Invoke(this, PanelSplitOrientation.LeftRight);",
+            chrome,
+            StringComparison.Ordinal);
     }
 
     [Theory]
@@ -130,32 +242,14 @@ public sealed class RuntimePanelViewContractTests
             accessibleName,
             AttributeValue(root, "AutomationProperties.Name"));
 
-        // A panel's chrome is the shell's card control on the shared panel
-        // surface — the same one the workspaces sidebar uses — clipping what it
-        // holds, rather than a Border wearing a "PanelCard" class.
-        var card = Assert.Single(
+        // A panel's chrome is the shared component, which draws the card on the
+        // panel surface — the same one the workspaces sidebar uses. What closing
+        // this particular panel is called is the one part of it the panel says.
+        var chrome = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "SurfaceCard"
-                && string.Equals(
-                    AttributeValue(element, "Tone"),
-                    "Panel",
-                    StringComparison.Ordinal));
-        Assert.Equal(
-            "{Binding IsActive}",
-            AttributeValue(card, "Classes.active"));
-        Assert.Contains(
-            card.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "PanelHeader"));
-
-        var close = Assert.Single(
-            card.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
-                    AttributeValue(element, "AutomationProperties.Name"),
-                    closeName,
-                    StringComparison.Ordinal));
-        Assert.Equal("OnCloseClick", AttributeValue(close, "Click"));
+            element => element.Name.LocalName == "PanelChrome");
+        Assert.Equal(closeName, AttributeValue(chrome, "CloseLabel") ?? "Close panel");
+        Assert.Equal("OnCloseClick", AttributeValue(chrome, "CloseRequested"));
 
         var codeBehind = File.ReadAllText(RuntimePanelPath(panelView, ".axaml.cs"));
         Assert.Contains(
@@ -284,19 +378,13 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal(
             "OnNewConnectionRequested",
             AttributeValue(connectionSelector, "NewConnectionRequested"));
-        Assert.Contains(
-            root.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
-                    AttributeValue(element, "Text"),
-                    "Terminal",
-                    StringComparison.Ordinal));
-        Assert.DoesNotContain(
-            root.Descendants(),
-            element => string.Equals(
-                AttributeValue(element, "Text"),
-                "{Binding KindLabel}",
-                StringComparison.Ordinal));
+        Assert.Equal(
+            "Terminal",
+            AttributeValue(
+                Assert.Single(
+                    root.Elements(),
+                    element => element.Name.LocalName == "PanelChrome"),
+                "Title"));
         var terminal = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "TerminalPresentationHost");
@@ -523,14 +611,14 @@ public sealed class RuntimePanelViewContractTests
             element => element.Name.LocalName == "Grid"
                 && string.Equals(
                     AttributeValue(element, "RowDefinitions"),
-                    "36,Auto,*",
+                    "Auto,*",
                     StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "Border"
                 && string.Equals(
                     AttributeValue(element, "Grid.Row"),
-                    "1",
+                    "0",
                     StringComparison.Ordinal)
                 && string.Equals(
                     AttributeValue(element, "Padding"),
@@ -893,6 +981,14 @@ public sealed class RuntimePanelViewContractTests
                 AttributeValue(element, "AutomationProperties.Name"),
                 accessibleName,
                 StringComparison.Ordinal));
+
+    private static XDocument DesignSystem() =>
+        XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "DesignSystem.axaml"));
 
     private static XDocument LoadView(string view) =>
         XDocument.Load(Path.Combine(

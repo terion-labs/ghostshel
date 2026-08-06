@@ -10,51 +10,16 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}">
-  <controls:SurfaceCard Tone="Panel" ClipsContent="True" Padding="0"
-      Classes.active="{Binding IsActive}">
-    <Grid RowDefinitions="36,*">
-      <Border Classes="PanelHeader">
-        <Grid ColumnDefinitions="*,Auto" Margin="{controls:Inset Horizontal=Md}">
-          <controls:PanelDockHandle DataContext="{Binding $parent[dock:DockableControl].DataContext}">
-            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-              <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
-            </StackPanel>
-          </controls:PanelDockHandle>
-          <StackPanel
-              Grid.Column="1"
-              VerticalAlignment="Center"
-              Orientation="Horizontal"
-              Spacing="{DynamicResource ShellSpaceXs}">
-            <Button
-                AutomationProperties.Name="Split this panel left and right"
-                Classes="IconButton"
-                Click="OnSplitLeftRightClick"
-                ToolTip.Tip="Split left/right">
-              <icons:SymbolIcon FontSize="12" Symbol="SplitVertical" />
-            </Button>
-            <Button
-                AutomationProperties.Name="Split this panel top and bottom"
-                Classes="IconButton"
-                Click="OnSplitTopBottomClick"
-                ToolTip.Tip="Split top/bottom">
-              <icons:SymbolIcon FontSize="12" Symbol="SplitHorizontal" />
-            </Button>
-            <Button
-                Classes="IconButton"
-                Click="OnCloseClick"
-                ToolTip.Tip="Close panel"
-                AutomationProperties.Name="Close panel">
-              <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-            </Button>
-          </StackPanel>
-        </Grid>
-      </Border>
-      <StackPanel Grid.Row="1" MaxWidth="460" Margin="{controls:Inset Xxl}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
-        <icons:SymbolIcon Symbol="Warning" FontSize="28" Foreground="{DynamicResource ShellWarningBrush}" />
-        <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Adapter unavailable" TextAlignment="Center" />
-        <TextBlock Classes="Muted" Text="{Binding CapabilityMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-      </StackPanel>
-    </Grid>
-  </controls:SurfaceCard>
+  <controls:PanelChrome
+      CloseRequested="OnCloseClick"
+      IsActive="{Binding IsActive}"
+      IsZoomed="{Binding IsZoomed}"
+      SplitRequested="OnSplitRequested"
+      Title="{Binding Title}">
+    <StackPanel MaxWidth="460" Margin="{controls:Inset Xxl}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+      <icons:SymbolIcon Symbol="Warning" FontSize="28" Foreground="{DynamicResource ShellWarningBrush}" />
+      <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Adapter unavailable" TextAlignment="Center" />
+      <TextBlock Classes="Muted" Text="{Binding CapabilityMessage}" TextAlignment="Center" TextWrapping="Wrap" />
+    </StackPanel>
+  </controls:PanelChrome>
 </UserControl>

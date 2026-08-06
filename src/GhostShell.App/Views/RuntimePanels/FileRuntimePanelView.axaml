@@ -16,55 +16,29 @@
       <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
     </Style>
   </UserControl.Styles>
-  <controls:SurfaceCard Tone="Panel" ClipsContent="True" Padding="0"
-      Classes.active="{Binding IsActive}">
-    <Grid RowDefinitions="36,Auto,*">
-      <Border Classes="PanelHeader">
-        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" Margin="{controls:Inset Horizontal=Md}">
-          <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{DynamicResource ShellSuccessBrush}" />
-          <components:PanelConnectionSelectorView
-              Grid.Column="1"
-              IsEnabled="{Binding CanSelectProfile}"
-              Options="{Binding $parent[Window].DataContext.FileConnectionOptions}"
-              SelectedLabel="{Binding ConnectionDisplayName}"
-              ConnectionSelected="OnConnectionSelected"
-              NewConnectionRequested="OnNewConnectionRequested" />
-          <controls:PanelDockHandle
-              Grid.Column="2"
-              DataContext="{Binding $parent[dock:DockableControl].DataContext}">
-            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-              <TextBlock FontSize="{DynamicResource ShellFontSize11}" FontWeight="SemiBold" Text="{Binding Context.Title}" />
-              <TextBlock Classes="Eyebrow Accent" IsVisible="{Binding Context.IsZoomed}" Text="Zoomed" />
-            </StackPanel>
-          </controls:PanelDockHandle>
-          <StackPanel
-              Grid.Column="3"
-              VerticalAlignment="Center"
-              Orientation="Horizontal"
-              Spacing="{DynamicResource ShellSpaceXs}">
-            <Button
-                AutomationProperties.Name="Split this panel left and right"
-                Classes="IconButton"
-                Click="OnSplitLeftRightClick"
-                ToolTip.Tip="Split left/right">
-              <icons:SymbolIcon FontSize="12" Symbol="SplitVertical" />
-            </Button>
-            <Button
-                AutomationProperties.Name="Split this panel top and bottom"
-                Classes="IconButton"
-                Click="OnSplitTopBottomClick"
-                ToolTip.Tip="Split top/bottom">
-              <icons:SymbolIcon FontSize="12" Symbol="SplitHorizontal" />
-            </Button>
-            <Button Classes="IconButton" Click="OnCloseClick" ToolTip.Tip="Close File Viewer" AutomationProperties.Name="Close File Viewer panel">
-              <icons:SymbolIcon Symbol="Dismiss" FontSize="12" />
-            </Button>
-          </StackPanel>
-        </Grid>
-      </Border>
+  <controls:PanelChrome
+      CloseLabel="Close File Viewer panel"
+      CloseRequested="OnCloseClick"
+      IsActive="{Binding IsActive}"
+      IsZoomed="{Binding IsZoomed}"
+      SplitRequested="OnSplitRequested"
+      Title="{Binding Title}">
+    <controls:PanelChrome.Status>
+      <Ellipse Width="7" Height="7" Fill="{DynamicResource ShellSuccessBrush}" />
+    </controls:PanelChrome.Status>
 
+    <controls:PanelChrome.Leading>
+      <components:PanelConnectionSelectorView
+          IsEnabled="{Binding CanSelectProfile}"
+          Options="{Binding $parent[Window].DataContext.FileConnectionOptions}"
+          SelectedLabel="{Binding ConnectionDisplayName}"
+          ConnectionSelected="OnConnectionSelected"
+          NewConnectionRequested="OnNewConnectionRequested" />
+    </controls:PanelChrome.Leading>
+
+    <Grid RowDefinitions="Auto,*">
       <Border
-          Grid.Row="1"
+          Grid.Row="0"
           Padding="{controls:Inset Left=Sm, Top=Xs, Right=Sm, Bottom=Sm}"
           Background="{DynamicResource ShellSurfaceBrush}">
         <Grid ColumnDefinitions="Auto,*,Auto,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -182,7 +156,7 @@
         </Grid>
       </Border>
 
-      <Grid x:Name="FileContentGrid" Grid.Row="2">
+      <Grid x:Name="FileContentGrid" Grid.Row="1">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="3*" />
           <ColumnDefinition Width="5" />
@@ -653,7 +627,7 @@
       </Grid>
 
       <Border
-          Grid.Row="1"
+          Grid.Row="0"
           Grid.RowSpan="2"
           Background="Transparent"
           IsVisible="{Binding ShowNavigationProgress}"
@@ -661,7 +635,7 @@
           AutomationProperties.Name="File Viewer loading folder" />
       <Rectangle
           x:Name="TransferDropOutline"
-          Grid.RowSpan="3"
+          Grid.RowSpan="2"
           Margin="2"
           IsHitTestVisible="False"
           IsVisible="False"
@@ -672,5 +646,5 @@
           StrokeThickness="2"
           AutomationProperties.Name="File transfer drop target" />
     </Grid>
-  </controls:SurfaceCard>
+  </controls:PanelChrome>
 </UserControl>

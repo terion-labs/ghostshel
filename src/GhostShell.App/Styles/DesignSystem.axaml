@@ -116,6 +116,135 @@
         <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
       </Style>
     </ControlTheme>
+    <!--
+      A runtime panel. The card, the header, and the three actions every panel
+      has: split beside, split below, close.
+
+      These lived in each panel view, eight times over, and had drifted the way
+      duplicated markup does — the browser declared its split buttons with no
+      Grid.Column, so they rendered stacked underneath its status dot where
+      nobody could press them, and its two split icons were swapped relative to
+      the other seven. A panel now states only what is particular to it.
+    -->
+    <ControlTheme x:Key="{x:Type controls:PanelChrome}" TargetType="controls:PanelChrome">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <controls:SurfaceCard
+              Tone="Panel"
+              ClipsContent="True"
+              Padding="0"
+              Classes.active="{TemplateBinding IsActive}">
+            <Grid RowDefinitions="Auto,*">
+              <Border
+                  Grid.Row="0"
+                  Classes="PanelHeader"
+                  Height="{DynamicResource ShellPanelHeaderHeight}">
+                <!--
+                  Docked, not a grid of Auto columns. A narrow panel has less
+                  header than it has things to put in it, and a grid answers that
+                  by letting its Auto columns overlap: the browser's status text
+                  printed straight through its address box. Docking states the
+                  order in which the row gives up space instead — the shared
+                  actions are placed first and always fit, and what is left over
+                  goes to the panel's own controls.
+                -->
+                <DockPanel Margin="{controls:Inset Horizontal=Md}" LastChildFill="True">
+                  <StackPanel
+                      DockPanel.Dock="Right"
+                      VerticalAlignment="Center"
+                      Orientation="Horizontal"
+                      Spacing="{DynamicResource ShellSpaceXs}">
+                    <Button
+                        Name="PART_SplitLeftRight"
+                        AutomationProperties.Name="Split this panel left and right"
+                        Classes="IconButton"
+                        IsVisible="{TemplateBinding CanSplit}"
+                        ToolTip.Tip="Split left/right">
+                      <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="SplitVertical" />
+                    </Button>
+                    <Button
+                        Name="PART_SplitTopBottom"
+                        AutomationProperties.Name="Split this panel top and bottom"
+                        Classes="IconButton"
+                        IsVisible="{TemplateBinding CanSplit}"
+                        ToolTip.Tip="Split top/bottom">
+                      <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="SplitHorizontal" />
+                    </Button>
+                    <Button
+                        Name="PART_Close"
+                        AutomationProperties.Name="{TemplateBinding CloseLabel}"
+                        Classes="IconButton"
+                        ToolTip.Tip="{TemplateBinding CloseLabel}">
+                      <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="Dismiss" />
+                    </Button>
+                  </StackPanel>
+                  <ContentPresenter
+                      DockPanel.Dock="Right"
+                      Margin="{controls:Inset Right=Sm}"
+                      VerticalAlignment="Center"
+                      Content="{TemplateBinding Actions}"
+                      IsVisible="{TemplateBinding IsActionsVisible}" />
+                  <ContentPresenter
+                      DockPanel.Dock="Left"
+                      Margin="{controls:Inset Right=Sm}"
+                      VerticalAlignment="Center"
+                      Content="{TemplateBinding Status}"
+                      IsVisible="{TemplateBinding IsStatusVisible}" />
+                  <ContentPresenter
+                      DockPanel.Dock="Left"
+                      Margin="{controls:Inset Right=Sm}"
+                      VerticalAlignment="Center"
+                      Content="{TemplateBinding Leading}"
+                      IsVisible="{TemplateBinding IsLeadingVisible}" />
+                  <!--
+                    The title is Dock's drag surface, which is why panels have no
+                    second tab strip above them. Where the panel adds no header
+                    controls of its own it takes the free width too, so the grab
+                    area is the whole row rather than the glyphs of the title.
+                  -->
+                  <Grid ColumnDefinitions="Auto,*">
+                    <controls:PanelDockHandle
+                        Grid.Column="0"
+                        Grid.ColumnSpan="{TemplateBinding TitleColumnSpan}">
+                      <StackPanel
+                          VerticalAlignment="Center"
+                          Orientation="Horizontal"
+                          Spacing="{DynamicResource ShellSpaceSm}">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="{DynamicResource ShellFontSize11}"
+                            FontWeight="SemiBold"
+                            Text="{TemplateBinding Title}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Classes="Eyebrow Accent"
+                            IsVisible="{TemplateBinding IsZoomed}"
+                            Text="Zoomed" />
+                      </StackPanel>
+                    </controls:PanelDockHandle>
+                    <ContentPresenter
+                        Grid.Column="1"
+                        Margin="{controls:Inset Left=Sm}"
+                        VerticalAlignment="Center"
+                        Content="{TemplateBinding HeaderContent}"
+                        IsVisible="{TemplateBinding IsHeaderContentVisible}" />
+                  </Grid>
+                </DockPanel>
+              </Border>
+              <ContentPresenter
+                  Grid.Row="1"
+                  Content="{TemplateBinding Content}"
+                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </Grid>
+          </controls:SurfaceCard>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
     <ControlTheme x:Key="{x:Type controls:IdentityTile}" TargetType="controls:IdentityTile">
       <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
       <Setter Property="Width" Value="{DynamicResource ShellTileSizeMd}" />
