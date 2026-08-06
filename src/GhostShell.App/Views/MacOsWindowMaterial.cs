@@ -48,7 +48,14 @@ internal static class MacOsWindowMaterial
     /// The window itself is left alone: rounding that would take the platform's
     /// shadow with it.
     /// </summary>
-    public static bool TrySit(TopLevel window, MacOsMaterial material, double? cornerRadius)
+    public static bool TrySit(TopLevel window, MacOsMaterial material, double? cornerRadius) =>
+        TrySit(window, material, cornerRadius, contentFrame: null);
+
+    public static bool TrySit(
+        TopLevel window,
+        MacOsMaterial material,
+        double? cornerRadius,
+        CoreRect? contentFrame)
     {
         ArgumentNullException.ThrowIfNull(window);
         if (!OperatingSystem.IsMacOS()
@@ -60,6 +67,16 @@ internal static class MacOsWindowMaterial
 
         try
         {
+            // A transparent window still paints its background colour, and the
+            // default is an opaque system grey covering the whole square frame.
+            // That is the block outside a rounded card: not the glass, not the
+            // root, not the drawing view — the window's own fill.
+            var clear = SendId(GetClass("NSColor"), Selector("clearColor"));
+            if (clear != 0)
+            {
+                SendIdArgument(handle.NSWindow, Selector("setBackgroundColor:"), clear);
+            }
+
             var contentView = SendId(handle.NSWindow, Selector("contentView"));
             if (contentView == 0)
             {
@@ -95,6 +112,15 @@ internal static class MacOsWindowMaterial
                 if (cornerRadius is > 0 and { } radius
                     && SendId(subview, Selector("layer")) is var layer and not 0)
                 {
+                    // Fitted to the card, not to the window. A popup's window is
+                    // bigger than the surface inside it, so a full-window sheet
+                    // of glass rounded to the card's radius still leaves its own
+                    // square corners standing outside the card.
+                    if (contentFrame is { } fitted)
+                    {
+                        SendRectArgument(subview, Selector("setFrame:"), fitted);
+                    }
+
                     SendDoubleArgument(layer, Selector("setCornerRadius:"), radius);
                     SendBoolArgument(layer, Selector("setMasksToBounds:"), true);
                 }
@@ -200,6 +226,15 @@ internal static class MacOsWindowMaterial
         }
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CoreRect
+    {
+        public double X;
+        public double Y;
+        public double Width;
+        public double Height;
+    }
+
     private static nint FindDescendantOfClass(nint view, string className)
     {
         if (string.Equals(ClassNameOf(view), className, StringComparison.Ordinal))
@@ -244,6 +279,12 @@ internal static class MacOsWindowMaterial
 
     private static nint Selector(string name) => sel_registerName(name);
 
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_getClass", CharSet = CharSet.Ansi)]
+    private static extern nint GetClass(string name);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendIdArgument(nint receiver, nint selector, nint value);
+
     [DllImport(ObjectiveCLibrary, EntryPoint = "sel_registerName")]
     private static extern nint sel_registerName(
         [MarshalAs(UnmanagedType.LPStr)] string name);
@@ -268,6 +309,19 @@ internal static class MacOsWindowMaterial
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern void SendDoubleArgument(nint receiver, nint selector, double value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendRectArgument(nint receiver, nint selector, CoreRect value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern double SendDouble(nint receiver, nint selector);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private static extern bool SendBool(nint receiver, nint selector);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern CoreRect SendRect(nint receiver, nint selector);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern void SendBoolArgument(
