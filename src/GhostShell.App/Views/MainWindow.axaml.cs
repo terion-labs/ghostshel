@@ -229,14 +229,14 @@ public sealed partial class MainWindow : Window
     {
         // The base surface has to reach the top edge; the material behind it
         // does the rest.
-        var style = (Avalonia.Application.Current as App)?.WindowCornerStyle
-            ?? CornerStyle.System;
+        var density = (Avalonia.Application.Current as App)?.WindowDensity
+            ?? InterfaceDensity.Cozy;
         var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(
             this,
-            style switch
+            density switch
             {
-                CornerStyle.Sharp => MacOsWindowKind.TitleBarOnly,
-                CornerStyle.Soft => MacOsWindowKind.Toolbar,
+                InterfaceDensity.Compact => MacOsWindowKind.TitleBarOnly,
+                InterfaceDensity.Comfortable => MacOsWindowKind.Toolbar,
                 _ => MacOsWindowKind.CompactToolbar,
             });
         // The platform's own material for a window's base. Avalonia pins the

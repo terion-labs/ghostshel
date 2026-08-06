@@ -751,7 +751,6 @@ public sealed partial class MainWindow
                 selection.TextScale,
                 _lifetime.Token,
                 new ThemeChromePreference(
-                    selection.CornerStyle,
                     selection.Density,
                     selection.ShowTabBar,
                     selection.ShowWorkspacesPanel,

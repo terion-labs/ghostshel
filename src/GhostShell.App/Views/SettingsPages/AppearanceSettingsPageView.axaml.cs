@@ -10,7 +10,6 @@ internal sealed record AppearanceSelection(
     PlatformProfile PlatformProfile,
     AccentPreference Accent,
     double? TextScale,
-    CornerStyle CornerStyle,
     InterfaceDensity Density,
     bool ShowTabBar,
     bool ShowWorkspacesPanel,
@@ -93,7 +92,6 @@ public sealed partial class AppearanceSettingsPageView : UserControl
 
             // A null override means "follow the platform profile"; the slider has no
             // null, so it rests at the profile's own radius until the user moves it.
-            SyncCornerStyle(theme.CornerStyle);
             TranslucencyToggle.IsChecked = theme.IsTranslucent;
             GlassPanelsToggle.IsChecked = theme.HasGlassPanels;
             OverrideOpacityToggle.IsChecked = theme.OverridesBackdropOpacity;
@@ -145,7 +143,6 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             profile,
             accent,
             textScale,
-            _cornerStyle,
             SelectedDensity(),
             ShowTabBarSwitch.IsChecked == true,
             ShowWorkspacesPanelSwitch.IsChecked == true,
@@ -157,28 +154,6 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             (int)Math.Round(BackdropOpacitySlider.Value),
             GlassPanelsToggle.IsChecked == true,
             OverrideOpacityToggle.IsChecked == true);
-    }
-
-    private CornerStyle _cornerStyle = ThemePreference.DefaultCornerStyle;
-
-    private void SyncCornerStyle(CornerStyle style)
-    {
-        _cornerStyle = style;
-        CornerStyleSharp.IsChecked = style == CornerStyle.Sharp;
-        CornerStyleSystem.IsChecked = style == CornerStyle.System;
-        CornerStyleSoft.IsChecked = style == CornerStyle.Soft;
-    }
-
-    private void OnCornerStyleClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not ToggleButton { Tag: string tag }
-            || !Enum.TryParse<CornerStyle>(tag, out var style))
-        {
-            return;
-        }
-
-        SyncCornerStyle(style);
-        OnAppearanceChanged(sender, e);
     }
 
     private TabStripPlacement SelectedTabStripPlacement() =>

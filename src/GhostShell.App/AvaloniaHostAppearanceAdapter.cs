@@ -375,7 +375,7 @@ internal static class EffectiveAppearanceResourceMapper
         // standing for every role was the thing that could not be right: a
         // control and a window's base surface do not want the same corner, and
         // the old override gave them the same one plus a fixed nudge.
-        var cornerScale = CornerStyleScale.For(theme.CornerStyle);
+        var cornerScale = DensityCornerScale.For(theme.Density);
         var controlRadius = metrics.ControlCornerRadius * cornerScale;
         var cardRadius = metrics.CardCornerRadius * cornerScale;
         var sidebarRadius = metrics.SidebarCornerRadius * cornerScale;

@@ -331,11 +331,11 @@ internal sealed class QaApplication : Avalonia.Application
         new(
             "appearance-corners-tight",
             vm => vm.ShowLauncher(),
-            Theme: AppearanceExtreme(CornerStyle.Sharp, InterfaceDensity.Compact)),
+            Theme: AppearanceExtreme(InterfaceDensity.Compact)),
         new(
             "appearance-corners-round",
             vm => vm.ShowLauncher(),
-            Theme: AppearanceExtreme(CornerStyle.Soft, InterfaceDensity.Comfortable)),
+            Theme: AppearanceExtreme(InterfaceDensity.Comfortable)),
     ];
 
     /// <summary>
@@ -343,7 +343,6 @@ internal sealed class QaApplication : Avalonia.Application
     /// so a comparison between the two captures isolates those two settings.
     /// </summary>
     private static ThemePreference AppearanceExtreme(
-        CornerStyle cornerStyle,
         InterfaceDensity density) =>
         new(
             ThemePreference.Default.Id,
@@ -351,7 +350,6 @@ internal sealed class QaApplication : Avalonia.Application
             AppearanceMode.Dark,
             PlatformProfile.Automatic,
             AccentPreference.FollowHost,
-            cornerStyle: cornerStyle,
             density: density);
 
     private static void ShowSampleDragGhost(MainWindow window)
@@ -1439,10 +1437,10 @@ internal sealed class QaApplication : Avalonia.Application
         // only way to notice that a token quietly went back to being a literal.
         ("design-system-compact",
             static () => new DesignSystemGalleryWindow(),
-            AppearanceExtreme(CornerStyle.Sharp, InterfaceDensity.Compact)),
+            AppearanceExtreme(InterfaceDensity.Compact)),
         ("design-system-comfortable",
             static () => new DesignSystemGalleryWindow(),
-            AppearanceExtreme(CornerStyle.Soft, InterfaceDensity.Comfortable)),
+            AppearanceExtreme(InterfaceDensity.Comfortable)),
         // The light appearance, which otherwise only exists on user machines.
         ("design-system-light",
             static () => new DesignSystemGalleryWindow(),

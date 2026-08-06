@@ -22,7 +22,6 @@ public sealed record EffectiveTheme(
     bool MotionEnabled,
     bool AdvancedMaterialsEnabled,
     double TextScale,
-    CornerStyle CornerStyle = CornerStyle.System,
     InterfaceDensity Density = InterfaceDensity.Cozy,
     bool ShowTabBar = true,
     bool ShowWorkspacesPanel = true,

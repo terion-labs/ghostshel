@@ -431,13 +431,13 @@
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
-              Label="Corners"
-              Hint="How rounded the shell is. The platform decides what each surface is worth; this takes the whole set sharper or softer together.">
+              Label="Density"
+              Hint="How much room the shell takes: padding, spacing and how far surfaces round. One setting, because a corner is earned by how far a surface stands off from the one around it.">
             <Border Classes="Segmented">
               <UniformGrid Columns="3">
-                <ToggleButton x:Name="CornerStyleSharp" Classes="Segment" Tag="Sharp" Click="OnCornerStyleClick" Content="Sharp" AutomationProperties.Name="Sharp corners" />
-                <ToggleButton x:Name="CornerStyleSystem" Classes="Segment" Tag="System" Click="OnCornerStyleClick" Content="System" AutomationProperties.Name="System corners" />
-                <ToggleButton x:Name="CornerStyleSoft" Classes="Segment" Tag="Soft" Click="OnCornerStyleClick" Content="Soft" AutomationProperties.Name="Soft corners" />
+                <ToggleButton x:Name="DensityCompact" Classes="Segment" Click="OnDensityClick" Content="Compact" AutomationProperties.Name="Compact density" />
+                <ToggleButton x:Name="DensityCozy" Classes="Segment" Click="OnDensityClick" Content="Normal" AutomationProperties.Name="Normal density" />
+                <ToggleButton x:Name="DensityComfortable" Classes="Segment" Click="OnDensityClick" Content="Spacious" AutomationProperties.Name="Spacious density" />
               </UniformGrid>
             </Border>
           </controls:LabeledField>
@@ -495,19 +495,6 @@
                   FontWeight="SemiBold"
                   Text="{Binding #BackdropOpacitySlider.Value, StringFormat={}{0:0}%}" />
             </Grid>
-          </controls:LabeledField>
-        </controls:SurfaceCard>
-        <controls:SurfaceCard Tone="Raised" Grid.Column="1">
-          <controls:LabeledField
-              Label="Padding density">
-            <Border Classes="Segmented">
-              <UniformGrid Columns="3">
-                <ToggleButton x:Name="DensityCompact" Classes="Segment" Click="OnDensityClick" Content="Compact" AutomationProperties.Name="Compact padding density" />
-                <ToggleButton x:Name="DensityCozy" Classes="Segment" Click="OnDensityClick" Content="Cozy" AutomationProperties.Name="Cozy padding density" />
-                <ToggleButton x:Name="DensityComfortable" Classes="Segment" Click="OnDensityClick" Content="Comfortable" AutomationProperties.Name="Comfortable padding density" />
-              </UniformGrid>
-            </Border>
-
           </controls:LabeledField>
         </controls:SurfaceCard>
       </Grid>

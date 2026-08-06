@@ -551,14 +551,10 @@ public sealed partial class App : Avalonia.Application
     /// number of ours: this desktop has three, one per kind of window, and the
     /// corner style decides which kind the shell asks to be.
     /// </summary>
-    public double WindowCornerRadius => StoredTheme.CornerStyle switch
-    {
-        CornerStyle.Sharp => 16,
-        CornerStyle.Soft => 26,
-        _ => 20,
-    };
+    public double WindowCornerRadius =>
+        DensityCornerScale.WindowRadius(StoredTheme.Density);
 
-    public CornerStyle WindowCornerStyle => StoredTheme.CornerStyle;
+    public InterfaceDensity WindowDensity => StoredTheme.Density;
 
     private ThemePreference StoredTheme =>
         _definitionCatalog?.Snapshot.Themes

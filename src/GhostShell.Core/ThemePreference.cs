@@ -58,7 +58,6 @@ public sealed record ThemePreference : IDurableDefinition
     // is how a corner radius someone had chosen came back as the fallback.
     public const int CurrentSchemaVersion = 2;
 
-    public const CornerStyle DefaultCornerStyle = CornerStyle.System;
 
 
 
@@ -112,7 +111,6 @@ public sealed record ThemePreference : IDurableDefinition
         PlatformProfile platformProfile,
         AccentPreference accent,
         double? textScaleOverride = null,
-        CornerStyle cornerStyle = DefaultCornerStyle,
         InterfaceDensity density = InterfaceDensity.Cozy,
         bool showTabBar = true,
         bool showWorkspacesPanel = true,
@@ -132,14 +130,6 @@ public sealed record ThemePreference : IDurableDefinition
                 nameof(textScaleOverride),
                 textScaleOverride,
                 "Application text scale must be between 0.5 and 4.");
-        }
-
-        if (!Enum.IsDefined(cornerStyle))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(cornerStyle),
-                cornerStyle,
-                "Unknown corner style.");
         }
 
         if (backdropOpacityPercent is < MinimumBackdropOpacityPercent
@@ -179,7 +169,6 @@ public sealed record ThemePreference : IDurableDefinition
         PlatformProfile = platformProfile;
         Accent = accent;
         TextScaleOverride = textScaleOverride;
-        CornerStyle = cornerStyle;
         Density = density;
         ShowTabBar = showTabBar;
         ShowWorkspacesPanel = showWorkspacesPanel;
@@ -208,13 +197,6 @@ public sealed record ThemePreference : IDurableDefinition
     public double? TextScaleOverride { get; }
 
     /// <summary>Null follows the platform profile's own radius.</summary>
-    /// <summary>
-    /// How rounded the shell is. A character rather than a number: the
-    /// platform profile still says what each role is worth, and this scales
-    /// that set so the relationships between roles survive.
-    /// </summary>
-    public CornerStyle CornerStyle { get; }
-
     public InterfaceDensity Density { get; }
 
     public bool ShowTabBar { get; }
@@ -288,7 +270,6 @@ public sealed record ThemePreference : IDurableDefinition
             !host.ReducedMotion,
             materialsEnabled,
             TextScaleOverride ?? host.TextScale,
-            CornerStyle,
             Density,
             ShowTabBar,
             ShowWorkspacesPanel,
