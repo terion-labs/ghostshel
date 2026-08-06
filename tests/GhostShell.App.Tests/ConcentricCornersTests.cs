@@ -43,30 +43,40 @@ public sealed class ConcentricCornersTests
             outerRadius: 26,
             containerSize: new Size(400, 300),
             offsetInContainer: new Point(4, 10),
-            size: new Size(300, 200),
+            size: new Size(380, 268),
             minimumRadius: 2);
 
         Assert.NotNull(derived);
-        // Left 4, top 10, right 96, bottom 90: each corner takes the smaller
+        // Left 4, top 10, right 16, bottom 22: each corner takes the smaller
         // of the two edges meeting there.
         Assert.Equal(22, derived!.Value.TopLeft);
         Assert.Equal(16, derived.Value.TopRight);
-        Assert.Equal(2, derived.Value.BottomRight);
+        Assert.Equal(10, derived.Value.BottomRight);
         Assert.Equal(22, derived.Value.BottomLeft);
     }
 
+    /// <summary>
+    /// Sharing the corner is the whole premise. An element further from an
+    /// edge than the radius itself is not near that corner, and stepping in by
+    /// that distance would square it — so the rule declines instead.
+    /// </summary>
     [Fact]
-    public void A_gap_wider_than_the_radius_stops_at_the_minimum()
-    {
-        var derived = ConcentricCorners.Derive(
+    public void An_element_further_out_than_the_radius_is_left_alone() =>
+        Assert.Null(ConcentricCorners.Derive(
             outerRadius: 10,
             containerSize: new Size(400, 300),
             offsetInContainer: new Point(40, 40),
             size: new Size(320, 220),
-            minimumRadius: 3);
+            minimumRadius: 3));
 
-        Assert.Equal(new CornerRadius(3), derived!.Value);
-    }
+    [Fact]
+    public void A_notice_pinned_to_one_corner_keeps_the_radius_it_was_given() =>
+        Assert.Null(ConcentricCorners.Derive(
+            outerRadius: 26,
+            containerSize: new Size(1400, 900),
+            offsetInContainer: new Point(880, 840),
+            size: new Size(504, 44),
+            minimumRadius: 2));
 
     [Theory]
     [InlineData(0)]

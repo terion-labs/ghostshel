@@ -106,7 +106,23 @@ internal sealed class SurfaceCard : ContentControl
             (card, _) => card.UpdateStateClasses());
     }
 
-    public SurfaceCard() => UpdateStateClasses();
+    /// <summary>
+    /// A card inside a rounded surface takes its corners from that surface,
+    /// less the gap to it, so the two curves share a centre instead of merely
+    /// both being round. Where it does not sit inside one — or sits nowhere
+    /// near its corners — the theme's own radius stands.
+    /// </summary>
+    private readonly ConcentricCornerReconciler _corners;
+
+    public SurfaceCard()
+    {
+        _corners = new ConcentricCornerReconciler(this, MinimumConcentricRadius);
+        LayoutUpdated += (_, _) => _corners.Reconcile();
+        UpdateStateClasses();
+    }
+
+    /// <summary>How tight a derived corner may become before it reads square.</summary>
+    private const double MinimumConcentricRadius = 2;
 
     public SurfaceTone Tone
     {

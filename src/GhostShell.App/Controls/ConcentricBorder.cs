@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 
 namespace GhostShell.App.Controls;
@@ -48,7 +49,13 @@ public sealed class ConcentricBorder : Border
     public static readonly StyledProperty<double> MinimumRadiusProperty =
         AvaloniaProperty.Register<ConcentricBorder, double>(nameof(MinimumRadius), 2);
 
-    public ConcentricBorder() => LayoutUpdated += (_, _) => Reconcile();
+    private readonly ConcentricCornerReconciler _corners;
+
+    public ConcentricBorder()
+    {
+        _corners = new ConcentricCornerReconciler(this, MinimumRadius);
+        LayoutUpdated += (_, _) => Reconcile();
+    }
 
     public static bool GetIsContainer(Visual element)
     {
@@ -80,31 +87,85 @@ public sealed class ConcentricBorder : Border
         set => SetValue(MinimumRadiusProperty, value);
     }
 
-    private void Reconcile()
+    private void Reconcile() => _corners.Reconcile();
+}
+
+/// <summary>
+/// Keeps one control's corners answering to the surface it sits inside.
+///
+/// Owned by the control rather than applied to it, because it has to remember
+/// whether it set the radius: when the rule stops applying — the element moves
+/// away from the corner, or the surface it was measuring against goes square —
+/// the value it wrote has to be given back rather than left behind.
+/// </summary>
+internal sealed class ConcentricCornerReconciler(Control owner, double minimumRadius)
+{
+    private bool _applied;
+
+    public void Reconcile()
     {
-        var (container, outer) = FindContainer();
-        if (container is null)
+        var derived = ConcentricCorners.DeriveFor(owner, minimumRadius);
+        if (derived is { } radius)
+        {
+            _applied = true;
+            if (!radius.Equals(owner.GetValue(Border.CornerRadiusProperty)))
+            {
+                owner.SetValue(Border.CornerRadiusProperty, radius);
+            }
+
+            return;
+        }
+
+        if (!_applied)
         {
             return;
         }
 
-        var derived = Concentric(container, outer);
-        if (!derived.Equals(CornerRadius))
+        // Back to whatever the theme says, not to whatever was last worked out.
+        _applied = false;
+        owner.ClearValue(Border.CornerRadiusProperty);
+    }
+}
+
+/// <summary>
+/// The rule itself, apart from any control: an inner radius is its container's
+/// less the distance between them, so the two curves share a centre.
+/// </summary>
+public static class ConcentricCorners
+{
+    /// <summary>
+    /// Works the radius out for a control from the nearest rounded surface it
+    /// sits inside. Null when there is no such surface, or when the rule does
+    /// not apply to where the control sits in it.
+    /// </summary>
+    public static CornerRadius? DeriveFor(Control element, double minimumRadius)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        var (container, outer) = FindContainer(element);
+        if (container is null
+            || element.TranslatePoint(default, container) is not { } offset)
         {
-            CornerRadius = derived;
+            return null;
         }
+
+        return Derive(outer, container.Bounds.Size, offset, element.Bounds.Size, minimumRadius);
     }
 
-    private (Visual? Container, double Radius) FindContainer()
+    private static (Visual? Container, double Radius) FindContainer(Control element)
     {
-        foreach (var ancestor in this.GetVisualAncestors())
+        foreach (var ancestor in element.GetVisualAncestors())
         {
-            if (GetIsContainer(ancestor))
+            if (ConcentricBorder.GetIsContainer(ancestor))
             {
                 return (ancestor, LargestCorner(ancestor));
             }
 
-            if (ancestor is Border border && border.CornerRadius != default)
+            if (ancestor is Border { CornerRadius: var corner } && corner != default)
+            {
+                return (ancestor, LargestCorner(ancestor));
+            }
+
+            if (ancestor is TemplatedControl { CornerRadius: var themed } && themed != default)
             {
                 return (ancestor, LargestCorner(ancestor));
             }
@@ -115,42 +176,24 @@ public sealed class ConcentricBorder : Border
 
     private static double LargestCorner(Visual element)
     {
-        var declared = GetContainerRadius(element);
+        var declared = ConcentricBorder.GetContainerRadius(element);
         if (declared > 0)
         {
             return declared;
         }
 
-        return element is Border border
-            ? Math.Max(
-                Math.Max(border.CornerRadius.TopLeft, border.CornerRadius.TopRight),
-                Math.Max(border.CornerRadius.BottomLeft, border.CornerRadius.BottomRight))
-            : 0;
-    }
-
-    private CornerRadius Concentric(Visual container, double outer)
-    {
-        if (this.TranslatePoint(default, container) is not { } offset)
+        var corner = element switch
         {
-            return CornerRadius;
-        }
+            Border border => border.CornerRadius,
+            TemplatedControl templated => templated.CornerRadius,
+            _ => default,
+        };
 
-        return ConcentricCorners.Derive(
-            outer,
-            container.Bounds.Size,
-            offset,
-            Bounds.Size,
-            MinimumRadius)
-            ?? CornerRadius;
+        return Math.Max(
+            Math.Max(corner.TopLeft, corner.TopRight),
+            Math.Max(corner.BottomLeft, corner.BottomRight));
     }
-}
 
-/// <summary>
-/// The rule itself, apart from any control: an inner radius is its container's
-/// less the distance between them, so the two curves share a centre.
-/// </summary>
-public static class ConcentricCorners
-{
     /// <summary>
     /// Returns null when there is nothing to derive from — an unarranged
     /// element, or a container with square corners, where guessing would be
@@ -176,6 +219,18 @@ public static class ConcentricCorners
         var top = offsetInContainer.Y;
         var right = containerSize.Width - (offsetInContainer.X + size.Width);
         var bottom = containerSize.Height - (offsetInContainer.Y + size.Height);
+
+        // An element only shares its container's corners if it is inside all
+        // four of them. A notice pinned to one corner of a panel is nowhere
+        // near the other three, and stepping in by those distances would floor
+        // every corner and quietly square something meant to be round. Where
+        // the rule does not apply, it declines rather than guessing.
+        if (left < 0 || top < 0 || right < 0 || bottom < 0
+            || left >= outerRadius || top >= outerRadius
+            || right >= outerRadius || bottom >= outerRadius)
+        {
+            return null;
+        }
 
         return new CornerRadius(
             Step(outerRadius, left, top, minimumRadius),
