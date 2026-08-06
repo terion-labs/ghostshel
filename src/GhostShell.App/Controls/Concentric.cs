@@ -149,6 +149,7 @@ public static class Concentric
         }
 
         element.LayoutUpdated -= existing.OnLayoutUpdated;
+        existing.Detach();
         element.SetValue(ReconcilerProperty, null);
     }
 }
@@ -161,23 +162,92 @@ public static class Concentric
 /// not concentric and as the thing to fall back to when it stops applying at
 /// all.
 /// </summary>
-internal sealed class ConcentricCornerReconciler(Control owner, double minimumRadius)
+internal sealed class ConcentricCornerReconciler
 {
+    private readonly Control _owner;
+    private readonly double _minimumRadius;
+    private bool _writing;
+    private Visual? _watched;
+
+    public ConcentricCornerReconciler(Control owner, double minimumRadius)
+    {
+        _owner = owner;
+        _minimumRadius = minimumRadius;
+    }
+
     public void OnLayoutUpdated(object? sender, EventArgs args) => Reconcile();
+
+    public void Detach() => Watch(null);
+
+    /// <summary>
+    /// Follows the surface this one measures itself against.
+    ///
+    /// Layout is not the only thing that moves a radius: changing the corner
+    /// setting republishes the container's without moving a single element, so
+    /// waiting for a layout pass meant answering the press before last — which
+    /// looked like the setting needing to be pressed twice.
+    ///
+    /// The container's value is the one to watch rather than this element's
+    /// own. Once a derived radius is written here it is a local value, and a
+    /// local value silences the style changes underneath it.
+    /// </summary>
+    private void Watch(Visual? container)
+    {
+        if (ReferenceEquals(_watched, container))
+        {
+            return;
+        }
+
+        if (_watched is not null)
+        {
+            _watched.PropertyChanged -= OnContainerPropertyChanged;
+        }
+
+        _watched = container;
+        if (_watched is not null)
+        {
+            _watched.PropertyChanged += OnContainerPropertyChanged;
+        }
+    }
+
+    private void OnContainerPropertyChanged(
+        object? sender,
+        AvaloniaPropertyChangedEventArgs args)
+    {
+        if (args.Property == Concentric.ContainerRadiusProperty
+            || args.Property == Border.CornerRadiusProperty)
+        {
+            Reconcile();
+        }
+    }
 
     public void Reconcile()
     {
-        // Back to the theme's value before reading it. The corners that are
-        // not concentric fall back to what the element was given, and what it
-        // was given is a style — not whatever this worked out last time, which
-        // is what it would read if the value it wrote were left in place.
-        owner.ClearValue(Border.CornerRadiusProperty);
-        var authored = owner.GetValue(Border.CornerRadiusProperty);
-
-        var derived = ConcentricCorners.DeriveFor(owner, minimumRadius);
-        if (derived is { } radius && !radius.Equals(authored))
+        // Clearing and setting both raise the change this listens for.
+        if (_writing)
         {
-            owner.SetValue(Border.CornerRadiusProperty, radius);
+            return;
+        }
+
+        _writing = true;
+        try
+        {
+            // Back to the theme's value before reading it. The fallback has to
+            // be a style, not whatever this worked out last time — a value
+            // that feeds on itself stops tracking the setting entirely.
+            _owner.ClearValue(Border.CornerRadiusProperty);
+            var authored = _owner.GetValue(Border.CornerRadiusProperty);
+
+            var (container, derived) = ConcentricCorners.DeriveFor(_owner, _minimumRadius);
+            Watch(container);
+            if (derived is { } radius && !radius.Equals(authored))
+            {
+                _owner.SetValue(Border.CornerRadiusProperty, radius);
+            }
+        }
+        finally
+        {
+            _writing = false;
         }
     }
 }
@@ -193,22 +263,24 @@ public static class ConcentricCorners
     /// sits inside. Null when there is no such surface, or when the rule does
     /// not apply to where the control sits in it.
     /// </summary>
-    public static CornerRadius? DeriveFor(Control element, double minimumRadius)
+    public static (Visual? Container, CornerRadius? Radius) DeriveFor(
+        Control element,
+        double minimumRadius)
     {
         ArgumentNullException.ThrowIfNull(element);
         var (container, outer) = FindContainer(element);
         if (container is null
             || element.TranslatePoint(default, container) is not { } offset)
         {
-            return null;
+            return (container, null);
         }
 
-        return Derive(
+        return (container, Derive(
             outer,
             container.Bounds.Size,
             offset,
             element.Bounds.Size,
-            minimumRadius);
+            minimumRadius));
     }
 
     private static (Visual? Container, double Radius) FindContainer(Control element)
