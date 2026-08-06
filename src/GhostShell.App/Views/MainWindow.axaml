@@ -251,6 +251,7 @@
         ShowAgentSettingsRequested="OnShowAgentSettingsClick"
         ShowCommandPaletteRequested="OnShowCommandPaletteClick"
         ShowLauncherRequested="OnShowLauncherClick"
+        OpenRecentSessionRequested="OnOpenRecentSessionClick"
         ShowNewItemRequested="OnShowNewItemClick"
         AddPanelToSideRequested="OnAddPanelToSideRequested"
         ShowNewPanelRequested="OnShowNewPanelClick"
