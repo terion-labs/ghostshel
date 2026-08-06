@@ -245,7 +245,10 @@ internal static class EffectiveAppearanceResourceMapper
                 // same desktop reads as belonging to it rather than as almost
                 // matching it.
                 Background: "#1B1B1B",
-                Sidebar: "#181818",
+                // And what its sidebar is, which is not simply the window a
+                // shade down: the platform sets the two separately and a
+                // sidebar guessed from the window reads as almost matching.
+                Sidebar: "#131313",
                 SidebarBorder: "#343434",
                 SidebarSelection: "#0DFFFFFF",
                 Surface: "#242424",
@@ -259,7 +262,7 @@ internal static class EffectiveAppearanceResourceMapper
                 Muted: "#A1A1A6"),
             (true, true) => (
                 Background: "#FFFFFF",
-                Sidebar: "#F2F2F7",
+                Sidebar: "#FCFCFC",
                 SidebarBorder: "#D1D1D6",
                 SidebarSelection: "#10000000",
                 Surface: "#F5F5F7",

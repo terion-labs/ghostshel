@@ -150,7 +150,7 @@ public sealed class AvaloniaHostAppearanceAdapterTests
             EffectiveThemeFor(profile, appearance));
 
         Assert.Equal(Color.Parse("#1B1B1B"), resources.Background);
-        Assert.Equal(Color.Parse("#181818"), resources.SidebarSurface);
+        Assert.Equal(Color.Parse("#131313"), resources.SidebarSurface);
         Assert.Equal(Color.Parse("#343434"), resources.SidebarBorder);
         Assert.Equal(Color.Parse("#0DFFFFFF"), resources.SidebarSelectionSurface);
         Assert.Equal(Color.Parse("#242424"), resources.Surface);
@@ -174,7 +174,7 @@ public sealed class AvaloniaHostAppearanceAdapterTests
             EffectiveThemeFor(profile, appearance));
 
         Assert.Equal(Color.Parse("#FFFFFF"), resources.Background);
-        Assert.Equal(Color.Parse("#F2F2F7"), resources.SidebarSurface);
+        Assert.Equal(Color.Parse("#FCFCFC"), resources.SidebarSurface);
         Assert.Equal(Color.Parse("#D1D1D6"), resources.SidebarBorder);
         Assert.Equal(Color.Parse("#10000000"), resources.SidebarSelectionSurface);
         Assert.Equal(Color.Parse("#F5F5F7"), resources.Surface);
@@ -193,7 +193,7 @@ public sealed class AvaloniaHostAppearanceAdapterTests
             ThemePreference.Default.Resolve(NativeHost));
 
         Assert.Equal(Color.Parse("#1B1B1B"), resources.Background);
-        Assert.Equal(Color.Parse("#181818"), resources.SidebarSurface);
+        Assert.Equal(Color.Parse("#131313"), resources.SidebarSurface);
     }
 
     [Fact]
