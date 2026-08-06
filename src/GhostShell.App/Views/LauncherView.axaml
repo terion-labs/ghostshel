@@ -144,8 +144,9 @@
     </Border>
   
     <Grid Grid.Row="1" ColumnDefinitions="244,*">
-      <controls:ConcentricBorder
+      <Border
           Classes="FloatingSidebar"
+          controls:Concentric.IsEnabled="True"
           Classes.routeSidebar="True">
         <Grid RowDefinitions="Auto,*">
           <StackPanel Margin="{controls:Inset Md}" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
@@ -204,7 +205,7 @@
                 Label="Settings" />
           </StackPanel>
         </Grid>
-      </controls:ConcentricBorder>
+      </Border>
   
       <!-- The pages float on the same panel surface the workspaces sidebar
            uses, so the cards inside them sit on a panel rather than directly on

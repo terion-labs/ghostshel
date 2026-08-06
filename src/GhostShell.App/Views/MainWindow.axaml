@@ -169,8 +169,8 @@
   -->
   <Grid
       Background="{DynamicResource ShellWindowBackdropBrush}"
-      controls:ConcentricBorder.IsContainer="True"
-      controls:ConcentricBorder.ContainerRadius="{DynamicResource ShellWindowCornerRadius}">
+      controls:Concentric.IsContainer="True"
+      controls:Concentric.ContainerRadius="{DynamicResource ShellWindowCornerRadius}">
     <!-- Everything the app draws lives inside this one layer so that
          locking can collapse it whole. The veil alone cannot cover native
          surfaces — a webview or a terminal is hosted above every Avalonia

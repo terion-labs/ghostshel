@@ -131,11 +131,12 @@
            workspace, so this one sidebar does not clip its content and draws
            above the canvas it opens over. Widening the rail instead would move
            every panel beside it on a hover. -->
-      <controls:ConcentricBorder
+      <Border
           Width="56"
           ZIndex="1"
           ClipToBounds="False"
           Classes="FloatingSidebar"
+          controls:Concentric.IsEnabled="True"
           Classes.workspaceLeft="{Binding IsWorkspacePanelOnLeft}"
           Classes.workspaceRight="{Binding IsWorkspacePanelOnRight}"
           DockPanel.Dock="{Binding WorkspacePanelDock}"
@@ -180,11 +181,12 @@
                beside filled workspace tiles and must read as an empty slot. -->
           <Button Width="40" Height="40" HorizontalAlignment="Center" Padding="0" Background="Transparent" BorderBrush="{DynamicResource ShellBorderBrush}" Foreground="{DynamicResource ShellMutedBrush}" Click="OnShowNewItemClick" ToolTip.Tip="New tab" AutomationProperties.Name="Create a new tab"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Add" FontSize="14" /></Button>
         </StackPanel>
-      </controls:ConcentricBorder>
+      </Border>
 
-      <controls:ConcentricBorder
+      <Border
           Width="190"
           Classes="FloatingSidebar"
+          controls:Concentric.IsEnabled="True"
           Padding="{controls:Inset Horizontal=Xs, Vertical=Sm}"
           DockPanel.Dock="{Binding TabStripDock}"
           IsVisible="{Binding IsTabStripVisibleOnSide}">
@@ -204,7 +206,7 @@
             ReorderPointerMoved="OnRuntimeTabDragPointerMoved"
             ReorderPointerPressed="OnRuntimeTabDragPointerPressed"
             ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
-      </controls:ConcentricBorder>
+      </Border>
 
       <views:AgentWorkspaceView
           x:Name="AgentWorkspaceSurface"

@@ -6,7 +6,8 @@ using Avalonia.VisualTree;
 namespace GhostShell.App.Controls;
 
 /// <summary>
-/// A border whose corners are worked out from the one it sits inside.
+/// Opts a control into having its corners worked out from the one it sits
+/// inside.
 ///
 /// Nested rounded rectangles only look like one surface when their curves
 /// share a centre, which means the inner radius is the outer radius less the
@@ -15,10 +16,17 @@ namespace GhostShell.App.Controls;
 /// Avalonia has no equivalent, so this is that rule rather than a port of
 /// their implementation, which is not published.
 ///
-/// A container is marked with <see cref="ConcentricBorder.IsContainerProperty"/>
-/// — or is simply the nearest ancestor that is one of these. The distance is
-/// measured from the arranged bounds rather than added up from margins and
-/// padding, so it stays right whatever put the gap there.
+/// An attached property rather than a border subclass, because Avalonia's type
+/// selectors match one type exactly: a <c>Border.FloatingSidebar</c> style
+/// stops applying the moment the element is a subclass of Border, and a
+/// sidebar that quietly loses its background and margin does not look like a
+/// styling rule — it looks like it vanished. Opting in by property leaves the
+/// element the type its styles were written against.
+///
+/// A container is marked with <see cref="IsContainerProperty"/> — or is simply
+/// the nearest ancestor that carries a radius. The distance is measured from
+/// the arranged bounds rather than added up from margins and padding, so it
+/// stays right whatever put the gap there.
 ///
 /// The corners are still circular arcs. Apple's are continuous curvature —
 /// squircles — which no <see cref="Border"/> can draw, and which would need
@@ -26,35 +34,60 @@ namespace GhostShell.App.Controls;
 /// relationships are what read as wrong when they are wrong; the curve is a
 /// separate question, and a smaller one below about twelve points.
 /// </summary>
-public sealed class ConcentricBorder : Border
+public static class Concentric
 {
-    /// <summary>
-    /// Marks an element as the shape inner borders measure themselves against.
-    /// </summary>
-    public static readonly AttachedProperty<bool> IsContainerProperty =
-        AvaloniaProperty.RegisterAttached<ConcentricBorder, Visual, bool>("IsContainer");
+    /// <summary>Whether this element works its corners out from its container.</summary>
+    public static readonly AttachedProperty<bool> IsEnabledProperty =
+        AvaloniaProperty.RegisterAttached<Control, bool>(
+            "IsEnabled",
+            typeof(Concentric));
 
     /// <summary>
-    /// The radius the container is drawn with. Set on the container alongside
-    /// <see cref="IsContainerProperty"/> when it is not itself a border.
+    /// Marks an element as the shape inner corners are measured against.
+    /// </summary>
+    public static readonly AttachedProperty<bool> IsContainerProperty =
+        AvaloniaProperty.RegisterAttached<Visual, bool>(
+            "IsContainer",
+            typeof(Concentric));
+
+    /// <summary>
+    /// The radius the container is drawn with, for a container that does not
+    /// carry one itself — a window's frame, drawn by the platform.
     /// </summary>
     public static readonly AttachedProperty<double> ContainerRadiusProperty =
-        AvaloniaProperty.RegisterAttached<ConcentricBorder, Visual, double>("ContainerRadius");
+        AvaloniaProperty.RegisterAttached<Visual, double>(
+            "ContainerRadius",
+            typeof(Concentric));
 
     /// <summary>
     /// How tight a derived corner may become. Below this a corner reads as
     /// square, and squaring one corner of a rounded thing looks like a mistake
     /// rather than a decision.
     /// </summary>
-    public static readonly StyledProperty<double> MinimumRadiusProperty =
-        AvaloniaProperty.Register<ConcentricBorder, double>(nameof(MinimumRadius), 2);
+    public static readonly AttachedProperty<double> MinimumRadiusProperty =
+        AvaloniaProperty.RegisterAttached<Control, double>(
+            "MinimumRadius",
+            typeof(Concentric),
+            defaultValue: 2);
 
-    private readonly ConcentricCornerReconciler _corners;
+    private static readonly AttachedProperty<ConcentricCornerReconciler?> ReconcilerProperty =
+        AvaloniaProperty.RegisterAttached<Control, ConcentricCornerReconciler?>(
+            "Reconciler",
+            typeof(Concentric));
 
-    public ConcentricBorder()
+    static Concentric() =>
+        IsEnabledProperty.Changed.AddClassHandler<Control>(OnIsEnabledChanged);
+
+    public static bool GetIsEnabled(Control element)
     {
-        _corners = new ConcentricCornerReconciler(this, MinimumRadius);
-        LayoutUpdated += (_, _) => Reconcile();
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(IsEnabledProperty);
+    }
+
+    public static void SetIsEnabled(Control element, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(IsEnabledProperty, value);
     }
 
     public static bool GetIsContainer(Visual element)
@@ -81,13 +114,43 @@ public sealed class ConcentricBorder : Border
         element.SetValue(ContainerRadiusProperty, value);
     }
 
-    public double MinimumRadius
+    public static double GetMinimumRadius(Control element)
     {
-        get => GetValue(MinimumRadiusProperty);
-        set => SetValue(MinimumRadiusProperty, value);
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(MinimumRadiusProperty);
     }
 
-    private void Reconcile() => _corners.Reconcile();
+    public static void SetMinimumRadius(Control element, double value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(MinimumRadiusProperty, value);
+    }
+
+    private static void OnIsEnabledChanged(Control element, AvaloniaPropertyChangedEventArgs args)
+    {
+        if (args.GetNewValue<bool>())
+        {
+            if (element.GetValue(ReconcilerProperty) is not null)
+            {
+                return;
+            }
+
+            var reconciler = new ConcentricCornerReconciler(
+                element,
+                GetMinimumRadius(element));
+            element.SetValue(ReconcilerProperty, reconciler);
+            element.LayoutUpdated += reconciler.OnLayoutUpdated;
+            return;
+        }
+
+        if (element.GetValue(ReconcilerProperty) is not { } existing)
+        {
+            return;
+        }
+
+        element.LayoutUpdated -= existing.OnLayoutUpdated;
+        element.SetValue(ReconcilerProperty, null);
+    }
 }
 
 /// <summary>
@@ -101,6 +164,8 @@ public sealed class ConcentricBorder : Border
 internal sealed class ConcentricCornerReconciler(Control owner, double minimumRadius)
 {
     private bool _applied;
+
+    public void OnLayoutUpdated(object? sender, EventArgs args) => Reconcile();
 
     public void Reconcile()
     {
@@ -155,7 +220,7 @@ public static class ConcentricCorners
     {
         foreach (var ancestor in element.GetVisualAncestors())
         {
-            if (ConcentricBorder.GetIsContainer(ancestor))
+            if (Concentric.GetIsContainer(ancestor))
             {
                 return (ancestor, LargestCorner(ancestor));
             }
@@ -176,7 +241,7 @@ public static class ConcentricCorners
 
     private static double LargestCorner(Visual element)
     {
-        var declared = ConcentricBorder.GetContainerRadius(element);
+        var declared = Concentric.GetContainerRadius(element);
         if (declared > 0)
         {
             return declared;

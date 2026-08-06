@@ -84,10 +84,18 @@ public sealed class LauncherViewContractTests
         AssertTitleBarDragRegion(root);
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "ConcentricBorder"
+            element => element.Name.LocalName == "Border"
                 && string.Equals(
                     AttributeValue(element, "Classes"),
                     "FloatingSidebar",
+                    StringComparison.Ordinal)
+                // A Border, not a subclass of one: Avalonia's type selectors
+                // match one type exactly, so Border.FloatingSidebar stops
+                // dressing this the moment it stops being a Border, and a
+                // sidebar with no background reads as a missing sidebar.
+                && string.Equals(
+                    AttributeValue(element, "Concentric.IsEnabled"),
+                    "True",
                     StringComparison.Ordinal));
 
         var tabs = FindNamedElement(root, "LauncherTabStrip");

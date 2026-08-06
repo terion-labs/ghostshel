@@ -164,7 +164,7 @@ public sealed class WorkspaceViewContractTests
         // both are bindings rather than fixed values.
         var rail = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ConcentricBorder"
+            element => element.Name.LocalName == "Border"
                 && string.Equals(
                     AttributeValue(element, "DockPanel.Dock"),
                     "{Binding WorkspacePanelDock}",
