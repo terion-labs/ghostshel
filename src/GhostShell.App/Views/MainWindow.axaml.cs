@@ -230,9 +230,11 @@ public sealed partial class MainWindow : Window
         // The base surface has to reach the top edge; the material behind it
         // does the rest.
         var titleBar = MacOsWindowTitleBar.TryLetTheBaseSurfaceRunToTheTop(this);
-        // TRIAL
-        var material = MacOsWindowMaterial.TrySit(this, MacOsMaterial.UnderWindowBackground);
-        Console.Error.WriteLine($"[material] set = {material}");
+        // The platform's own material for a window's base. Avalonia pins the
+        // view it creates to a fixed light one and lets its state follow the
+        // window's, so the glass reads wrong for a dark shell and dulls
+        // whenever focus moves away. Both are answered there.
+        MacOsWindowMaterial.TrySit(this, MacOsMaterial.UnderWindowBackground);
         var negotiated = ActualTransparencyLevel;
         if (negotiated != WindowTransparencyLevel.None)
         {
@@ -379,6 +381,22 @@ public sealed partial class MainWindow : Window
         if (!point.Properties.IsLeftButtonPressed
             && e.Pointer.Type != PointerType.Touch)
         {
+            return;
+        }
+
+        // A double-click on a title bar is its own gesture, and the move-drag
+        // this hands every press to is not it. The platform decides what the
+        // gesture means; elsewhere it is the window's own maximise.
+        if (e.ClickCount == 2)
+        {
+            if (!MacOsWindowTitleBar.TryDoWhatADoubleClickDoes(this))
+            {
+                WindowState = WindowState == WindowState.Maximized
+                    ? WindowState.Normal
+                    : WindowState.Maximized;
+            }
+
+            e.Handled = true;
             return;
         }
 
