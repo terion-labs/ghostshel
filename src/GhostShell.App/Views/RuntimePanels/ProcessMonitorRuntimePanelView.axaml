@@ -67,10 +67,9 @@
 
     <Grid RowDefinitions="46,28,*">
       <Border Grid.Row="0" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-        <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,190,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,190" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <TextBox Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter processes" />
           <ComboBox Grid.Column="1" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding Sort}" AutomationProperties.Name="Process sort order" />
-          <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Refresh" AutomationProperties.Name="Refresh process list" />
         </Grid>
       </Border>
 
@@ -107,10 +106,14 @@
                 <TextBlock DockPanel.Dock="Right" Width="137" Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Muted StartedCell" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Started}" />
                 <TextBlock DockPanel.Dock="Right" Width="102" Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Memory}" />
                 <TextBlock DockPanel.Dock="Right" Width="82" Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Cpu}" />
-                <Grid Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                  <TextBlock HorizontalAlignment="Left" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
-                  <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Eyebrow Accent" IsVisible="{Binding IsGhostShell}" Text="GhostSHELL" />
-                </Grid>
+                <TextBlock
+                    Margin="{controls:Inset Left=Sm}"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Text="{Binding Name}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTip.Tip="{Binding Name}" />
               </DockPanel>
             </DataTemplate>
           </ListBox.ItemTemplate>

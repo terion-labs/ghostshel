@@ -549,8 +549,6 @@ public sealed class ProcessMonitorEntryViewModel
 
     public string Started => Entry.StartedAtUtc?.ToLocalTime().ToString("g") ?? "Unknown";
 
-    public bool IsGhostShell => Entry.IsGhostShell;
-
     public string AccessibleSummary =>
         $"PID {ProcessId}, {Name}, CPU {MonitorPanelPresentation.AccessiblePercent(Entry.CpuPercent)}, "
         + $"memory {Memory}, started {Started}.";
@@ -787,23 +785,15 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         ? $"Captured {snapshot.CapturedAtUtc.ToLocalTime():T}"
         : "No sample captured";
 
-    public string ShowingText
-    {
-        get
-        {
-            if (Snapshot is not { } snapshot)
-            {
-                return "No processes captured";
-            }
-
-            var source = snapshot.IsTruncated
-                ? $"bounded sample of {snapshot.EnumeratedProcessCount:N0}"
-                : $"{snapshot.EnumeratedProcessCount:N0} enumerated";
-            return string.IsNullOrWhiteSpace(Filter)
-                ? $"Showing {Processes.Count:N0} processes · {source}"
-                : $"Showing {Processes.Count:N0} matching processes · {source}";
-        }
-    }
+    /// <summary>
+    /// How many are in the list. It used to also say how the sample was taken
+    /// and how many were walked to get it — three facts where one was wanted,
+    /// and two of them about the shell rather than about the machine. Whether a
+    /// sample is bounded belongs in the settings that bound it.
+    /// </summary>
+    public string ShowingText => Snapshot is null
+        ? string.Empty
+        : $"{Processes.Count:N0} process{(Processes.Count == 1 ? string.Empty : "es")}";
 
     public Task Start()
     {

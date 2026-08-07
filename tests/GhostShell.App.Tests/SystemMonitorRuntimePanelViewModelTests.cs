@@ -55,7 +55,9 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
         Assert.True(processes.ShowLoading);
         Assert.Null(processes.Snapshot);
         Assert.Empty(processes.Processes);
-        Assert.Equal("No processes captured", processes.ShowingText);
+        // Nothing said twice: the cell beside it already reports that no
+        // sample has been captured.
+        Assert.Equal(string.Empty, processes.ShowingText);
         Assert.Equal("No sample captured", processes.CapturedAtText);
         Assert.Equal(0, host.StatisticsEnsureCount);
         Assert.Equal(0, host.ProcessEnsureCount);
@@ -173,8 +175,9 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
         Assert.Equal("dotnet helper", process.Name);
         Assert.Equal("8.5%", process.Cpu);
         Assert.Equal("2.0 KiB", process.Memory);
-        Assert.Contains("matching processes", panel.ShowingText, StringComparison.Ordinal);
-        Assert.Contains("bounded sample of", panel.ShowingText, StringComparison.Ordinal);
+        // How many are in the list, and nothing about how the sample was taken
+        // — that belongs in the settings that bound it, not in every reading.
+        Assert.Equal("1 process", panel.ShowingText);
     }
 
     [Fact]
@@ -219,7 +222,7 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
         Assert.Same(visible, Assert.Single(panel.Processes));
         Assert.Equal(SystemMonitorPanelState.Stale, panel.State);
         Assert.Equal("Process refresh failed", panel.IssueTitle);
-        Assert.Contains("matching processes", panel.ShowingText, StringComparison.Ordinal);
+        Assert.Equal("1 process", panel.ShowingText);
     }
 
     [Fact]

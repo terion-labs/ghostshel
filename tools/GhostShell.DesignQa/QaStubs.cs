@@ -608,7 +608,7 @@ internal sealed class QaProcessMonitorPreview
 
     public string IssueMessage => string.Empty;
 
-    public string ShowingText => "Showing 250 processes · bounded sample of 1 179";
+    public string ShowingText => "250 processes";
 
     public string CapturedAtText => "Captured 18:30:53";
 
