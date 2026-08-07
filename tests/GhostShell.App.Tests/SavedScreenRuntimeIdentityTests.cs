@@ -104,20 +104,15 @@ public sealed class SavedScreenRuntimeIdentityTests
         }
 
         var saved = sourceStore.Snapshots.Last();
-        var startup = InitializeRecoveryRun(
-            "recovery-run",
-            "interrupted-run",
-            RecoveryChoice.Restore,
-            [saved]);
         using var restored = CreateViewModel(
             definitions,
             files,
             new RuntimeRecoveryWriter(
                 new RecordingRecoveryStore(),
-                startup,
+                InitializeRun("recovery-run"),
                 TimeProvider.System));
 
-        Assert.True(await restored.ApplyStartupRecoveryAsync(startup));
+        Assert.True(await restored.RestoreRuntimeSnapshotsAsync([saved]));
         var runtime = restored.RuntimeWorkspace!;
         var panel = runtime.Tabs[0].Panels[0];
 
@@ -1132,19 +1127,14 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.DoesNotContain("credential-should-not-appear", saved.PayloadJson, StringComparison.Ordinal);
         Assert.DoesNotContain("/bin/sh", saved.PayloadJson, StringComparison.Ordinal);
 
-        var recoveredStartup = InitializeRecoveryRun(
-            "recovery-run",
-            "interrupted-run",
-            RecoveryChoice.Restore,
-            [saved]);
         var recoveredStore = new RecordingRecoveryStore();
         var recoveredWriter = new RuntimeRecoveryWriter(
             recoveredStore,
-            recoveredStartup,
+            InitializeRun("recovery-run"),
             TimeProvider.System);
         using var recovered = CreateViewModel(definitionSnapshot, files, recoveredWriter);
 
-        Assert.True(await recovered.ApplyStartupRecoveryAsync(recoveredStartup));
+        Assert.True(await recovered.RestoreRuntimeSnapshotsAsync([saved]));
         var workspace = recovered.RuntimeWorkspace!;
         Assert.Equal(ShellRoute.Workspace, recovered.Route);
         Assert.Equal(2, workspace.Tabs.Count);
@@ -1192,11 +1182,6 @@ public sealed class SavedScreenRuntimeIdentityTests
             RuntimeWorkspaceRecoveryCodec.SchemaVersion,
             RuntimeWorkspaceRecoveryCodec.Serialize(source.RuntimeWorkspace),
             DateTimeOffset.UtcNow);
-        var startup = InitializeRecoveryRun(
-            "recovery-run",
-            "interrupted-run",
-            RecoveryChoice.Restore,
-            [snapshot]);
         var historyStore = new MemoryRecentSessionStore();
         var sessionClient = DispatchProxy.Create<ISessionHostClient, NullSessionClient>();
         var observedClient = Assert.IsAssignableFrom<NullSessionClient>(sessionClient);
@@ -1206,7 +1191,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             recentSessionHistory: new RecentSessionHistory(historyStore),
             sessionClient: sessionClient);
 
-        Assert.True(await recovered.ApplyStartupRecoveryAsync(startup));
+        Assert.True(await recovered.RestoreRuntimeSnapshotsAsync([snapshot]));
         await observedClient.WatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await recovered.FlushRecentSessionHistoryAsync(CancellationToken.None);
 
@@ -1238,14 +1223,9 @@ public sealed class SavedScreenRuntimeIdentityTests
             RuntimeWorkspaceRecoveryCodec.SchemaVersion,
             RuntimeWorkspaceRecoveryCodec.Serialize(sourceWorkspace),
             DateTimeOffset.UtcNow);
-        var startup = InitializeRecoveryRun(
-            "placeholder-recovery-run",
-            "placeholder-interrupted-run",
-            RecoveryChoice.Restore,
-            [snapshot]);
         using var recovered = CreateViewModel(definitions, new EmptyFileClients());
 
-        Assert.True(await recovered.ApplyStartupRecoveryAsync(startup));
+        Assert.True(await recovered.RestoreRuntimeSnapshotsAsync([snapshot]));
 
         var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(recovered.RuntimeWorkspace);
         var tab = Assert.Single(workspace.Tabs);
@@ -1281,14 +1261,9 @@ public sealed class SavedScreenRuntimeIdentityTests
             RuntimeWorkspaceRecoveryCodec.SchemaVersion,
             RuntimeWorkspaceRecoveryCodec.Serialize(sourceWorkspace),
             DateTimeOffset.UtcNow);
-        var startup = InitializeRecoveryRun(
-            "floating-recovery-run",
-            "floating-interrupted-run",
-            RecoveryChoice.Restore,
-            [snapshot]);
         using var recovered = CreateViewModel(definitions, new EmptyFileClients());
 
-        Assert.True(await recovered.ApplyStartupRecoveryAsync(startup));
+        Assert.True(await recovered.RestoreRuntimeSnapshotsAsync([snapshot]));
 
         var recoveredWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(
             recovered.RuntimeWorkspace);
@@ -1729,22 +1704,15 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.True(viewModel.HasNoHistorySessions);
     }
 
-    [Theory]
-    [InlineData(RecoveryChoice.SafeMode)]
-    [InlineData(RecoveryChoice.DiscardRuntimeState)]
-    public async Task NonRestoreRecoveryChoicesDoNotOpenRuntimeState(RecoveryChoice choice)
+    [Fact]
+    public async Task NothingStoredOpensNoRuntimeState()
     {
-        var startup = InitializeRecoveryRun(
-            "current-run",
-            "interrupted-run",
-            choice,
-            []);
         var files = new EmptyFileClients();
         using var viewModel = CreateViewModel(
             new DefinitionCatalogSnapshot([], [], [], [], [], [], [], [], []),
             files);
 
-        Assert.False(await viewModel.ApplyStartupRecoveryAsync(startup));
+        Assert.False(await viewModel.RestoreRuntimeSnapshotsAsync([]));
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.Equal(ShellRoute.Workspace, viewModel.Route);
     }
@@ -2181,16 +2149,11 @@ public sealed class SavedScreenRuntimeIdentityTests
             frozenSchemaVersion,
             frozenPayload,
             DateTimeOffset.UtcNow);
-        var startup = InitializeRecoveryRun(
-            "current-run",
-            "interrupted-run",
-            RecoveryChoice.Restore,
-            [snapshot]);
         using var viewModel = CreateViewModel(
             new DefinitionCatalogSnapshot([], [], [], [], [], [], [], [], []),
             new EmptyFileClients());
 
-        Assert.False(await viewModel.ApplyStartupRecoveryAsync(startup));
+        Assert.False(await viewModel.RestoreRuntimeSnapshotsAsync([snapshot]));
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.Equal(ShellRoute.Workspace, viewModel.Route);
         Assert.True(viewModel.HasOperationError);
@@ -2206,17 +2169,12 @@ public sealed class SavedScreenRuntimeIdentityTests
             RuntimeWorkspaceRecoveryCodec.SchemaVersion + 1,
             "{}",
             DateTimeOffset.UtcNow);
-        var startup = InitializeRecoveryRun(
-            "current-run",
-            "interrupted-run",
-            RecoveryChoice.Restore,
-            [snapshot]);
         var files = new EmptyFileClients();
         using var viewModel = CreateViewModel(
             new DefinitionCatalogSnapshot([], [], [], [], [], [], [], [], []),
             files);
 
-        Assert.False(await viewModel.ApplyStartupRecoveryAsync(startup));
+        Assert.False(await viewModel.RestoreRuntimeSnapshotsAsync([snapshot]));
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.True(viewModel.HasOperationError);
         Assert.Contains("not supported", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);
@@ -2489,25 +2447,6 @@ public sealed class SavedScreenRuntimeIdentityTests
             runId,
             RecoveryRequired: false,
             new ApplicationRunState(null, WasClean: true, null, null)));
-        return startup;
-    }
-
-    private static ApplicationStartupState InitializeRecoveryRun(
-        string runId,
-        string interruptedRunId,
-        RecoveryChoice choice,
-        IReadOnlyList<RuntimeRecoverySnapshot> snapshots)
-    {
-        var startup = new ApplicationStartupState();
-        startup.Initialize(new ApplicationRunStart(
-            runId,
-            RecoveryRequired: true,
-            new ApplicationRunState(
-                interruptedRunId,
-                WasClean: false,
-                DateTimeOffset.UtcNow,
-                null)));
-        startup.ResolveRecovery(choice, snapshots);
         return startup;
     }
 

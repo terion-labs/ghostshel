@@ -36,8 +36,14 @@ public sealed class RecoveryStoreTests
         Assert.True((await runStore.GetStateAsync(CancellationToken.None)).Value!.WasClean);
     }
 
+    /// <summary>
+    /// A run that died before it changed anything leaves the session it started
+    /// from as the newest thing stored, and startup opens that. Losing a
+    /// session because the process that would have re-saved it unchanged died
+    /// is the one outcome nobody would have chosen.
+    /// </summary>
     [Fact]
-    public async Task CleanRunSnapshotIsNotRestoredAfterNextRunCrashesBeforeSaving()
+    public async Task ARunThatSavedNothingLeavesTheLastSavedSessionToRestore()
     {
         await using var temporary = TemporaryDatabase.Create();
         var runStore = new SqliteApplicationRunStore(temporary.Database, TimeProvider.System);
@@ -55,25 +61,23 @@ public sealed class RecoveryStoreTests
         await temporary.ReopenAsync();
 
         runStore = new SqliteApplicationRunStore(temporary.Database, TimeProvider.System);
-        recoveryStore = new SqliteRuntimeRecoveryStore(temporary.Database);
         var currentRun = Success(await runStore.BeginRunAsync(CancellationToken.None));
         Assert.True(currentRun.RecoveryRequired);
         Assert.Equal(interruptedRun.RunId, currentRun.PreviousState.RunId);
-        var startupState = InitializeStartup(currentRun);
-        var coordinator = new RecoveryCoordinator(recoveryStore, startupState);
 
-        var restored = Success(await coordinator.ResolveAsync(
-            RecoveryChoice.Restore,
-            CancellationToken.None));
+        var restored = Success(await StartupRestore(temporary, currentRun)
+            .LoadLatestSessionAsync(CancellationToken.None));
 
-        Assert.Empty(restored);
-        Assert.Single(Success(await recoveryStore.LoadAsync(
-            cleanRun.RunId,
-            CancellationToken.None)));
+        var snapshot = Assert.Single(restored);
+        Assert.Equal(cleanRun.RunId, snapshot.RunId);
     }
 
+    /// <summary>
+    /// Startup opens what was last stored, and how the process that stored it
+    /// ended is not part of the question.
+    /// </summary>
     [Fact]
-    public async Task RestoreLoadsOnlySnapshotsFromTheInterruptedPreviousRun()
+    public async Task StartupRestoresTheNewestStoredSessionAfterAnInterruptedRun()
     {
         await using var temporary = TemporaryDatabase.Create();
         var runStore = new SqliteApplicationRunStore(temporary.Database, TimeProvider.System);
@@ -95,17 +99,21 @@ public sealed class RecoveryStoreTests
         await temporary.ReopenAsync();
 
         runStore = new SqliteApplicationRunStore(temporary.Database, TimeProvider.System);
-        recoveryStore = new SqliteRuntimeRecoveryStore(temporary.Database);
         var currentRun = Success(await runStore.BeginRunAsync(CancellationToken.None));
-        var coordinator = new RecoveryCoordinator(recoveryStore, InitializeStartup(currentRun));
+        Assert.True(currentRun.RecoveryRequired);
+        var restore = StartupRestore(temporary, currentRun);
 
-        var restored = Success(await coordinator.ResolveAsync(
-            RecoveryChoice.Restore,
-            CancellationToken.None));
+        var restored = Success(await restore.LoadLatestSessionAsync(CancellationToken.None));
 
         Assert.Equal(2, restored.Count);
         Assert.All(restored, snapshot => Assert.Equal(interruptedRun.RunId, snapshot.RunId));
         Assert.DoesNotContain(restored, snapshot => snapshot.PayloadJson.Contains("clean-run", StringComparison.Ordinal));
+
+        // Restoring reads; it does not consume. The next run has the same
+        // session to come back to if this one never gets to save its own.
+        Assert.Equal(
+            2,
+            Success(await restore.LoadLatestSessionAsync(CancellationToken.None)).Count);
     }
 
     [Fact]
@@ -127,11 +135,10 @@ public sealed class RecoveryStoreTests
 
         runStore = new SqliteApplicationRunStore(temporary.Database, TimeProvider.System);
         recoveryStore = new SqliteRuntimeRecoveryStore(temporary.Database);
-        var currentRun = Success(await runStore.BeginRunAsync(CancellationToken.None));
-        var coordinator = new RecoveryCoordinator(recoveryStore, InitializeStartup(currentRun));
+        _ = Success(await runStore.BeginRunAsync(CancellationToken.None));
 
-        var discarded = await coordinator.ResolveAsync(
-            RecoveryChoice.DiscardRuntimeState,
+        var discarded = await recoveryStore.DiscardAsync(
+            interruptedRun.RunId,
             CancellationToken.None);
 
         Assert.True(discarded.IsSuccess);
@@ -142,33 +149,6 @@ public sealed class RecoveryStoreTests
             temporary.Database,
             TimeProvider.System);
         Assert.True((await repository.GetAsync(definition.Key, CancellationToken.None)).IsSuccess);
-    }
-
-    [Fact]
-    public async Task SafeModeDoesNotDiscardInterruptedSnapshots()
-    {
-        await using var temporary = TemporaryDatabase.Create();
-        var runStore = new SqliteApplicationRunStore(temporary.Database, TimeProvider.System);
-        var recoveryStore = new SqliteRuntimeRecoveryStore(temporary.Database);
-        var interruptedRun = Success(await runStore.BeginRunAsync(CancellationToken.None));
-        Assert.True((await recoveryStore.SaveAsync(
-            Snapshot(interruptedRun.RunId, "window-one", "interrupted-run"),
-            CancellationToken.None)).IsSuccess);
-        await temporary.ReopenAsync();
-
-        runStore = new SqliteApplicationRunStore(temporary.Database, TimeProvider.System);
-        recoveryStore = new SqliteRuntimeRecoveryStore(temporary.Database);
-        var currentRun = Success(await runStore.BeginRunAsync(CancellationToken.None));
-        var coordinator = new RecoveryCoordinator(recoveryStore, InitializeStartup(currentRun));
-
-        var safeMode = Success(await coordinator.ResolveAsync(
-            RecoveryChoice.SafeMode,
-            CancellationToken.None));
-
-        Assert.Empty(safeMode);
-        Assert.Single(Success(await recoveryStore.LoadAsync(
-            interruptedRun.RunId,
-            CancellationToken.None)));
     }
 
     [Fact]
@@ -601,41 +581,36 @@ public sealed class RecoveryStoreTests
     }
 
     [Fact]
-    public void StartupStateRejectsSnapshotsFromARunOtherThanTheInterruptedRun()
+    public void StartupStateRequiresTheInterruptedRunToBeNamed()
     {
         var previous = new ApplicationRunState(
-            "interrupted-run",
+            RunId: null,
             WasClean: false,
             DateTimeOffset.UtcNow,
             LastCleanAt: null);
-        var startup = InitializeStartup(new ApplicationRunStart(
+
+        Assert.Throws<ArgumentException>(() => InitializeStartup(new ApplicationRunStart(
             "current-run",
             RecoveryRequired: true,
-            previous));
-
-        Assert.Throws<ArgumentException>(() => startup.ResolveRecovery(
-            RecoveryChoice.Restore,
-            [Snapshot("different-run", "window-one", "wrong-run")]));
+            previous)));
     }
 
-    [Theory]
-    [InlineData(RecoveryChoice.SafeMode)]
-    [InlineData(RecoveryChoice.DiscardRuntimeState)]
-    public void StartupStateRejectsSnapshotsForNonRestoreChoices(RecoveryChoice choice)
+    /// <summary>
+    /// The startup path itself: the preference, the store, and the inventory the
+    /// newest stored session is picked from — the same three the desktop
+    /// composes, so these tests exercise what actually opens the window.
+    /// </summary>
+    private static SessionRestoreCoordinator StartupRestore(
+        TemporaryDatabase temporary,
+        ApplicationRunStart currentRun)
     {
-        var previous = new ApplicationRunState(
-            "interrupted-run",
-            WasClean: false,
-            DateTimeOffset.UtcNow,
-            LastCleanAt: null);
-        var startup = InitializeStartup(new ApplicationRunStart(
-            "current-run",
-            RecoveryRequired: true,
-            previous));
-
-        Assert.Throws<ArgumentException>(() => startup.ResolveRecovery(
-            choice,
-            [Snapshot("interrupted-run", "window-one", "previous-run")]));
+        var store = new SqliteRuntimeRecoveryStore(
+            temporary.Database,
+            InitializeStartup(currentRun));
+        return new SessionRestoreCoordinator(
+            new SqliteSessionRestorePreferenceStore(temporary.Database),
+            store,
+            store);
     }
 
     private static ApplicationStartupState InitializeStartup(ApplicationRunStart run)

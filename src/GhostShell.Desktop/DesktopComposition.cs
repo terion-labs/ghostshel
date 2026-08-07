@@ -198,7 +198,6 @@ public static class DesktopComposition
         services.AddSingleton<RecentSessionHistory>();
         services.AddSingleton<RuntimeRecoveryWriter>();
         services.AddSingleton<DesktopRunFinalizer>();
-        services.AddSingleton<IRecoveryCoordinator, RecoveryCoordinator>();
         services.AddSingleton<SessionRestoreCoordinator>();
         services.AddSingleton<ApplicationStartupState>();
         services.AddSingleton<ITerminalSessionFactory>(_ =>

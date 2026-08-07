@@ -2941,28 +2941,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        return await ApplyRuntimeSnapshotsAsync(result.Value!, cancellationToken);
+        return await RestoreRuntimeSnapshotsAsync(result.Value!, cancellationToken);
     }
 
-    public Task<bool> ApplyStartupRecoveryAsync(
-        ApplicationStartupState startupState,
+    /// <summary>
+    /// Opens the window on stored runtime state. The one way in: how the run
+    /// that wrote these snapshots ended is not a question anyone asks here,
+    /// because the answer never changed what gets opened.
+    /// </summary>
+    public async Task<bool> RestoreRuntimeSnapshotsAsync(
+        IReadOnlyList<RuntimeRecoverySnapshot> snapshots,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(startupState);
-        if (!startupState.ShouldRestoreRuntimeState)
-        {
-            return Task.FromResult(false);
-        }
-
-        return ApplyRuntimeSnapshotsAsync(
-            startupState.RestoredSnapshots,
-            cancellationToken);
-    }
-
-    private async Task<bool> ApplyRuntimeSnapshotsAsync(
-        IReadOnlyList<RuntimeRecoverySnapshot> snapshots,
-        CancellationToken cancellationToken)
-    {
+        ArgumentNullException.ThrowIfNull(snapshots);
         var snapshot = snapshots
             .Where(item => item.Key == RuntimeWorkspaceRecoveryCodec.SnapshotKey)
             .OrderByDescending(item => item.UpdatedAt)

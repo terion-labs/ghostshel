@@ -19,7 +19,6 @@ public sealed partial class App : Avalonia.Application
 {
     private readonly MainWindowViewModel? _mainWindowViewModel;
     private readonly ApplicationStartupState? _startupState;
-    private readonly IRecoveryCoordinator? _recoveryCoordinator;
     private readonly IDefinitionCatalog? _definitionCatalog;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
     private readonly IDiagnosticsBundleExporter? _diagnosticsExporter;
@@ -65,7 +64,6 @@ public sealed partial class App : Avalonia.Application
     public App(
         MainWindowViewModel mainWindowViewModel,
         ApplicationStartupState startupState,
-        IRecoveryCoordinator recoveryCoordinator,
         IDefinitionCatalog definitionCatalog,
         IDefinitionBundleStore definitionBundleStore,
         IDiagnosticsBundleExporter diagnosticsExporter,
@@ -80,7 +78,6 @@ public sealed partial class App : Avalonia.Application
     {
         ArgumentNullException.ThrowIfNull(mainWindowViewModel);
         ArgumentNullException.ThrowIfNull(startupState);
-        ArgumentNullException.ThrowIfNull(recoveryCoordinator);
         ArgumentNullException.ThrowIfNull(definitionCatalog);
         ArgumentNullException.ThrowIfNull(definitionBundleStore);
         ArgumentNullException.ThrowIfNull(diagnosticsExporter);
@@ -94,7 +91,6 @@ public sealed partial class App : Avalonia.Application
         ArgumentNullException.ThrowIfNull(screenColorSampler);
         _mainWindowViewModel = mainWindowViewModel;
         _startupState = startupState;
-        _recoveryCoordinator = recoveryCoordinator;
         _definitionCatalog = definitionCatalog;
         _definitionBundleStore = definitionBundleStore;
         _diagnosticsExporter = diagnosticsExporter;
@@ -839,6 +835,15 @@ public sealed partial class App : Avalonia.Application
         (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
     }
 
+    /// <summary>
+    /// One way back in, however the last process ended.
+    ///
+    /// The runtime snapshot is written as the workspace changes, so by the time
+    /// a process dies its state is already stored; asking which way it died and
+    /// putting a modal choice in front of the window taught nothing the restore
+    /// did not already know, and made a crash a decision the person who did not
+    /// crash anything had to make before they could work.
+    /// </summary>
     private async void OnStartupWindowOpened(object? sender, EventArgs e)
     {
         if (sender is not MainWindow owner
@@ -849,48 +854,15 @@ public sealed partial class App : Avalonia.Application
 
         owner.Opened -= OnStartupWindowOpened;
         // With keys sealed under the startup PIN, the run begins behind the
-        // lock screen; the restore preference and the recovery decision both
-        // live in the database that only exists to us after that.
+        // lock screen; the restore preference and the stored session both live
+        // in the database that only exists to us after that.
         await _startupState.Initialized;
         // The history load the window construction queued hit that same
         // closed database; asked again now, it answers.
         _ = MainWindowViewModel.RetryRecentSessionHistoryAsync(CancellationToken.None);
-        if (_startupState.RecoveryState != RecoveryDecisionState.Pending)
-        {
-            _ = await MainWindowViewModel.RestoreSessionOnStartupAsync(
-                CancellationToken.None);
-            // Whatever the restore did or did not find, the window does not
-            // come up empty: Main is always there to come up in.
-            _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(
-                CancellationToken.None);
-            return;
-        }
-
-        _ = await MainWindowViewModel.LoadSessionRestorePreferenceAsync(
-            CancellationToken.None);
-        if (_recoveryCoordinator is null)
-        {
-            _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(
-                CancellationToken.None);
-            return;
-        }
-
-        var choice = await new RecoveryDialog().ShowDialog<RecoveryChoice>(owner);
-        var result = await _recoveryCoordinator.ResolveAsync(choice, CancellationToken.None);
-        if (!result.IsSuccess)
-        {
-            await new OperationErrorDialog(
-                $"Recovery could not be completed ({result.Error!.Code}).")
-                .ShowDialog(owner);
-            owner.Close();
-            return;
-        }
-
-        _startupState.ResolveRecovery(choice, result.Value!);
-        _ = await MainWindowViewModel.ApplyStartupRecoveryAsync(
-            _startupState,
-            CancellationToken.None);
-        _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(
-            CancellationToken.None);
+        _ = await MainWindowViewModel.RestoreSessionOnStartupAsync(CancellationToken.None);
+        // Whatever the restore did or did not find, the window does not come up
+        // empty: Main is always there to come up in.
+        _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(CancellationToken.None);
     }
 }

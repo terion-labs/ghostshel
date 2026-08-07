@@ -186,10 +186,9 @@ public sealed class SqliteDatabaseTests
 
         var startupState = new ApplicationStartupState();
         startupState.Initialize(currentRun);
-        var recoveryStore = new SqliteRuntimeRecoveryStore(temporary.Database);
-        var coordinator = new RecoveryCoordinator(recoveryStore, startupState);
-        var restored = Success(await coordinator.ResolveAsync(
-            RecoveryChoice.Restore,
+        var recoveryStore = new SqliteRuntimeRecoveryStore(temporary.Database, startupState);
+        var restored = Success(await recoveryStore.LoadAsync(
+            HistoricalDatabaseFixture.InterruptedRunId,
             CancellationToken.None));
 
         var snapshot = Assert.Single(restored);

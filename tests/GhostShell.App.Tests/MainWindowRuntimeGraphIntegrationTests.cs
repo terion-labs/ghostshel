@@ -627,23 +627,12 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         }
 
         const string interruptedRunId = "runtime-graph-interrupted";
-        var startup = new ApplicationStartupState();
-        startup.Initialize(new ApplicationRunStart(
-            "runtime-graph-recovery",
-            RecoveryRequired: true,
-            new ApplicationRunState(
-                interruptedRunId,
-                WasClean: false,
-                DateTimeOffset.UtcNow,
-                null)));
-        startup.ResolveRecovery(
-            RecoveryChoice.Restore,
-            [new RuntimeRecoverySnapshot(
-                interruptedRunId,
-                RuntimeWorkspaceRecoveryCodec.SnapshotKey,
-                RuntimeWorkspaceRecoveryCodec.SchemaVersion,
-                recoveryPayload,
-                DateTimeOffset.UtcNow)]);
+        var snapshot = new RuntimeRecoverySnapshot(
+            interruptedRunId,
+            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+            recoveryPayload,
+            DateTimeOffset.UtcNow);
 
         var browserFactory = new RecordingBrowserRendererViewFactory();
         var (client, recorder) = CreateSessionClient();
@@ -654,7 +643,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             browserRendererFactory: browserFactory);
 
         await Assert.ThrowsAsync<IOException>(
-            () => recovered.ApplyStartupRecoveryAsync(startup));
+            () => recovered.RestoreRuntimeSnapshotsAsync([snapshot]));
 
         Assert.Null(recovered.RuntimeWorkspace);
         Assert.Null(recorder.CurrentWorkspace);
