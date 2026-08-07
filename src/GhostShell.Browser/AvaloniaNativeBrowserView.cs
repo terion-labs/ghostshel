@@ -1393,7 +1393,16 @@ internal sealed class AvaloniaNativeBrowserView : INativeBrowserView
             return;
         }
 
-        if (!TryGetAddress(args.Request, out var address))
+        // The page's own address, not the address of whatever finished loading
+        // inside it. These events fire for subframes as well as for the page, so
+        // the last one to land decided what the panel said it was showing — and
+        // on Google that is an ogs.google.com widget frame, which is what the
+        // shell then remembered and reopened on the next run.
+        //
+        // The webview's Source is the main frame and nothing else, so it is the
+        // one answer to the question actually being asked.
+        if (!TryGetAddress(_webView.Source, out var address)
+            && !TryGetAddress(args.Request, out address))
         {
             address = navigation.PendingAddress;
         }
