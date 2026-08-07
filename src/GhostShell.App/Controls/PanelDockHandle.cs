@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -32,11 +33,41 @@ public sealed class PanelDockHandle : ContentControl
         AddHandler(DoubleTappedEvent, OnDoubleTapped, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
     }
 
+    private IDisposable? _dockableBinding;
+
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
 
         MarkRenderedSurface();
+    }
+
+    /// <summary>
+    /// Points this handle at the dockable it belongs to.
+    ///
+    /// Dock reads the drag source's own data context to decide what is being
+    /// dragged, so a drag surface whose context is something else is not a drag
+    /// surface at all — the pointer goes down on the title and nothing happens.
+    /// Each panel view used to set this by hand. It cannot: the handle is
+    /// declared inside a control template now, and a template does not know where
+    /// it will be used. So the handle finds the dockable and follows it.
+    /// </summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        _dockableBinding?.Dispose();
+        _dockableBinding = this.FindAncestorOfType<DockableControl>() is { } host
+            ? Bind(DataContextProperty, host.GetObservable(DataContextProperty))
+            : null;
+        MarkRenderedSurface();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _dockableBinding?.Dispose();
+        _dockableBinding = null;
+        base.OnDetachedFromVisualTree(e);
     }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)

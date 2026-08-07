@@ -95,14 +95,25 @@ public sealed class RuntimePanelViewContractTests
             theme.Descendants(),
             element => element.Name.LocalName == "PanelDockHandle");
         Assert.Null(AttributeValue(handle, "DataContext"));
+
+        var handleSource = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Controls",
+            "PanelDockHandle.cs"));
         Assert.Contains(
             "this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable",
-            File.ReadAllText(Path.Combine(
-                ApplicationViews.RepositoryRoot,
-                "src",
-                "GhostShell.App",
-                "Controls",
-                "PanelDockHandle.cs")),
+            handleSource,
+            StringComparison.Ordinal);
+        // And it points itself at that dockable. Dock reads the drag source's own
+        // data context to decide what is being dragged, so a handle whose context
+        // is something else is not a drag surface at all. Moving the handle into
+        // the component dropped the binding each view used to set by hand, and
+        // nothing failed — panels just stopped being draggable.
+        Assert.Contains(
+            "Bind(DataContextProperty, host.GetObservable(DataContextProperty))",
+            handleSource,
             StringComparison.Ordinal);
 
         var actions = theme
