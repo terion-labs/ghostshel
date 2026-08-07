@@ -34,9 +34,13 @@
       <Grid ColumnDefinitions="*,150,Auto" Margin="{controls:Inset Horizontal=Md, Bottom=Xs}">
         <TextBlock Classes="Eyebrow" Text="Name" />
         <TextBlock Grid.Column="1" Classes="Eyebrow" Text="Privilege" />
+        <!-- Sized to the switch below it rather than to the word, so the two
+             line up and the column takes no more room than the control needs.
+             Hidden, it measures nothing and the column closes up entirely,
+             which is what an object store's table wants. -->
         <TextBlock
             Grid.Column="2"
-            Width="64"
+            Width="38"
             Classes="Eyebrow"
             Text="Run"
             TextAlignment="Center"
@@ -70,11 +74,10 @@
                     SelectedItem="{Binding Privilege, Mode=TwoWay}"
                     IsEnabled="{Binding $parent[Window].DataContext.CanEdit}"
                     AutomationProperties.Name="{Binding PrivilegeLabel}" />
-                <CheckBox
+                <ToggleSwitch
                     Grid.Column="2"
-                    Width="64"
+                    Width="38"
                     HorizontalAlignment="Center"
-                    HorizontalContentAlignment="Center"
                     IsChecked="{Binding CanRun, Mode=TwoWay}"
                     IsVisible="{Binding ShowsExecute}"
                     IsEnabled="{Binding $parent[Window].DataContext.CanEdit}"
