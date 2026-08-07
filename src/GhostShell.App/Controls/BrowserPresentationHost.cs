@@ -96,6 +96,7 @@ public sealed class BrowserPresentationHost : ContentControl
     private AttachmentId? _attachmentId;
     private IBrowserRenderer? _subscribedRenderer;
     private NativeSurfaceLayer? _layer;
+    private bool _isSurfaceSuspended;
     private long _initializationGeneration;
     private bool _isAttachedToVisualTree;
     private string _addressText = string.Empty;
@@ -107,6 +108,34 @@ public sealed class BrowserPresentationHost : ContentControl
     private bool _canGoBack;
     private bool _canGoForward;
     private bool _showFallback = true;
+
+    /// <summary>
+    /// Whether the page has stepped aside for something the shell needs seen —
+    /// the dock's placement targets during a drag. The panel shows what it is
+    /// while it has nothing to show, because a blank rectangle mid-drag reads as
+    /// a panel that has broken rather than one that is being moved.
+    /// </summary>
+    public static readonly DirectProperty<BrowserPresentationHost, bool>
+        IsSurfaceSuspendedProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, bool>(
+                nameof(IsSurfaceSuspended),
+                host => host.IsSurfaceSuspended);
+
+    public bool IsSurfaceSuspended
+    {
+        get => _isSurfaceSuspended;
+        private set => SetAndRaise(
+            IsSurfaceSuspendedProperty,
+            ref _isSurfaceSuspended,
+            value);
+    }
+
+    private void OnSurfaceSuspensionChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        IsSurfaceSuspended = NativeSurfaceLayer.IsSuspended;
+    }
 
     public BrowserPresentationHost()
     {
@@ -283,6 +312,8 @@ public sealed class BrowserPresentationHost : ContentControl
         base.OnAttachedToVisualTree(e);
         _isAttachedToVisualTree = true;
         LayoutUpdated += OnViewportLayoutUpdated;
+        NativeSurfaceLayer.SuspensionChanged += OnSurfaceSuspensionChanged;
+        IsSurfaceSuspended = NativeSurfaceLayer.IsSuspended;
         RestartSession();
     }
 
@@ -296,6 +327,7 @@ public sealed class BrowserPresentationHost : ContentControl
     {
         _isAttachedToVisualTree = false;
         LayoutUpdated -= OnViewportLayoutUpdated;
+        NativeSurfaceLayer.SuspensionChanged -= OnSurfaceSuspensionChanged;
         ConcealSurface();
         base.OnDetachedFromVisualTree(e);
     }

@@ -74,8 +74,17 @@ internal sealed class NativeSurfaceLayer : Canvas
         return new Suspension();
     }
 
+    /// <summary>
+    /// Raised when surfaces step aside and when they come back, so a panel can
+    /// show what it is in the gap.
+    /// </summary>
+    public static event EventHandler? SuspensionChanged;
+
+    public static bool IsSuspended => Volatile.Read(ref _suspensions) > 0;
+
     private static void ApplyAll()
     {
+        SuspensionChanged?.Invoke(null, EventArgs.Empty);
         foreach (var layer in Layers.ToArray())
         {
             layer.ApplyAllHere();
