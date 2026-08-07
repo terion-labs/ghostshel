@@ -1196,6 +1196,23 @@
     <Setter Property="CornerRadius" Value="0" />
   </Style>
 
+  <!-- The other end of the same band. A footer is where a panel says what it is
+       doing while you are looking at what it is showing — and, for the panels
+       that hold an operating-system view, it is the only strip of the panel the
+       shell still draws. A native view is composited above every Avalonia pixel,
+       so a control anywhere inside a browser is a control nobody can reach; a
+       control below it is simply there. -->
+  <Style Selector="Border.PanelFooter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <!-- As tall as the floating panel's resize corner, so that corner sits
+         entirely on drawn pixels. A grip overlapping the view above it is a grip
+         whose top half the operating system answers for. -->
+    <Setter Property="MinHeight" Value="26" />
+  </Style>
+
   <!-- The agent panel is a panel like any other: it shares the workspaces-panel
        surface so cards and messages float on it. -->
   <Style Selector="Border.AgentPanel">

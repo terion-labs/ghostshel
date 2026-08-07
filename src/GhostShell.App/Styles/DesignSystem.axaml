@@ -136,7 +136,7 @@
               ClipsContent="True"
               Padding="0"
               Classes.active="{TemplateBinding IsActive}">
-            <Grid RowDefinitions="Auto,*">
+            <Grid RowDefinitions="Auto,*,Auto">
               <Border
                   Grid.Row="0"
                   Classes="PanelHeader"
@@ -261,6 +261,22 @@
                   ContentTemplate="{TemplateBinding ContentTemplate}"
                   HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                   VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+              <!--
+                The far end of the same band. For a panel holding an
+                operating-system view this is the only strip of it the shell
+                still draws — such a view is composited above every Avalonia
+                pixel — so what has to be seen while the panel works, and what
+                has to be reachable, both belong here.
+              -->
+              <Border
+                  Grid.Row="2"
+                  Classes="PanelFooter"
+                  IsVisible="{TemplateBinding IsFooterVisible}">
+                <ContentPresenter
+                    Margin="{controls:Inset Horizontal=Sm}"
+                    VerticalAlignment="Center"
+                    Content="{TemplateBinding Footer}" />
+              </Border>
             </Grid>
           </controls:SurfaceCard>
         </ControlTemplate>

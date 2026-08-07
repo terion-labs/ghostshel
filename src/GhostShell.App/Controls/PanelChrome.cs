@@ -69,6 +69,24 @@ internal sealed class PanelChrome : ContentControl
         AvaloniaProperty.Register<PanelChrome, object?>(nameof(Actions));
 
     /// <summary>
+    /// What the panel is doing, along the bottom of it.
+    ///
+    /// Where a panel holds an operating-system view this is also the only part of
+    /// it the shell still draws: such a view is composited above every Avalonia
+    /// pixel, so anything inside a browser panel is out of reach, and anything
+    /// below it is not. The floating panel's resize corner lives here for that
+    /// reason as much as the status does.
+    /// </summary>
+    public static readonly StyledProperty<object?> FooterProperty =
+        AvaloniaProperty.Register<PanelChrome, object?>(nameof(Footer));
+
+    /// <summary>Whether this panel has a footer at all.</summary>
+    public static readonly DirectProperty<PanelChrome, bool> IsFooterVisibleProperty =
+        AvaloniaProperty.RegisterDirect<PanelChrome, bool>(
+            nameof(IsFooterVisible),
+            chrome => chrome.IsFooterVisible);
+
+    /// <summary>
     /// What closing this panel is called, for the tooltip and for screen readers.
     /// </summary>
     public static readonly StyledProperty<string> CloseLabelProperty =
@@ -160,6 +178,7 @@ internal sealed class PanelChrome : ContentControl
     private bool _isLeadingVisible;
     private bool _isHeaderContentVisible;
     private bool _isActionsVisible;
+    private bool _isFooterVisible;
     private bool _isFloating;
     private bool _canFloat;
     private Button? _float;
@@ -176,6 +195,7 @@ internal sealed class PanelChrome : ContentControl
                      LeadingProperty,
                      HeaderContentProperty,
                      ActionsProperty,
+                     FooterProperty,
                  })
         {
             slot.Changed.AddClassHandler<PanelChrome>(
@@ -234,6 +254,12 @@ internal sealed class PanelChrome : ContentControl
         set => SetValue(ActionsProperty, value);
     }
 
+    public object? Footer
+    {
+        get => GetValue(FooterProperty);
+        set => SetValue(FooterProperty, value);
+    }
+
     public string CloseLabel
     {
         get => GetValue(CloseLabelProperty);
@@ -277,6 +303,12 @@ internal sealed class PanelChrome : ContentControl
     {
         get => _isActionsVisible;
         private set => SetAndRaise(IsActionsVisibleProperty, ref _isActionsVisible, value);
+    }
+
+    public bool IsFooterVisible
+    {
+        get => _isFooterVisible;
+        private set => SetAndRaise(IsFooterVisibleProperty, ref _isFooterVisible, value);
     }
 
     public bool IsFloating
@@ -430,6 +462,10 @@ internal sealed class PanelChrome : ContentControl
         IsHeaderContentVisible =
             HeaderContent is not null && available >= HeaderContentFloor;
         IsActionsVisible = Actions is not null && available >= ActionsFloor;
+        // No floor. A footer is a strip along the bottom rather than a claim on
+        // the header's width, and where it is the only part of a panel the shell
+        // still draws, hiding it takes the panel's last reachable pixel with it.
+        IsFooterVisible = Footer is not null;
         TitleColumnSpan = IsHeaderContentVisible ? 1 : 2;
     }
 }

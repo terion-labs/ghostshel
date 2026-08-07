@@ -84,15 +84,34 @@
       </Grid>
     </controls:PanelChrome.HeaderContent>
 
-    <controls:PanelChrome.Actions>
-      <TextBlock
-          AutomationProperties.LiveSetting="Polite"
-          AutomationProperties.Name="Browser session status"
-          Classes="Muted"
-          FontSize="{DynamicResource ShellFontSize9}"
-          Text="{Binding StatusText, ElementName=RuntimeBrowser}"
-          TextTrimming="CharacterEllipsis" />
-    </controls:PanelChrome.Actions>
+    <!--
+      Along the bottom, where a browser has always put what it is doing — and
+      where, in this panel, it is the only thing the shell can still put
+      anywhere: the page is an operating-system view drawn above every pixel the
+      shell has, so a status line inside the panel is a status line nobody sees
+      and a control inside it is a control nobody can press. The header keeps its
+      width for the address instead, and the corner past the text stays clear so
+      a floating panel has somewhere to be resized from.
+    -->
+    <controls:PanelChrome.Footer>
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <TextBlock
+            VerticalAlignment="Center"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="Browser session status"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize9}"
+            Text="{Binding StatusText, ElementName=RuntimeBrowser}" />
+        <TextBlock
+            Grid.Column="1"
+            Margin="{controls:Inset Right=Xl}"
+            VerticalAlignment="Center"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize9}"
+            Text="{Binding StatusMessage, ElementName=RuntimeBrowser}"
+            TextTrimming="CharacterEllipsis" />
+      </Grid>
+    </controls:PanelChrome.Footer>
 
     <Grid>
       <controls:BrowserPresentationHost

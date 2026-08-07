@@ -137,6 +137,23 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal("{TemplateBinding CanFloat}", AttributeValue(floatOut, "IsVisible"));
         Assert.Equal("{TemplateBinding IsFloating}", AttributeValue(dockBack, "IsVisible"));
 
+        // A panel says what it is doing along its bottom, and for one holding an
+        // operating-system view that strip is the only part of the panel the
+        // shell still draws — such a view is composited above every Avalonia
+        // pixel. Anything the browser panel needs seen or pressed lives there,
+        // including the corner a floating panel is resized from, so the footer
+        // is load-bearing rather than decorative.
+        var footer = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && HasClass(element, "PanelFooter"));
+        Assert.Equal("{TemplateBinding IsFooterVisible}", AttributeValue(footer, "IsVisible"));
+
+        var browser = XDocument.Load(RuntimePanelPath("BrowserRuntimePanelView", ".axaml"));
+        Assert.Contains(
+            browser.Descendants(),
+            element => element.Name.LocalName == "PanelChrome.Footer");
+
         // The browser drew the two splits the other way round for as long as it
         // drew them itself.
         var splits = theme
