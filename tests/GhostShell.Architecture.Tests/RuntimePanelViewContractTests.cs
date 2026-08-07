@@ -56,6 +56,22 @@ public sealed class RuntimePanelViewContractTests
             root.Descendants(),
             element => element.Name.LocalName == "Border"
                 && HasClass(element, "PanelHeader"));
+
+        // Nor the other end of it. Two panels drew the same footer by hand —
+        // surface fill, a hairline along the top, muted nine-point text — which
+        // is how the header started before it was one component. A footer is a
+        // slot now, and the browser needs it to be exactly the strip the
+        // component draws: its page covers everything else the panel has.
+        //
+        // Along the bottom of the panel itself, which a strip inside some pane of
+        // it is not — the file panel's preview toggles sit on the same hairline
+        // and are nobody's footer.
+        Assert.DoesNotContain(
+            chrome.Elements().SelectMany(content => content.Elements()),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "BorderThickness") == "0,1,0,0"
+                && AttributeValue(element, "Background")
+                    == "{DynamicResource ShellSurfaceBrush}");
         Assert.DoesNotContain(
             root.Descendants(),
             element => AttributeValue(element, "AutomationProperties.Name")

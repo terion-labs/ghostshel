@@ -50,7 +50,13 @@
       </StackPanel>
     </controls:PanelChrome.Actions>
 
-    <Grid RowDefinitions="*,Auto">
+    <controls:PanelChrome.Footer>
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
+      </Grid>
+    </controls:PanelChrome.Footer>
+
+    <Grid>
         <ScrollViewer Margin="{controls:Inset Lg}" IsVisible="{Binding ShowContent}">
           <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
             <controls:CardGridPanel MinItemWidth="236" MaxColumns="2" Spacing="{DynamicResource ShellSpaceMd}">
@@ -139,11 +145,6 @@
             <Button HorizontalAlignment="Center" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry statistics capture" />
           </StackPanel>
         </controls:SurfaceCard>
-      <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-        <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
-        </Grid>
-      </Border>
     </Grid>
   </controls:PanelChrome>
 </UserControl>

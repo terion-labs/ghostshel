@@ -58,7 +58,14 @@
       </StackPanel>
     </controls:PanelChrome.Actions>
 
-    <Grid RowDefinitions="46,28,*,25">
+    <controls:PanelChrome.Footer>
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ShowingText}" />
+        <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
+      </Grid>
+    </controls:PanelChrome.Footer>
+
+    <Grid RowDefinitions="46,28,*">
       <Border Grid.Row="0" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
         <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,190,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <TextBox Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter processes" />
@@ -136,12 +143,6 @@
         </controls:SurfaceCard>
       </Grid>
 
-      <Border Grid.Row="3" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-        <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
-          <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ShowingText}" />
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CapturedAtText}" />
-        </Grid>
-      </Border>
     </Grid>
   </controls:PanelChrome>
 </UserControl>
