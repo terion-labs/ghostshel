@@ -2158,10 +2158,14 @@ public sealed partial class MainWindow : Window
     /// the measurement comes back from the system.
     /// </summary>
     /// <summary>
-    /// What the normal density takes off the band the platform reports, so the
-    /// space under the tab strip matches the space beside the panels.
+    /// What the band takes off the height the platform's own number implies.
+    ///
+    /// The buttons do not sit where that number says: twice the reported centre
+    /// comes out taller than the buttons are centred in, by the same amount at
+    /// every window kind. Measured on screen, the space under them exceeded the
+    /// space above by this much at compact, normal and comfortable alike.
     /// </summary>
-    internal const double NormalDensityChromeTrim = 2;
+    private const double ChromeBandTrim = 2;
 
     private void RefreshWindowChromeMetrics()
     {
@@ -2177,16 +2181,11 @@ public sealed partial class MainWindow : Window
         var bandHeight = double.IsFinite(reportedHeight) && reportedHeight > 0
             ? reportedHeight
             : 44;
-        // Measured from the buttons, the band leaves two pixels more under the
-        // tab strip than the workspace leaves beside its panels. The two gaps
-        // meet at the same corner, so the difference reads as a lean rather
-        // than as two pixels. The other densities move the tabs within the band
-        // by their own amount and are left as the platform reports them.
-        var density = (Avalonia.Application.Current as App)?.WindowDensity
-            ?? InterfaceDensity.Cozy;
-        TitleBarChromeHeight = density is InterfaceDensity.Cozy
-            ? Math.Max(1, bandHeight - NormalDensityChromeTrim)
-            : bandHeight;
+        // Less what the reported centre overstates, which it does whatever kind
+        // of window this is. Each kind puts the buttons somewhere else and the
+        // band follows; the correction is the same one every time, because it
+        // belongs to the measurement rather than to the height.
+        TitleBarChromeHeight = Math.Max(1, bandHeight - ChromeBandTrim);
 
         if (OperatingSystem.IsMacOS())
         {
