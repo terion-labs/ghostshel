@@ -68,6 +68,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly ISecretVault _secretVault;
     private readonly IFilePanelClient _filePanelClient;
     private readonly IFileTransferQueueClient _fileTransferQueue;
+
+    /// <summary>
+    /// What has been copied or cut, for the whole window: copying in one panel
+    /// and pasting into another is the whole point of it, so it cannot belong
+    /// to either of them.
+    /// </summary>
+    public FileTransferClipboard FileTransferClipboard { get; } = new();
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
     private readonly IDatabasePanelClient? _databasePanelClient;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
@@ -11336,7 +11343,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _archiveTableOfContents,
             previewers: null,
             _inMemoryDatabaseRegistry,
-            _filePreviewPreferences);
+            _filePreviewPreferences,
+            FileTransferClipboard);
     }
 
     private FileProviderProfileDescriptor? ResolveFileProfile(

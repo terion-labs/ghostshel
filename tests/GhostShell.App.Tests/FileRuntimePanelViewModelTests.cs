@@ -160,6 +160,77 @@ public sealed class FileRuntimePanelViewModelTests
     }
 
     /// <summary>
+    /// The two right-click menus divide the same list between them. Nothing is
+    /// in both — a menu over a file that also offered to make a folder would be
+    /// answering a question nobody asked — and nothing is lost between them.
+    /// </summary>
+    [Fact]
+    public async Task TheTwoRightClickMenusDivideTheActionsBetweenThem()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        await panel.StartInitialization();
+
+        var entry = panel.EntryMenuActions.Select(action => action.Action).ToArray();
+        var folder = panel.FolderMenuActions.Select(action => action.Action).ToArray();
+
+        Assert.NotEmpty(entry);
+        Assert.NotEmpty(folder);
+        Assert.Empty(entry.Intersect(folder));
+        Assert.Equal(
+            panel.MenuActions.Select(action => action.Action).Order(),
+            entry.Concat(folder).Order());
+        Assert.All(
+            panel.EntryMenuActions,
+            action => Assert.Equal(FilePanelActionScope.Selection, action.Scope));
+        Assert.All(
+            panel.FolderMenuActions,
+            action => Assert.Equal(FilePanelActionScope.Folder, action.Scope));
+
+        // And each re-groups from its own survivors rather than inheriting the
+        // whole list's grouping, or one of them opens with a rule at the top.
+        Assert.False(panel.EntryMenuActions[0].StartsGroup);
+        Assert.False(panel.FolderMenuActions[0].StartsGroup);
+    }
+
+    /// <summary>
+    /// Pasting is possible because something was copied somewhere else in the
+    /// window. The panel has to hear about that, or its menu says no while the
+    /// keyboard says yes.
+    /// </summary>
+    [Fact]
+    public async Task PuttingSomethingOnTheClipboardEnablesPastingInEveryPanel()
+    {
+        var clipboard = new FileTransferClipboard();
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client, "alpha"));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            new StubTransferQueue(),
+            clipboard: clipboard);
+
+        await panel.Initialization;
+
+        Assert.False(panel.IsActionEnabled(FilePanelAction.Paste));
+
+        clipboard.Payload = new Views.RuntimePanels.FilePanelTransferPayload(
+            panel.Id,
+            [client.Entries[0]],
+            FilePanelTransferOperation.Copy);
+
+        Assert.True(panel.IsActionEnabled(FilePanelAction.Paste));
+        Assert.True(panel.FolderMenuActions
+            .Single(action => action.Action == FilePanelAction.Paste)
+            .IsEnabled);
+    }
+
+    /// <summary>
     /// An action nobody named. The rules and the words are deliberately apart —
     /// one is about what a connection can do, the other about what to call it —
     /// and the seam between them is where an action added on one side and not

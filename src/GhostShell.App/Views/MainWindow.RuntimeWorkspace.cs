@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
@@ -22,7 +23,6 @@ public sealed partial class MainWindow
         DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>(
             "app.ghostshell.runtime-tab");
 
-    private FilePanelTransferPayload? _fileTransferClipboard;
     private RuntimeTabActiveDrag? _runtimeTabActiveDrag;
     private RuntimeTabDragCandidate? _runtimeTabDragCandidate;
     private Grid? _runtimeTabDropTarget;
@@ -1439,8 +1439,43 @@ public sealed partial class MainWindow
     /// typed into a dialog, a confirmation — is the window's to provide, which
     /// is why the panel asks rather than acts.
     /// </summary>
-    private void OnFileActionRequested(object? sender, FilePanelActionEventArgs e)
+    private async void OnFileActionRequested(object? sender, FilePanelActionEventArgs e)
     {
+        if (sender is not Control { DataContext: FileRuntimePanelViewModel panel })
+        {
+            return;
+        }
+
+        switch (e.Action)
+        {
+            case FilePanelAction.Open:
+                if (panel.SelectedEntry is { } opened)
+                {
+                    await panel.OpenEntryAsync(opened, _lifetime.Token);
+                }
+
+                return;
+            case FilePanelAction.Copy:
+            case FilePanelAction.Cut:
+                HoldOnTransferClipboard(
+                    panel,
+                    panel.SelectedEntriesOrCurrent,
+                    cut: e.Action == FilePanelAction.Cut);
+                return;
+            case FilePanelAction.Paste:
+                await PasteFromTransferClipboardAsync(panel);
+                return;
+            case FilePanelAction.CopyName:
+                await CopyFileTextAsync(panel.SelectedEntry?.Name);
+                return;
+            case FilePanelAction.CopyPath:
+                await CopyFileTextAsync(panel.SelectedEntryPath);
+                return;
+            case FilePanelAction.Refresh:
+                await panel.RefreshAsync(_lifetime.Token);
+                return;
+        }
+
         switch (e.Action)
         {
             case FilePanelAction.OpenExternally:
@@ -1541,12 +1576,10 @@ public sealed partial class MainWindow
                 return;
             }
 
-            _fileTransferClipboard = new FilePanelTransferPayload(
-                panel.Id,
+            HoldOnTransferClipboard(
+                panel,
                 e.Entries,
-                e.KeyEvent.Key == Key.X
-                    ? FilePanelTransferOperation.Move
-                    : FilePanelTransferOperation.Copy);
+                cut: e.KeyEvent.Key == Key.X);
             e.KeyEvent.Handled = true;
             return;
         }
@@ -1557,7 +1590,45 @@ public sealed partial class MainWindow
         }
 
         e.KeyEvent.Handled = true;
-        if (_fileTransferClipboard is not { } clipboard)
+        await PasteFromTransferClipboardAsync(panel);
+    }
+
+    /// <summary>
+    /// Copy and cut differ only in what becomes of the original, and that is
+    /// decided when it lands rather than now: nothing is taken from a folder
+    /// until the transfer into the other one has been queued.
+    /// </summary>
+    private void HoldOnTransferClipboard(
+        FileRuntimePanelViewModel panel,
+        IReadOnlyList<FilePanelEntry> entries,
+        bool cut)
+    {
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        ViewModel.FileTransferClipboard.Payload = new FilePanelTransferPayload(
+            panel.Id,
+            entries,
+            cut ? FilePanelTransferOperation.Move : FilePanelTransferOperation.Copy);
+    }
+
+    /// <summary>
+    /// The system clipboard, which is the window's — unlike the transfer
+    /// clipboard, a name or a path means something outside this shell.
+    /// </summary>
+    private async Task CopyFileTextAsync(string? text)
+    {
+        if (!string.IsNullOrEmpty(text) && Clipboard is { } clipboard)
+        {
+            await clipboard.SetTextAsync(text);
+        }
+    }
+
+    private async Task PasteFromTransferClipboardAsync(FileRuntimePanelViewModel panel)
+    {
+        if (ViewModel.FileTransferClipboard.Payload is not { } clipboard)
         {
             panel.ReportValidationError("Copy or cut a file or folder first.");
             return;
@@ -1566,7 +1637,7 @@ public sealed partial class MainWindow
         if (await QueueIncomingFileTransferAsync(panel, clipboard)
             && clipboard.Operation == FilePanelTransferOperation.Move)
         {
-            _fileTransferClipboard = null;
+            ViewModel.FileTransferClipboard.Payload = null;
         }
     }
 

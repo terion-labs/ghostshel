@@ -152,6 +152,69 @@ public sealed class FilePanelActionCatalogTests
     }
 
     /// <summary>
+    /// A right-click on a file and a right-click on the space below the last of
+    /// them are different questions. Offering "New folder" over a file, or
+    /// "Delete" over the empty space, is the sort of menu people stop reading.
+    /// </summary>
+    [Fact]
+    public void What_acts_on_a_file_and_what_acts_on_the_folder_are_kept_apart()
+    {
+        var scopes = FilePanelActionCatalog.Resolve(Ready)
+            .ToDictionary(state => state.Action, state => state.Scope);
+
+        Assert.Equal(FilePanelActionScope.Selection, scopes[FilePanelAction.Open]);
+        Assert.Equal(FilePanelActionScope.Selection, scopes[FilePanelAction.Rename]);
+        Assert.Equal(FilePanelActionScope.Selection, scopes[FilePanelAction.Delete]);
+        Assert.Equal(FilePanelActionScope.Selection, scopes[FilePanelAction.Copy]);
+        Assert.Equal(FilePanelActionScope.Folder, scopes[FilePanelAction.Paste]);
+        Assert.Equal(FilePanelActionScope.Folder, scopes[FilePanelAction.NewFolder]);
+        Assert.Equal(FilePanelActionScope.Folder, scopes[FilePanelAction.Upload]);
+        Assert.Equal(FilePanelActionScope.Folder, scopes[FilePanelAction.Refresh]);
+    }
+
+    /// <summary>
+    /// Pasting with nothing held is offered and refused rather than hidden: the
+    /// folder can take a file, there just is not one waiting.
+    /// </summary>
+    [Fact]
+    public void Pasting_waits_for_something_to_have_been_copied()
+    {
+        Assert.True(State(Ready, FilePanelAction.Paste).IsAvailable);
+        Assert.False(State(Ready, FilePanelAction.Paste).IsEnabled);
+        Assert.True(State(Ready with { HasClipboard = true }, FilePanelAction.Paste).IsEnabled);
+    }
+
+    /// <summary>
+    /// A cut is a copy that takes the original away once it lands, so a
+    /// connection that cannot delete cannot cut — while it can still copy.
+    /// </summary>
+    [Fact]
+    public void Cutting_is_not_offered_where_nothing_can_be_removed()
+    {
+        var readOnlyish = Ready with
+        {
+            Capabilities = FilePanelCapability.List | FilePanelCapability.StreamingWrite,
+        };
+
+        Assert.False(State(readOnlyish, FilePanelAction.Cut).IsAvailable);
+        Assert.True(State(readOnlyish, FilePanelAction.Copy).IsAvailable);
+    }
+
+    /// <summary>
+    /// Copying a name or a path asks nothing of the connection: both are
+    /// already in hand, and the clipboard belongs to this machine.
+    /// </summary>
+    [Fact]
+    public void A_name_and_a_path_can_be_copied_from_any_connection()
+    {
+        var barelyAnything = Ready with { Capabilities = FilePanelCapability.List };
+
+        Assert.True(State(barelyAnything, FilePanelAction.CopyName).IsEnabled);
+        Assert.True(State(barelyAnything, FilePanelAction.CopyPath).IsEnabled);
+        Assert.True(State(barelyAnything, FilePanelAction.Refresh).IsEnabled);
+    }
+
+    /// <summary>
     /// The one place, asked the one way: the guard that runs on a click reads
     /// the same answer the greying-out did.
     /// </summary>

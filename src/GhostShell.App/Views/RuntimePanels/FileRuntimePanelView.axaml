@@ -179,10 +179,10 @@
               </ItemsControl>
               </StackPanel>
               <Border Width="1" Margin="{DynamicResource ShellToolbarSeparatorMargin}" Background="{DynamicResource ShellBorderBrush}" />
-              <Button Classes="IconButton FileToolbarAction" ToolTip.Tip="More file actions" AutomationProperties.Name="Open more file actions">
+              <Button x:Name="FileActionsOverflowButton" Classes="IconButton FileToolbarAction" ToolTip.Tip="More file actions" AutomationProperties.Name="Open more file actions">
                 <icons:SymbolIcon Symbol="MoreVertical" FontSize="14" />
                 <Button.Flyout>
-                  <MenuFlyout Placement="Bottom" ItemsSource="{Binding MenuActions}">
+                  <MenuFlyout Placement="Bottom">
                     <MenuFlyout.ItemContainerTheme>
                       <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                         <Setter Property="Command" Value="{Binding Command}" />
@@ -219,6 +219,30 @@
         </Grid.ColumnDefinitions>
         <Grid>
           <Grid RowDefinitions="Auto,*">
+            <!-- One menu over all three layouts, and over the space below the
+                 last row as well: what it offers is decided when it opens, from
+                 whether the press landed on a file or on the folder behind
+                 them. Three menus in the markup would be three places to add
+                 the next action to. -->
+            <Grid.ContextMenu>
+              <ContextMenu x:Name="FileListContextMenu" Opening="OnFileContextMenuOpening">
+                <ContextMenu.ItemContainerTheme>
+                  <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                    <Setter Property="Command" Value="{Binding Command}" />
+                    <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                    <Setter Property="InputGesture" Value="{Binding Gesture}" />
+                  </ControlTheme>
+                </ContextMenu.ItemContainerTheme>
+                <ContextMenu.ItemTemplate>
+                  <DataTemplate DataType="vm:FileActionViewModel">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                      <icons:SymbolIcon VerticalAlignment="Center" Symbol="{Binding Symbol}" FontSize="14" />
+                      <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ContextMenu.ItemTemplate>
+              </ContextMenu>
+            </Grid.ContextMenu>
             <Border
                 Height="29"
                 Background="{DynamicResource ShellSurfaceBrush}"

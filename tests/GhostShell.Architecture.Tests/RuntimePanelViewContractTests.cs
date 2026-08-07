@@ -817,13 +817,6 @@ public sealed class RuntimePanelViewContractTests
                     AttributeValue(element, "ItemsSource"),
                     "{Binding ToolbarActions}",
                     StringComparison.Ordinal));
-        var overflowMenu = Assert.Single(
-            root.Descendants(),
-            element => element.Name.LocalName == "MenuFlyout"
-                && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding MenuActions}",
-                    StringComparison.Ordinal));
         Assert.Contains(
             actionStrip.Descendants(),
             element => element.Name.LocalName == "Button"
@@ -831,13 +824,32 @@ public sealed class RuntimePanelViewContractTests
                     AttributeValue(element, "Command"),
                     "{Binding Command}",
                     StringComparison.Ordinal));
-        Assert.Contains(
-            overflowMenu.Descendants(),
-            element => element.Name.LocalName == "Setter"
-                && string.Equals(
-                    AttributeValue(element, "Property"),
-                    "Command",
-                    StringComparison.Ordinal));
+
+        // One right-click menu over all three layouts and over the space below
+        // the last row, filled when it opens from where the press landed.
+        // Three menus in the markup would be three places to add the next
+        // action to, which is the shape this replaced.
+        var contextMenu = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ContextMenu");
+        Assert.Equal("OnFileContextMenuOpening", AttributeValue(contextMenu, "Opening"));
+        foreach (var menu in new[] { contextMenu, OverflowMenu(root) })
+        {
+            Assert.Contains(
+                menu.Descendants(),
+                element => element.Name.LocalName == "Setter"
+                    && string.Equals(
+                        AttributeValue(element, "Property"),
+                        "Command",
+                        StringComparison.Ordinal));
+            Assert.Contains(
+                menu.Descendants(),
+                element => element.Name.LocalName == "Setter"
+                    && string.Equals(
+                        AttributeValue(element, "Property"),
+                        "IsEnabled",
+                        StringComparison.Ordinal));
+        }
 
         // And the toolbar answers to the panel's own width, not the window's:
         // two of these can share one window at different widths.
@@ -1100,6 +1112,10 @@ public sealed class RuntimePanelViewContractTests
         Assert.Contains("Process memory", visibleCopy, StringComparison.Ordinal);
         Assert.Contains("Running processes", visibleCopy, StringComparison.Ordinal);
     }
+
+    private static XElement OverflowMenu(XElement root) => Assert.Single(
+        root.Descendants(),
+        element => element.Name.LocalName == "MenuFlyout");
 
     private static XElement FindUniqueAccessibleElement(
         XElement root,

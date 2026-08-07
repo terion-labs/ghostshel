@@ -1,5 +1,7 @@
 using System.Windows.Input;
 
+using Avalonia.Input;
+
 using FluentIcons.Common;
 
 using GhostShell.Application;
@@ -21,6 +23,7 @@ public sealed class FileActionViewModel
         string label,
         string description,
         Symbol symbol,
+        KeyGesture? gesture,
         bool startsGroup,
         Action<FilePanelAction> request)
     {
@@ -31,16 +34,21 @@ public sealed class FileActionViewModel
         Command = new FileActionCommand(state, request);
         Action = state.Action;
         Group = state.Group;
+        Scope = state.Scope;
         IsEnabled = state.IsEnabled;
         Label = label;
         Description = description;
         Symbol = symbol;
+        Gesture = gesture;
         StartsGroup = startsGroup;
     }
 
     public FilePanelAction Action { get; }
 
     public FilePanelActionGroup Group { get; }
+
+    /// <summary>Whether it acts on what is selected or on the folder shown.</summary>
+    public FilePanelActionScope Scope { get; }
 
     public bool IsEnabled { get; }
 
@@ -54,6 +62,9 @@ public sealed class FileActionViewModel
     public string Description { get; }
 
     public Symbol Symbol { get; }
+
+    /// <summary>The keystroke that does the same thing, shown beside it.</summary>
+    public KeyGesture? Gesture { get; }
 
     /// <summary>
     /// This action opens a new band of the menu, so a rule is drawn above it.
@@ -105,30 +116,62 @@ internal static class FilePanelActionPresentation
 {
     public static string Label(FilePanelAction action) => action switch
     {
-        FilePanelAction.OpenExternally => "Open",
+        FilePanelAction.Open => "Open",
+        FilePanelAction.OpenExternally => "Open with default app",
         FilePanelAction.Download => "Download…",
         FilePanelAction.Upload => "Upload…",
         FilePanelAction.Transfer => "Transfer…",
+        FilePanelAction.Copy => "Copy",
+        FilePanelAction.Cut => "Cut",
+        FilePanelAction.Paste => "Paste",
         FilePanelAction.NewFolder => "New folder…",
         FilePanelAction.Rename => "Rename…",
         FilePanelAction.Delete => "Delete",
+        FilePanelAction.CopyName => "Copy name",
+        FilePanelAction.CopyPath => "Copy path",
+        FilePanelAction.Refresh => "Refresh",
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
     public static Symbol Glyph(FilePanelAction action) => action switch
     {
+        FilePanelAction.Open => Symbol.Open,
         FilePanelAction.OpenExternally => Symbol.OpenFolder,
         FilePanelAction.Download => Symbol.DocumentArrowDown,
         FilePanelAction.Upload => Symbol.ArrowUpload,
         FilePanelAction.Transfer => Symbol.ArrowSwap,
+        FilePanelAction.Copy => Symbol.Copy,
+        FilePanelAction.Cut => Symbol.Cut,
+        FilePanelAction.Paste => Symbol.ClipboardPaste,
         FilePanelAction.NewFolder => Symbol.FolderAdd,
         FilePanelAction.Rename => Symbol.Edit,
         FilePanelAction.Delete => Symbol.Delete,
+        FilePanelAction.CopyName => Symbol.TextT,
+        FilePanelAction.CopyPath => Symbol.Link,
+        FilePanelAction.Refresh => Symbol.ArrowClockwise,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
+    /// <summary>
+    /// The keystroke a menu shows beside the action, where there is one. The
+    /// modifier is the platform's own: a menu that says Ctrl on a Mac is a menu
+    /// nobody trusts.
+    /// </summary>
+    public static KeyGesture? Gesture(FilePanelAction action) => action switch
+    {
+        FilePanelAction.Copy => new KeyGesture(Key.C, Accelerator),
+        FilePanelAction.Cut => new KeyGesture(Key.X, Accelerator),
+        FilePanelAction.Paste => new KeyGesture(Key.V, Accelerator),
+        _ => null,
+    };
+
+    private static KeyModifiers Accelerator => OperatingSystem.IsMacOS()
+        ? KeyModifiers.Meta
+        : KeyModifiers.Control;
+
     public static string Description(FilePanelAction action) => action switch
     {
+        FilePanelAction.Open => "Open the selected item",
         FilePanelAction.OpenExternally => "Open the selected file in its default application",
         FilePanelAction.Download => "Download the selected items to a folder",
         FilePanelAction.Upload => "Upload a file from this machine",
@@ -136,6 +179,12 @@ internal static class FilePanelActionPresentation
         FilePanelAction.NewFolder => "Create a folder here",
         FilePanelAction.Rename => "Rename the selected item",
         FilePanelAction.Delete => "Delete the selected item",
+        FilePanelAction.Copy => "Copy the selected items, to paste into another folder",
+        FilePanelAction.Cut => "Cut the selected items, to move into another folder",
+        FilePanelAction.Paste => "Paste what was copied or cut into this folder",
+        FilePanelAction.CopyName => "Copy the selected item's name",
+        FilePanelAction.CopyPath => "Copy the selected item's path",
+        FilePanelAction.Refresh => "Read this folder again",
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 }

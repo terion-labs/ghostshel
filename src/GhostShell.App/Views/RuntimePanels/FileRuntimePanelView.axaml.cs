@@ -130,6 +130,8 @@ public sealed partial class FileRuntimePanelView : UserControl
             panel.PropertyChanged += OnPanelPropertyChanged;
             panel.ActionRequested += OnPanelActionRequested;
         }
+
+        RefreshOverflowMenu();
     }
 
     /// <summary>
@@ -149,6 +151,10 @@ public sealed partial class FileRuntimePanelView : UserControl
         if (e.PropertyName == nameof(FileRuntimePanelViewModel.HtmlAddress))
         {
             ShowHtmlPreview();
+        }
+        else if (e.PropertyName == nameof(FileRuntimePanelViewModel.MenuActions))
+        {
+            RefreshOverflowMenu();
         }
     }
 
@@ -309,9 +315,22 @@ public sealed partial class FileRuntimePanelView : UserControl
             new FilePanelTransferKeyEventArgs(entries, e));
     }
 
+    /// <summary>
+    /// Whether the last right-press landed on a file or on the folder behind
+    /// the listing. It decides which menu opens, and it is read here rather
+    /// than at opening time because by then the pointer has moved on.
+    /// </summary>
+    private bool _contextMenuTargetsEntry;
+
     private void OnFilePointerPressed(object? sender, PointerPressedEventArgs e)
     {
         _ = sender;
+        if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+        {
+            NoteContextMenuTarget(e.Source);
+            return;
+        }
+
         if (e.Source is not Control source
             || FindFileList(source) is not { } list
             || source.FindAncestorOfType<ListBoxItem>()?.DataContext
@@ -331,6 +350,78 @@ public sealed partial class FileRuntimePanelView : UserControl
             entry.Entry,
             point.Position,
             e.Pointer);
+    }
+
+    /// <summary>
+    /// A right-click on a row that is not part of the selection acts on that
+    /// row, the way every file manager does. One inside the selection leaves it
+    /// alone, so a menu opened over six selected files still means all six.
+    /// </summary>
+    private void NoteContextMenuTarget(object? source)
+    {
+        var row = source as ListBoxItem
+            ?? (source as Control)?.FindAncestorOfType<ListBoxItem>();
+        _contextMenuTargetsEntry = row is not null;
+        if (row is { IsSelected: false, DataContext: FileEntryViewModel entry }
+            && FindFileList(row) is { } list)
+        {
+            list.SelectedItem = entry;
+        }
+    }
+
+    private void OnFileContextMenuOpening(object? sender, CancelEventArgs e)
+    {
+        _ = sender;
+        if (DataContext is not FileRuntimePanelViewModel panel)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        var actions = _contextMenuTargetsEntry
+            ? panel.EntryMenuActions
+            : panel.FolderMenuActions;
+        // A menu with nothing in it is a flash of empty chrome, which reads as
+        // a fault rather than as "this connection offers nothing here".
+        e.Cancel = actions.Count == 0;
+        FileListContextMenu.ItemsSource = WithGroupRules(actions);
+    }
+
+    /// <summary>
+    /// The actions with a rule drawn where the kind of action changes. A rule
+    /// in a menu is a control rather than a row of data, so the panel hands
+    /// over the actions and their grouping, and the view puts the rules in.
+    /// </summary>
+    private static IReadOnlyList<object> WithGroupRules(
+        IReadOnlyList<FileActionViewModel> actions)
+    {
+        var items = new List<object>(actions.Count);
+        foreach (var action in actions)
+        {
+            if (action.StartsGroup)
+            {
+                items.Add(new Separator());
+            }
+
+            items.Add(action);
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// The overflow menu's rows, set rather than bound: its rules are controls,
+    /// and the button's flyout is outside the name scope the markup can bind
+    /// into anyway.
+    /// </summary>
+    private void RefreshOverflowMenu()
+    {
+        if (FileActionsOverflowButton.Flyout is MenuFlyout menu)
+        {
+            menu.ItemsSource = DataContext is FileRuntimePanelViewModel panel
+                ? WithGroupRules(panel.MenuActions)
+                : null;
+        }
     }
 
     private void OnFilePointerMoved(object? sender, PointerEventArgs e)

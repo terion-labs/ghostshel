@@ -177,9 +177,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         IArchiveTableOfContents? archiveReader = null,
         FilePreviewCatalog? previewers = null,
         IInMemoryDatabaseRegistry? databaseRegistry = null,
-        IFilePreviewPreferences? previewPreferences = null)
+        IFilePreviewPreferences? previewPreferences = null,
+        FileTransferClipboard? clipboard = null)
         : base(id, PanelKind.FileViewer, title, "Files")
     {
+        _clipboard = clipboard;
+        if (_clipboard is not null)
+        {
+            _clipboard.Changed += OnTransferClipboardChanged;
+        }
+
         _client = client ?? throw new ArgumentNullException(nameof(client));
         // Both are optional: a build without database drivers, or a client that
         // cannot hand out a real path, simply previews databases as bytes.
@@ -994,6 +1001,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                     profile.Id == BuiltInFileProviders.HomeId.Value),
                 IsLocalProvider =
                     SelectedProfile?.Id == BuiltInFileProviders.HomeId.Value,
+                HasClipboard = _clipboard?.HasContent == true,
             };
         }
     }
@@ -1012,6 +1020,17 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// </summary>
     public IReadOnlyList<FileActionViewModel> ToolbarActions => _toolbarActions;
 
+    /// <summary>
+    /// A right-click on a row: what can be done to the things picked out.
+    /// </summary>
+    public IReadOnlyList<FileActionViewModel> EntryMenuActions => _entryMenuActions;
+
+    /// <summary>
+    /// A right-click on the space below them, which is the folder itself: what
+    /// can be put into it or done to it.
+    /// </summary>
+    public IReadOnlyList<FileActionViewModel> FolderMenuActions => _folderMenuActions;
+
     private static readonly FilePanelAction[] ToolbarPrimaryActions =
     [
         FilePanelAction.Upload,
@@ -1022,6 +1041,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     private IReadOnlyList<FileActionViewModel> _menuActions = [];
     private IReadOnlyList<FileActionViewModel> _toolbarActions = [];
+    private IReadOnlyList<FileActionViewModel> _entryMenuActions = [];
+    private IReadOnlyList<FileActionViewModel> _folderMenuActions = [];
 
     private void RebuildActions()
     {
@@ -1032,8 +1053,18 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         _toolbarActions = Dress(states
             .Where(state => ToolbarPrimaryActions.Contains(state.Action))
             .ToArray());
+        // Each menu re-groups from its own survivors, so neither opens with a
+        // rule across the top or draws one where nothing changed.
+        _entryMenuActions = Dress(states
+            .Where(state => state.Scope == FilePanelActionScope.Selection)
+            .ToArray());
+        _folderMenuActions = Dress(states
+            .Where(state => state.Scope == FilePanelActionScope.Folder)
+            .ToArray());
         OnPropertyChanged(nameof(MenuActions));
         OnPropertyChanged(nameof(ToolbarActions));
+        OnPropertyChanged(nameof(EntryMenuActions));
+        OnPropertyChanged(nameof(FolderMenuActions));
     }
 
     private FileActionViewModel[] Dress(IReadOnlyList<FilePanelActionState> states)
@@ -1051,6 +1082,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                     ? DownloadLabel
                     : FilePanelActionPresentation.Description(state.Action),
                 FilePanelActionPresentation.Glyph(state.Action),
+                FilePanelActionPresentation.Gesture(state.Action),
                 startsGroup: index > 0 && states[index - 1].Group != state.Group,
                 RequestAction);
         }
@@ -1084,6 +1116,39 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     private void RequestAction(FilePanelAction action) =>
         ActionRequested?.Invoke(this, action);
+
+    /// <summary>
+    /// Whatever was copied or cut anywhere in this window, which is what says
+    /// whether pasting into this folder is possible.
+    /// </summary>
+    public FileTransferClipboard? TransferClipboard => _clipboard;
+
+    /// <summary>
+    /// What a menu acts on: everything picked out, or — when a right-click
+    /// landed on a row without the listing reporting a multiple selection —
+    /// the one thing the listing calls selected.
+    /// </summary>
+    public IReadOnlyList<FilePanelEntry> SelectedEntriesOrCurrent =>
+        _selectedEntries.Count > 0
+            ? _selectedEntries
+            : SelectedEntry is { } single ? [single.Entry] : [];
+
+    /// <summary>
+    /// Where the selected item lives, written the way it would be typed into
+    /// the location bar — which is what makes it worth putting on a clipboard.
+    /// </summary>
+    public string? SelectedEntryPath => SelectedEntry is { } entry
+        ? FileLocationPresentation.Display(entry.Entry.Location)
+        : null;
+
+    private readonly FileTransferClipboard? _clipboard;
+
+    private void OnTransferClipboardChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RebuildActions();
+    }
 
     private bool IsInitialHostedBindingPending =>
         _initialSelectionPending
@@ -1723,6 +1788,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         if (_previewPreferences is not null)
         {
             _previewPreferences.Changed -= OnPreviewPreferencesChanged;
+        }
+
+        if (_clipboard is not null)
+        {
+            _clipboard.Changed -= OnTransferClipboardChanged;
         }
 
         _lifetime.Cancel();

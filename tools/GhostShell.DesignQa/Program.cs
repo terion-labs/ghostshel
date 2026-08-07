@@ -887,6 +887,12 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
         ("file-toolbar-narrow", () => CreateFilePanelProbe("notes.md", width: 560), null),
+        // A right-click on a file, and one on the space below the last of them.
+        // The two menus are different lists — what can be done to what is
+        // picked out, and what can be done to the folder holding it — and both
+        // are drawn from what the connection says it can do.
+        ("file-context-menu-entry", () => CreateFileContextMenuProbe(onEntry: true), null),
+        ("file-context-menu-folder", () => CreateFileContextMenuProbe(onEntry: false), null),
         // The overflow menu, which is the whole action list. Narrow, because
         // that is where it stops being a convenience and becomes the only way
         // to reach any of it.
@@ -1974,6 +1980,49 @@ internal sealed class QaApplication : Avalonia.Application
             ShowInTaskbar = false,
             Content = view,
         };
+    }
+
+    /// <summary>
+    /// The listing right-clicked for real: a right button pressed and released
+    /// over a row, or over the space below the last one. Nothing here reaches
+    /// into the view to open a menu — which menu opens is the panel's answer to
+    /// where the press landed, and that is the part worth capturing.
+    /// </summary>
+    private static Window CreateFileContextMenuProbe(bool onEntry)
+    {
+        var window = CreateFilePanelProbe("notes.md", width: 560);
+        window.Opened += (_, _) => Dispatcher.UIThread.Post(
+            () =>
+            {
+                var view = (GhostShell.App.Views.RuntimePanels.FileRuntimePanelView)
+                    window.Content!;
+                var target = onEntry
+                    ? (Control)view.GetVisualDescendants()
+                        .OfType<ListBoxItem>()
+                        .First(item => item.DataContext is FileEntryViewModel
+                        {
+                            Name: "notes.md",
+                        })
+                    : view.GetVisualDescendants()
+                        .OfType<ListBox>()
+                        .First(list => list.IsVisible);
+                // The space below the last row for the folder menu, the middle
+                // of the row for the other.
+                var inside = onEntry
+                    ? new Point(target.Bounds.Width / 2, target.Bounds.Height / 2)
+                    : new Point(target.Bounds.Width / 2, target.Bounds.Height - 40);
+                var point = target.TranslatePoint(inside, window) ?? new Point(20, 20);
+                Avalonia.Headless.HeadlessWindowExtensions.MouseDown(
+                    window,
+                    point,
+                    MouseButton.Right);
+                Avalonia.Headless.HeadlessWindowExtensions.MouseUp(
+                    window,
+                    point,
+                    MouseButton.Right);
+            },
+            DispatcherPriority.Background);
+        return window;
     }
 
     /// <summary>
