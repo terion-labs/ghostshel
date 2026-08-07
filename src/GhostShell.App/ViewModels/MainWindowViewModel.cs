@@ -11173,7 +11173,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (panel.Kind is ScreenPanelKind.Statistics or ScreenPanelKind.ProcessMonitor)
         {
-            if (panel.ConnectionId is not null)
+            // A monitor panel runs its sampler over whichever connection it
+            // names, local or not — the same treatment the recovery path has
+            // always given it. This branch refused every saved screen that
+            // named one, from back when there was nothing behind a remote
+            // sampler to run.
+            var monitored = panel.ConnectionId is { } monitorConnectionId
+                ? FindConnection(monitorConnectionId)
+                : null;
+            if (panel.ConnectionId is not null && monitored is null)
             {
                 return new UnavailableRuntimePanelViewModel(
                     PanelInstanceId.New(),
@@ -11182,7 +11190,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     panel.Kind == ScreenPanelKind.Statistics
                         ? "Statistics"
                         : "Process monitor",
-                    "Remote system monitoring is unavailable. Remove the saved connection from this panel to monitor the local host.");
+                    "The connection this panel monitors is no longer in the catalog. "
+                    + "Repair the saved screen with a connection that still exists, or remove "
+                    + "it from the panel to monitor the local host.");
             }
 
             return CreateMonitorPanel(
@@ -11190,7 +11200,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 tabId,
                 PanelInstanceId.New(),
                 title,
-                PanelKindFromDefinition(panel.Kind));
+                PanelKindFromDefinition(panel.Kind),
+                monitored);
         }
 
         if (panel.Kind == ScreenPanelKind.DatabaseViewer)

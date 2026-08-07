@@ -1655,6 +1655,70 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             });
     }
 
+    /// <summary>
+    /// A saved screen may point a monitor panel at a remote host, and it opens
+    /// there. The sampler has run over a connection since the launcher started
+    /// offering Statistics and Process monitor as ways to open one; only this
+    /// path still answered "remote system monitoring is unavailable" and made
+    /// you edit the screen to get a local panel you had not asked for.
+    /// </summary>
+    [Fact]
+    public async Task A_saved_monitor_panel_opens_on_the_connection_it_names()
+    {
+        var remoteId = new ConnectionId("connections.monitored-host");
+        var remote = new ConnectionProfile(
+            remoteId,
+            ConnectionProfile.CurrentSchemaVersion,
+            "Monitored host",
+            new ConnectionEndpoint.Ssh("metrics.example.test", username: "ops"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        var baseline = CreateCatalogSnapshot();
+        var monitored = new WorkspaceDefinition(
+            new WorkspaceId("runtime-graph-monitored"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Monitored",
+            null,
+            null,
+            [
+                new WorkspaceEntry.Tab(
+                    new WorkspaceEntryId("monitored-tab"),
+                    "Monitored",
+                    Assert.Single(baseline.Layouts).Value.Id,
+                    [
+                        Panel(
+                            "monitored-stats",
+                            "left",
+                            ScreenPanelKind.Statistics,
+                            "Statistics",
+                            remoteId),
+                        Panel(
+                            "monitored-processes",
+                            "right",
+                            ScreenPanelKind.ProcessMonitor,
+                            "Processes",
+                            remoteId),
+                    ]),
+            ]);
+        var snapshot = baseline with
+        {
+            Connections = baseline.Connections.Append(Store(remote)).ToArray(),
+            Workspaces = baseline.Workspaces.Append(Store(monitored)).ToArray(),
+        };
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, snapshot);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(monitored.Id));
+
+        var tab = Assert.Single(viewModel.RuntimeWorkspace!.Tabs);
+        var statistics = Assert.IsType<StatisticsRuntimePanelViewModel>(tab.Panels[0]);
+        var processes = Assert.IsType<ProcessMonitorRuntimePanelViewModel>(tab.Panels[1]);
+        Assert.Equal(remoteId, statistics.ConnectionId);
+        Assert.Equal(remoteId, processes.ConnectionId);
+    }
+
     [Fact]
     public void Saved_connection_shortcuts_are_projected_from_target_capabilities()
     {
