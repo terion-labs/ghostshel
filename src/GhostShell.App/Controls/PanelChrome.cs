@@ -2,6 +2,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
+using Dock.Avalonia.Controls;
+using Dock.Model;
+using Dock.Model.Core;
 using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Controls;
@@ -118,6 +122,27 @@ internal sealed class PanelChrome : ContentControl
             chrome => chrome.IsActionsVisible);
 
     /// <summary>
+    /// Whether this panel is in a window of its own.
+    ///
+    /// Read from the dock graph rather than tracked, so a panel dragged out by
+    /// Dock's own drag says the same thing as one sent out by the header button.
+    /// </summary>
+    public static readonly DirectProperty<PanelChrome, bool> IsFloatingProperty =
+        AvaloniaProperty.RegisterDirect<PanelChrome, bool>(
+            nameof(IsFloating),
+            chrome => chrome.IsFloating);
+
+    /// <summary>
+    /// Whether this panel may leave the workspace. Off for panels a layout pins in
+    /// place, while the panel is not attached to a dock graph, and while it is
+    /// already floating — there the header offers the way back instead.
+    /// </summary>
+    public static readonly DirectProperty<PanelChrome, bool> CanFloatProperty =
+        AvaloniaProperty.RegisterDirect<PanelChrome, bool>(
+            nameof(CanFloat),
+            chrome => chrome.CanFloat);
+
+    /// <summary>
     /// The widths below which each part of the header stops being drawn.
     ///
     /// A panel can be dragged narrower than its header needs, and something has to
@@ -140,6 +165,10 @@ internal sealed class PanelChrome : ContentControl
     private bool _isLeadingVisible;
     private bool _isHeaderContentVisible;
     private bool _isActionsVisible;
+    private bool _isFloating;
+    private bool _canFloat;
+    private Button? _float;
+    private Button? _dock;
     private Button? _splitLeftRight;
     private Button? _splitTopBottom;
     private Button? _close;
@@ -255,6 +284,18 @@ internal sealed class PanelChrome : ContentControl
         private set => SetAndRaise(IsActionsVisibleProperty, ref _isActionsVisible, value);
     }
 
+    public bool IsFloating
+    {
+        get => _isFloating;
+        private set => SetAndRaise(IsFloatingProperty, ref _isFloating, value);
+    }
+
+    public bool CanFloat
+    {
+        get => _canFloat;
+        private set => SetAndRaise(CanFloatProperty, ref _canFloat, value);
+    }
+
     protected override Size ArrangeOverride(Size finalSize)
     {
         var arranged = base.ArrangeOverride(finalSize);
@@ -262,21 +303,38 @@ internal sealed class PanelChrome : ContentControl
         return arranged;
     }
 
+    /// <summary>
+    /// A panel arriving in a new window is a new visual tree, so this is where
+    /// floating is noticed — whichever way the panel got there.
+    /// </summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        UpdateDockState();
+    }
+
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
 
+        Detach(_float, OnFloatClick);
+        Detach(_dock, OnDockClick);
         Detach(_splitLeftRight, OnSplitLeftRightClick);
         Detach(_splitTopBottom, OnSplitTopBottomClick);
         Detach(_close, OnCloseClick);
 
+        _float = e.NameScope.Find<Button>("PART_Float");
+        _dock = e.NameScope.Find<Button>("PART_Dock");
         _splitLeftRight = e.NameScope.Find<Button>("PART_SplitLeftRight");
         _splitTopBottom = e.NameScope.Find<Button>("PART_SplitTopBottom");
         _close = e.NameScope.Find<Button>("PART_Close");
 
+        Attach(_float, OnFloatClick);
+        Attach(_dock, OnDockClick);
         Attach(_splitLeftRight, OnSplitLeftRightClick);
         Attach(_splitTopBottom, OnSplitTopBottomClick);
         Attach(_close, OnCloseClick);
+        UpdateDockState();
     }
 
     private static void Attach(Button? button, EventHandler<RoutedEventArgs> handler)
@@ -319,6 +377,76 @@ internal sealed class PanelChrome : ContentControl
         _ = sender;
         _ = e;
         SplitRequested?.Invoke(this, PanelSplitOrientation.TopBottom);
+    }
+
+    /// <summary>
+    /// Sends the panel out into a window of its own.
+    ///
+    /// This used to be a double-click on the title, which is not a thing anyone
+    /// discovers and was not a thing anyone could undo — Dock floats a dockable
+    /// but has no matching gesture for putting it back, so a panel that left the
+    /// workspace by accident stayed out. Both directions are stated in the header
+    /// now, in the same place as split and close.
+    /// </summary>
+    private void OnFloatClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        if (ResolveDockable() is not { Owner: IDock { Factory: { } factory } } dockable
+            || !CanFloatDockable(dockable))
+        {
+            return;
+        }
+
+        factory.FloatDockable(dockable);
+        factory.ActivateWindow(dockable);
+        e.Handled = true;
+        UpdateDockState();
+    }
+
+    private void OnDockClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        if (ResolveDockable() is not { Owner: IDock { Factory: RuntimeDockFactory factory } }
+            dockable)
+        {
+            return;
+        }
+
+        if (factory.DockBack(dockable))
+        {
+            e.Handled = true;
+        }
+
+        UpdateDockState();
+    }
+
+    /// <summary>
+    /// The panel this chrome dresses, as the dock graph knows it. The chrome's own
+    /// data context is the panel's view model; the dockable is the control Dock
+    /// puts around it.
+    /// </summary>
+    private IDockable? ResolveDockable() =>
+        this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable;
+
+    private static bool CanFloatDockable(IDockable dockable) =>
+        DockCapabilityResolver.IsEnabled(
+            dockable,
+            DockCapability.Float,
+            DockCapabilityResolver.ResolveOperationDock(dockable));
+
+    private void UpdateDockState()
+    {
+        if (ResolveDockable() is not { Owner: IDock { Factory: { } factory } } dockable)
+        {
+            CanFloat = false;
+            IsFloating = false;
+            return;
+        }
+
+        IsFloating = factory is RuntimeDockFactory runtime && runtime.IsFloating(dockable);
+        // The two are one control in two states: a panel already in its own window
+        // is offered the way back instead of the way out.
+        CanFloat = !IsFloating && CanFloatDockable(dockable);
     }
 
     private void UpdateSlotVisibility() => UpdateSlotVisibility(Bounds.Width);

@@ -371,6 +371,76 @@ public sealed class RuntimeDockLayoutPersistenceTests
         Assert.Equal(restoredPanel.Id.Value, restoredDocument.Id);
     }
 
+    /// <summary>
+    /// Floating a panel used to be one-way: Dock can send a dockable out to a
+    /// window of its own and has no word for the workspace it came from, so a
+    /// panel that left could only return by being dragged onto a placement
+    /// target — which, over a browser, is not drawn at all.
+    /// </summary>
+    [Fact]
+    public void A_floated_panel_comes_back_to_the_workspace_it_left()
+    {
+        var tab = NewTab("dock-back");
+        var staying = Panel("dock-back-staying");
+        var leaving = Panel("dock-back-leaving");
+        tab.AddPanel(staying);
+        tab.AddPanel(leaving);
+
+        var document = Enumerate(tab.DockLayout).OfType<IDocument>()
+            .Single(candidate => candidate.Id == leaving.Id.Value);
+        var factory = (RuntimeDockFactory)tab.DockFactory;
+        Float(tab, factory, document);
+
+        Assert.True(factory.IsFloating(document));
+        Assert.True(factory.DockBack(document));
+
+        Assert.False(factory.IsFloating(document));
+        Assert.Empty(tab.DockLayout.Windows!);
+        // The same document, so the same panel and the same session: only the
+        // geometry around it was rebuilt.
+        Assert.Same(
+            document,
+            Enumerate(tab.DockLayout).OfType<IDocument>()
+                .Single(candidate => candidate.Id == leaving.Id.Value));
+        Assert.Same(leaving, document.Context);
+        var leaf = Assert.IsAssignableFrom<IDock>(document.Owner);
+        Assert.Contains(document, leaf.VisibleDockables!);
+        Assert.Same(document, leaf.ActiveDockable);
+    }
+
+    [Fact]
+    public void A_panel_that_never_left_cannot_be_docked_back()
+    {
+        var tab = NewTab("dock-back-noop");
+        var panel = Panel("dock-back-noop-panel");
+        tab.AddPanel(panel);
+
+        var document = Assert.Single(Enumerate(tab.DockLayout).OfType<IDocument>());
+        var factory = (RuntimeDockFactory)tab.DockFactory;
+
+        Assert.False(factory.IsFloating(document));
+        Assert.False(factory.DockBack(document));
+    }
+
+    /// <summary>
+    /// What <c>FloatDockable</c> does to the model, without asking for the native
+    /// window it would also open.
+    /// </summary>
+    private static void Float(
+        RuntimeTabViewModel tab,
+        RuntimeDockFactory factory,
+        IDocument document)
+    {
+        factory.RemoveDockable(document, collapse: true);
+        var window = Assert.IsAssignableFrom<IDockWindow>(
+            factory.CreateWindowFrom(document));
+        tab.DockLayout.Windows!.Add(window);
+        // Dock's own float goes through AddWindow, which opens a native window on
+        // the way. This is the rest of what it does: the new tree takes ownership
+        // of the dockable, which is how anything can tell it has left.
+        factory.InitDockWindow(window, tab.DockLayout, hostWindow: null);
+    }
+
     private static RuntimeTabViewModel NewTab(string id, string? dockLayoutJson = null) =>
         new(
             new TabInstanceId(id),

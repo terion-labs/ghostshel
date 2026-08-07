@@ -119,6 +119,16 @@
     <Setter Property="Height" Value="34" />
   </Style>
 
+  <!-- For a run of actions that belong together and sit in a header rather than
+       a toolbar: a panel's float, split, split and close. Four of these take the
+       width three plain icon buttons did, and the header has that width to spend
+       on what the panel itself puts there. Still 24 square, which is the smallest
+       a pointer target should be when it sits inside a 36-tall row. -->
+  <Style Selector="Button.IconButton.Compact">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+  </Style>
+
   <!-- File actions live inside one macOS-style toolbar capsule. Their disabled
        state must remain quiet; the Fluent template otherwise paints a separate
        rounded lozenge behind every unavailable action. -->

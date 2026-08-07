@@ -33,6 +33,10 @@ internal sealed class RuntimeDockLayoutController
         Layout = Restore(definition?.DockLayoutJson)
             ?? CreateLayoutFromSlots(definition)
             ?? CreateEmptyLayout();
+        // The factory has to be able to say where "back" is. A floated panel's own
+        // root knows only that it is in a window; the window it came from is this
+        // one, and nothing in the Dock graph reliably points at it from there.
+        Factory.HomeLayout = Layout;
 
         // Establish model ownership now, but do not allocate native hosts yet.
         // Recovery builds this graph while the launcher and its modal recovery
@@ -269,20 +273,8 @@ internal sealed class RuntimeDockLayoutController
         return CreateLeaf(document, $"panel-dock-{panel.Id.Value}");
     }
 
-    private DocumentDock CreateLeaf(IDocument document, string id) => new()
-    {
-        Id = id,
-        Title = document.Title,
-        // A leaf is only the geometry that currently owns its panel. When the
-        // panel is dragged or floated, keeping the empty leaf would leave a
-        // permanent "No documents open" hole in the workspace.
-        IsCollapsable = true,
-        CanCloseLastDockable = true,
-        CanCreateDocument = false,
-        EnableWindowDrag = true,
-        ActiveDockable = document,
-        VisibleDockables = Factory.CreateList<IDockable>(document),
-    };
+    private DocumentDock CreateLeaf(IDocument document, string id) =>
+        Factory.CreateLeaf(document, id);
 
     private IRootDock? Restore(string? json)
     {
@@ -731,6 +723,126 @@ internal sealed class RuntimeDockFactory : Factory
     }
 
     public event EventHandler? LayoutMutated;
+
+    /// <summary>
+    /// The layout a floated panel belongs to.
+    ///
+    /// A panel in a window of its own is the root of its own tree, and the tree it
+    /// left is not reachable from it: the Dock graph points from the workspace to
+    /// its windows and never back. So the factory is told, once, which layout it
+    /// serves — the tab that built it.
+    /// </summary>
+    internal IRootDock? HomeLayout { get; set; }
+
+    /// <summary>
+    /// The geometry that holds one panel.
+    ///
+    /// A leaf is only where a panel currently sits, never part of its identity:
+    /// floating a panel and putting it back both build a new one around the same
+    /// document. When the panel leaves, the leaf collapses rather than staying
+    /// behind as a permanent "No documents open" hole in the workspace.
+    /// </summary>
+    internal DocumentDock CreateLeaf(IDocument document, string id) => new()
+    {
+        Id = id,
+        Title = document.Title,
+        IsCollapsable = true,
+        CanCloseLastDockable = true,
+        CanCreateDocument = false,
+        EnableWindowDrag = true,
+        ActiveDockable = document,
+        VisibleDockables = CreateList<IDockable>(document),
+    };
+
+    /// <summary>
+    /// Whether this panel is currently in a window of its own.
+    /// </summary>
+    public bool IsFloating(IDockable dockable)
+    {
+        ArgumentNullException.ThrowIfNull(dockable);
+        return FindRoot(dockable, _ => true) is { Window: not null } root
+            && !ReferenceEquals(root, HomeLayout);
+    }
+
+    /// <summary>
+    /// Puts a floated panel back into the workspace it came from.
+    ///
+    /// Floating had no way back. A panel left the workspace on a double-click
+    /// nobody was told about and could only return by being dragged onto a
+    /// placement target — which, over a browser, was not drawn at all. Both
+    /// directions are one button in the panel's header now, and this is the half
+    /// Dock does not offer: its own vocabulary can float a dockable but has no
+    /// word for the workspace a floating window belongs to.
+    ///
+    /// The panel keeps its document — its identity, its context, and so its
+    /// session. Only the geometry around it is rebuilt.
+    /// </summary>
+    public bool DockBack(IDockable dockable)
+    {
+        ArgumentNullException.ThrowIfNull(dockable);
+        if (dockable is not IDocument document
+            || HomeLayout is not { } home
+            || FindRoot(dockable, _ => true) is not { Window: { } window } floating
+            || ReferenceEquals(floating, home))
+        {
+            return false;
+        }
+
+        // Resolved before the removal, so the search never meets the leaf that is
+        // in the middle of collapsing.
+        var target = FindDocumentLeaf(home, document);
+        RemoveDockable(document, collapse: true);
+
+        var leaf = CreateLeaf(document, $"panel-dock-{document.Id}");
+        if (target is null)
+        {
+            home.VisibleDockables ??= CreateList<IDockable>();
+            AddDockable(home, leaf);
+            home.ActiveDockable = leaf;
+        }
+        else
+        {
+            SplitToDock(target, leaf, DockOperation.Right);
+        }
+
+        // The document arrives owned by the leaf it has just left. Nothing else
+        // re-points it: a leaf built around a document states where the document
+        // is, and the document has to agree, or activation and removal both go
+        // looking for it in the window that is about to close.
+        InitDockable(document, leaf);
+        leaf.ActiveDockable = document;
+
+        if (home.Windows?.Contains(window) == true
+            && floating.VisibleDockables is null or { Count: 0 })
+        {
+            RemoveWindow(window);
+        }
+
+        SetActiveDockable(document);
+        NotifyLayoutMutated();
+        return true;
+    }
+
+    /// <summary>
+    /// The leaf holding some other panel, to place a returning one beside.
+    /// </summary>
+    private static IDock? FindDocumentLeaf(IDock dock, IDockable exclude)
+    {
+        foreach (var child in dock.VisibleDockables ?? [])
+        {
+            if (child is IDocument && !ReferenceEquals(child, exclude))
+            {
+                return dock;
+            }
+
+            if (child is IDock nested && FindDocumentLeaf(nested, exclude) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// GhostShell deliberately keeps one runtime panel in each document leaf.

@@ -102,11 +102,7 @@ public sealed class RuntimePanelViewContractTests
             "GhostShell.App",
             "Controls",
             "PanelDockHandle.cs"));
-        Assert.Contains(
-            "this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable",
-            handleSource,
-            StringComparison.Ordinal);
-        // And it points itself at that dockable. Dock reads the drag source's own
+        // It points itself at that dockable. Dock reads the drag source's own
         // data context to decide what is being dragged, so a handle whose context
         // is something else is not a drag surface at all. Moving the handle into
         // the component dropped the binding each view used to set by hand, and
@@ -122,17 +118,41 @@ public sealed class RuntimePanelViewContractTests
             .Select(element => AttributeValue(element, "Name") ?? string.Empty)
             .ToArray();
         Assert.Equal(
-            ["PART_SplitLeftRight", "PART_SplitTopBottom", "PART_Close"],
+            [
+                "PART_Float",
+                "PART_Dock",
+                "PART_SplitLeftRight",
+                "PART_SplitTopBottom",
+                "PART_Close",
+            ],
             actions);
 
-        // The browser drew these two the other way round for as long as it drew
-        // them itself.
+        // Float and dock are one control in two states, so exactly one of them is
+        // ever offered. Floating used to be a double-click on the title — nothing
+        // announced it, and nothing undid it.
+        var floatOut = theme.Descendants().Single(element =>
+            AttributeValue(element, "Name") == "PART_Float");
+        var dockBack = theme.Descendants().Single(element =>
+            AttributeValue(element, "Name") == "PART_Dock");
+        Assert.Equal("{TemplateBinding CanFloat}", AttributeValue(floatOut, "IsVisible"));
+        Assert.Equal("{TemplateBinding IsFloating}", AttributeValue(dockBack, "IsVisible"));
+
+        // The browser drew the two splits the other way round for as long as it
+        // drew them itself.
         var splits = theme
             .Descendants()
             .Where(element => element.Name.LocalName == "SymbolIcon")
             .Select(element => AttributeValue(element, "Symbol") ?? string.Empty)
             .ToArray();
-        Assert.Equal(["SplitVertical", "SplitHorizontal", "Dismiss"], splits);
+        Assert.Equal(
+            [
+                "WindowMultiple",
+                "WindowMultipleOff",
+                "SplitVertical",
+                "SplitHorizontal",
+                "Dismiss",
+            ],
+            splits);
 
         var chrome = File.ReadAllText(Path.Combine(
             ApplicationViews.RepositoryRoot,
@@ -151,6 +171,19 @@ public sealed class RuntimePanelViewContractTests
             "SplitRequested?.Invoke(this, PanelSplitOrientation.LeftRight);",
             chrome,
             StringComparison.Ordinal);
+        // Float and dock are the chrome's own, not the shell's: they move geometry
+        // and touch nothing that is running. The chrome asks the dock graph what
+        // it is rather than being told, so a panel dragged out by Dock's own drag
+        // offers the same way back as one sent out by this button.
+        Assert.Contains(
+            "this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable",
+            chrome,
+            StringComparison.Ordinal);
+        Assert.Contains("factory.FloatDockable(dockable);", chrome, StringComparison.Ordinal);
+        Assert.Contains("factory.DockBack(dockable)", chrome, StringComparison.Ordinal);
+
+        // Nothing floats on a gesture nobody can see.
+        Assert.DoesNotContain("DoubleTapped", handleSource, StringComparison.Ordinal);
     }
 
     [Theory]

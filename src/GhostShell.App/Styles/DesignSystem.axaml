@@ -151,15 +151,36 @@
                   goes to the panel's own controls.
                 -->
                 <DockPanel Margin="{controls:Inset Horizontal=Md}" LastChildFill="True">
+                  <!--
+                    One group of square glyphs, touching. They are the same four
+                    actions on every panel and read as a set; spacing them apart
+                    spent header width the browser's address bar wanted, for a
+                    separation the glyphs already have inside their own boxes.
+                  -->
                   <StackPanel
                       DockPanel.Dock="Right"
                       VerticalAlignment="Center"
-                      Orientation="Horizontal"
-                      Spacing="{DynamicResource ShellSpaceXs}">
+                      Orientation="Horizontal">
+                    <Button
+                        Name="PART_Float"
+                        AutomationProperties.Name="Move this panel to its own window"
+                        Classes="IconButton Compact"
+                        IsVisible="{TemplateBinding CanFloat}"
+                        ToolTip.Tip="Move to its own window">
+                      <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="WindowMultiple" />
+                    </Button>
+                    <Button
+                        Name="PART_Dock"
+                        AutomationProperties.Name="Put this panel back in the workspace"
+                        Classes="IconButton Compact"
+                        IsVisible="{TemplateBinding IsFloating}"
+                        ToolTip.Tip="Put back in the workspace">
+                      <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="WindowMultipleOff" />
+                    </Button>
                     <Button
                         Name="PART_SplitLeftRight"
                         AutomationProperties.Name="Split this panel left and right"
-                        Classes="IconButton"
+                        Classes="IconButton Compact"
                         IsVisible="{TemplateBinding CanSplit}"
                         ToolTip.Tip="Split left/right">
                       <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="SplitVertical" />
@@ -167,7 +188,7 @@
                     <Button
                         Name="PART_SplitTopBottom"
                         AutomationProperties.Name="Split this panel top and bottom"
-                        Classes="IconButton"
+                        Classes="IconButton Compact"
                         IsVisible="{TemplateBinding CanSplit}"
                         ToolTip.Tip="Split top/bottom">
                       <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="SplitHorizontal" />
@@ -175,7 +196,7 @@
                     <Button
                         Name="PART_Close"
                         AutomationProperties.Name="{TemplateBinding CloseLabel}"
-                        Classes="IconButton"
+                        Classes="IconButton Compact"
                         ToolTip.Tip="{TemplateBinding CloseLabel}">
                       <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="Dismiss" />
                     </Button>

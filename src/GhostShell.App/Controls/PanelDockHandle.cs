@@ -7,8 +7,6 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Dock.Avalonia.Controls;
-using Dock.Model;
-using Dock.Model.Core;
 using Dock.Settings;
 
 namespace GhostShell.App.Controls;
@@ -28,9 +26,8 @@ public sealed class PanelDockHandle : ContentControl
         SetValue(DockProperties.IsDragAreaProperty, true);
         SetValue(DockProperties.IsDragEnabledProperty, true);
         AutomationProperties.SetName(this, "Rearrange panel");
-        ToolTip.SetTip(this, "Drag to rearrange · double-click to float");
+        ToolTip.SetTip(this, "Drag to rearrange");
         Loaded += OnLoaded;
-        AddHandler(DoubleTappedEvent, OnDoubleTapped, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
     }
 
     /// <summary>
@@ -181,35 +178,4 @@ public sealed class PanelDockHandle : ContentControl
         control.SetValue(DockProperties.IsDragEnabledProperty, true);
     }
 
-    /// <summary>
-    /// Finds the dockable this handle belongs to.
-    ///
-    /// It used to be the handle's data context, which every panel view had to
-    /// remember to re-point at the dockable — and which a handle declared inside a
-    /// control template cannot set at all, because the template does not know
-    /// where it will be used. The dockable is an ancestor either way, so the
-    /// handle asks for it rather than being told.
-    /// </summary>
-    private IDockable? ResolveDockable() =>
-        DataContext as IDockable
-        ?? this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable;
-
-    private void OnDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (ResolveDockable() is not
-            {
-                Owner: IDock { Factory: { } factory },
-            } dockable
-            || !DockCapabilityResolver.IsEnabled(
-                dockable,
-                DockCapability.Float,
-                DockCapabilityResolver.ResolveOperationDock(dockable)))
-        {
-            return;
-        }
-
-        factory.FloatDockable(dockable);
-        factory.ActivateWindow(dockable);
-        e.Handled = true;
-    }
 }
