@@ -26,6 +26,8 @@ public abstract class FileProviderConformanceSuite
         | FileProviderCapability.Delete
         | FileProviderCapability.AtomicReplace
         | FileProviderCapability.ServerSideCopy
+        | FileProviderCapability.Permissions
+        | FileProviderCapability.AccessControlLists
         | FileProviderCapability.Pagination;
 
     protected abstract ValueTask<FileProviderTestContext> CreateContextAsync();
@@ -47,6 +49,77 @@ public abstract class FileProviderConformanceSuite
             Assert.True(
                 context.CanObserveServerSideCopy,
                 "ServerSideCopy requires an adapter-level conformance probe; a successful copy alone is insufficient.");
+        }
+    }
+
+    /// <summary>
+    /// A provider that declares it can describe who has access must actually
+    /// answer, and must answer in the one shape it has: nine bits or a list of
+    /// grants, never both and never neither. A capability declared without an
+    /// implementation behind it is worse than one not declared — the shell puts
+    /// a Permissions entry in the menu and the connection refuses it.
+    /// </summary>
+    [Fact]
+    public async Task DeclaredAccessControlIsAnsweredInExactlyOneShape()
+    {
+        await using var context = await CreateContextAsync();
+        var permissions = context.Provider.Capabilities.Supports(
+            FileProviderCapability.Permissions);
+        var grants = context.Provider.Capabilities.Supports(
+            FileProviderCapability.AccessControlLists);
+        if (!permissions && !grants)
+        {
+            return;
+        }
+
+        Assert.False(
+            permissions && grants,
+            "A connection describes access one way or the other, not both.");
+
+        var location = context.Root.Child(new FilePathSegment("access-control.txt"));
+        await WriteBytesAsync(
+            context.Provider,
+            location,
+            Encoding.UTF8.GetBytes("who goes there"),
+            new FileMutationPrecondition.MustNotExist());
+
+        var read = await context.Provider.GetAccessControlAsync(
+            new FileAccessControlRequest(location),
+            CancellationToken.None);
+        Assert.True(read.IsSuccess, read.Error?.Message);
+        Assert.Equal(permissions, read.Value!.Mode is not null);
+        Assert.Equal(grants, read.Value.Grants.Count > 0);
+
+        // And what is written comes back, so the change reached the connection
+        // rather than only the dialog that asked for it.
+        if (permissions)
+        {
+            var written = await context.Provider.SetAccessControlAsync(
+                new FileSetAccessControlRequest(
+                    location,
+                    mode: new GhostShell.Application.FilePanelPosixMode(0b110_000_000)),
+                CancellationToken.None);
+            Assert.True(written.IsSuccess, written.Error?.Message);
+            Assert.Equal("600", written.Value!.Mode!.Octal);
+        }
+        else
+        {
+            var written = await context.Provider.SetAccessControlAsync(
+                new FileSetAccessControlRequest(
+                    location,
+                    grants:
+                    [
+                        new GhostShell.Application.FilePanelAccessGrant(
+                            new GhostShell.Application.FilePanelGrantee(
+                                GhostShell.Application.FilePanelGranteeKind.Everyone),
+                            GhostShell.Application.FilePanelAccessRight.Read),
+                    ]),
+                CancellationToken.None);
+            Assert.True(written.IsSuccess, written.Error?.Message);
+            Assert.Contains(
+                written.Value!.Grants,
+                grant => grant.Grantee.Kind
+                    == GhostShell.Application.FilePanelGranteeKind.Everyone);
         }
     }
 

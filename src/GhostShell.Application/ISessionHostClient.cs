@@ -352,6 +352,20 @@ public interface ISessionHostClient
         CancellationToken cancellationToken) =>
         Unsupported<FilePanelResult<FilePanelDeleteReceipt>>("File deletion is not implemented by this client.");
 
+    ValueTask<HostResult<FilePanelResult<FilePanelAccessControl>>> GetFileAccessControlAsync(
+        FilePanelAccessControlHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelAccessControl>>(
+            "Reading file access control is not implemented by this client.");
+
+    ValueTask<HostResult<FilePanelResult<FilePanelAccessControl>>> SetFileAccessControlAsync(
+        FilePanelSetAccessControlHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<FilePanelResult<FilePanelAccessControl>>(
+            "Changing file access control is not implemented by this client.");
+
     ValueTask<HostResult<FilePanelResult<FilePanelTransferSnapshot>>> EnqueueFileTransferAsync(
         FilePanelTransferEnqueueHostRequest request,
         OperationContext context,

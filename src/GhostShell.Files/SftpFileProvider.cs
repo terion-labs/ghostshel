@@ -50,7 +50,11 @@ public sealed class SftpFileProvider : RemoteHierarchicalFileProvider, IDisposab
             allowBackslashSegments: true,
             FileNameComparison.CaseSensitive,
             options.ReconnectPolicy,
-            ProviderLimits)
+            ProviderLimits,
+            additionalNameValidator: null,
+            // SFTP carries the mode in the same attribute block as the size,
+            // so a listing already knows it and a chmod is one message.
+            transportCapabilities: FileProviderCapability.Permissions)
     {
         _sessionOwner = sessions as IDisposable;
         Connection = options.Connection;

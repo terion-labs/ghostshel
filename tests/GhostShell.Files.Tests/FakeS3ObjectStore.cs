@@ -153,6 +153,41 @@ internal sealed class FakeS3ObjectStore : IS3ObjectStore
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// The bucket's own ACL store, keyed the way the service keys it. The owner
+    /// is fixed because a fake that let it change would be modelling the one
+    /// thing PutObjectAcl must never be allowed to do by accident.
+    /// </summary>
+    public Dictionary<string, S3ObjectAcl> Acls { get; } = new(StringComparer.Ordinal);
+
+    public ValueTask<S3ObjectAcl> GetAclAsync(
+        string bucket,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = Get(key);
+        return ValueTask.FromResult(Acls.TryGetValue(key, out var acl)
+            ? acl
+            : new S3ObjectAcl(
+                "owner-canonical-id",
+                "owner",
+                [new S3ObjectGrant("CanonicalUser", "owner-canonical-id", "owner", null, "FULL_CONTROL")]));
+    }
+
+    public ValueTask<S3ObjectAcl> PutAclAsync(
+        string bucket,
+        string key,
+        S3ObjectAcl acl,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(acl);
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = Get(key);
+        Acls[key] = acl;
+        return ValueTask.FromResult(acl);
+    }
+
     public bool Contains(string key) => _objects.ContainsKey(key);
 
     private StoredObject Get(string key) => _objects.TryGetValue(key, out var value)

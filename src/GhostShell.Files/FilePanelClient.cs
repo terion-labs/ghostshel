@@ -257,6 +257,55 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             : FilePanelResult<FilePanelEntry>.Failure(MapError(result.Error!));
     }
 
+    public async ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
+        FilePanelAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!TryResolve(request.Location, out var registration, out var location, out var error))
+        {
+            return FilePanelResult<FilePanelAccessControl>.Failure(error!);
+        }
+
+        var result = await registration!.Provider.GetAccessControlAsync(
+                new FileAccessControlRequest(location!),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return result.IsSuccess
+            ? FilePanelResult<FilePanelAccessControl>.Success(
+                ToAccessControl(request.Location, result.Value!))
+            : FilePanelResult<FilePanelAccessControl>.Failure(MapError(result.Error!));
+    }
+
+    public async ValueTask<FilePanelResult<FilePanelAccessControl>> SetAccessControlAsync(
+        FilePanelSetAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!TryResolve(request.Location, out var registration, out var location, out var error))
+        {
+            return FilePanelResult<FilePanelAccessControl>.Failure(error!);
+        }
+
+        var result = await registration!.Provider.SetAccessControlAsync(
+                new FileSetAccessControlRequest(
+                    location!,
+                    request.Mode,
+                    request.Grants,
+                    request.Version),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return result.IsSuccess
+            ? FilePanelResult<FilePanelAccessControl>.Success(
+                ToAccessControl(request.Location, result.Value!))
+            : FilePanelResult<FilePanelAccessControl>.Failure(MapError(result.Error!));
+    }
+
+    private static FilePanelAccessControl ToAccessControl(
+        FilePanelLocation location,
+        FileAccessControl value) =>
+        new(location, value.Mode, value.Owner, value.Group, value.Grants, value.Version);
+
     public async ValueTask<FilePanelResult<FilePanelDeleteReceipt>> DeleteAsync(
         FilePanelDeleteRequest request,
         CancellationToken cancellationToken)

@@ -1,0 +1,112 @@
+<Window
+    x:Class="GhostShell.App.Views.FileAccessControlDialog"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:vm="using:GhostShell.App.ViewModels"
+    Width="520"
+    Height="420"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Classes="TopChrome">
+      <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
+        <TextBlock
+            FontSize="{DynamicResource ShellFontSize15}"
+            FontWeight="SemiBold"
+            Text="{Binding ItemName}"
+            TextTrimming="CharacterEllipsis" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="{Binding Summary}"
+            TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+        <!-- A filesystem: nine bits, laid out the way they are written. -->
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasMode}">
+          <Grid ColumnDefinitions="90,*,*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
+            <TextBlock Grid.Column="1" Classes="Eyebrow" Text="Read" />
+            <TextBlock Grid.Column="2" Classes="Eyebrow" Text="Write" />
+            <TextBlock Grid.Column="3" Classes="Eyebrow" Text="Execute" />
+
+            <TextBlock Grid.Row="1" VerticalAlignment="Center" Classes="Muted" Text="Owner" />
+            <CheckBox Grid.Row="1" Grid.Column="1" IsChecked="{Binding OwnerRead, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Owner can read" />
+            <CheckBox Grid.Row="1" Grid.Column="2" IsChecked="{Binding OwnerWrite, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Owner can write" />
+            <CheckBox Grid.Row="1" Grid.Column="3" IsChecked="{Binding OwnerExecute, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Owner can execute" />
+
+            <TextBlock Grid.Row="2" VerticalAlignment="Center" Classes="Muted" Text="Group" />
+            <CheckBox Grid.Row="2" Grid.Column="1" IsChecked="{Binding GroupRead, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Group can read" />
+            <CheckBox Grid.Row="2" Grid.Column="2" IsChecked="{Binding GroupWrite, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Group can write" />
+            <CheckBox Grid.Row="2" Grid.Column="3" IsChecked="{Binding GroupExecute, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Group can execute" />
+
+            <TextBlock Grid.Row="3" VerticalAlignment="Center" Classes="Muted" Text="Everyone" />
+            <CheckBox Grid.Row="3" Grid.Column="1" IsChecked="{Binding OtherRead, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Everyone can read" />
+            <CheckBox Grid.Row="3" Grid.Column="2" IsChecked="{Binding OtherWrite, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Everyone can write" />
+            <CheckBox Grid.Row="3" Grid.Column="3" IsChecked="{Binding OtherExecute, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="Everyone can execute" />
+          </Grid>
+          <TextBlock
+            Classes="Muted"
+            FontFamily="{DynamicResource ShellDataFontFamily}"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="{Binding ModeText}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="Permission bits" />
+        </StackPanel>
+
+        <!-- An object store: who is granted what, one row per party. -->
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding HasGrants}">
+          <TextBlock Classes="Eyebrow" Text="Access control list" />
+          <controls:SurfaceCard Padding="0">
+            <ItemsControl ItemsSource="{Binding Grants}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:FileAccessGrantViewModel">
+                  <Grid
+                      Margin="{controls:Inset Horizontal=Md, Vertical=Sm}"
+                      ColumnDefinitions="*,Auto"
+                      ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Grantee}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <ComboBox
+                        Grid.Column="1"
+                        MinWidth="150"
+                        ItemsSource="{Binding Choices}"
+                        SelectedItem="{Binding Permission, Mode=TwoWay}"
+                        IsEnabled="{Binding $parent[Window].DataContext.CanEdit}"
+                        AutomationProperties.Name="{Binding PermissionLabel}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </controls:SurfaceCard>
+        </StackPanel>
+
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="{Binding ReadOnlyReason}"
+            IsVisible="{Binding !CanEdit}"
+            TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelClick" Content="Close" />
+        <Button
+            Grid.Column="2"
+            Classes="PrimaryButton"
+            Click="OnApplyClick"
+            Content="Apply"
+            IsEnabled="{Binding CanEdit}"
+            AutomationProperties.Name="Apply permission changes" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

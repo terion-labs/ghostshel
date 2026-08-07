@@ -157,6 +157,17 @@ internal sealed class RetainedRemoteFileSessionFactory(
             CancellationToken cancellationToken) =>
             session.DeleteDirectoryAsync(path, cancellationToken);
 
+        public ValueTask<int?> GetPermissionsAsync(
+            string path,
+            CancellationToken cancellationToken) =>
+            session.GetPermissionsAsync(path, cancellationToken);
+
+        public ValueTask SetPermissionsAsync(
+            string path,
+            int mode,
+            CancellationToken cancellationToken) =>
+            session.SetPermissionsAsync(path, mode, cancellationToken);
+
         public ValueTask DisposeAsync()
         {
             Interlocked.Exchange(ref _owner, null)?.Return(session);

@@ -18,7 +18,9 @@ public sealed class SftpFileProviderTests
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.AtomicReplace));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.ServerSideCopy));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Symlinks));
-        Assert.False(provider.Capabilities.Supports(FileProviderCapability.Permissions));
+        // SFTP does carry the mode: it is in the same attribute block as the
+        // size, so a listing already has it and a chmod is one message.
+        Assert.True(provider.Capabilities.Supports(FileProviderCapability.Permissions));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Versioning));
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.Checksum));
         Assert.True(provider.Capabilities.Supports(FileProviderCapability.StreamingWrite));

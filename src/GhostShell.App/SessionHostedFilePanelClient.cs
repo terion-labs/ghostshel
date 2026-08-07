@@ -312,6 +312,36 @@ public sealed class SessionHostedFilePanelClient :
             cancellationToken);
     }
 
+    public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
+        FilePanelAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteAsync(
+            (context, token) => _sessionHost.GetFileAccessControlAsync(
+                new FilePanelAccessControlHostRequest(SessionId, request),
+                context,
+                token),
+            request.Location,
+            isMutation: false,
+            cancellationToken);
+    }
+
+    public ValueTask<FilePanelResult<FilePanelAccessControl>> SetAccessControlAsync(
+        FilePanelSetAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteAsync(
+            (context, token) => _sessionHost.SetFileAccessControlAsync(
+                new FilePanelSetAccessControlHostRequest(SessionId, request),
+                context,
+                token),
+            request.Location,
+            isMutation: true,
+            cancellationToken);
+    }
+
     public ValueTask<FilePanelResult<FilePanelDeleteReceipt>> DeleteAsync(
         FilePanelDeleteRequest request,
         CancellationToken cancellationToken)

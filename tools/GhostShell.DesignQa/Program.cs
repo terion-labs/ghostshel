@@ -891,6 +891,39 @@ internal sealed class QaApplication : Avalonia.Application
         // The two menus are different lists — what can be done to what is
         // picked out, and what can be done to the folder holding it — and both
         // are drawn from what the connection says it can do.
+        // The two shapes the permissions dialog takes. Neither is a mock of the
+        // other: a filesystem has nine bits and no named accounts, an object
+        // store has named accounts and no group.
+        ("file-permissions-posix", () => new FileAccessControlDialog(
+            new FileAccessControlEditorViewModel(
+                "deploy.sh",
+                "staging-web",
+                new FilePanelAccessControl(
+                    QaFileLocation("deploy.sh"),
+                    new FilePanelPosixMode(0b111_101_101)),
+                canEdit: true)), null),
+        ("file-permissions-acl", () => new FileAccessControlDialog(
+            new FileAccessControlEditorViewModel(
+                "2020-12-18T212401+0000_start.png",
+                "artifacts-bucket",
+                new FilePanelAccessControl(
+                    QaFileLocation("2020-12-18T212401+0000_start.png"),
+                    grants:
+                    [
+                        new FilePanelAccessGrant(
+                            new FilePanelGrantee(FilePanelGranteeKind.Everyone),
+                            FilePanelAccessRight.Read),
+                        new FilePanelAccessGrant(
+                            new FilePanelGrantee(
+                                FilePanelGranteeKind.Owner,
+                                "8a1f…c0d4",
+                                "Owner"),
+                            FilePanelAccessRight.FullControl),
+                        new FilePanelAccessGrant(
+                            new FilePanelGrantee(FilePanelGranteeKind.User, "p3179430"),
+                            FilePanelAccessRight.FullControl),
+                    ]),
+                canEdit: true)), null),
         ("file-context-menu-entry", () => CreateFileContextMenuProbe(onEntry: true), null),
         ("file-context-menu-folder", () => CreateFileContextMenuProbe(onEntry: false), null),
         // The overflow menu, which is the whole action list. Narrow, because
@@ -1988,6 +2021,12 @@ internal sealed class QaApplication : Avalonia.Application
     /// into the view to open a menu — which menu opens is the panel's answer to
     /// where the press landed, and that is the part worth capturing.
     /// </summary>
+    private static FilePanelLocation QaFileLocation(string name) => new(
+        "qa.files",
+        "local",
+        new FilePanelAddress.Hierarchical(
+            FilePanelPath.Root.Append(new FilePanelPathSegment(name))));
+
     private static Window CreateFileContextMenuProbe(bool onEntry)
     {
         var window = CreateFilePanelProbe("notes.md", width: 560);

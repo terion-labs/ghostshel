@@ -1471,6 +1471,9 @@ public sealed partial class MainWindow
             case FilePanelAction.CopyPath:
                 await CopyFileTextAsync(panel.SelectedEntryPath);
                 return;
+            case FilePanelAction.AccessControl:
+                await ShowFileAccessControlAsync(panel);
+                return;
             case FilePanelAction.Refresh:
                 await panel.RefreshAsync(_lifetime.Token);
                 return;
@@ -1612,6 +1615,37 @@ public sealed partial class MainWindow
             panel.Id,
             entries,
             cut ? FilePanelTransferOperation.Move : FilePanelTransferOperation.Copy);
+    }
+
+    /// <summary>
+    /// Who can read or change the selected item. Read first, because there is
+    /// nothing to show until the connection has answered, and because what it
+    /// answers decides which of the two editors the dialog puts up.
+    /// </summary>
+    private async Task ShowFileAccessControlAsync(FileRuntimePanelViewModel panel)
+    {
+        if (panel.SelectedEntry is not { } selected
+            || await panel.ReadAccessControlAsync(_lifetime.Token) is not { } accessControl)
+        {
+            return;
+        }
+
+        var editor = new FileAccessControlEditorViewModel(
+            selected.Name,
+            panel.SelectedProfile?.Name ?? "this connection",
+            accessControl,
+            // A connection that describes access does not necessarily accept a
+            // change to it, and saying so before an Apply is kinder than after.
+            canEdit: panel.SelectedProfile?.Capabilities.HasFlag(
+                FilePanelCapability.Permissions) == true
+                || panel.SelectedProfile?.Capabilities.HasFlag(
+                    FilePanelCapability.AccessControlLists) == true);
+        var request = await new FileAccessControlDialog(editor)
+            .ShowDialog<FilePanelSetAccessControlRequest?>(this);
+        if (request is not null)
+        {
+            _ = await panel.WriteAccessControlAsync(request, _lifetime.Token);
+        }
     }
 
     /// <summary>

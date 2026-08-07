@@ -281,6 +281,46 @@ public sealed partial class InMemorySessionHostClient
             (files, token) => files.RenameAsync(request.Request, token));
     }
 
+    /// <summary>
+    /// Reading who can do what changes nothing, so it is governed as a read;
+    /// changing it is a mutation like any other, and is audited as one.
+    /// </summary>
+    public ValueTask<HostResult<FilePanelResult<FilePanelAccessControl>>> GetFileAccessControlAsync(
+        FilePanelAccessControlHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Request);
+        ArgumentNullException.ThrowIfNull(context);
+        return ExecuteFileOperationAsync(
+            request.SessionId,
+            ApplicationOperations.FilesReadAccessControl,
+            LocationKey(request.Request.Location),
+            context,
+            cancellationToken,
+            changesState: false,
+            (files, token) => files.GetAccessControlAsync(request.Request, token));
+    }
+
+    public ValueTask<HostResult<FilePanelResult<FilePanelAccessControl>>> SetFileAccessControlAsync(
+        FilePanelSetAccessControlHostRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Request);
+        ArgumentNullException.ThrowIfNull(context);
+        return ExecuteFileOperationAsync(
+            request.SessionId,
+            ApplicationOperations.FilesWriteAccessControl,
+            $"{LocationKey(request.Request.Location)}:{request.Request.Mode?.Octal ?? "grants"}",
+            context,
+            cancellationToken,
+            changesState: true,
+            (files, token) => files.SetAccessControlAsync(request.Request, token));
+    }
+
     public ValueTask<HostResult<FilePanelResult<FilePanelDeleteReceipt>>> DeleteFileAsync(
         FilePanelDeleteHostRequest request,
         OperationContext context,

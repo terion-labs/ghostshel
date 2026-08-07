@@ -147,6 +147,20 @@ internal sealed class FakeRemoteSession(
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask<int?> GetPermissionsAsync(
+        string path,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(fileSystem.GetPermissions(path, cancellationToken));
+
+    public ValueTask SetPermissionsAsync(
+        string path,
+        int mode,
+        CancellationToken cancellationToken)
+    {
+        fileSystem.SetPermissions(path, mode, cancellationToken);
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static RemoteFileEntry WithoutKnownSize(RemoteFileEntry entry) =>
@@ -178,6 +192,24 @@ internal sealed class FakeRemoteFileSystem
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => Entry(Name(pair.Key), pair.Value))
                 .ToArray();
+        }
+    }
+
+    public int? GetPermissions(string path, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            return _nodes.TryGetValue(path, out var node) ? node.Mode : null;
+        }
+    }
+
+    public void SetPermissions(string path, int mode, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            Find(path).Mode = mode & 0x1FF;
         }
     }
 
@@ -390,6 +422,15 @@ internal sealed class FakeRemoteFileSystem
         public byte[] Content { get; } = content;
 
         public long Revision { get; set; } = revision;
+
+        /// <summary>
+        /// The nine bits, which SFTP carries in the same attribute block as the
+        /// size. A fake that had none would let the provider claim a capability
+        /// nothing in the suite could exercise.
+        /// </summary>
+        public int Mode { get; set; } = kind == FileEntryKind.Directory
+            ? 0b111_101_101
+            : 0b110_100_100;
     }
 
     private sealed class CommitStream(Action<byte[]> commit) : MemoryStream

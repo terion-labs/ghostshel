@@ -32,6 +32,14 @@ public sealed record FilePanelDeleteHostRequest(
     SessionId SessionId,
     FilePanelDeleteRequest Request);
 
+public sealed record FilePanelAccessControlHostRequest(
+    SessionId SessionId,
+    FilePanelAccessControlRequest Request);
+
+public sealed record FilePanelSetAccessControlHostRequest(
+    SessionId SessionId,
+    FilePanelSetAccessControlRequest Request);
+
 public sealed record FilePanelTransferEnqueueHostRequest(
     SessionId SessionId,
     FilePanelTransferRequest Request);

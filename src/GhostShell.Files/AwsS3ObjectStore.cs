@@ -241,6 +241,87 @@ internal sealed class AwsS3ObjectStore(IAmazonS3 client) : IS3ObjectStore
                 ? parsed
                 : null;
 
+    public async ValueTask<S3ObjectAcl> GetAclAsync(
+        string bucket,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await client.GetObjectAclAsync(
+                new GetObjectAclRequest { BucketName = bucket, Key = key },
+                cancellationToken).ConfigureAwait(false);
+            return ToAcl(response.Owner, response.Grants);
+        }
+        catch (AmazonS3Exception exception)
+        {
+            throw Wrap(exception);
+        }
+    }
+
+    public async ValueTask<S3ObjectAcl> PutAclAsync(
+        string bucket,
+        string key,
+        S3ObjectAcl acl,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(acl);
+        try
+        {
+            var policy = new S3AccessControlList
+            {
+                // Put back as it came: an ACL sent without an owner is the
+                // service's way of being told the object now belongs to
+                // whoever sent it.
+                Owner = new Owner
+                {
+                    Id = acl.OwnerId,
+                    DisplayName = acl.OwnerDisplayName,
+                },
+                Grants = acl.Grants
+                    .Select(grant => new S3Grant
+                    {
+                        Grantee = new S3Grantee
+                        {
+                            CanonicalUser = grant.GranteeType == "CanonicalUser"
+                                ? grant.GranteeId
+                                : null,
+                            DisplayName = grant.GranteeDisplayName,
+                            URI = grant.GranteeUri,
+                        },
+                        Permission = S3Permission.FindValue(grant.Permission),
+                    })
+                    .ToList(),
+            };
+            await client.PutObjectAclAsync(
+                new PutObjectAclRequest
+                {
+                    BucketName = bucket,
+                    Key = key,
+                    AccessControlPolicy = policy,
+                },
+                cancellationToken).ConfigureAwait(false);
+            return await GetAclAsync(bucket, key, cancellationToken).ConfigureAwait(false);
+        }
+        catch (AmazonS3Exception exception)
+        {
+            throw Wrap(exception);
+        }
+    }
+
+    private static S3ObjectAcl ToAcl(Owner? owner, List<S3Grant>? grants) => new(
+        owner?.Id,
+        owner?.DisplayName,
+        (grants ?? [])
+            .Where(grant => grant.Grantee is not null && grant.Permission is not null)
+            .Select(grant => new S3ObjectGrant(
+                grant.Grantee!.CanonicalUser is not null ? "CanonicalUser" : "Group",
+                grant.Grantee.CanonicalUser,
+                grant.Grantee.DisplayName,
+                grant.Grantee.URI,
+                grant.Permission!.Value))
+            .ToArray());
+
     private static S3StoreException Wrap(AmazonS3Exception exception) =>
         new(
             exception.StatusCode,

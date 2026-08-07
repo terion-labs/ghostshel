@@ -1118,6 +1118,58 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         ActionRequested?.Invoke(this, action);
 
     /// <summary>
+    /// Who can read or change the selected item, as this connection describes
+    /// it. A failure is reported on the panel rather than thrown: being told
+    /// the server refused is more use than a dialog that will not open.
+    /// </summary>
+    public async Task<FilePanelAccessControl?> ReadAccessControlAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (SelectedEntry is not { } entry)
+        {
+            return null;
+        }
+
+        ClearOperationIssue();
+        var result = await _client
+            .GetAccessControlAsync(
+                new FilePanelAccessControlRequest(entry.Entry.Location),
+                cancellationToken)
+            .ConfigureAwait(true);
+        if (result.IsSuccess)
+        {
+            return result.Value;
+        }
+
+        SetOperationIssue(FileOperationIssue.FromProvider(result.Error!));
+        return null;
+    }
+
+    /// <summary>
+    /// And the change back. What comes back is what the connection has after
+    /// the write, not what was asked for: a server is allowed to normalise.
+    /// </summary>
+    public async Task<FilePanelAccessControl?> WriteAccessControlAsync(
+        FilePanelSetAccessControlRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ClearOperationIssue();
+        var result = await _client
+            .SetAccessControlAsync(request, cancellationToken)
+            .ConfigureAwait(true);
+        if (result.IsSuccess)
+        {
+            return result.Value;
+        }
+
+        SetOperationIssue(FileOperationIssue.FromProvider(result.Error!));
+        return null;
+    }
+
+    /// <summary>
     /// Whatever was copied or cut anywhere in this window, which is what says
     /// whether pasting into this folder is possible.
     /// </summary>

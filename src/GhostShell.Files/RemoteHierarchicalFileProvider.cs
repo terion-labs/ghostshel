@@ -1,3 +1,5 @@
+using GhostShell.Application;
+
 namespace GhostShell.Files;
 
 /// <summary>
@@ -25,7 +27,8 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
         FileNameComparison nameComparison,
         RemoteMetadataReconnectPolicy metadataReconnectPolicy,
         FileProviderLimits limits,
-        Func<string, bool>? additionalNameValidator = null)
+        Func<string, bool>? additionalNameValidator = null,
+        FileProviderCapability transportCapabilities = FileProviderCapability.None)
     {
         ArgumentNullException.ThrowIfNull(sessions);
         ArgumentException.ThrowIfNullOrWhiteSpace(protocolName);
@@ -70,7 +73,8 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
             | FileProviderCapability.Copy
             | FileProviderCapability.Move
             | FileProviderCapability.Delete
-            | FileProviderCapability.Pagination,
+            | FileProviderCapability.Pagination
+            | transportCapabilities,
             nameComparison,
             limits);
     }
@@ -179,6 +183,84 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
             retryMetadata: false,
             cancellationToken,
             request.Precondition);
+    }
+
+    /// <summary>
+    /// The nine permission bits, over the transports that carry them. A
+    /// transport that does not answers with nothing, and the caller is told the
+    /// connection has no such notion rather than shown a mode of zero.
+    /// </summary>
+    public ValueTask<FileProviderResult<FileAccessControl>> GetAccessControlAsync(
+        FileAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteAsync(
+            token => ReadAccessControlCoreAsync(request.Location, token),
+            retryMetadata: true,
+            cancellationToken);
+    }
+
+    public ValueTask<FileProviderResult<FileAccessControl>> SetAccessControlAsync(
+        FileSetAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteAsync(
+            async token =>
+            {
+                if (request.Mode is not { } mode)
+                {
+                    return Failure<FileAccessControl>(
+                        FileProviderErrorCode.UnsupportedCapability,
+                        $"A {_protocolName} filesystem is described by its permission "
+                        + "bits, not by a list of grants.");
+                }
+
+                var resolved = Resolve(request.Location);
+                if (!resolved.IsSuccess)
+                {
+                    return FileProviderResult<FileAccessControl>.Failure(resolved.Error!);
+                }
+
+                await using var session = await _sessions
+                    .OpenAsync(token)
+                    .ConfigureAwait(false);
+                await session
+                    .SetPermissionsAsync(
+                        resolved.Value!.RemotePath,
+                        mode.Permissions,
+                        token)
+                    .ConfigureAwait(false);
+                return await ReadAccessControlCoreAsync(request.Location, token)
+                    .ConfigureAwait(false);
+            },
+            retryMetadata: false,
+            cancellationToken);
+    }
+
+    private async ValueTask<FileProviderResult<FileAccessControl>> ReadAccessControlCoreAsync(
+        FileLocation location,
+        CancellationToken cancellationToken)
+    {
+        var resolved = Resolve(location);
+        if (!resolved.IsSuccess)
+        {
+            return FileProviderResult<FileAccessControl>.Failure(resolved.Error!);
+        }
+
+        await using var session = await _sessions
+            .OpenAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var mode = await session
+            .GetPermissionsAsync(resolved.Value!.RemotePath, cancellationToken)
+            .ConfigureAwait(false);
+        return mode is { } value
+            ? FileProviderResult<FileAccessControl>.Success(
+                new FileAccessControl(new FilePanelPosixMode(value & 0xFFF)))
+            : Failure<FileAccessControl>(
+                FileProviderErrorCode.NotFound,
+                $"The {_protocolName} server did not report permissions for this item.");
     }
 
     private async ValueTask<FileProviderResult<T>> ExecuteAsync<T>(

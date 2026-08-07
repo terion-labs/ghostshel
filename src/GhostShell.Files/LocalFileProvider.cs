@@ -16,7 +16,8 @@ public abstract partial class LocalFileProvider : IFileProvider, ILocalFilePathS
     protected LocalFileProvider(
         LocalFileProviderOptions options,
         FileNameComparison nameComparison,
-        StringComparison pathComparison)
+        StringComparison pathComparison,
+        FileProviderCapability platformCapabilities = FileProviderCapability.None)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -49,7 +50,8 @@ public abstract partial class LocalFileProvider : IFileProvider, ILocalFilePathS
             | FileProviderCapability.Move
             | FileProviderCapability.Delete
             | FileProviderCapability.AtomicReplace
-            | FileProviderCapability.Pagination,
+            | FileProviderCapability.Pagination
+            | platformCapabilities,
             nameComparison,
             new FileProviderLimits(
                 maximumListPageSize: 1_000,

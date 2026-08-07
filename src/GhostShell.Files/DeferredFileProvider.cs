@@ -86,6 +86,20 @@ internal sealed class DeferredFileProvider : IFileProvider, IDisposable
             (provider, token) => provider.DeleteAsync(request, token),
             cancellationToken);
 
+    public ValueTask<FileProviderResult<FileAccessControl>> GetAccessControlAsync(
+        FileAccessControlRequest request,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(
+            (provider, token) => provider.GetAccessControlAsync(request, token),
+            cancellationToken);
+
+    public ValueTask<FileProviderResult<FileAccessControl>> SetAccessControlAsync(
+        FileSetAccessControlRequest request,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(
+            (provider, token) => provider.SetAccessControlAsync(request, token),
+            cancellationToken);
+
     private async ValueTask<FileProviderResult<T>> ExecuteAsync<T>(
         Func<IFileProvider, CancellationToken, ValueTask<FileProviderResult<T>>> operation,
         CancellationToken cancellationToken)

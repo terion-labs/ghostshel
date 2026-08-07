@@ -36,6 +36,31 @@ public interface IFilePanelSession : IPanelSession
         FilePanelDeleteRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Defaulted for the same reason the client's is: most connections have no
+    /// notion of who can do what, and none should have to write out that they
+    /// have none.
+    /// </summary>
+    ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
+        FilePanelAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = cancellationToken;
+        return ValueTask.FromResult(FilePanelResult<FilePanelAccessControl>.Failure(
+            FilePanelAccessControlErrors.Unsupported));
+    }
+
+    ValueTask<FilePanelResult<FilePanelAccessControl>> SetAccessControlAsync(
+        FilePanelSetAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = cancellationToken;
+        return ValueTask.FromResult(FilePanelResult<FilePanelAccessControl>.Failure(
+            FilePanelAccessControlErrors.Unsupported));
+    }
+
     ValueTask<FilePanelResult<FilePanelTransferSnapshot>> EnqueueTransferAsync(
         FilePanelTransferRequest request,
         CancellationToken cancellationToken);

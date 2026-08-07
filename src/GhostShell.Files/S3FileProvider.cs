@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Amazon.S3;
+using GhostShell.Application;
 
 namespace GhostShell.Files;
 
@@ -45,6 +46,7 @@ public sealed partial class S3FileProvider : IFileProvider
             | FileProviderCapability.Copy
             | FileProviderCapability.Delete
             | FileProviderCapability.ServerSideCopy
+            | FileProviderCapability.AccessControlLists
             | FileProviderCapability.Pagination,
             FileNameComparison.CaseSensitive,
             new FileProviderLimits(
@@ -57,6 +59,179 @@ public sealed partial class S3FileProvider : IFileProvider
     public FileAuthority Authority { get; }
 
     public FileProviderCapabilities Capabilities { get; }
+
+    /// <summary>
+    /// Who the bucket says can reach one object. There is no mode here: an
+    /// object store's answer is a list of accounts and well-known groups, and
+    /// squeezing that into owner-group-other would lose most of it.
+    /// </summary>
+    public ValueTask<FileProviderResult<FileAccessControl>> GetAccessControlAsync(
+        FileAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteAsync(
+            async token =>
+            {
+                var resolved = ResolveObject(request.Location);
+                if (!resolved.IsSuccess)
+                {
+                    return FileProviderResult<FileAccessControl>.Failure(resolved.Error!);
+                }
+
+                var acl = await _store.GetAclAsync(
+                    _options.BucketName,
+                    resolved.Value!.Key,
+                    token).ConfigureAwait(false);
+                return FileProviderResult<FileAccessControl>.Success(ToAccessControl(acl));
+            },
+            cancellationToken);
+    }
+
+    public ValueTask<FileProviderResult<FileAccessControl>> SetAccessControlAsync(
+        FileSetAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ExecuteAsync(
+            async token =>
+            {
+                if (request.Grants is not { } grants)
+                {
+                    return Failure<FileAccessControl>(
+                        FileProviderErrorCode.UnsupportedCapability,
+                        "An object store is described by who is granted what, "
+                        + "not by permission bits.");
+                }
+
+                var resolved = ResolveObject(request.Location);
+                if (!resolved.IsSuccess)
+                {
+                    return FileProviderResult<FileAccessControl>.Failure(resolved.Error!);
+                }
+
+                // Read first for the owner: an ACL sent without one is the
+                // service's way of being told the object changes hands.
+                var current = await _store.GetAclAsync(
+                    _options.BucketName,
+                    resolved.Value!.Key,
+                    token).ConfigureAwait(false);
+                var written = await _store.PutAclAsync(
+                    _options.BucketName,
+                    resolved.Value.Key,
+                    new S3ObjectAcl(
+                        current.OwnerId,
+                        current.OwnerDisplayName,
+                        grants.SelectMany(ToStoreGrants).ToArray()),
+                    token).ConfigureAwait(false);
+                return FileProviderResult<FileAccessControl>.Success(ToAccessControl(written));
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The service repeats a grantee once per permission; a reader wants one
+    /// row per party with everything it holds, so they are folded back together.
+    /// </summary>
+    private static FileAccessControl ToAccessControl(S3ObjectAcl acl)
+    {
+        var folded = new Dictionary<string, (FilePanelGrantee Grantee, FilePanelAccessRight Rights)>(
+            StringComparer.Ordinal);
+        foreach (var grant in acl.Grants)
+        {
+            var grantee = ToGrantee(grant, acl.OwnerId);
+            var key = $"{grantee.Kind}:{grantee.Id}";
+            var rights = ToRight(grant.Permission);
+            folded[key] = folded.TryGetValue(key, out var existing)
+                ? (existing.Grantee, existing.Rights | rights)
+                : (grantee, rights);
+        }
+
+        return new FileAccessControl(
+            owner: acl.OwnerDisplayName ?? acl.OwnerId,
+            grants: folded.Values
+                .Select(entry => new FilePanelAccessGrant(entry.Grantee, entry.Rights))
+                .ToArray());
+    }
+
+    private static FilePanelGrantee ToGrantee(S3ObjectGrant grant, string? ownerId) =>
+        grant.GranteeUri switch
+        {
+            "http://acs.amazonaws.com/groups/global/AllUsers" =>
+                new FilePanelGrantee(FilePanelGranteeKind.Everyone),
+            "http://acs.amazonaws.com/groups/global/AuthenticatedUsers" =>
+                new FilePanelGrantee(FilePanelGranteeKind.AuthenticatedUsers),
+            "http://acs.amazonaws.com/groups/s3/LogDelivery" =>
+                new FilePanelGrantee(FilePanelGranteeKind.LogDelivery),
+            _ when grant.GranteeId is { } id && id == ownerId =>
+                new FilePanelGrantee(FilePanelGranteeKind.Owner, id, grant.GranteeDisplayName),
+            _ => new FilePanelGrantee(
+                FilePanelGranteeKind.User,
+                grant.GranteeId ?? grant.GranteeUri ?? "unknown",
+                grant.GranteeDisplayName),
+        };
+
+    private static FilePanelAccessRight ToRight(string permission) => permission switch
+    {
+        "FULL_CONTROL" => FilePanelAccessRight.FullControl,
+        "READ" => FilePanelAccessRight.Read,
+        "WRITE" => FilePanelAccessRight.Write,
+        "READ_ACP" => FilePanelAccessRight.ReadAcl,
+        "WRITE_ACP" => FilePanelAccessRight.WriteAcl,
+        _ => FilePanelAccessRight.None,
+    };
+
+    private static IEnumerable<S3ObjectGrant> ToStoreGrants(FilePanelAccessGrant grant)
+    {
+        var (type, id, uri) = grant.Grantee.Kind switch
+        {
+            FilePanelGranteeKind.Everyone => (
+                "Group",
+                (string?)null,
+                "http://acs.amazonaws.com/groups/global/AllUsers"),
+            FilePanelGranteeKind.AuthenticatedUsers => (
+                "Group",
+                null,
+                "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"),
+            FilePanelGranteeKind.LogDelivery => (
+                "Group",
+                null,
+                "http://acs.amazonaws.com/groups/s3/LogDelivery"),
+            _ => ("CanonicalUser", grant.Grantee.Id, (string?)null),
+        };
+
+        // Back out to one row per permission, which is the shape the service
+        // stores and the shape it expects to be handed.
+        if (grant.Rights == FilePanelAccessRight.FullControl)
+        {
+            yield return new S3ObjectGrant(
+                type,
+                id,
+                grant.Grantee.DisplayName,
+                uri,
+                "FULL_CONTROL");
+            yield break;
+        }
+
+        foreach (var (right, permission) in new[]
+                 {
+                     (FilePanelAccessRight.Read, "READ"),
+                     (FilePanelAccessRight.Write, "WRITE"),
+                     (FilePanelAccessRight.ReadAcl, "READ_ACP"),
+                     (FilePanelAccessRight.WriteAcl, "WRITE_ACP"),
+                 })
+        {
+            if (grant.Rights.HasFlag(right))
+            {
+                yield return new S3ObjectGrant(
+                    type,
+                    id,
+                    grant.Grantee.DisplayName,
+                    uri,
+                    permission);
+            }
+        }
+    }
 
     private FileProviderResult<ResolvedS3Object> ResolveObject(FileLocation location)
     {

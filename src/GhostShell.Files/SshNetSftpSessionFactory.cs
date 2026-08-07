@@ -384,6 +384,46 @@ internal sealed class SshNetSftpSessionFactory(
             _metadata.Clear();
         }
 
+        /// <summary>
+        /// SFTP carries the mode in the same attribute block as the size and
+        /// the timestamps, so reading it is a stat. Writing it is one message
+        /// with no async form in the client, and it is one round trip.
+        /// </summary>
+        public async ValueTask<int?> GetPermissionsAsync(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var attributes = await client
+                    .GetAttributesAsync(path, cancellationToken)
+                    .ConfigureAwait(false);
+                return attributes is null ? null : PosixMode(attributes);
+            }
+            catch (Exception exception) when (ShouldMap(exception))
+            {
+                throw MapSessionException(exception);
+            }
+        }
+
+        public ValueTask SetPermissionsAsync(
+            string path,
+            int mode,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                client.ChangePermissions(path, (short)(mode & 0x1FF));
+                _metadata.Clear();
+                return ValueTask.CompletedTask;
+            }
+            catch (Exception exception) when (ShouldMap(exception))
+            {
+                throw MapSessionException(exception);
+            }
+        }
+
         public async ValueTask RenameAsync(
             string sourcePath,
             string destinationPath,

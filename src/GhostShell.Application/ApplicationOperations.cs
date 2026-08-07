@@ -45,6 +45,8 @@ public static class ApplicationOperations
     public const string FilesCreateDirectory = "files.mkdir";
     public const string FilesRename = "files.rename";
     public const string FilesDelete = "files.delete";
+    public const string FilesReadAccessControl = "files.access_control.read";
+    public const string FilesWriteAccessControl = "files.access_control.write";
     public const string FilesTransferEnqueue = "files.transfer.enqueue";
     public const string FilesTransferCancel = "files.transfer.cancel";
     public const string FilesTransferRetry = "files.transfer.retry";

@@ -129,6 +129,7 @@ internal static class FilePanelActionPresentation
         FilePanelAction.Delete => "Delete",
         FilePanelAction.CopyName => "Copy name",
         FilePanelAction.CopyPath => "Copy path",
+        FilePanelAction.AccessControl => "Permissions…",
         FilePanelAction.Refresh => "Refresh",
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
@@ -148,6 +149,7 @@ internal static class FilePanelActionPresentation
         FilePanelAction.Delete => Symbol.Delete,
         FilePanelAction.CopyName => Symbol.TextT,
         FilePanelAction.CopyPath => Symbol.Link,
+        FilePanelAction.AccessControl => Symbol.LockClosed,
         FilePanelAction.Refresh => Symbol.ArrowClockwise,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
@@ -184,6 +186,8 @@ internal static class FilePanelActionPresentation
         FilePanelAction.Paste => "Paste what was copied or cut into this folder",
         FilePanelAction.CopyName => "Copy the selected item's name",
         FilePanelAction.CopyPath => "Copy the selected item's path",
+        FilePanelAction.AccessControl =>
+            "Show who can read or change the selected item",
         FilePanelAction.Refresh => "Read this folder again",
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };

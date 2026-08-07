@@ -36,6 +36,27 @@ internal interface IRemoteHierarchicalFileSession : IAsyncDisposable
     ValueTask DeleteFileAsync(string path, CancellationToken cancellationToken);
 
     ValueTask DeleteDirectoryAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The nine permission bits, for the transports that carry them. Defaulted
+    /// to nothing because most do not: SMB describes access another way
+    /// entirely, and WebDAV does not describe it at all.
+    /// </summary>
+    ValueTask<int?> GetPermissionsAsync(string path, CancellationToken cancellationToken)
+    {
+        _ = path;
+        _ = cancellationToken;
+        return ValueTask.FromResult<int?>(null);
+    }
+
+    ValueTask SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken)
+    {
+        _ = path;
+        _ = mode;
+        _ = cancellationToken;
+        throw new NotSupportedException(
+            "This transport does not carry filesystem permissions.");
+    }
 }
 
 internal interface IRemoteHierarchicalFileSessionFactory

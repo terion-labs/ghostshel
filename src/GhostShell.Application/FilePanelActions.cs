@@ -47,6 +47,13 @@ public enum FilePanelAction
     /// <summary>And its whole location, as it would be typed.</summary>
     CopyPath,
 
+    /// <summary>
+    /// Who can read or change the selected item, as the connection describes
+    /// it: permission bits on a filesystem, a list of grants on an object
+    /// store.
+    /// </summary>
+    AccessControl,
+
     /// <summary>Read the folder again.</summary>
     Refresh,
 }
@@ -84,6 +91,9 @@ public enum FilePanelActionGroup
 
     /// <summary>Taking a note of what something is called or where it lives.</summary>
     Reference,
+
+    /// <summary>Looking at what something is rather than changing it.</summary>
+    Inspect,
 
     /// <summary>Changing what is being looked at rather than what is there.</summary>
     View,
@@ -255,6 +265,15 @@ public static class FilePanelActionCatalog
                 FilePanelActionGroup.Reference,
                 FilePanelActionScope.Selection,
                 available: true,
+                possible: context.SelectionCount == 1),
+            State(
+                FilePanelAction.AccessControl,
+                FilePanelActionGroup.Inspect,
+                FilePanelActionScope.Selection,
+                // Two different notions of the same thing, and a connection has
+                // at most one of them. Either is enough to be worth showing.
+                available: context.Capabilities.HasFlag(FilePanelCapability.Permissions)
+                    || context.Capabilities.HasFlag(FilePanelCapability.AccessControlLists),
                 possible: context.SelectionCount == 1),
             State(
                 FilePanelAction.Refresh,
