@@ -69,6 +69,7 @@
           <SolidColorBrush x:Key="ShellSidebarSelectionBrush" Color="#0DFFFFFF" />
           <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#18181B" />
           <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#1A1A1A" />
+          <SolidColorBrush x:Key="ShellPopupSurfaceBrush" Color="#1A1A1A" />
           <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#2E2E2E" />
           <SolidColorBrush x:Key="ShellBorderBrush" Color="#2E2E2E" />
           <SolidColorBrush x:Key="ShellControlSurfaceBrush" Color="#1A1A1A" />
@@ -98,6 +99,7 @@
           <SolidColorBrush x:Key="ShellSidebarSelectionBrush" Color="#10000000" />
           <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#E7E8E5" />
           <SolidColorBrush x:Key="ShellSurfaceRaisedBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ShellPopupSurfaceBrush" Color="#FFFFFF" />
           <SolidColorBrush x:Key="ShellSurfaceHoverBrush" Color="#CBCCC9" />
           <SolidColorBrush x:Key="ShellBorderBrush" Color="#CBCCC9" />
           <SolidColorBrush x:Key="ShellControlSurfaceBrush" Color="#FFFFFF" />

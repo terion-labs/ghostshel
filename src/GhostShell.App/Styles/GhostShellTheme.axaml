@@ -181,10 +181,16 @@
 
   <!-- Flyouts, menu flyouts, and ComboBox popups are the same transient surface.
        Keeping that surface here prevents each selector from inventing its own
-       background, radius, and item density. -->
+       background, radius, and item density.
+
+       Solid, unlike the surfaces inside the window. Each of these opens in a
+       window of its own, with no platform material behind it to be translucent
+       against — so the shell's glass reads there as a hole onto the desktop,
+       and a menu you can see the wallpaper through is a menu you cannot
+       read. -->
   <Style Selector="FlyoutPresenter">
     <Setter Property="Padding" Value="{DynamicResource ShellInsetXs}" />
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellPopupSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
@@ -195,7 +201,7 @@
   </Style>
 
   <Style Selector="MenuFlyoutPresenter">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellPopupSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
@@ -557,7 +563,7 @@
   </Style>
 
   <Style Selector="ComboBox:dropdownopen /template/ Border#PopupBorder">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
+    <Setter Property="Background" Value="{DynamicResource ShellPopupSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="Padding" Value="{DynamicResource ShellInsetXs}" />

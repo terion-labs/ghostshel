@@ -610,6 +610,13 @@ public sealed partial class App : Avalonia.Application
         Publish("ShellSidebarSelectionBrush", Brush(resources.SidebarSelectionSurface));
         Publish("ShellSurfaceBrush", Translucent(resources.Surface));
         Publish("ShellSurfaceRaisedBrush", Translucent(resources.RaisedSurface));
+        // The same surface, solid, for the ones that open in a window of their
+        // own. A flyout is its own top level with no material behind it, so the
+        // shell's translucency there is not glass — it is a hole, showing
+        // whatever the desktop has underneath, unblurred and unreadable. What
+        // makes the surfaces inside the window read as glass is the platform
+        // backdrop they stand on, and a popup stands on nothing.
+        Publish("ShellPopupSurfaceBrush", Brush(resources.RaisedSurface));
         // An overlay floats over the shell rather than standing on it, so it is
         // glass whenever there is any to be — not only when the panels are.
         // Something that hangs in front of the window is where the material
