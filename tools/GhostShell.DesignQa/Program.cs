@@ -886,6 +886,25 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
+        ("file-toolbar-narrow", () => CreateFilePanelProbe("notes.md", width: 560), null),
+        // The overflow menu, which is the whole action list. Narrow, because
+        // that is where it stops being a convenience and becomes the only way
+        // to reach any of it.
+        ("file-actions-menu", () =>
+        {
+            var window = CreateFilePanelProbe("notes.md", width: 560);
+            window.Opened += (_, _) =>
+            {
+                var button = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .First(candidate => string.Equals(
+                        AutomationProperties.GetName(candidate),
+                        "Open more file actions",
+                        StringComparison.Ordinal));
+                button.Flyout?.ShowAt(button);
+            };
+            return window;
+        }, null),
         // A closed preview, and then the view built again over the same panel:
         // floating it, adding one beside it, any change to the arrangement.
         // The listing has to have taken the whole width back. A gap on the
@@ -1847,7 +1866,10 @@ internal sealed class QaApplication : Avalonia.Application
     /// the disk, the previewers claim by name, and the archive is listed by the
     /// same reader the product uses.
     /// </summary>
-    private static Window CreateFilePanelProbe(string fileName, string? toggleId = null)
+    private static Window CreateFilePanelProbe(
+        string fileName,
+        string? toggleId = null,
+        double width = 900)
     {
         var root = Path.Combine(Program.OutputDirectory, "preview-samples");
         Directory.CreateDirectory(root);
@@ -1946,7 +1968,7 @@ internal sealed class QaApplication : Avalonia.Application
 
         return new Window
         {
-            Width = 900,
+            Width = width,
             Height = 620,
             CanResize = false,
             ShowInTaskbar = false,

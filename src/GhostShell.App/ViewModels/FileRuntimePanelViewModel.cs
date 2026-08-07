@@ -79,6 +79,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private string _filter = string.Empty;
     private string? _continuationToken;
     private string _status = "Preparing file provider";
+    private string _shortStatus = "…";
     private FileOperationIssue? _contentIssue;
     private FileOperationIssue? _operationIssue;
     private FileOperationIssue? _metadataIssue;
@@ -230,6 +231,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             _profileRuntime.ProfilesChanged += OnProfilesChanged;
         }
 
+        RebuildActions();
         if (!deferInitialization)
         {
             _ = StartInitialization();
@@ -301,13 +303,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             if (SetProperty(ref _selectedProfile, value))
             {
                 OnPropertyChanged(nameof(ConnectionDisplayName));
-                OnPropertyChanged(nameof(CanCreateFolder));
-                OnPropertyChanged(nameof(CanRename));
-                OnPropertyChanged(nameof(CanDelete));
-                OnPropertyChanged(nameof(CanTransfer));
-                OnPropertyChanged(nameof(CanDownload));
-                OnPropertyChanged(nameof(CanUpload));
-                OnPropertyChanged(nameof(CanOpenExternally));
+                NotifyFileInteractionStateChanged();
                 // Switching to a remote provider is what makes the
                 // auto-download choice relevant, and to a local one what makes
                 // it disappear.
@@ -328,12 +324,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
                 _preview?.Cancel();
                 IsPreviewLoading = false;
                 ClearPreview();
-                OnPropertyChanged(nameof(CanRename));
-                OnPropertyChanged(nameof(CanDelete));
-                OnPropertyChanged(nameof(CanTransfer));
-                OnPropertyChanged(nameof(CanDownload));
                 OnPropertyChanged(nameof(DownloadLabel));
-                OnPropertyChanged(nameof(CanOpenExternally));
+                NotifyFileInteractionStateChanged();
             }
         }
     }
@@ -374,8 +366,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             if (SetProperty(ref _currentLocation, value))
             {
                 LocationText = value is null ? string.Empty : FileLocationPresentation.Display(value);
-                OnPropertyChanged(nameof(CanNavigateUp));
-                OnPropertyChanged(nameof(CanCreateFolder));
+                NotifyFileInteractionStateChanged();
                 OnContentPresentationChanged();
             }
         }
@@ -620,6 +611,17 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     {
         get => _status;
         private set => SetProperty(ref _status, value);
+    }
+
+    /// <summary>
+    /// The same count with the words taken out, for when the toolbar has no
+    /// room for them. A number in a pill beside a folder path is already
+    /// unambiguous; "item(s)" is what goes when something has to.
+    /// </summary>
+    public string ShortStatus
+    {
+        get => _shortStatus;
+        private set => SetProperty(ref _shortStatus, value);
     }
 
     public FileOperationIssue? ContentIssue
@@ -961,41 +963,127 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasListingSummary => _hasLoadedListing;
 
-    public bool CanCreateFolder => !IsLoading
-        && !IsInitialHostedBindingPending
-        && SelectedProfile?.Capabilities.HasFlag(
-        FilePanelCapability.CreateDirectory) == true
-        && CurrentLocation?.Address is FilePanelAddress.Hierarchical;
+    /// <summary>
+    /// What this connection is, said in the terms the action rules are written
+    /// in. Every question about whether something can be done goes through here,
+    /// so the toolbar, the menus and the guards that run on a click all read the
+    /// same answer.
+    /// </summary>
+    private FilePanelActionContext ActionContext
+    {
+        get
+        {
+            var transferable = DownloadableEntries();
+            var selected = _selectedEntries.Count > 0
+                ? _selectedEntries.Count
+                : SelectedEntry is null ? 0 : 1;
+            return new FilePanelActionContext
+            {
+                Capabilities = SelectedProfile?.Capabilities ?? FilePanelCapability.None,
+                IsBusy = IsLoading,
+                IsBindingSavedSession = IsInitialHostedBindingPending,
+                HasLocation = CurrentLocation is not null,
+                IsHierarchicalLocation =
+                    CurrentLocation?.Address is FilePanelAddress.Hierarchical,
+                SelectionCount = selected,
+                SelectionIsSingleFile =
+                    SelectedEntry?.Entry.Kind == FilePanelEntryKind.File,
+                SelectionIsTransferable = transferable.Count > 0,
+                HasTransferQueue = _transferQueue is not null,
+                HasLocalProvider = Profiles.Any(profile =>
+                    profile.Id == BuiltInFileProviders.HomeId.Value),
+                IsLocalProvider =
+                    SelectedProfile?.Id == BuiltInFileProviders.HomeId.Value,
+            };
+        }
+    }
 
-    public bool CanRename => !IsLoading
-        && SelectedEntry is not null
-        && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Rename) == true;
+    /// <summary>
+    /// Every action this connection can perform, in menu order, each greyed out
+    /// or not according to what is selected. The overflow menu and the
+    /// right-click menu are both this list.
+    /// </summary>
+    public IReadOnlyList<FileActionViewModel> MenuActions => _menuActions;
 
-    public bool CanDelete => !IsLoading
-        && SelectedEntry is not null
-        && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Delete) == true;
+    /// <summary>
+    /// The few that earn a button of their own while there is room for them.
+    /// Drawn from the same list, so a button and its menu entry can never
+    /// disagree about whether the action is possible.
+    /// </summary>
+    public IReadOnlyList<FileActionViewModel> ToolbarActions => _toolbarActions;
 
-    public bool CanTransfer => !IsLoading
-        && _transferQueue is not null
-        && SelectedEntry?.Entry.Kind is
-            FilePanelEntryKind.File or FilePanelEntryKind.Directory;
+    private static readonly FilePanelAction[] ToolbarPrimaryActions =
+    [
+        FilePanelAction.Upload,
+        FilePanelAction.Download,
+        FilePanelAction.NewFolder,
+        FilePanelAction.Delete,
+    ];
 
-    public bool CanDownload => !IsLoading
-        && _transferQueue is not null
-        && DownloadableEntries().Count > 0
-        && Profiles.Any(profile => profile.Id == "builtin.files.home");
+    private IReadOnlyList<FileActionViewModel> _menuActions = [];
+    private IReadOnlyList<FileActionViewModel> _toolbarActions = [];
 
-    public bool CanUpload => !IsLoading
-        && !IsInitialHostedBindingPending
-        && _transferQueue is not null
-        && CurrentLocation is not null
-        && SelectedProfile?.Id != BuiltInFileProviders.HomeId.Value
-        && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.StreamingWrite) == true
-        && Profiles.Any(profile => profile.Id == "builtin.files.home");
+    private void RebuildActions()
+    {
+        var states = FilePanelActionCatalog.Resolve(ActionContext)
+            .Where(state => state.IsAvailable)
+            .ToArray();
+        _menuActions = Dress(states);
+        _toolbarActions = Dress(states
+            .Where(state => ToolbarPrimaryActions.Contains(state.Action))
+            .ToArray());
+        OnPropertyChanged(nameof(MenuActions));
+        OnPropertyChanged(nameof(ToolbarActions));
+    }
 
-    public bool CanOpenExternally => !IsLoading
-        && SelectedProfile?.Id == "builtin.files.home"
-        && SelectedEntry?.Entry.Kind == FilePanelEntryKind.File;
+    private FileActionViewModel[] Dress(IReadOnlyList<FilePanelActionState> states)
+    {
+        var dressed = new FileActionViewModel[states.Count];
+        for (var index = 0; index < states.Count; index++)
+        {
+            var state = states[index];
+            dressed[index] = new FileActionViewModel(
+                state,
+                FilePanelActionPresentation.Label(state.Action),
+                // What downloading will actually pull is worth saying: a person
+                // about to take a folder tree over a network should be told so.
+                state.Action == FilePanelAction.Download
+                    ? DownloadLabel
+                    : FilePanelActionPresentation.Description(state.Action),
+                FilePanelActionPresentation.Glyph(state.Action),
+                startsGroup: index > 0 && states[index - 1].Group != state.Group,
+                RequestAction);
+        }
+
+        return dressed;
+    }
+
+    public bool CanCreateFolder => IsActionEnabled(FilePanelAction.NewFolder);
+
+    public bool CanRename => IsActionEnabled(FilePanelAction.Rename);
+
+    public bool CanDelete => IsActionEnabled(FilePanelAction.Delete);
+
+    public bool CanTransfer => IsActionEnabled(FilePanelAction.Transfer);
+
+    public bool CanDownload => IsActionEnabled(FilePanelAction.Download);
+
+    public bool CanUpload => IsActionEnabled(FilePanelAction.Upload);
+
+    public bool CanOpenExternally => IsActionEnabled(FilePanelAction.OpenExternally);
+
+    public bool IsActionEnabled(FilePanelAction action) =>
+        FilePanelActionCatalog.IsEnabled(ActionContext, action);
+
+    /// <summary>
+    /// Asked for by a button, an overflow entry or a right-click menu. What it
+    /// takes to carry out — a folder picker, a confirmation, a name to type —
+    /// belongs to the window, so the panel says what was asked and stops there.
+    /// </summary>
+    public event EventHandler<FilePanelAction>? ActionRequested;
+
+    private void RequestAction(FilePanelAction action) =>
+        ActionRequested?.Invoke(this, action);
 
     private bool IsInitialHostedBindingPending =>
         _initialSelectionPending
@@ -1424,8 +1512,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         ArgumentNullException.ThrowIfNull(entries);
         _selectedEntries = entries;
         OnPropertyChanged(nameof(SelectedEntries));
-        OnPropertyChanged(nameof(CanDownload));
         OnPropertyChanged(nameof(DownloadLabel));
+        NotifyFileInteractionStateChanged();
     }
 
     /// <summary>
@@ -2002,6 +2090,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(CanDownload));
         OnPropertyChanged(nameof(CanUpload));
         OnPropertyChanged(nameof(CanOpenExternally));
+        RebuildActions();
     }
 
     private async Task LoadMetadataAsync(
@@ -2423,6 +2512,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         if (_allEntries.Count == 0)
         {
             Status = "This location is empty";
+            ShortStatus = "0";
             return;
         }
 
@@ -2430,9 +2520,15 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         var loadedLabel = HasMore
             ? $"{loadedCount} loaded item(s)"
             : $"{loadedCount} item(s)";
-        Status = string.IsNullOrWhiteSpace(Filter)
+        var shownCount = Entries.Count.ToString(CultureInfo.InvariantCulture);
+        var unfiltered = string.IsNullOrWhiteSpace(Filter);
+        Status = unfiltered
             ? loadedLabel
-            : $"{Entries.Count.ToString(CultureInfo.InvariantCulture)} of {loadedLabel}";
+            : $"{shownCount} of {loadedLabel}";
+        // A trailing mark for a listing that has not been read to the end, so
+        // the short form does not claim the folder holds exactly this many.
+        ShortStatus = (unfiltered ? loadedCount : $"{shownCount}/{loadedCount}")
+            + (HasMore ? "+" : string.Empty);
     }
 
     private int CompareEntries(FilePanelEntry? left, FilePanelEntry? right)

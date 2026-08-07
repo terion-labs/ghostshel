@@ -19,6 +19,7 @@ public sealed partial class FileRuntimePanelView : UserControl
     private static readonly DataFormat<FilePanelTransferPayload> FileDragFormat =
         DataFormat.CreateInProcessFormat<FilePanelTransferPayload>(
             "app.ghostshell.file-entry");
+    private FileRuntimePanelViewModel? _boundPanel;
     private ActiveFileDrag? _activeFileDrag;
     private FileRuntimePanelView? _activeFileDropView;
     private FileDragCandidate? _fileDragCandidate;
@@ -27,7 +28,7 @@ public sealed partial class FileRuntimePanelView : UserControl
     public FileRuntimePanelView()
     {
         InitializeComponent();
-        DataContextChanged += (_, _) => ObserveHtmlPreview();
+        DataContextChanged += (_, _) => ObservePanel();
         AddHandler(
             KeyDownEvent,
             OnPanelKeyDownTunnel,
@@ -54,6 +55,12 @@ public sealed partial class FileRuntimePanelView : UserControl
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;
 
+    /// <summary>
+    /// One of the file actions was asked for, from wherever it was shown: a
+    /// toolbar button, the overflow menu, or a right-click.
+    /// </summary>
+    public event EventHandler<FilePanelActionEventArgs>? ActionRequested;
+
     public event EventHandler<PanelConnectionSelectedEventArgs>? ConnectionSelected;
 
     public event EventHandler<RoutedEventArgs>? NewConnectionRequested;
@@ -64,13 +71,7 @@ public sealed partial class FileRuntimePanelView : UserControl
     /// </summary>
     public event EventHandler<PanelSplitOrientation>? SplitRequested;
 
-    public event EventHandler<RoutedEventArgs>? CreateFolderRequested;
-
-    public event EventHandler<RoutedEventArgs>? DeleteRequested;
-
     public event EventHandler<RoutedEventArgs>? DismissOperationIssueRequested;
-
-    public event EventHandler<RoutedEventArgs>? DownloadRequested;
 
     public event EventHandler<TappedEventArgs>? EntryDoubleTapped;
 
@@ -88,15 +89,7 @@ public sealed partial class FileRuntimePanelView : UserControl
 
     public event EventHandler<RoutedEventArgs>? NavigateUpRequested;
 
-    public event EventHandler<RoutedEventArgs>? OpenExternallyRequested;
-
     public event EventHandler<RoutedEventArgs>? RefreshRequested;
-
-    public event EventHandler<RoutedEventArgs>? RenameRequested;
-
-    public event EventHandler<RoutedEventArgs>? TransferRequested;
-
-    public event EventHandler<RoutedEventArgs>? UploadRequested;
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(sender, e);
@@ -110,17 +103,8 @@ public sealed partial class FileRuntimePanelView : UserControl
     private void OnSplitRequested(object? sender, PanelSplitOrientation orientation) =>
         SplitRequested?.Invoke(sender, orientation);
 
-    private void OnCreateFolderClick(object? sender, RoutedEventArgs e) =>
-        CreateFolderRequested?.Invoke(sender, e);
-
-    private void OnDeleteClick(object? sender, RoutedEventArgs e) =>
-        DeleteRequested?.Invoke(sender, e);
-
     private void OnDismissOperationIssueClick(object? sender, RoutedEventArgs e) =>
         DismissOperationIssueRequested?.Invoke(sender, e);
-
-    private void OnDownloadClick(object? sender, RoutedEventArgs e) =>
-        DownloadRequested?.Invoke(sender, e);
 
     private void OnEntryDoubleTapped(object? sender, TappedEventArgs e) =>
         EntryDoubleTapped?.Invoke(sender, e);
@@ -132,13 +116,31 @@ public sealed partial class FileRuntimePanelView : UserControl
     /// </summary>
     private BrowserRendererView? _htmlPreview;
 
-    private void ObserveHtmlPreview()
+    private void ObservePanel()
     {
-        if (DataContext is FileRuntimePanelViewModel panel)
+        if (_boundPanel is { } previous)
         {
-            panel.PropertyChanged -= OnPanelPropertyChanged;
-            panel.PropertyChanged += OnPanelPropertyChanged;
+            previous.PropertyChanged -= OnPanelPropertyChanged;
+            previous.ActionRequested -= OnPanelActionRequested;
         }
+
+        _boundPanel = DataContext as FileRuntimePanelViewModel;
+        if (_boundPanel is { } panel)
+        {
+            panel.PropertyChanged += OnPanelPropertyChanged;
+            panel.ActionRequested += OnPanelActionRequested;
+        }
+    }
+
+    /// <summary>
+    /// The bridge from a menu row to the window. A file action needs a folder
+    /// picker, a confirmation or a name typed into a dialog, all of which the
+    /// window owns; the panel only says which action was asked for.
+    /// </summary>
+    private void OnPanelActionRequested(object? sender, FilePanelAction action)
+    {
+        _ = sender;
+        ActionRequested?.Invoke(this, new FilePanelActionEventArgs(action));
     }
 
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -272,17 +274,8 @@ public sealed partial class FileRuntimePanelView : UserControl
     private void OnNavigateUpClick(object? sender, RoutedEventArgs e) =>
         NavigateUpRequested?.Invoke(sender, e);
 
-    private void OnOpenExternallyClick(object? sender, RoutedEventArgs e) =>
-        OpenExternallyRequested?.Invoke(sender, e);
-
     private void OnRefreshClick(object? sender, RoutedEventArgs e) =>
         RefreshRequested?.Invoke(sender, e);
-
-    private void OnRenameClick(object? sender, RoutedEventArgs e) =>
-        RenameRequested?.Invoke(sender, e);
-
-    private void OnTransferClick(object? sender, RoutedEventArgs e) =>
-        TransferRequested?.Invoke(sender, e);
 
     private void OnTogglePreviewClick(object? sender, RoutedEventArgs e)
     {
@@ -293,9 +286,6 @@ public sealed partial class FileRuntimePanelView : UserControl
             panel.IsPreviewVisible = !panel.IsPreviewVisible;
         }
     }
-
-    private void OnUploadClick(object? sender, RoutedEventArgs e) =>
-        UploadRequested?.Invoke(sender, e);
 
     private void OnFilePanelKeyDown(object? sender, KeyEventArgs e)
     {
@@ -707,6 +697,16 @@ public sealed partial class FileRuntimePanelView : UserControl
         FilePanelEntry Entry,
         Point Origin,
         IPointer Pointer);
+}
+
+/// <summary>
+/// Which file action was asked for. A routed-event argument so the window's
+/// existing per-action handlers, which read the panel off the sender, can be
+/// called with it unchanged.
+/// </summary>
+public sealed class FilePanelActionEventArgs(FilePanelAction action) : RoutedEventArgs
+{
+    public FilePanelAction Action { get; } = action;
 }
 
 public sealed record FilePanelTransferPayload(

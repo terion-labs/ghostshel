@@ -17,5 +17,5 @@
       Shape="Rounded"
       Tone="Default"
       IsOutlined="False"
-      Content="{Binding Value, ElementName=Root}" />
+      Content="{Binding DisplayValue, ElementName=Root}" />
 </UserControl>

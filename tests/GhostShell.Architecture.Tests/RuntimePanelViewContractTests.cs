@@ -661,10 +661,14 @@ public sealed class RuntimePanelViewContractTests
         var component = Assert.Single(template.Elements());
         var shellInteractions = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CreateFolderRequested"] = "OnFileCreateFolderClick",
-            ["DeleteRequested"] = "OnFileDeleteClick",
+            // The file actions arrive as one event that names which was asked
+            // for, rather than one event each. They are a list the panel builds
+            // from what the connection can do, and a list cannot be turned into
+            // a fixed set of events without going back to hand-written markup
+            // per action — which is what left the toolbar and its overflow menu
+            // disagreeing about what was possible.
+            ["ActionRequested"] = "OnFileActionRequested",
             ["DismissOperationIssueRequested"] = "OnDismissFileOperationIssueClick",
-            ["DownloadRequested"] = "OnFileDownloadClick",
             ["EntryDoubleTapped"] = "OnFileEntryDoubleTapped",
             ["EntrySelectionChanged"] = "OnFileEntrySelectionChanged",
             ["EntryTransferDropRequested"] = "OnFileEntryTransferDropRequested",
@@ -672,11 +676,7 @@ public sealed class RuntimePanelViewContractTests
             ["LoadMoreRequested"] = "OnFileLoadMoreClick",
             ["LocationKeyDown"] = "OnFileLocationKeyDown",
             ["NavigateUpRequested"] = "OnFileNavigateUpClick",
-            ["OpenExternallyRequested"] = "OnFileOpenExternallyClick",
             ["RefreshRequested"] = "OnFileRefreshClick",
-            ["RenameRequested"] = "OnFileRenameClick",
-            ["TransferRequested"] = "OnFileTransferClick",
-            ["UploadRequested"] = "OnFileUploadClick",
         };
 
         foreach (var (interaction, handler) in shellInteractions)
@@ -807,10 +807,49 @@ public sealed class RuntimePanelViewContractTests
                 AttributeValue(columnSplitter, "ResizeBehavior"));
         }
 
-        var uploadButton = FindUniqueAccessibleElement(root, "Upload file");
-        Assert.Equal("{Binding CanUpload}", AttributeValue(uploadButton, "IsVisible"));
+        // No action is written out by hand. The strip and the overflow menu are
+        // the same list of actions shown twice, so an action a connection
+        // cannot perform leaves both at once and neither can be left behind.
+        var actionStrip = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding ToolbarActions}",
+                    StringComparison.Ordinal));
+        var overflowMenu = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "MenuFlyout"
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding MenuActions}",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            actionStrip.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "Command"),
+                    "{Binding Command}",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            overflowMenu.Descendants(),
+            element => element.Name.LocalName == "Setter"
+                && string.Equals(
+                    AttributeValue(element, "Property"),
+                    "Command",
+                    StringComparison.Ordinal));
+
+        // And the toolbar answers to the panel's own width, not the window's:
+        // two of these can share one window at different widths.
+        var containerQuery = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ContainerQuery");
+        Assert.Equal("filePanel", AttributeValue(containerQuery, "Name"));
+        Assert.Equal("Width", AttributeValue(root, "Container.Sizing"));
+
         var itemCount = FindUniqueAccessibleElement(root, "File Viewer item count");
         Assert.Equal("{Binding Status}", AttributeValue(itemCount, "Value"));
+        Assert.Equal("{Binding ShortStatus}", AttributeValue(itemCount, "CompactValue"));
         Assert.Equal(
             "{Binding HasListingSummary}",
             AttributeValue(itemCount, "IsVisible"));
@@ -915,7 +954,11 @@ public sealed class RuntimePanelViewContractTests
         var codeBehind = File.ReadAllText(
             RuntimePanelPath("FileRuntimePanelView", ".axaml.cs"));
         foreach (var interaction in shellInteractions.Keys.Except(
-                     ["EntryTransferDropRequested", "EntryTransferKeyRequested"],
+                     [
+                         "ActionRequested",
+                         "EntryTransferDropRequested",
+                         "EntryTransferKeyRequested",
+                     ],
                      StringComparer.Ordinal))
         {
             Assert.Contains(
@@ -924,6 +967,12 @@ public sealed class RuntimePanelViewContractTests
                 StringComparison.Ordinal);
         }
 
+        // The action carries which action it is, so it is raised with an
+        // argument the view builds rather than one it was handed.
+        Assert.Contains(
+            "ActionRequested?.Invoke(this, new FilePanelActionEventArgs(action));",
+            codeBehind,
+            StringComparison.Ordinal);
         Assert.Contains(
             "EntryTransferKeyRequested?.Invoke(",
             codeBehind,

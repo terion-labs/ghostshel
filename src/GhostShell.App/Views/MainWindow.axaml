@@ -77,14 +77,12 @@
 
     <DataTemplate DataType="vm:FileRuntimePanelViewModel">
       <panelViews:FileRuntimePanelView
+          ActionRequested="OnFileActionRequested"
           CloseRequested="OnCloseRuntimePanelClick"
           ConnectionSelected="OnPanelConnectionSelected"
           NewConnectionRequested="OnPanelNewConnectionRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
-          CreateFolderRequested="OnFileCreateFolderClick"
-          DeleteRequested="OnFileDeleteClick"
           DismissOperationIssueRequested="OnDismissFileOperationIssueClick"
-          DownloadRequested="OnFileDownloadClick"
           EntryDoubleTapped="OnFileEntryDoubleTapped"
           EntrySelectionChanged="OnFileEntrySelectionChanged"
           EntryTransferDropRequested="OnFileEntryTransferDropRequested"
@@ -93,12 +91,8 @@
           LoadMoreRequested="OnFileLoadMoreClick"
           LocationKeyDown="OnFileLocationKeyDown"
           NavigateUpRequested="OnFileNavigateUpClick"
-          OpenExternallyRequested="OnFileOpenExternallyClick"
           PointerPressed="OnRuntimePanelPointerPressed"
-          RefreshRequested="OnFileRefreshClick"
-          RenameRequested="OnFileRenameClick"
-          TransferRequested="OnFileTransferClick"
-          UploadRequested="OnFileUploadClick" />
+          RefreshRequested="OnFileRefreshClick" />
     </DataTemplate>
 
     <DataTemplate DataType="vm:StatisticsRuntimePanelViewModel">

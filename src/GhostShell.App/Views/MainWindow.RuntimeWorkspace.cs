@@ -1433,6 +1433,42 @@ public sealed partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// Every file action arrives here, from whichever of the three places it was
+    /// shown in. What each one takes to carry out — a folder picker, a name
+    /// typed into a dialog, a confirmation — is the window's to provide, which
+    /// is why the panel asks rather than acts.
+    /// </summary>
+    private void OnFileActionRequested(object? sender, FilePanelActionEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case FilePanelAction.OpenExternally:
+                OnFileOpenExternallyClick(sender, e);
+                break;
+            case FilePanelAction.Download:
+                OnFileDownloadClick(sender, e);
+                break;
+            case FilePanelAction.Upload:
+                OnFileUploadClick(sender, e);
+                break;
+            case FilePanelAction.Transfer:
+                OnFileTransferClick(sender, e);
+                break;
+            case FilePanelAction.NewFolder:
+                OnFileCreateFolderClick(sender, e);
+                break;
+            case FilePanelAction.Rename:
+                OnFileRenameClick(sender, e);
+                break;
+            case FilePanelAction.Delete:
+                OnFileDeleteClick(sender, e);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(e), e.Action, null);
+        }
+    }
+
     private async void OnFileNavigateUpClick(object? sender, RoutedEventArgs e)
     {
         _ = e;

@@ -6,12 +6,37 @@
     xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     Classes="RuntimePanelFocusTarget"
     Focusable="True"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
-    IsVisible="{Binding IsVisibleInLayout}">
+    IsVisible="{Binding IsVisibleInLayout}"
+    Container.Name="filePanel"
+    Container.Sizing="Width">
   <UserControl.Styles>
+    <!--
+      A panel is not a window: two of these can sit side by side in one, and how
+      much room this one has is nothing to do with how wide the screen is. So the
+      toolbar answers to the panel's own width.
+
+      At this width the action buttons go and the overflow beside them stays.
+      Nothing becomes unreachable by it: the overflow menu lists every one of
+      them already, because both are the same list of actions.
+    -->
+    <ContainerQuery Name="filePanel" Query="max-width:660">
+      <Style Selector="StackPanel#FileToolbarActionStrip">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+      <Style Selector="components|CountPill#FileListingCount">
+        <Setter Property="IsCompact" Value="True" />
+      </Style>
+      <!-- And the search box takes what a search box needs rather than what it
+           would like, so the path it sits beside stays readable. -->
+      <Style Selector="TextBox#FileFilterBox">
+        <Setter Property="Width" Value="110" />
+      </Style>
+    </ContainerQuery>
     <Style Selector="ListBoxItem.transferDropTarget /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
     </Style>
@@ -41,7 +66,7 @@
           Grid.Row="0"
           Padding="{controls:Inset Left=Sm, Top=Xs, Right=Sm, Bottom=Sm}"
           Background="{DynamicResource ShellSurfaceBrush}">
-        <Grid ColumnDefinitions="Auto,*,Auto,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <Border
               Classes="FileToolbarGroup">
             <StackPanel Orientation="Horizontal">
@@ -68,9 +93,11 @@
                 KeyDown="OnLocationKeyDown"
                 AutomationProperties.Name="Editable file location" />
             <components:CountPill
+                x:Name="FileListingCount"
                 Grid.Column="1"
                 IsVisible="{Binding HasListingSummary}"
                 Value="{Binding Status}"
+                CompactValue="{Binding ShortStatus}"
                 AutomationProperties.LiveSetting="Polite"
                 AutomationProperties.Name="File Viewer item count" />
             <Button
@@ -119,40 +146,63 @@
                   AutomationProperties.ItemStatus="{Binding PreviewVisibilityStatus}">
                 <icons:SymbolIcon Symbol="PanelRight" FontSize="14" />
               </Button>
+              <!-- The actions themselves are data, and this strip is one of the
+                   three places that data is shown. When the panel narrows the
+                   strip goes and the overflow beside it stays, which is where
+                   every one of these already is. -->
+              <StackPanel x:Name="FileToolbarActionStrip" Orientation="Horizontal">
               <Border Width="1" Margin="{DynamicResource ShellToolbarSeparatorMargin}" Background="{DynamicResource ShellBorderBrush}" />
-              <Button Classes="IconButton FileToolbarAction" Click="OnUploadClick" IsEnabled="{Binding CanUpload}" IsVisible="{Binding CanUpload}" ToolTip.Tip="Upload a file from Home" AutomationProperties.Name="Upload file">
-                <icons:SymbolIcon Symbol="ArrowUpload" FontSize="14" />
-              </Button>
-              <Button Classes="IconButton FileToolbarAction" Click="OnDownloadClick" IsEnabled="{Binding CanDownload}" ToolTip.Tip="{Binding DownloadLabel}" AutomationProperties.Name="{Binding DownloadLabel}">
-                <icons:SymbolIcon Symbol="DocumentArrowDown" FontSize="14" />
-              </Button>
-              <Border Width="1" Margin="{DynamicResource ShellToolbarSeparatorMargin}" Background="{DynamicResource ShellBorderBrush}" />
-              <Button Classes="IconButton FileToolbarAction" Click="OnCreateFolderClick" IsEnabled="{Binding CanCreateFolder}" ToolTip.Tip="New folder" AutomationProperties.Name="Create folder">
-                <icons:SymbolIcon Symbol="FolderAdd" FontSize="14" />
-              </Button>
-              <Button Classes="IconButton FileToolbarAction Danger" Click="OnDeleteClick" IsEnabled="{Binding CanDelete}" ToolTip.Tip="Delete selected item" AutomationProperties.Name="Delete selected file item">
-                <icons:SymbolIcon Symbol="Delete" FontSize="13" />
-              </Button>
+              <ItemsControl ItemsSource="{Binding ToolbarActions}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:FileActionViewModel">
+                    <StackPanel Orientation="Horizontal">
+                      <Border
+                          Width="1"
+                          Margin="{DynamicResource ShellToolbarSeparatorMargin}"
+                          Background="{DynamicResource ShellBorderBrush}"
+                          IsVisible="{Binding StartsGroup}" />
+                      <Button
+                          Classes="IconButton FileToolbarAction"
+                          Classes.Danger="{Binding IsDestructive}"
+                          Command="{Binding Command}"
+                          IsEnabled="{Binding IsEnabled}"
+                          ToolTip.Tip="{Binding Description}"
+                          AutomationProperties.Name="{Binding Description}">
+                        <icons:SymbolIcon Symbol="{Binding Symbol}" FontSize="14" />
+                      </Button>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              </StackPanel>
               <Border Width="1" Margin="{DynamicResource ShellToolbarSeparatorMargin}" Background="{DynamicResource ShellBorderBrush}" />
               <Button Classes="IconButton FileToolbarAction" ToolTip.Tip="More file actions" AutomationProperties.Name="Open more file actions">
                 <icons:SymbolIcon Symbol="MoreVertical" FontSize="14" />
                 <Button.Flyout>
-                  <MenuFlyout Placement="Bottom">
-                    <MenuItem Click="OnOpenExternallyClick" IsEnabled="{Binding CanOpenExternally}" Header="Open selected file">
-                      <MenuItem.Icon><icons:SymbolIcon Symbol="OpenFolder" FontSize="14" /></MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem Click="OnTransferClick" IsEnabled="{Binding CanTransfer}" Header="Transfer selected item">
-                      <MenuItem.Icon><icons:SymbolIcon Symbol="ArrowSwap" FontSize="14" /></MenuItem.Icon>
-                    </MenuItem>
-                    <MenuItem Click="OnRenameClick" IsEnabled="{Binding CanRename}" Header="Rename selected item">
-                      <MenuItem.Icon><icons:SymbolIcon Symbol="Edit" FontSize="14" /></MenuItem.Icon>
-                    </MenuItem>
+                  <MenuFlyout Placement="Bottom" ItemsSource="{Binding MenuActions}">
+                    <MenuFlyout.ItemContainerTheme>
+                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                        <Setter Property="Command" Value="{Binding Command}" />
+                        <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                      </ControlTheme>
+                    </MenuFlyout.ItemContainerTheme>
+                    <MenuFlyout.ItemTemplate>
+                      <DataTemplate DataType="vm:FileActionViewModel">
+                        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                          <icons:SymbolIcon VerticalAlignment="Center" Symbol="{Binding Symbol}" FontSize="14" />
+                          <TextBlock VerticalAlignment="Center" Text="{Binding Label}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </MenuFlyout.ItemTemplate>
                   </MenuFlyout>
                 </Button.Flyout>
               </Button>
             </StackPanel>
           </Border>
-          <TextBox Grid.Column="3" Text="{Binding Filter}" PlaceholderText="Search files" AutomationProperties.Name="Filter file items" />
+          <TextBox x:Name="FileFilterBox" Grid.Column="3" Width="180" Text="{Binding Filter}" PlaceholderText="Search files" AutomationProperties.Name="Filter file items" />
         </Grid>
       </Border>
 

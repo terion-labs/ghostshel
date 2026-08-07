@@ -104,6 +104,119 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal(4, panel.FileListColumnWidth.Value);
     }
 
+    /// <summary>
+    /// The toolbar and the overflow menu are the same list of actions, dressed
+    /// twice. They cannot disagree about whether an action is possible, because
+    /// neither of them decides.
+    /// </summary>
+    [Fact]
+    public async Task TheToolbarShowsSomeOfTheActionsAndTheMenuShowsAllOfThem()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        await panel.StartInitialization();
+
+        Assert.NotEmpty(panel.ToolbarActions);
+        Assert.NotEmpty(panel.MenuActions);
+        Assert.Subset(
+            panel.MenuActions.Select(action => action.Action).ToHashSet(),
+            panel.ToolbarActions.Select(action => action.Action).ToHashSet());
+
+        foreach (var button in panel.ToolbarActions)
+        {
+            var entry = panel.MenuActions.Single(action => action.Action == button.Action);
+            Assert.Equal(entry.IsEnabled, button.IsEnabled);
+            Assert.Equal(panel.IsActionEnabled(button.Action), button.IsEnabled);
+        }
+    }
+
+    /// <summary>
+    /// A rule is drawn where the kind of action changes and never above the
+    /// first one — which is only knowable after the actions this connection
+    /// cannot perform have been dropped.
+    /// </summary>
+    [Fact]
+    public async Task AMenuNeverOpensWithARuleAcrossTheTop()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        await panel.StartInitialization();
+
+        Assert.False(panel.MenuActions[0].StartsGroup);
+        for (var index = 1; index < panel.MenuActions.Count; index++)
+        {
+            Assert.Equal(
+                panel.MenuActions[index - 1].Group != panel.MenuActions[index].Group,
+                panel.MenuActions[index].StartsGroup);
+        }
+    }
+
+    /// <summary>
+    /// An action nobody named. The rules and the words are deliberately apart —
+    /// one is about what a connection can do, the other about what to call it —
+    /// and the seam between them is where an action added on one side and not
+    /// the other would simply throw the first time a menu opened.
+    /// </summary>
+    [Fact]
+    public void EveryActionIsNamedAndGivenASymbol()
+    {
+        foreach (var action in Enum.GetValues<FilePanelAction>())
+        {
+            Assert.False(string.IsNullOrWhiteSpace(
+                FilePanelActionPresentation.Label(action)));
+            Assert.False(string.IsNullOrWhiteSpace(
+                FilePanelActionPresentation.Description(action)));
+            Assert.NotEqual(
+                default,
+                FilePanelActionPresentation.Glyph(action));
+        }
+    }
+
+    /// <summary>
+    /// The pill's short reading. A count beside a folder path is unambiguous
+    /// without the word "item" attached to it, and the word is what goes when
+    /// the panel is too narrow to hold both a path and a count.
+    /// </summary>
+    [Fact]
+    public async Task TheItemCountHasAShortFormForWhenThereIsNoRoomForWords()
+    {
+        var client = new StubFilePanelClient();
+        client.Entries.Add(Entry(client, "alpha"));
+        client.Entries.Add(Entry(client, "beta"));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            deferInitialization: true);
+
+        await panel.StartInitialization();
+
+        Assert.Equal("2 item(s)", panel.Status);
+        Assert.Equal("2", panel.ShortStatus);
+
+        panel.Filter = "alp";
+
+        Assert.Equal("1 of 2 item(s)", panel.Status);
+        Assert.Equal("1/2", panel.ShortStatus);
+    }
+
+    private static FilePanelEntry Entry(StubFilePanelClient client, string name) =>
+        new(
+            client.Root.Child(new FilePanelPathSegment(name)),
+            name,
+            FilePanelEntryKind.File,
+            10,
+            DateTimeOffset.UnixEpoch,
+            IsHidden: false);
+
     [Fact]
     public async Task DeferredInitializationDoesNotListUntilExplicitlyStarted()
     {
