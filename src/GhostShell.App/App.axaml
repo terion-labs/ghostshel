@@ -180,6 +180,17 @@
            switch knob's travel inset and the colour well's frame. Deliberately
            not density-scaled — the host draws these controls at fixed size. -->
       <Thickness x:Key="ShellHairlineInset">2</Thickness>
+      <!-- The border the window's own edge stands in for.
+
+           Every surface in the workspace draws a one-pixel border, so the gap
+           between two panels is that gap plus two borders while the gap to the
+           window is the same gap plus one. Measured the way it is seen — from
+           one panel's content to the next thing that is not background — the
+           edge gap came up a pixel short everywhere it touched the frame. This
+           is that pixel, and it is a border width rather than a spacing step
+           because that is what it replaces. Not the top: the chrome band above
+           carries that side's clearance in its own height. -->
+      <Thickness x:Key="ShellWindowEdgeInset">1,0,1,1</Thickness>
       <Thickness x:Key="ShellPreviewTileInset">3</Thickness>
       <!-- Placement zones are pointer targets before they are icons: the plate has
            to be big enough to land on mid-drag, so the size is set here rather

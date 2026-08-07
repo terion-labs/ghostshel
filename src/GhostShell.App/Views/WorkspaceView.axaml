@@ -222,7 +222,10 @@
             ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
     </Border>
 
-    <DockPanel Grid.Row="1" LastChildFill="True">
+    <DockPanel
+        Grid.Row="1"
+        Margin="{DynamicResource ShellWindowEdgeInset}"
+        LastChildFill="True">
       <!-- A tile opens sideways out of the rail when it offers to close its
            workspace, so this one sidebar does not clip its content and draws
            above the canvas it opens over. Widening the rail instead would move
