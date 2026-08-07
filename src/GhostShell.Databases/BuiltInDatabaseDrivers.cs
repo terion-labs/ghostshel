@@ -156,7 +156,7 @@ internal sealed class PostgresFamilyDriver(
         connectionStringHint);
 
     public DbConnection CreateConnection(string connectionString) =>
-        new NpgsqlConnection(connectionString);
+        new NpgsqlConnection(PostgresConnectionStrings.Normalize(connectionString));
 
     public string ListTablesSql => """
         SELECT table_name,
@@ -174,14 +174,15 @@ internal sealed class PostgresFamilyDriver(
 
     public DatabaseEndpoint? GetEndpoint(string connectionString)
     {
-        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        var builder = new NpgsqlConnectionStringBuilder(
+            PostgresConnectionStrings.Normalize(connectionString));
         return string.IsNullOrWhiteSpace(builder.Host)
             ? null
             : new DatabaseEndpoint(builder.Host, builder.Port);
     }
 
     public string RewriteEndpoint(string connectionString, string host, int port) =>
-        new NpgsqlConnectionStringBuilder(connectionString)
+        new NpgsqlConnectionStringBuilder(PostgresConnectionStrings.Normalize(connectionString))
         {
             Host = host,
             Port = port,
@@ -194,8 +195,10 @@ internal sealed class PostgresFamilyDriver(
         ["Username", "User ID", "UserName", "User Id"],
         ["Password"]);
 
+    // A URL pasted into the connection box fills the host, port, database and
+    // credential fields too, rather than sitting there as one opaque line.
     public DatabaseConnectionDetails ParseDetails(string connectionString) =>
-        DetailKeys.Parse(connectionString);
+        DetailKeys.Parse(PostgresConnectionStrings.Normalize(connectionString));
 
     public string BuildConnectionString(DatabaseConnectionDetails details) =>
         DetailKeys.Build(details);

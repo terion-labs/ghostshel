@@ -23,4 +23,8 @@
     <ProjectReference Include="..\GhostShell.Core\GhostShell.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="GhostShell.Databases.Tests" />
+  </ItemGroup>
+
 </Project>
