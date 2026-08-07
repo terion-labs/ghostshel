@@ -437,6 +437,15 @@
         </Grid>
       </controls:SurfaceCard>
     </Canvas>
+
+    <!-- Last inside the app layer: the operating system's own views, parented
+         once and for as long as the panel that owns each one. They are here
+         rather than inside the panels because a native control does not survive
+         its host leaving the visual tree, and rearranging panels rebuilds the
+         views that draw them — which is how adding a panel beside a browser used
+         to blank the page it was showing. A panel now only says where its
+         surface goes. -->
+    <controls:NativeSurfaceLayer x:Name="NativeSurfaces" />
     </Panel>
 
     <!-- Last child of the root grid on purpose: when the shell is locked,

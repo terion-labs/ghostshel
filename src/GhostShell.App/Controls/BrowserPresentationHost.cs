@@ -13,14 +13,6 @@ namespace GhostShell.App.Controls;
 
 public sealed class BrowserPresentationHost : ContentControl
 {
-    private sealed class PresentationOwner
-    {
-        internal WeakReference<BrowserPresentationHost>? Host { get; set; }
-    }
-
-    private static readonly ConditionalWeakTable<BrowserRendererView, PresentationOwner>
-        PresentationOwners = new();
-
     private static readonly IBrush WaitingBrush = Brush.Parse("#8B8B91");
     private static readonly IBrush ReadyBrush = Brush.Parse("#3FB950");
     private static readonly IBrush LoadingBrush = Brush.Parse("#D79B57");
@@ -103,7 +95,7 @@ public sealed class BrowserPresentationHost : ContentControl
     private SessionId? _attachedSessionId;
     private AttachmentId? _attachmentId;
     private IBrowserRenderer? _subscribedRenderer;
-    private BrowserRendererView? _presentedRendererView;
+    private NativeSurfaceLayer? _layer;
     private long _initializationGeneration;
     private bool _isAttachedToVisualTree;
     private string _addressText = string.Empty;
@@ -209,10 +201,22 @@ public sealed class BrowserPresentationHost : ContentControl
         private set => SetAndRaise(CanGoForwardProperty, ref _canGoForward, value);
     }
 
+    /// <summary>
+    /// Whether the panel is showing its own message instead of a page. The
+    /// native surface is hidden while it is: a native view draws over every
+    /// Avalonia pixel, so leaving it up would put an empty webview on top of the
+    /// explanation of why there is nothing to show.
+    /// </summary>
     public bool ShowFallback
     {
         get => _showFallback;
-        private set => SetAndRaise(ShowFallbackProperty, ref _showFallback, value);
+        private set
+        {
+            if (SetAndRaise(ShowFallbackProperty, ref _showFallback, value))
+            {
+                PresentSurface();
+            }
+        }
     }
 
     internal bool RequestInputFocus() =>
@@ -278,15 +282,69 @@ public sealed class BrowserPresentationHost : ContentControl
     {
         base.OnAttachedToVisualTree(e);
         _isAttachedToVisualTree = true;
+        LayoutUpdated += OnViewportLayoutUpdated;
         RestartSession();
     }
 
+    /// <summary>
+    /// The panel is off screen — another tab is in front, or this view is being
+    /// rebuilt because panels moved. Neither is a reason to stop anything: the
+    /// surface is hidden and the attachment is left alone, because it belongs to
+    /// the panel and the panel has not gone anywhere.
+    /// </summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _isAttachedToVisualTree = false;
-        ReleaseRendererPresentation();
-        SetWaitingState("Browser renderer detached.");
+        LayoutUpdated -= OnViewportLayoutUpdated;
+        ConcealSurface();
         base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnViewportLayoutUpdated(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        PresentSurface();
+    }
+
+    /// <summary>
+    /// Puts the native view over this viewport. This control draws nothing
+    /// itself; it is the rectangle a surface is shown in, and moving it is the
+    /// whole of what a layout change does to a browser.
+    /// </summary>
+    private void PresentSurface()
+    {
+        if (RendererView is not { } rendererView || !_isAttachedToVisualTree)
+        {
+            return;
+        }
+
+        var layer = _layer ??= NativeSurfaceLayer.For(this);
+        if (layer is null)
+        {
+            return;
+        }
+
+        rendererView.Layer = layer;
+        if (!IsEffectivelyVisible
+            || ShowFallback
+            || this.TranslatePoint(default, layer) is not { } origin)
+        {
+            layer.Conceal(rendererView.View);
+            return;
+        }
+
+        layer.Present(
+            rendererView.View,
+            new Rect(origin, Bounds.Size));
+    }
+
+    private void ConcealSurface()
+    {
+        if (RendererView is { } rendererView && _layer is { } layer)
+        {
+            layer.Conceal(rendererView.View);
+        }
     }
 
     protected override void OnGotFocus(FocusChangedEventArgs e)
@@ -306,10 +364,11 @@ public sealed class BrowserPresentationHost : ContentControl
             || change.Property == ClientIdProperty
             || change.Property == RendererViewProperty)
         {
-            if (change.Property == RendererViewProperty)
+            if (change.Property == RendererViewProperty
+                && change.OldValue is BrowserRendererView replaced)
             {
-                ReleaseRendererPresentation(
-                    change.OldValue as BrowserRendererView);
+                _layer?.Release(replaced.View);
+                replaced.Layer = null;
             }
 
             if (_isAttachedToVisualTree)
@@ -325,13 +384,24 @@ public sealed class BrowserPresentationHost : ContentControl
         if (SessionClient is null
             || SessionRequest is null
             || ClientId is null
-            || RendererView is null)
+            || RendererView is not { } rendererView)
         {
             SetWaitingState("Waiting for the native browser adapter.");
             return;
         }
 
-        ClaimRendererPresentation(RendererView);
+        PresentSurface();
+
+        // The panel may already be attached — this view is simply the newest one
+        // to draw it. Adopting that attachment is what makes a layout change cost
+        // nothing: no detach, no re-attach, no navigation, and the document that
+        // was on screen a moment ago is still the one on screen now.
+        if (rendererView.Attachment is { } existing
+            && existing.Matches(SessionClient, ClientId, SessionRequest.SessionId))
+        {
+            AdoptAttachment(rendererView, existing);
+            return;
+        }
 
         SetWaitingState("Starting the native browser…", "Starting");
         var generation = ++_initializationGeneration;
@@ -339,107 +409,25 @@ public sealed class BrowserPresentationHost : ContentControl
         _ = InitializeSessionAsync(generation, _attachmentLifetime.Token);
     }
 
+    private void AdoptAttachment(
+        BrowserRendererView rendererView,
+        BrowserRendererAttachment attachment)
+    {
+        _initializationGeneration++;
+        _attachedClient = attachment.Client;
+        _attachedClientId = attachment.ClientId;
+        _attachedSessionId = attachment.SessionId;
+        _attachmentId = attachment.AttachmentId;
+        IsLive = true;
+        ShowFallback = false;
+        SubscribeRenderer(rendererView.Renderer);
+    }
+
     /// <summary>
-    /// Hands the single native browser control from an outgoing Dock presenter
-    /// to the incoming one. Dock deliberately overlaps those presenters while
-    /// floating or restoring a document; Avalonia controls, however, may have
-    /// only one visual parent.
+    /// Lets go of what this view was watching. It does not detach: the
+    /// attachment belongs to the panel, and is ended by the panel — see
+    /// <see cref="BrowserRendererView.Dispose"/>.
     /// </summary>
-    internal void ClaimRendererPresentation(BrowserRendererView rendererView)
-    {
-        ArgumentNullException.ThrowIfNull(rendererView);
-        var ownership = PresentationOwners.GetValue(
-            rendererView,
-            static _ => new PresentationOwner());
-        BrowserPresentationHost? previousHost = null;
-        lock (ownership)
-        {
-            if (ownership.Host?.TryGetTarget(out var currentHost) == true)
-            {
-                if (ReferenceEquals(currentHost, this))
-                {
-                    _presentedRendererView = rendererView;
-                    MountRendererView(rendererView);
-                    return;
-                }
-
-                previousHost = currentHost;
-            }
-
-            ownership.Host = new WeakReference<BrowserPresentationHost>(this);
-        }
-
-        previousHost?.RelinquishRendererPresentation(rendererView);
-        _presentedRendererView = rendererView;
-        MountRendererView(rendererView);
-    }
-
-    internal void ReleaseRendererPresentation() =>
-        ReleaseRendererPresentation(_presentedRendererView);
-
-    private void ReleaseRendererPresentation(BrowserRendererView? rendererView)
-    {
-        if (rendererView is null
-            || !ReferenceEquals(_presentedRendererView, rendererView))
-        {
-            return;
-        }
-
-        StopSession();
-        UnmountRendererView(rendererView);
-        _presentedRendererView = null;
-
-        var ownership = PresentationOwners.GetValue(
-            rendererView,
-            static _ => new PresentationOwner());
-        lock (ownership)
-        {
-            if (ownership.Host?.TryGetTarget(out var currentHost) == true
-                && ReferenceEquals(currentHost, this))
-            {
-                ownership.Host = null;
-            }
-        }
-    }
-
-    private void RelinquishRendererPresentation(BrowserRendererView rendererView)
-    {
-        if (!ReferenceEquals(_presentedRendererView, rendererView))
-        {
-            return;
-        }
-
-        StopSession();
-        UnmountRendererView(rendererView);
-        _presentedRendererView = null;
-        SetWaitingState("Browser renderer moved to another window.");
-    }
-
-    private void MountRendererView(BrowserRendererView rendererView)
-    {
-        if (ReferenceEquals(Content, rendererView.View))
-        {
-            return;
-        }
-
-        Content = rendererView.View;
-        Presenter?.UpdateChild();
-    }
-
-    private void UnmountRendererView(BrowserRendererView rendererView)
-    {
-        if (!ReferenceEquals(Content, rendererView.View))
-        {
-            return;
-        }
-
-        Content = null;
-        // ContentPresenter normally applies this during the next layout pass.
-        // A Dock move can measure the replacement presenter first, so detach the
-        // native control synchronously before that presenter claims it.
-        Presenter?.UpdateChild();
-    }
-
     private void StopSession()
     {
         _initializationGeneration++;
@@ -447,11 +435,6 @@ public sealed class BrowserPresentationHost : ContentControl
         _attachmentLifetime?.Dispose();
         _attachmentLifetime = null;
         UnsubscribeRenderer();
-
-        var client = _attachedClient;
-        var clientId = _attachedClientId;
-        var sessionId = _attachedSessionId;
-        var attachmentId = _attachmentId;
         _attachedClient = null;
         _attachedClientId = null;
         _attachedSessionId = null;
@@ -460,22 +443,6 @@ public sealed class BrowserPresentationHost : ContentControl
         IsLoading = false;
         CanGoBack = false;
         CanGoForward = false;
-        if (client is null
-            || clientId is not { } detachedClientId
-            || sessionId is not { } detachedSessionId
-            || attachmentId is not { } detachedAttachmentId)
-        {
-            return;
-        }
-
-        var detach = client.DetachAsync(
-            new DetachSessionRequest(detachedAttachmentId, detachedSessionId),
-            OperationContext.ForHuman(detachedClientId),
-            CancellationToken.None);
-        if (!detach.IsCompletedSuccessfully)
-        {
-            _ = ObserveDetachAsync(detach);
-        }
     }
 
     private async Task InitializeSessionAsync(
@@ -542,6 +509,15 @@ public sealed class BrowserPresentationHost : ContentControl
             _attachedClientId = clientId;
             _attachedSessionId = request.SessionId;
             _attachmentId = attachment.Attachment.Id;
+            if (RendererView is { } owner)
+            {
+                owner.Attachment = new BrowserRendererAttachment(
+                    client,
+                    clientId,
+                    request.SessionId,
+                    attachment.Attachment.Id);
+            }
+
             pendingAttachmentId = null;
             IsLive = true;
             ShowFallback = false;
@@ -804,19 +780,6 @@ public sealed class BrowserPresentationHost : ContentControl
             $"{failure.Error.StableCode}: {failure.Error.Message}"),
         _ => throw new ArgumentOutOfRangeException(nameof(result)),
     };
-
-    private static async Task ObserveDetachAsync(
-        ValueTask<HostResult<Unit>> result)
-    {
-        try
-        {
-            _ = await result;
-        }
-        catch (Exception exception)
-        {
-            Trace.TraceError("Unable to detach the browser renderer: {0}", exception);
-        }
-    }
 
     private static async ValueTask DetachStaleAttachmentAsync(
         ISessionHostClient client,

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Avalonia;
 using Avalonia.Controls;
 using GhostShell.App;
 using GhostShell.App.Controls;
@@ -18,29 +19,62 @@ public sealed class BrowserRuntimePanelViewModelTests
         Assert.Empty(browser.AddressText);
     }
 
+    /// <summary>
+    /// Hiding a native surface must never give it up.
+    ///
+    /// A native control does not survive leaving the visual tree — the framework
+    /// destroys it and builds a fresh one on the way back — so a surface that was
+    /// removed whenever its panel went off screen lost the page it was showing.
+    /// That is what adding a panel beside a browser used to do: rearranging
+    /// panels rebuilds the views that draw them, and the document went with the
+    /// view. Concealing keeps the surface parented; only the panel's own end
+    /// releases it.
+    /// </summary>
     [Fact]
-    public void Native_browser_view_moves_between_overlapping_dock_presenters()
+    public void Concealing_a_native_surface_keeps_it_parented_and_only_release_gives_it_up()
     {
+        var layer = new NativeSurfaceLayer();
+        var surface = new Border();
+
+        layer.Present(surface, new Rect(10, 20, 300, 200));
+        Assert.Contains(surface, layer.Children);
+        Assert.True(surface.IsVisible);
+        Assert.Equal(10, Canvas.GetLeft(surface));
+        Assert.Equal(20, Canvas.GetTop(surface));
+        Assert.Equal(300, surface.Width);
+        Assert.Equal(200, surface.Height);
+
+        layer.Conceal(surface);
+        Assert.Contains(surface, layer.Children);
+        Assert.False(surface.IsVisible);
+
+        // And showing it again is a move, not a rebuild.
+        layer.Present(surface, new Rect(0, 0, 120, 90));
+        Assert.Single(layer.Children);
+        Assert.True(surface.IsVisible);
+
+        layer.Release(surface);
+        Assert.DoesNotContain(surface, layer.Children);
+    }
+
+    /// <summary>
+    /// The panel owns the surface and the attachment, so ending the panel is what
+    /// ends both — not whichever control happened to be drawing it.
+    /// </summary>
+    [Fact]
+    public void Disposing_the_renderer_view_releases_its_surface_from_the_layer()
+    {
+        var layer = new NativeSurfaceLayer();
         var view = new Border();
-        var rendererView = new BrowserRendererView(
-            view,
-            new RecordingBrowserRenderer());
-        var docked = new BrowserPresentationHost();
-        var floating = new BrowserPresentationHost();
+        var rendererView = new BrowserRendererView(view, new RecordingBrowserRenderer());
 
-        docked.ClaimRendererPresentation(rendererView);
-        floating.ClaimRendererPresentation(rendererView);
+        layer.Present(view, new Rect(0, 0, 100, 100));
+        rendererView.Layer = layer;
 
-        Assert.Null(docked.Content);
-        Assert.Same(view, floating.Content);
+        rendererView.Dispose();
 
-        // A late detach from the outgoing Dock presenter must not take the
-        // native view back from (or release it out from under) the new owner.
-        docked.ReleaseRendererPresentation();
-        Assert.Same(view, floating.Content);
-
-        floating.ReleaseRendererPresentation();
-        Assert.Null(floating.Content);
+        Assert.DoesNotContain(view, layer.Children);
+        Assert.Null(rendererView.Attachment);
     }
 
     [Fact]
