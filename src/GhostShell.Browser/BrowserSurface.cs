@@ -2406,9 +2406,21 @@ public sealed class BrowserSurface :
                 args.Cancel = true;
                 return;
             }
+
+            // Still the navigation the shell asked for, so a start inside it is
+            // that navigation redirecting and the address follows it.
+            PublishLoading(args.Address);
+            return;
         }
 
-        PublishLoading(args.Address);
+        // Nothing was asked for, so this is the page navigating something of its
+        // own — and these events fire for every frame in it with no way to tell
+        // which. Taking the address from one meant a Google tab announced itself
+        // as an ogs.google.com widget, and stayed that way, because the widget
+        // was the last frame to start and nothing completed after it. The main
+        // frame's own address arrives on completion; this is a load state and
+        // nothing more.
+        PublishLoading(State.Address);
     }
 
     private void OnNavigationCompleted(

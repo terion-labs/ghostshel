@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 
 namespace GhostShell.App.Controls;
@@ -144,13 +145,18 @@ internal sealed class NativeSurfaceLayer : Canvas
             return declared;
         }
 
-        if (window.Content is not Control content)
+        if (OverlayLayer.GetOverlayLayer(window) is not { } overlay)
         {
             return null;
         }
 
-        var layer = new NativeSurfaceLayer();
-        window.Content = new Panel { Children = { content, layer } };
+        // Not by replacing the window's content. A floated panel's window keeps a
+        // dockable there — a view model, drawn through a template — so there was
+        // nothing to wrap, no layer was ever made, and a floated browser came up
+        // showing nothing at all. Every top level has an overlay for things drawn
+        // over its content, which is what a native surface is.
+        var layer = new NativeSurfaceLayer { ClipToBounds = false };
+        overlay.Children.Add(layer);
         return layer;
     }
 

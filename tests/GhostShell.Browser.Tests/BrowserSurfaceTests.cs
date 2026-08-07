@@ -2112,6 +2112,30 @@ public sealed class BrowserSurfaceTests
         Assert.Equal(BrowserSessionState.Initial(BrowserAddress.Blank), surface.State);
     }
 
+    /// <summary>
+    /// A loaded page keeps navigating things inside itself, and those starts are
+    /// indistinguishable from the page's own: the platform's events name a
+    /// request and never say which frame asked. So a Google tab announced itself
+    /// as an ogs.google.com widget and stayed that way, because that widget was
+    /// the last frame to start and nothing completed after it — and the shell
+    /// then saved that address and reopened it on the next run.
+    /// </summary>
+    [Fact]
+    public async Task AFrameNavigatingInsideALoadedPageDoesNotRenameIt()
+    {
+        var nativeView = new RecordingNativeBrowserView();
+        var surface = Surface(nativeView);
+        var page = Address("https://www.google.com/");
+        _ = await surface.NavigateAsync(page, CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(page, isSuccess: true);
+        Assert.Equal(page, surface.State.Address);
+
+        Assert.False(nativeView.RaiseNavigationStarted(
+            Address("https://ogs.google.com/widget/app/so?eom=1")));
+
+        Assert.Equal(page, surface.State.Address);
+    }
+
     [Fact]
     public async Task GovernedNavigationWaitsThroughSameOriginRedirects()
     {

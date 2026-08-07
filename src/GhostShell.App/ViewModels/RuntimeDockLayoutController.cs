@@ -860,14 +860,41 @@ internal sealed class RuntimeDockFactory : Factory
             return;
         }
 
-        RememberHomes(home);
+        RememberHomes(home, []);
     }
 
-    private void RememberHomes(IDock dock)
+    /// <summary>
+    /// Deepest wins.
+    ///
+    /// A panel is a sibling at every level above it, and each of those levels can
+    /// name a neighbour for it — but only the innermost one describes where it
+    /// actually sits. A browser above a statistics panel, in a column beside a
+    /// terminal, is "above statistics"; the outer level would call the same panel
+    /// "left of the terminal", and putting it back there makes it a column of its
+    /// own. Which is exactly what happened until the recursion ran first and the
+    /// levels above it stopped overwriting what it found.
+    /// </summary>
+    private void RememberHomes(IDock dock, HashSet<string> named)
     {
         var siblings = (dock.VisibleDockables ?? [])
             .Where(child => child is not IProportionalDockSplitter)
             .ToArray();
+        foreach (var child in siblings)
+        {
+            if (child is IDock nested)
+            {
+                RememberHomes(nested, named);
+            }
+        }
+
+        // A dock holding one thing has no neighbours to speak of — every leaf is
+        // one of these — so it names nothing and leaves the question to the level
+        // above, which does have somewhere else to point at.
+        if (siblings.Length < 2)
+        {
+            return;
+        }
+
         var vertical = dock is IProportionalDock
         {
             Orientation: Orientation.Vertical,
@@ -875,12 +902,8 @@ internal sealed class RuntimeDockFactory : Factory
 
         for (var index = 0; index < siblings.Length; index++)
         {
-            if (siblings[index] is IDock nested)
-            {
-                RememberHomes(nested);
-            }
-
-            if (FirstDocument(siblings[index]) is not { Id: { Length: > 0 } id } )
+            if (FirstDocument(siblings[index]) is not { Id: { Length: > 0 } id }
+                || !named.Add(id))
             {
                 continue;
             }
@@ -889,12 +912,9 @@ internal sealed class RuntimeDockFactory : Factory
             // side; the one after it where this is the first.
             var (neighbour, operation) = index > 0
                 ? (siblings[index - 1], vertical ? DockOperation.Bottom : DockOperation.Right)
-                : index + 1 < siblings.Length
-                    ? (siblings[index + 1], vertical ? DockOperation.Top : DockOperation.Left)
-                    : (null, DockOperation.Right);
-            if (neighbour is null || FirstDocument(neighbour) is not { Id: { Length: > 0 } } anchor)
+                : (siblings[index + 1], vertical ? DockOperation.Top : DockOperation.Left);
+            if (FirstDocument(neighbour) is not { Id: { Length: > 0 } } anchor)
             {
-                _homes.Remove(id);
                 continue;
             }
 

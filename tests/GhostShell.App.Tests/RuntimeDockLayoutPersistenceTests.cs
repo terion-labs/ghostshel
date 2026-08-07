@@ -439,6 +439,53 @@ public sealed class RuntimeDockLayoutPersistenceTests
     }
 
     /// <summary>
+    /// A panel is a sibling at every level above it, and each level can name a
+    /// different neighbour for it. Only the innermost says where it actually
+    /// sits: a browser above a statistics panel, in a column beside a terminal,
+    /// is "above statistics" — the level above calls the same panel "left of the
+    /// terminal", and returning it there makes it a column of its own, which is
+    /// what it did.
+    /// </summary>
+    [Fact]
+    public void A_returning_panel_takes_its_place_in_the_column_not_beside_it()
+    {
+        var tab = NewTab("dock-back-nested");
+        var terminal = Panel("dock-back-nested-terminal");
+        tab.AddPanel(terminal);
+        var browser = tab.SplitWithPlaceholder(
+            terminal.Id,
+            PanelSplitOrientation.LeftRight);
+        Assert.NotNull(browser);
+        var statistics = tab.SplitWithPlaceholder(
+            browser!.Id,
+            PanelSplitOrientation.TopBottom);
+        Assert.NotNull(statistics);
+
+        var column = Enumerate(tab.DockLayout).OfType<ProportionalDock>()
+            .Single(dock => dock.Orientation == Orientation.Vertical);
+        var before = ColumnOrder(column);
+        Assert.Equal([browser.Id.Value, statistics!.Id.Value], before);
+
+        var document = Enumerate(tab.DockLayout).OfType<IDocument>()
+            .Single(candidate => candidate.Id == browser.Id.Value);
+        var factory = (RuntimeDockFactory)tab.DockFactory;
+        Float(tab, factory, document);
+
+        Assert.True(factory.DockBack(document));
+
+        var restored = Enumerate(tab.DockLayout).OfType<ProportionalDock>()
+            .Single(dock => dock.Orientation == Orientation.Vertical);
+        Assert.Equal(before, ColumnOrder(restored));
+    }
+
+    private static string[] ColumnOrder(IDock column) =>
+        (column.VisibleDockables ?? [])
+            .Select(FirstDocumentIn)
+            .Where(id => id is not null)
+            .Select(id => id!)
+            .ToArray();
+
+    /// <summary>
     /// The panel it named has been closed while it was away. It still comes back.
     /// </summary>
     [Fact]
