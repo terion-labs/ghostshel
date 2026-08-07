@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Dock.Controls.ProportionalStackPanel;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
@@ -56,6 +57,37 @@ public sealed partial class App : Avalonia.Application
         15, 16, 17, 18, 19, 20, 21,
         22, 23, 24, 25, 26, 27, 28,
     ];
+
+    static App()
+    {
+        // A dock splitter is laid out by its Width or Height, which the library
+        // copies from Thickness when the splitter joins its panel and never
+        // again. The panel, meanwhile, divides the row by the current Thickness
+        // every time it measures. Change the thickness after that first
+        // layout — which is exactly what the density setting does, since the
+        // gap between panels comes from the spacing scale — and the two
+        // disagree: the row is divided for a six-pixel gap and drawn with an
+        // eight-pixel one, so the last panel overhangs the dock by the
+        // difference and the dock's clip cuts its border off. At a compact
+        // density that border is the focused panel's accent outline, gone down
+        // the whole right edge of the window.
+        //
+        // Whichever axis the splitter was given, it keeps; setting the other
+        // would size it across the row instead of along it.
+        ProportionalStackPanelSplitter.ThicknessProperty.Changed
+            .AddClassHandler<ProportionalStackPanelSplitter>((splitter, _) =>
+            {
+                if (!double.IsNaN(splitter.Width))
+                {
+                    splitter.Width = splitter.Thickness;
+                }
+
+                if (!double.IsNaN(splitter.Height))
+                {
+                    splitter.Height = splitter.Thickness;
+                }
+            });
+    }
 
     public App()
     {
