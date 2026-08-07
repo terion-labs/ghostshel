@@ -886,6 +886,24 @@ internal sealed class QaApplication : Avalonia.Application
         ("file-preview-csv", () => CreateFilePanelProbe("deployments.csv"), null),
         ("file-preview-archive", () => CreateFilePanelProbe("release.zip"), null),
         ("file-preview-json", () => CreateFilePanelProbe("settings.json"), null),
+        // A closed preview, and then the view built again over the same panel:
+        // floating it, adding one beside it, any change to the arrangement.
+        // The listing has to have taken the whole width back. A gap on the
+        // right is the column the closing zeroed and the rebuilt view read
+        // from the markup again.
+        ("file-preview-closed-relayout", () =>
+        {
+            var window = CreateFilePanelProbe("notes.md");
+            var view = (GhostShell.App.Views.RuntimePanels.FileRuntimePanelView)
+                window.Content!;
+            var panel = (FileRuntimePanelViewModel)view.DataContext!;
+            panel.IsPreviewVisible = false;
+            window.Content = new GhostShell.App.Views.RuntimePanels.FileRuntimePanelView
+            {
+                DataContext = panel,
+            };
+            return window;
+        }, null),
         // Responsiveness, measured the way a person feels it: a beat posted at
         // input priority over and over, and the longest gap between two beats
         // while a preview lands. That gap is how long the panel could not have

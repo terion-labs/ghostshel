@@ -48,6 +48,8 @@ public sealed class FileEntryViewModel
 public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 {
     private const int DefaultPageSize = 250;
+    private const double PreviewMinimumWidth = 220;
+    private const double PreviewSplitterThickness = 5;
     private const int DefaultPreviewBytes = 256 * 1024;
     private const int MaximumFormattedBinaryBytes = 16 * 1024;
     private readonly IFilePanelClient _client;
@@ -95,6 +97,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private GridLength _fileNameColumnWidth = new(1, GridUnitType.Star);
     private GridLength _fileSizeColumnWidth = new(90);
     private GridLength _fileModifiedColumnWidth = new(140);
+    private GridLength _fileListColumnWidth = new(3, GridUnitType.Star);
+    private GridLength _previewColumnWidth = new(2, GridUnitType.Star);
+    private GridLength _hiddenPreviewColumnWidth = new(2, GridUnitType.Star);
     private bool _initialSelectionPending;
     private bool _initialSelectionRetryRequested;
     private bool _hasLoadedListing;
@@ -481,6 +486,35 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         set => SetProperty(ref _fileModifiedColumnWidth, value);
     }
 
+    /// <summary>
+    /// How the listing and its preview divide the panel, and how wide the grip
+    /// between them is. These live here rather than in the markup because a
+    /// view is rebuilt whenever the layout changes and the panel is not: a
+    /// division kept in the view comes back as whatever the markup said, while
+    /// the panel goes on describing the arrangement the person chose.
+    /// </summary>
+    public GridLength FileListColumnWidth
+    {
+        get => _fileListColumnWidth;
+        set => SetProperty(ref _fileListColumnWidth, value);
+    }
+
+    public GridLength PreviewColumnWidth
+    {
+        get => _previewColumnWidth;
+        set => SetProperty(ref _previewColumnWidth, value);
+    }
+
+    public GridLength PreviewSplitterWidth =>
+        IsPreviewVisible ? new GridLength(PreviewSplitterThickness) : new GridLength(0);
+
+    /// <summary>
+    /// A minimum is a promise the grid keeps whatever the width asks for, so a
+    /// hidden preview has to withdraw it as well as its width.
+    /// </summary>
+    public double PreviewColumnMinWidth =>
+        IsPreviewVisible ? PreviewMinimumWidth : 0;
+
     public void ChangeSort(FileEntrySortField field)
     {
         if (!Enum.IsDefined(field))
@@ -558,10 +592,24 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         get => _isPreviewVisible;
         set
         {
-            if (SetProperty(ref _isPreviewVisible, value))
+            if (!SetProperty(ref _isPreviewVisible, value))
             {
-                OnPropertyChanged(nameof(PreviewVisibilityStatus));
+                return;
             }
+
+            if (!value && PreviewColumnWidth.Value > 0)
+            {
+                _hiddenPreviewColumnWidth = PreviewColumnWidth;
+            }
+
+            OnPropertyChanged(nameof(PreviewVisibilityStatus));
+            // The minimum first: it is a promise the grid keeps whatever width
+            // it is given, so a column still carrying one cannot be closed.
+            OnPropertyChanged(nameof(PreviewColumnMinWidth));
+            OnPropertyChanged(nameof(PreviewSplitterWidth));
+            PreviewColumnWidth = value
+                ? _hiddenPreviewColumnWidth
+                : new GridLength(0);
         }
     }
 

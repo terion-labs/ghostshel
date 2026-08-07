@@ -16,12 +16,9 @@ namespace GhostShell.App.Views.RuntimePanels;
 public sealed partial class FileRuntimePanelView : UserControl
 {
     private const double FileDragThreshold = 6;
-    private const double PreviewMinimumWidth = 220;
-    private const double PreviewSplitterThickness = 5;
     private static readonly DataFormat<FilePanelTransferPayload> FileDragFormat =
         DataFormat.CreateInProcessFormat<FilePanelTransferPayload>(
             "app.ghostshell.file-entry");
-    private GridLength _visiblePreviewWidth = new(2, GridUnitType.Star);
     private ActiveFileDrag? _activeFileDrag;
     private FileRuntimePanelView? _activeFileDropView;
     private FileDragCandidate? _fileDragCandidate;
@@ -291,31 +288,10 @@ public sealed partial class FileRuntimePanelView : UserControl
     {
         _ = sender;
         _ = e;
-        if (DataContext is not FileRuntimePanelViewModel panel)
+        if (DataContext is FileRuntimePanelViewModel panel)
         {
-            return;
+            panel.IsPreviewVisible = !panel.IsPreviewVisible;
         }
-
-        var splitterColumn = FileContentGrid.ColumnDefinitions[1];
-        var previewColumn = FileContentGrid.ColumnDefinitions[2];
-        if (panel.IsPreviewVisible)
-        {
-            if (previewColumn.Width.Value > 0)
-            {
-                _visiblePreviewWidth = previewColumn.Width;
-            }
-
-            previewColumn.MinWidth = 0;
-            previewColumn.Width = new GridLength(0);
-            splitterColumn.Width = new GridLength(0);
-            panel.IsPreviewVisible = false;
-            return;
-        }
-
-        splitterColumn.Width = new GridLength(PreviewSplitterThickness);
-        previewColumn.Width = _visiblePreviewWidth;
-        previewColumn.MinWidth = PreviewMinimumWidth;
-        panel.IsPreviewVisible = true;
     }
 
     private void OnUploadClick(object? sender, RoutedEventArgs e) =>

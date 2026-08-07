@@ -50,6 +50,60 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal("Preview hidden", panel.PreviewVisibilityStatus);
     }
 
+    /// <summary>
+    /// A hidden preview has to give its width back, and the panel has to be the
+    /// one holding that width. The view used to keep it: hiding the preview
+    /// zeroed the grid column in code-behind, so a view built again — floating
+    /// the panel, adding another one, any relayout — came back with the width
+    /// from the markup and the panel still saying hidden, and the preview's
+    /// share of the panel stayed reserved for nothing.
+    /// </summary>
+    [Fact]
+    public void AHiddenPreviewGivesItsWidthBackAndTheWidthLivesOnThePanel()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        Assert.True(panel.PreviewColumnWidth.Value > 0);
+        Assert.True(panel.PreviewSplitterWidth.Value > 0);
+        Assert.True(panel.PreviewColumnMinWidth > 0);
+
+        panel.IsPreviewVisible = false;
+
+        // Zero on all three: a minimum the grid still honours holds the column
+        // open however narrow its width is asked to be.
+        Assert.Equal(0, panel.PreviewColumnWidth.Value);
+        Assert.Equal(0, panel.PreviewSplitterWidth.Value);
+        Assert.Equal(0, panel.PreviewColumnMinWidth);
+    }
+
+    /// <summary>
+    /// And showing it again returns the width the splitter was left at, not the
+    /// one the markup started with.
+    /// </summary>
+    [Fact]
+    public void ShowingThePreviewAgainRestoresTheWidthItWasDraggedTo()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        panel.FileListColumnWidth = new GridLength(4, GridUnitType.Star);
+        panel.PreviewColumnWidth = new GridLength(1, GridUnitType.Star);
+
+        panel.IsPreviewVisible = false;
+        panel.IsPreviewVisible = true;
+
+        Assert.Equal(1, panel.PreviewColumnWidth.Value);
+        Assert.True(panel.PreviewColumnWidth.IsStar);
+        Assert.Equal(4, panel.FileListColumnWidth.Value);
+    }
+
     [Fact]
     public async Task DeferredInitializationDoesNotListUntilExplicitlyStarted()
     {

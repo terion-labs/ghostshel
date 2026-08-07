@@ -157,10 +157,15 @@
       </Border>
 
       <Grid x:Name="FileContentGrid" Grid.Row="1">
+        <!-- The division belongs to the panel, not to this view: a view is
+             rebuilt on every relayout, and one holding the widths itself comes
+             back with the ones written here while the panel still remembers a
+             hidden preview — which is how a closed preview left its column
+             behind as empty space. -->
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="3*" />
-          <ColumnDefinition Width="5" />
-          <ColumnDefinition Width="2*" MinWidth="220" />
+          <ColumnDefinition Width="{Binding FileListColumnWidth, Mode=TwoWay}" />
+          <ColumnDefinition Width="{Binding PreviewSplitterWidth}" />
+          <ColumnDefinition Width="{Binding PreviewColumnWidth, Mode=TwoWay}" MinWidth="{Binding PreviewColumnMinWidth}" />
         </Grid.ColumnDefinitions>
         <Grid>
           <Grid RowDefinitions="Auto,*">
