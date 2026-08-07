@@ -2150,6 +2150,12 @@ public sealed partial class MainWindow : Window
     /// resize edges and the correct button size along with the title bar, so
     /// the measurement comes back from the system.
     /// </summary>
+    /// <summary>
+    /// What the normal density takes off the band the platform reports, so the
+    /// space under the tab strip matches the space beside the panels.
+    /// </summary>
+    internal const double NormalDensityChromeTrim = 2;
+
     private void RefreshWindowChromeMetrics()
     {
         const double horizontalSpacing = 14;
@@ -2161,9 +2167,19 @@ public sealed partial class MainWindow : Window
             is { } centre
             ? centre * 2
             : WindowDecorationMargin.Top;
-        TitleBarChromeHeight = double.IsFinite(reportedHeight) && reportedHeight > 0
+        var bandHeight = double.IsFinite(reportedHeight) && reportedHeight > 0
             ? reportedHeight
             : 44;
+        // Measured from the buttons, the band leaves two pixels more under the
+        // tab strip than the workspace leaves beside its panels. The two gaps
+        // meet at the same corner, so the difference reads as a lean rather
+        // than as two pixels. The other densities move the tabs within the band
+        // by their own amount and are left as the platform reports them.
+        var density = (Avalonia.Application.Current as App)?.WindowDensity
+            ?? InterfaceDensity.Cozy;
+        TitleBarChromeHeight = density is InterfaceDensity.Cozy
+            ? Math.Max(1, bandHeight - NormalDensityChromeTrim)
+            : bandHeight;
 
         if (OperatingSystem.IsMacOS())
         {
