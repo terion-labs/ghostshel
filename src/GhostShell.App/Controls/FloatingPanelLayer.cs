@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Presenters;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using GhostShell.App.ViewModels;
@@ -57,8 +56,15 @@ internal sealed class FloatingPanelLayer : ItemsControl
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(e);
-        if (source.FindAncestorOfType<ContentPresenter>()?.DataContext
-            is not FloatingRuntimePanelViewModel panel)
+        // The nearest presenter is one of the panel's own — its chrome is built
+        // from several — and its data context is the panel, not the float. The
+        // one being looked for is the one that knows where the panel is.
+        if (source.GetSelfAndVisualAncestors()
+                .OfType<StyledElement>()
+                .Select(element => element.DataContext)
+                .OfType<FloatingRuntimePanelViewModel>()
+                .FirstOrDefault()
+            is not { } panel)
         {
             return;
         }
