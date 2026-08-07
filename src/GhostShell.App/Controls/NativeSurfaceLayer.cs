@@ -25,6 +25,17 @@ namespace GhostShell.App.Controls;
 /// </summary>
 internal sealed class NativeSurfaceLayer : Canvas
 {
+    /// <summary>
+    /// Every layer alive, so a suspension reaches all of them. Panels can be
+    /// floated into windows of their own, and a drag that started in one window
+    /// has to be visible in every window it might land in.
+    /// </summary>
+    private static readonly List<NativeSurfaceLayer> Layers = [];
+
+    private static int _suspensions;
+
+    private readonly Dictionary<Control, bool> _wanted = [];
+
     public NativeSurfaceLayer()
     {
         // The layer covers the window but is not a surface of its own: it is
@@ -32,6 +43,76 @@ internal sealed class NativeSurfaceLayer : Canvas
         // interface underneath keeps working around them.
         Background = null;
         ClipToBounds = true;
+        // Registered from birth, not from being shown. A layer that joined only
+        // once it was attached would miss a suspension raised before it got
+        // there, and come up with its surfaces on top of whatever asked for the
+        // screen.
+        Layers.Add(this);
+    }
+
+    /// <summary>
+    /// Takes every native surface off the screen until the returned handle is
+    /// disposed.
+    ///
+    /// There is no z-order to appeal to here. Avalonia draws its whole scene into
+    /// one surface and the operating system composites native views above it, so
+    /// nothing the shell draws can be on top of a webview — which is why the
+    /// dock's placement targets never appeared while dragging a panel over one.
+    /// Being above everything is not negotiable; being there at all is. So for
+    /// the moment the shell needs its own pixels seen, the surfaces step aside.
+    ///
+    /// This costs nothing now that a surface outlives being hidden: no reload, no
+    /// re-attach, no navigation. The page is exactly where it was.
+    /// </summary>
+    public static IDisposable Suspend()
+    {
+        if (Interlocked.Increment(ref _suspensions) == 1)
+        {
+            ApplyAll();
+        }
+
+        return new Suspension();
+    }
+
+    private static void ApplyAll()
+    {
+        foreach (var layer in Layers.ToArray())
+        {
+            layer.ApplyAllHere();
+        }
+    }
+
+    private sealed class Suspension : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            if (Interlocked.Decrement(ref _suspensions) == 0)
+            {
+                ApplyAll();
+            }
+        }
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (!Layers.Contains(this))
+        {
+            Layers.Add(this);
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        Layers.Remove(this);
+        base.OnDetachedFromVisualTree(e);
     }
 
     /// <summary>
@@ -80,7 +161,8 @@ internal sealed class NativeSurfaceLayer : Canvas
         // native view to zero size is how some hosts decide it is gone.
         if (bounds.Width < 1 || bounds.Height < 1)
         {
-            surface.IsVisible = false;
+            _wanted[surface] = false;
+            Apply(surface);
             return;
         }
 
@@ -88,7 +170,8 @@ internal sealed class NativeSurfaceLayer : Canvas
         SetTop(surface, bounds.Y);
         surface.Width = bounds.Width;
         surface.Height = bounds.Height;
-        surface.IsVisible = true;
+        _wanted[surface] = true;
+        Apply(surface);
     }
 
     /// <summary>
@@ -101,7 +184,8 @@ internal sealed class NativeSurfaceLayer : Canvas
         ArgumentNullException.ThrowIfNull(surface);
         if (Children.Contains(surface))
         {
-            surface.IsVisible = false;
+            _wanted[surface] = false;
+            Apply(surface);
         }
     }
 
@@ -112,6 +196,23 @@ internal sealed class NativeSurfaceLayer : Canvas
     public void Release(Control surface)
     {
         ArgumentNullException.ThrowIfNull(surface);
+        _wanted.Remove(surface);
         Children.Remove(surface);
+    }
+
+    /// <summary>
+    /// A surface is on screen when its panel wants it there and nothing has
+    /// asked the whole layer to stand down.
+    /// </summary>
+    private void Apply(Control surface) =>
+        surface.IsVisible =
+            _wanted.GetValueOrDefault(surface) && Volatile.Read(ref _suspensions) == 0;
+
+    private void ApplyAllHere()
+    {
+        foreach (var surface in Children.ToArray())
+        {
+            Apply(surface);
+        }
     }
 }

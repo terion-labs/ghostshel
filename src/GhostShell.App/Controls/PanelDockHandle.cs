@@ -33,7 +33,16 @@ public sealed class PanelDockHandle : ContentControl
         AddHandler(DoubleTappedEvent, OnDoubleTapped, RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
     }
 
+    /// <summary>
+    /// How far the pointer travels before a press counts as a drag. Below it a
+    /// click on a title is just a click, and the surfaces should not blink.
+    /// </summary>
+    private const double DragThreshold = 4;
+
     private IDisposable? _dockableBinding;
+    private IDisposable? _surfaceSuspension;
+    private TopLevel? _releaseWatch;
+    private Point? _pressOrigin;
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
@@ -67,7 +76,81 @@ public sealed class PanelDockHandle : ContentControl
     {
         _dockableBinding?.Dispose();
         _dockableBinding = null;
+        EndDrag();
         base.OnDetachedFromVisualTree(e);
+    }
+
+    /// <summary>
+    /// While a panel is being dragged, the shell's native surfaces stand down.
+    ///
+    /// Dock's placement targets are drawn by the shell, and a native view is
+    /// composited above everything the shell draws — so dragging a panel over a
+    /// browser showed no targets at all, and there was no way to drop anything
+    /// there. There is no z-order to fix that with; the surfaces simply leave for
+    /// the length of the drag and come back untouched, which they can now do
+    /// because hiding one no longer costs it its page.
+    /// </summary>
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            _pressOrigin = e.GetPosition(this);
+        }
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (_surfaceSuspension is not null || _pressOrigin is not { } origin)
+        {
+            return;
+        }
+
+        var moved = e.GetPosition(this) - origin;
+        if (Math.Abs(moved.X) <= DragThreshold && Math.Abs(moved.Y) <= DragThreshold)
+        {
+            return;
+        }
+
+        _surfaceSuspension = NativeSurfaceLayer.Suspend();
+        // Dock captures the pointer for the length of a drag, so the release may
+        // never reach this handle. The window sees it either way, and a
+        // suspension nobody ends is a browser nobody gets back.
+        _releaseWatch = TopLevel.GetTopLevel(this);
+        _releaseWatch?.AddHandler(
+            PointerReleasedEvent,
+            OnAnyPointerReleased,
+            RoutingStrategies.Tunnel | RoutingStrategies.Bubble,
+            handledEventsToo: true);
+    }
+
+    private void OnAnyPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        EndDrag();
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        EndDrag();
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        EndDrag();
+    }
+
+    private void EndDrag()
+    {
+        _pressOrigin = null;
+        _releaseWatch?.RemoveHandler(PointerReleasedEvent, OnAnyPointerReleased);
+        _releaseWatch = null;
+        _surfaceSuspension?.Dispose();
+        _surfaceSuspension = null;
     }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)

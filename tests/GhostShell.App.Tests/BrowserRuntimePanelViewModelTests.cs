@@ -58,6 +58,43 @@ public sealed class BrowserRuntimePanelViewModelTests
     }
 
     /// <summary>
+    /// A native view is composited above everything the shell draws, so the only
+    /// way to show something over it is for it to leave. Suspending is that, and
+    /// it must be exactly reversible: the dock's placement targets are unreachable
+    /// under a webview, and a drag that ended with the page still gone would be a
+    /// worse bug than the one it fixed.
+    /// </summary>
+    [Fact]
+    public void Suspending_takes_every_surface_off_screen_and_ending_it_puts_them_back()
+    {
+        var layer = new NativeSurfaceLayer();
+        var shown = new Border();
+        var concealed = new Border();
+
+        layer.Present(shown, new Rect(0, 0, 100, 100));
+        layer.Present(concealed, new Rect(0, 0, 100, 100));
+        layer.Conceal(concealed);
+
+        var outer = NativeSurfaceLayer.Suspend();
+        var inner = NativeSurfaceLayer.Suspend();
+        Assert.False(shown.IsVisible);
+
+        // A surface presented mid-drag stays off screen until the drag ends.
+        var late = new Border();
+        layer.Present(late, new Rect(0, 0, 100, 100));
+        Assert.False(late.IsVisible);
+
+        inner.Dispose();
+        Assert.False(shown.IsVisible);
+
+        outer.Dispose();
+        Assert.True(shown.IsVisible);
+        Assert.True(late.IsVisible);
+        // And a surface its panel had already hidden stays hidden.
+        Assert.False(concealed.IsVisible);
+    }
+
+    /// <summary>
     /// The panel owns the surface and the attachment, so ending the panel is what
     /// ends both — not whichever control happened to be drawing it.
     /// </summary>
