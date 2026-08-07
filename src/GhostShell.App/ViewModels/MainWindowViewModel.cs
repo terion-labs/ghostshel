@@ -980,7 +980,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(HasRuntimeWorkspace));
                 OnPropertyChanged(nameof(NewItemLauncherTitle));
                 OnPropertyChanged(nameof(CanCreateBrowserPanel));
-                OnPropertyChanged(nameof(WorkspaceStatus));
                 _activation?.Mark("notifications");
                 RefreshLauncherSearchResults();
                 _activation?.Mark("search results");
@@ -1657,8 +1656,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasApplicationKeySequenceHint =>
         !string.IsNullOrWhiteSpace(ApplicationKeySequenceHint);
 
-    public string HostStatus => "Session host · desktop";
-
     public string CommandPaletteShortcut =>
         QuickTerminalHotkeyText.FormatApplicationCommand("K");
 
@@ -1671,10 +1668,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public string CommandPaletteSettingsAction =>
         $"{CommandPaletteShortcut}  Search & commands";
-
-    public string WorkspaceStatus => RuntimeWorkspace is null
-        ? "No runtime workspace"
-        : $"{RuntimeWorkspace.Tabs.Count} tab(s) · {RuntimeWorkspace.Connections.Count} connection(s)";
 
     public ThemePreference ActiveTheme => _catalog.Snapshot.Themes
         .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)?.Value
@@ -4506,8 +4499,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 {
                     workspace.ActiveTab = workspace.Tabs[Math.Max(0, at - 1)];
                 }
-
-                OnPropertyChanged(nameof(WorkspaceStatus));
             },
             RuntimeGraphStaleProposalHandling.RefreshAndRetry,
             cancellationToken,
@@ -6092,7 +6083,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         StartAcceptedRuntimePanel(panel);
                     }
 
-                    OnPropertyChanged(nameof(WorkspaceStatus));
                     CompleteRuntimeMutationNavigation(navigation);
                 },
                 RuntimeGraphStaleProposalHandling.RefreshAndRetry,
@@ -6155,8 +6145,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             StartAcceptedRuntimePanel(panel);
         }
-
-        OnPropertyChanged(nameof(WorkspaceStatus));
     }
 
     private RuntimeMutationNavigationSnapshot CaptureRuntimeMutationNavigation() =>

@@ -100,7 +100,8 @@ public sealed class WorkspaceViewContractTests
         var surface = Assert.Single(
             root.Elements(),
             element => element.Name.LocalName == "Grid");
-        Assert.Equal("Auto,*,Auto,26", AttributeValue(surface, "RowDefinitions"));
+        // Chrome, canvas, bottom tab strip. The fourth row was a status band.
+        Assert.Equal("Auto,*,Auto", AttributeValue(surface, "RowDefinitions"));
 
         foreach (var extractedName in WorkspaceControlNames)
         {
@@ -276,13 +277,6 @@ public sealed class WorkspaceViewContractTests
             element => element.Name.LocalName == "TextBlock"
                 && string.Equals(
                     AttributeValue(element, "Text"),
-                    "{Binding WorkspaceStatus}",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            root.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
-                    AttributeValue(element, "Text"),
                     "{Binding TabReorderStatus}",
                     StringComparison.Ordinal)
                 && string.Equals(
@@ -337,12 +331,24 @@ public sealed class WorkspaceViewContractTests
                     AttributeValue(element, "ItemsSource"),
                     "{Binding FileTransfers}",
                     StringComparison.Ordinal));
+        // The band along the bottom is gone, and with it the two things it
+        // spent its life saying: the name of the tab you were looking at, and
+        // how many tabs and connections were open. Both were already on screen,
+        // in the strip that names the tabs.
         Assert.DoesNotContain(
             root.Descendants(),
             element => string.Equals(
-                AttributeValue(element, "Text"),
-                "{Binding HostStatus}",
-                StringComparison.Ordinal));
+                    AttributeValue(element, "Text"),
+                    "{Binding HostStatus}",
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    AttributeValue(element, "Text"),
+                    "{Binding WorkspaceStatus}",
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    AttributeValue(element, "Text"),
+                    "{Binding RuntimeWorkspace.ActiveTab.Source}",
+                    StringComparison.Ordinal));
     }
 
     private static void AssertTitleBarDragRegion(XElement root)

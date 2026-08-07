@@ -26,7 +26,7 @@
       </Style.Animations>
     </Style>
   </UserControl.Styles>
-  <Grid RowDefinitions="Auto,*,Auto,26">
+  <Grid RowDefinitions="Auto,*,Auto">
     <Border
         Classes="TopChrome"
         MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
@@ -152,6 +152,36 @@
                 <MenuItem Click="OnAddPanelBottomClick" Header="Add below" />
               </MenuFlyout>
             </Button.Flyout>
+          </Button>
+          <!--
+            Transfers live here now, and only while there are any. The band that
+            used to hold this button spent the rest of its life telling you the
+            name of the tab you were looking at and how many tabs there were —
+            so the one thing on it worth a glance came up here, where the other
+            things worth pressing already are.
+          -->
+          <Button
+              x:Name="FileTransferManagerButton"
+              VerticalAlignment="Center"
+              Padding="{controls:Inset Horizontal=Xs}"
+              MinHeight="20"
+              Classes="TextButton"
+              Click="OnToggleFileTransferManagerClick"
+              IsVisible="{Binding HasFileTransfers}"
+              AutomationProperties.Name="Open transfer manager">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+              <icons:SymbolIcon
+                  VerticalAlignment="Center"
+                  Symbol="ArrowSort"
+                  FontSize="10"
+                  Foreground="{DynamicResource ShellAccentBrush}" />
+              <TextBlock
+                  VerticalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize9}"
+                  FontWeight="Medium"
+                  Text="{Binding FileTransferStatusText}"
+                  AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
           </Button>
           <!-- The band under this row used to carry the search affordance beside
                a strip of saved connections. The strip is gone — a saved
@@ -401,50 +431,28 @@
           <TextBlock Classes="Muted" Text="Open a workspace from the launcher." />
           <Button Classes="PrimaryButton" Click="OnShowLauncherClick" Content="Open launcher" />
         </StackPanel>
-      </Grid>
-    </DockPanel>
-
-    <!-- The status band is the base surface, so it paints nothing and lets the
-         window's own fill through rather than laying a second coat over it. -->
-    <Border Grid.Row="3" Background="Transparent" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}" Margin="{controls:Inset Horizontal=Sm}">
-        <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding RuntimeWorkspace.ActiveTab.Source}" />
-        <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding WorkspaceStatus}" />
+        <!--
+          Where a tab landed, for the people who cannot see it land. Reordering
+          a tab from the keyboard moves something silently otherwise, so this
+          says so — and it is drawn rather than hidden because a screen reader
+          announces a live region only while it is part of the tree. It is
+          unreadable at this size and invisible at this opacity, which is the
+          point: it is addressed to the reader, not to the window.
+        -->
         <TextBlock
-            Grid.Column="2"
-            VerticalAlignment="Center"
-            Classes="Muted"
-            FontSize="{DynamicResource ShellFontSize9}"
+            x:Name="TabReorderAnnouncement"
+            Width="1"
+            Height="1"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            ClipToBounds="True"
+            IsHitTestVisible="False"
+            Opacity="0"
             Text="{Binding TabReorderStatus}"
-            TextTrimming="CharacterEllipsis"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="{Binding TabReorderStatus, StringFormat={}Tab order status · {0}}" />
-        <Button
-            x:Name="FileTransferManagerButton"
-            Grid.Column="3"
-            VerticalAlignment="Center"
-            Padding="{controls:Inset Horizontal=Xs}"
-            MinHeight="20"
-            Classes="TextButton"
-            Click="OnToggleFileTransferManagerClick"
-            IsVisible="{Binding HasFileTransfers}"
-            AutomationProperties.Name="Open transfer manager">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-            <icons:SymbolIcon
-                VerticalAlignment="Center"
-                Symbol="ArrowSort"
-                FontSize="10"
-                Foreground="{DynamicResource ShellAccentBrush}" />
-            <TextBlock
-                VerticalAlignment="Center"
-                FontSize="{DynamicResource ShellFontSize9}"
-                FontWeight="Medium"
-                Text="{Binding FileTransferStatusText}"
-                AutomationProperties.LiveSetting="Polite" />
-          </StackPanel>
-        </Button>
       </Grid>
-    </Border>
+    </DockPanel>
 
     <!-- This is deliberately an in-window overlay, not a Flyout. Platform
          popups own a separate surface and can extend beyond custom window
