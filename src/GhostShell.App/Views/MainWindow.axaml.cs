@@ -1648,7 +1648,7 @@ public sealed partial class MainWindow : Window
     {
         if (command.Id == BuiltInCommands.NewTab)
         {
-            await RequestNewTerminalAsync();
+            await ShowNewItemLauncherAsync();
             return;
         }
 
@@ -1680,11 +1680,13 @@ public sealed partial class MainWindow : Window
         {
             switch (action.Kind)
             {
+                // A new tab, which is a tab that asks what to open — the same
+                // thing the plus beside the tabs gives you. It used to arrive
+                // as a local terminal already running, which is one of the
+                // answers rather than the question, and the only way to get any
+                // of the others was to close it and press the plus instead.
                 case ApplicationCommandActionKind.NewTab:
-                    if (await ViewModel.AddLocalTerminalTabAsync(_lifetime.Token))
-                    {
-                        FocusActivePanel();
-                    }
+                    await ShowNewItemLauncherAsync();
                     break;
                 case ApplicationCommandActionKind.SplitPanel:
                     if (await ViewModel.AddLocalTerminalPanelAsync(
