@@ -58,6 +58,51 @@ public sealed class BrowserRuntimePanelViewModelTests
     }
 
     /// <summary>
+    /// Only the panel's end gives a surface up.
+    ///
+    /// A view that stops drawing a panel is not the panel ending, and the one
+    /// place that still confused the two undid everything the rest of this
+    /// arrangement is for: when a panel's views were exchanged — floating it,
+    /// docking it back — the departing view's binding unset after the arriving
+    /// one had taken the surface, so the surface it released was the one already
+    /// on screen. Taking a native view out of the tree destroys it, and the page
+    /// went with it: a blank document under a live session.
+    /// </summary>
+    [Fact]
+    public void No_view_releases_a_surface_when_it_stops_drawing_a_panel()
+    {
+        var host = File.ReadAllText(Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "GhostShell.App",
+            "Controls",
+            "BrowserPresentationHost.cs"));
+
+        Assert.DoesNotContain("Release(", host, StringComparison.Ordinal);
+        Assert.Contains("Conceal(", host, StringComparison.Ordinal);
+
+        var view = File.ReadAllText(Path.Combine(
+            RepositoryRoot(),
+            "src",
+            "GhostShell.App",
+            "IBrowserRendererViewFactory.cs"));
+        Assert.Contains("Layer?.Release(View)", view, StringComparison.Ordinal);
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null
+            && !File.Exists(Path.Combine(directory.FullName, "GhostShell.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName
+            ?? throw new InvalidOperationException("No repository root above the test binaries.");
+    }
+
+    /// <summary>
     /// A panel floated into a window of its own takes its surface with it, and
     /// brings it back. By the time it comes back the window it was in has closed
     /// — so the layer that still holds the surface is not one of the layers any

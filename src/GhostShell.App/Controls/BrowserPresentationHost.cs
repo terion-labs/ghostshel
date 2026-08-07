@@ -391,18 +391,23 @@ public sealed class BrowserPresentationHost : ContentControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        // No release here, on any of them. A host that stops pointing at a
+        // renderer has stopped drawing a panel, which is not the same as the
+        // panel being over — and this one line was the last place that still
+        // confused the two.
+        //
+        // It only ever fired when a panel's views were being exchanged, which is
+        // exactly when it must not: the departing view's binding unsets after the
+        // arriving one has taken the surface, so the surface it gave up was the
+        // one already on screen. Taking a native view out of the tree destroys
+        // it, so the page went with it — a blank document under a live session,
+        // which is what floating and docking back looked like. Releasing is the
+        // panel's end and nothing else: see BrowserRendererView.Dispose.
         if (change.Property == SessionClientProperty
             || change.Property == SessionRequestProperty
             || change.Property == ClientIdProperty
             || change.Property == RendererViewProperty)
         {
-            if (change.Property == RendererViewProperty
-                && change.OldValue is BrowserRendererView replaced)
-            {
-                _layer?.Release(replaced.View);
-                replaced.Layer = null;
-            }
-
             if (_isAttachedToVisualTree)
             {
                 RestartSession();
