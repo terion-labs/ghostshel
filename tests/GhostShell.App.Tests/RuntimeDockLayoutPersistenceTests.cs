@@ -267,7 +267,10 @@ public sealed class RuntimeDockLayoutPersistenceTests
         {
             Assert.True(document.CanDrag);
             Assert.True(document.CanDrop);
-            Assert.True(document.CanFloat);
+            // Not Dock's floating: a panel holding an operating-system view
+            // cannot change window without that view being destroyed, so the
+            // shell floats panels inside its own window instead.
+            Assert.False(document.CanFloat);
         });
     }
 
@@ -388,13 +391,17 @@ public sealed class RuntimeDockLayoutPersistenceTests
 
         var document = Enumerate(tab.DockLayout).OfType<IDocument>()
             .Single(candidate => candidate.Id == leaving.Id.Value);
-        var factory = (RuntimeDockFactory)tab.DockFactory;
-        Float(tab, factory, document);
+        Assert.True(tab.FloatPanel(leaving.Id));
 
-        Assert.True(factory.IsFloating(document));
-        Assert.True(factory.DockBack(document));
+        // Out of the layout, still the workspace's, still the same document.
+        Assert.DoesNotContain(
+            Enumerate(tab.DockLayout).OfType<IDocument>(),
+            candidate => ReferenceEquals(candidate, document));
+        Assert.Same(document, Assert.Single(tab.FloatingPanels).Document);
 
-        Assert.False(factory.IsFloating(document));
+        Assert.True(tab.DockPanel(leaving.Id));
+
+        Assert.Empty(tab.FloatingPanels);
         Assert.Empty(tab.DockLayout.Windows!);
         // The same document, so the same panel and the same session: only the
         // geometry around it was rebuilt.
@@ -428,13 +435,12 @@ public sealed class RuntimeDockLayoutPersistenceTests
         Assert.NotNull(second);
 
         var before = DocumentOrder(tab, orientation);
-        var document = Enumerate(tab.DockLayout).OfType<IDocument>()
-            .Single(candidate => candidate.Id == second!.Id.Value);
-        var factory = (RuntimeDockFactory)tab.DockFactory;
-        Float(tab, factory, document);
+        Assert.True(tab.FloatPanel(second!.Id));
+        Assert.True(tab.IsPanelFloating(second.Id));
 
-        Assert.True(factory.DockBack(document));
+        Assert.True(tab.DockPanel(second.Id));
 
+        Assert.False(tab.IsPanelFloating(second.Id));
         Assert.Equal(before, DocumentOrder(tab, orientation));
     }
 
@@ -466,12 +472,9 @@ public sealed class RuntimeDockLayoutPersistenceTests
         var before = ColumnOrder(column);
         Assert.Equal([browser.Id.Value, statistics!.Id.Value], before);
 
-        var document = Enumerate(tab.DockLayout).OfType<IDocument>()
-            .Single(candidate => candidate.Id == browser.Id.Value);
-        var factory = (RuntimeDockFactory)tab.DockFactory;
-        Float(tab, factory, document);
+        Assert.True(tab.FloatPanel(browser.Id));
 
-        Assert.True(factory.DockBack(document));
+        Assert.True(tab.DockPanel(browser.Id));
 
         var restored = Enumerate(tab.DockLayout).OfType<ProportionalDock>()
             .Single(dock => dock.Orientation == Orientation.Vertical);
@@ -501,11 +504,10 @@ public sealed class RuntimeDockLayoutPersistenceTests
 
         var document = Enumerate(tab.DockLayout).OfType<IDocument>()
             .Single(candidate => candidate.Id == leaving.Id.Value);
-        var factory = (RuntimeDockFactory)tab.DockFactory;
-        Float(tab, factory, document);
+        Assert.True(tab.FloatPanel(leaving.Id));
         tab.RemovePanel(neighbour.Id);
 
-        Assert.True(factory.DockBack(document));
+        Assert.True(tab.DockPanel(leaving.Id));
         Assert.Contains(
             Enumerate(tab.DockLayout).OfType<IDocument>(),
             candidate => ReferenceEquals(candidate, document));
@@ -538,30 +540,8 @@ public sealed class RuntimeDockLayoutPersistenceTests
         var panel = Panel("dock-back-noop-panel");
         tab.AddPanel(panel);
 
-        var document = Assert.Single(Enumerate(tab.DockLayout).OfType<IDocument>());
-        var factory = (RuntimeDockFactory)tab.DockFactory;
-
-        Assert.False(factory.IsFloating(document));
-        Assert.False(factory.DockBack(document));
-    }
-
-    /// <summary>
-    /// What <c>FloatDockable</c> does to the model, without asking for the native
-    /// window it would also open.
-    /// </summary>
-    private static void Float(
-        RuntimeTabViewModel tab,
-        RuntimeDockFactory factory,
-        IDocument document)
-    {
-        factory.RemoveDockable(document, collapse: true);
-        var window = Assert.IsAssignableFrom<IDockWindow>(
-            factory.CreateWindowFrom(document));
-        tab.DockLayout.Windows!.Add(window);
-        // Dock's own float goes through AddWindow, which opens a native window on
-        // the way. This is the rest of what it does: the new tree takes ownership
-        // of the dockable, which is how anything can tell it has left.
-        factory.InitDockWindow(window, tab.DockLayout, hostWindow: null);
+        Assert.False(tab.IsPanelFloating(panel.Id));
+        Assert.False(tab.DockPanel(panel.Id));
     }
 
     private static RuntimeTabViewModel NewTab(string id, string? dockLayoutJson = null) =>

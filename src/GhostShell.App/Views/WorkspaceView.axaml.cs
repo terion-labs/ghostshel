@@ -19,7 +19,30 @@ public sealed partial class WorkspaceView : UserControl
 {
     private readonly ConditionalWeakTable<IRootDock, object> _mountedLayouts = [];
 
-    public WorkspaceView() => InitializeComponent();
+    public WorkspaceView()
+    {
+        InitializeComponent();
+        // One handler for every panel on the canvas, floating or docked. Floating
+        // used to mean a second window, and an event cannot bubble across two of
+        // them; now that a floated panel stays in this one, the whole canvas can
+        // be answered in one place instead of eight views forwarding the same
+        // request.
+        AddHandler(PanelChrome.FloatToggleRequestedEvent, OnFloatToggleRequested);
+    }
+
+    /// <summary>
+    /// Whether a panel floats over the workspace is the shell's to decide, so
+    /// this only carries the request up. The view's part is knowing which panel
+    /// asked — which is why the event is caught here rather than eight panel
+    /// views each forwarding one of their own.
+    /// </summary>
+    public event EventHandler<RoutedEventArgs>? FloatPanelRequested;
+
+    private void OnFloatToggleRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        FloatPanelRequested?.Invoke(e.Source, e);
+    }
 
     /// <summary>
     /// Prepares one workspace's canvas as it comes into the tree.

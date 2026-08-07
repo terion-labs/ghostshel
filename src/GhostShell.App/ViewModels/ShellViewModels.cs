@@ -1718,6 +1718,58 @@ public sealed class RuntimeTabViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>
+    /// The panels this tab is drawing over its layout rather than inside it.
+    /// </summary>
+    public ObservableCollection<FloatingRuntimePanelViewModel> FloatingPanels { get; } = [];
+
+    public bool IsPanelFloating(PanelInstanceId panelId) =>
+        FloatingPanels.Any(floating => floating.Panel.Id == panelId);
+
+    /// <summary>
+    /// Lifts a panel out of the layout to float over the workspace.
+    ///
+    /// The panel is not rebuilt and its document is not replaced — both travel
+    /// with it — so nothing it is running notices. That is the requirement, not a
+    /// nicety: a browser panel's page lives in an operating-system view that the
+    /// framework destroys the moment it changes window, which is why floating
+    /// into a window of its own could only ever hand back an empty rectangle.
+    /// </summary>
+    public bool FloatPanel(PanelInstanceId panelId)
+    {
+        if (IsPanelFloating(panelId)
+            || Panels.SingleOrDefault(panel => panel.Id == panelId) is not { } panel
+            || _dockLayout.Detach(panelId) is not { } document)
+        {
+            return false;
+        }
+
+        ClearZoom();
+        FloatingPanels.Add(
+            new FloatingRuntimePanelViewModel(panel, document, FloatingPanels.Count));
+        ActivatePanel(panelId);
+        NotifyPanelLayoutChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// Puts a floating panel back into the layout, where it was.
+    /// </summary>
+    public bool DockPanel(PanelInstanceId panelId)
+    {
+        if (FloatingPanels.SingleOrDefault(floating => floating.Panel.Id == panelId)
+            is not { } floatingPanel)
+        {
+            return false;
+        }
+
+        FloatingPanels.Remove(floatingPanel);
+        _dockLayout.Reattach(floatingPanel.Document);
+        ActivatePanel(panelId);
+        NotifyPanelLayoutChanged();
+        return true;
+    }
+
     public bool RemovePanel(PanelInstanceId panelId)
     {
         var panel = Panels.SingleOrDefault(item => item.Id == panelId);
@@ -1728,6 +1780,13 @@ public sealed class RuntimeTabViewModel : ObservableObject
 
         var removedIndex = Panels.IndexOf(panel);
         var wasActive = ActivePanelId == panelId;
+        // Closing a floating panel closes the panel, not just its float.
+        if (FloatingPanels.SingleOrDefault(floating => floating.Panel.Id == panelId)
+            is { } floatingPanel)
+        {
+            FloatingPanels.Remove(floatingPanel);
+        }
+
         if (ZoomedPanelId == panelId)
         {
             ZoomedPanelId = null;

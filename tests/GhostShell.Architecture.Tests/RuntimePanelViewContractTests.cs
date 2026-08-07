@@ -171,16 +171,19 @@ public sealed class RuntimePanelViewContractTests
             "SplitRequested?.Invoke(this, PanelSplitOrientation.LeftRight);",
             chrome,
             StringComparison.Ordinal);
-        // Float and dock are the chrome's own, not the shell's: they move geometry
-        // and touch nothing that is running. The chrome asks the dock graph what
-        // it is rather than being told, so a panel dragged out by Dock's own drag
-        // offers the same way back as one sent out by this button.
+        // Float is asked for, not done. A panel floats inside the shell's window
+        // — a panel holding an operating-system view cannot change window without
+        // that view being destroyed — so which panels are floating is the
+        // workspace's to know, and the chrome only says which one asked.
         Assert.Contains(
-            "this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable",
+            "RaiseEvent(new RoutedEventArgs(FloatToggleRequestedEvent, this));",
             chrome,
             StringComparison.Ordinal);
-        Assert.Contains("factory.FloatDockable(dockable);", chrome, StringComparison.Ordinal);
-        Assert.Contains("factory.DockBack(dockable)", chrome, StringComparison.Ordinal);
+        Assert.Contains(
+            "IsFloating = FloatingPanelLayer.For(this) is not null;",
+            chrome,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("FloatDockable", chrome, StringComparison.Ordinal);
 
         // Nothing floats on a gesture nobody can see.
         Assert.DoesNotContain("DoubleTapped", handleSource, StringComparison.Ordinal);

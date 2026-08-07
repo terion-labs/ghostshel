@@ -898,6 +898,29 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
+    /// Lifts a panel out of the layout to float over the workspace, or puts it
+    /// back where it was.
+    ///
+    /// One action in two directions, because that is how it reads in the header:
+    /// the same corner of the same panel, offering the way out or the way back
+    /// depending on where the panel already is.
+    /// </summary>
+    private void OnFloatRuntimePanelRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control { DataContext: RuntimePanelViewModel panel }
+            || ViewModel.RuntimeWorkspace?.ActiveTab is not { } tab)
+        {
+            return;
+        }
+
+        if (tab.IsPanelFloating(panel.Id) ? tab.DockPanel(panel.Id) : tab.FloatPanel(panel.Id))
+        {
+            FocusActivePanel();
+        }
+    }
+
+    /// <summary>
     /// Splits a panel, leaving an empty one beside it for the user to fill.
     /// </summary>
     private async void OnSplitRuntimePanelRequested(

@@ -388,6 +388,15 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+        <!--
+          Floating panels are drawn over the canvas and inside the same window.
+          A panel can hold an operating-system view, and such a view does not
+          survive changing window — so a panel floated into one of its own
+          arrived empty, with its session still running behind the blank.
+        -->
+        <controls:FloatingPanelLayer
+            x:Name="FloatingPanels"
+            ItemsSource="{Binding RuntimeWorkspace.ActiveTab.FloatingPanels}" />
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding !HasRuntimeWorkspace}">
           <TextBlock Classes="Muted" Text="Open a workspace from the launcher." />
           <Button Classes="PrimaryButton" Click="OnShowLauncherClick" Content="Open launcher" />

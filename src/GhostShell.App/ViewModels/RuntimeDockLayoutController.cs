@@ -173,6 +173,36 @@ internal sealed class RuntimeDockLayoutController
         Changed();
     }
 
+    /// <summary>
+    /// Takes a panel out of the tiled layout, keeping everything about it. The
+    /// shell draws it somewhere the layout does not reach until it is handed
+    /// back.
+    /// </summary>
+    public IDocument? Detach(PanelInstanceId panelId)
+    {
+        var document = Factory.Detach(panelId.Value);
+        if (document is not null)
+        {
+            Changed();
+        }
+
+        return document;
+    }
+
+    /// <summary>
+    /// Puts a panel back where it was, around the document it kept.
+    /// </summary>
+    public bool Reattach(IDocument document)
+    {
+        if (!Factory.Reattach(document))
+        {
+            return false;
+        }
+
+        Changed();
+        return true;
+    }
+
     public void Activate(PanelInstanceId panelId)
     {
         var document = FindDocument(panelId.Value);
@@ -253,7 +283,11 @@ internal sealed class RuntimeDockLayoutController
         document.Title = panel.Title;
         document.Context = panel;
         document.CanClose = false;
-        document.CanFloat = true;
+        // Not Dock's kind of floating. Its drag pulls a dockable into a window of
+        // its own, and a panel holding an operating-system view cannot change
+        // window without that view being destroyed and rebuilt empty. The shell
+        // floats panels inside its own window instead, from the header button.
+        document.CanFloat = false;
         document.CanDrag = true;
         document.CanDrop = true;
         document.MinWidth = Math.Max(1, panel.LayoutMinimumWidth);
@@ -760,48 +794,46 @@ internal sealed class RuntimeDockFactory : Factory
     };
 
     /// <summary>
-    /// Whether this panel is currently in a window of its own.
+    /// Takes a panel out of the tiled layout without ending it.
+    ///
+    /// The document survives — its identity, its context, and so its session and
+    /// its native surface. It simply has no place in the layout for a while,
+    /// because the shell is drawing it somewhere the layout does not reach.
     /// </summary>
-    public bool IsFloating(IDockable dockable)
+    public IDocument? Detach(string panelId)
     {
-        ArgumentNullException.ThrowIfNull(dockable);
-        return FindRoot(dockable, _ => true) is { Window: not null } root
-            && !ReferenceEquals(root, HomeLayout);
+        if (HomeLayout is not { } home
+            || FindDocumentById(home, panelId) is not { } document)
+        {
+            return null;
+        }
+
+        RemoveDockable(document, collapse: true);
+        NotifyLayoutMutated();
+        return document;
     }
 
     /// <summary>
-    /// Puts a floated panel back into the workspace it came from.
+    /// Puts a panel back into the tiled layout, where it was.
     ///
-    /// Floating had no way back. A panel left the workspace on a double-click
-    /// nobody was told about and could only return by being dragged onto a
-    /// placement target — which, over a browser, was not drawn at all. Both
-    /// directions are one button in the panel's header now, and this is the half
-    /// Dock does not offer: its own vocabulary can float a dockable but has no
-    /// word for the workspace a floating window belongs to.
-    ///
-    /// The panel keeps its document — its identity, its context, and so its
-    /// session. Only the geometry around it is rebuilt.
+    /// Dock can take a dockable out and has no word for the workspace it came
+    /// from, so this is the half it does not offer. Where it went out from is
+    /// preferred; any occupied leaf is the fallback for a neighbour that has been
+    /// closed since.
     /// </summary>
-    public bool DockBack(IDockable dockable)
+    public bool Reattach(IDocument document)
     {
-        ArgumentNullException.ThrowIfNull(dockable);
-        if (dockable is not IDocument document
-            || HomeLayout is not { } home
-            || FindRoot(dockable, _ => true) is not { Window: { } window } floating
-            || ReferenceEquals(floating, home))
+        ArgumentNullException.ThrowIfNull(document);
+        if (HomeLayout is not { } home
+            || document.Id is not { Length: > 0 } id
+            || FindDocumentById(home, id) is not null)
         {
             return false;
         }
 
-        // Resolved before the removal, so the search never meets the leaf that is
-        // in the middle of collapsing. Where it went out from is preferred, and
-        // any occupied leaf is the fallback for a neighbour that has since been
-        // closed.
         var placement = RecalledPlacement(home, document)
             ?? (FindDocumentLeaf(home, document), DockOperation.Right);
-        RemoveDockable(document, collapse: true);
-
-        var leaf = CreateLeaf(document, $"panel-dock-{document.Id}");
+        var leaf = CreateLeaf(document, $"panel-dock-{id}");
         if (placement.Target is null)
         {
             home.VisibleDockables ??= CreateList<IDockable>();
@@ -813,19 +845,12 @@ internal sealed class RuntimeDockFactory : Factory
             SplitToDock(placement.Target, leaf, placement.Operation);
         }
 
-        // The document arrives owned by the leaf it has just left. Nothing else
+        // The document arrives still owned by the leaf it left. Nothing else
         // re-points it: a leaf built around a document states where the document
         // is, and the document has to agree, or activation and removal both go
-        // looking for it in the window that is about to close.
+        // looking for it where it no longer is.
         InitDockable(document, leaf);
         leaf.ActiveDockable = document;
-
-        if (home.Windows?.Contains(window) == true
-            && floating.VisibleDockables is null or { Count: 0 })
-        {
-            RemoveWindow(window);
-        }
-
         SetActiveDockable(document);
         NotifyLayoutMutated();
         return true;

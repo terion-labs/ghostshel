@@ -2,10 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
-using Avalonia.VisualTree;
-using Dock.Avalonia.Controls;
-using Dock.Model;
-using Dock.Model.Core;
 using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Controls;
@@ -122,10 +118,10 @@ internal sealed class PanelChrome : ContentControl
             chrome => chrome.IsActionsVisible);
 
     /// <summary>
-    /// Whether this panel is in a window of its own.
+    /// Whether this panel is floating over the workspace.
     ///
-    /// Read from the dock graph rather than tracked, so a panel dragged out by
-    /// Dock's own drag says the same thing as one sent out by the header button.
+    /// Read from where the panel is drawn rather than tracked: the layer that
+    /// draws floating panels is the only thing that has to be right.
     /// </summary>
     public static readonly DirectProperty<PanelChrome, bool> IsFloatingProperty =
         AvaloniaProperty.RegisterDirect<PanelChrome, bool>(
@@ -133,9 +129,8 @@ internal sealed class PanelChrome : ContentControl
             chrome => chrome.IsFloating);
 
     /// <summary>
-    /// Whether this panel may leave the workspace. Off for panels a layout pins in
-    /// place, while the panel is not attached to a dock graph, and while it is
-    /// already floating — there the header offers the way back instead.
+    /// Whether this panel may leave the layout. Off while it is already floating
+    /// — there the header offers the way back instead.
     /// </summary>
     public static readonly DirectProperty<PanelChrome, bool> CanFloatProperty =
         AvaloniaProperty.RegisterDirect<PanelChrome, bool>(
@@ -380,73 +375,47 @@ internal sealed class PanelChrome : ContentControl
     }
 
     /// <summary>
-    /// Sends the panel out into a window of its own.
+    /// Asks for this panel to be floated over the workspace, or put back.
     ///
-    /// This used to be a double-click on the title, which is not a thing anyone
-    /// discovers and was not a thing anyone could undo — Dock floats a dockable
-    /// but has no matching gesture for putting it back, so a panel that left the
-    /// workspace by accident stayed out. Both directions are stated in the header
-    /// now, in the same place as split and close.
+    /// Raised rather than done. Floating used to be a Dock operation the chrome
+    /// could carry out by itself, and a panel went out into a window of its own —
+    /// which is exactly what a panel holding an operating-system view cannot do,
+    /// because that view does not survive changing window. A panel now floats
+    /// inside the shell's window, and which panels are floating is the
+    /// workspace's to know, not a control's.
+    ///
+    /// It bubbles, so one handler above the whole canvas answers for every panel,
+    /// floating or docked. That only became possible when floating stopped
+    /// meaning a second window: an event cannot bubble across two of them.
     /// </summary>
+    public static readonly RoutedEvent<RoutedEventArgs> FloatToggleRequestedEvent =
+        RoutedEvent.Register<PanelChrome, RoutedEventArgs>(
+            nameof(FloatToggleRequested),
+            RoutingStrategies.Bubble);
+
+    public event EventHandler<RoutedEventArgs>? FloatToggleRequested
+    {
+        add => AddHandler(FloatToggleRequestedEvent, value);
+        remove => RemoveHandler(FloatToggleRequestedEvent, value);
+    }
+
     private void OnFloatClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
-        if (ResolveDockable() is not { Owner: IDock { Factory: { } factory } } dockable
-            || !CanFloatDockable(dockable))
-        {
-            return;
-        }
-
-        factory.FloatDockable(dockable);
-        factory.ActivateWindow(dockable);
-        e.Handled = true;
-        UpdateDockState();
+        _ = e;
+        RaiseEvent(new RoutedEventArgs(FloatToggleRequestedEvent, this));
     }
 
-    private void OnDockClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        if (ResolveDockable() is not { Owner: IDock { Factory: RuntimeDockFactory factory } }
-            dockable)
-        {
-            return;
-        }
-
-        if (factory.DockBack(dockable))
-        {
-            e.Handled = true;
-        }
-
-        UpdateDockState();
-    }
+    private void OnDockClick(object? sender, RoutedEventArgs e) => OnFloatClick(sender, e);
 
     /// <summary>
-    /// The panel this chrome dresses, as the dock graph knows it. The chrome's own
-    /// data context is the panel's view model; the dockable is the control Dock
-    /// puts around it.
+    /// Whether this panel is floating, read from where it is drawn rather than
+    /// tracked. The layer that draws floating panels is the answer.
     /// </summary>
-    private IDockable? ResolveDockable() =>
-        this.FindAncestorOfType<DockableControl>()?.DataContext as IDockable;
-
-    private static bool CanFloatDockable(IDockable dockable) =>
-        DockCapabilityResolver.IsEnabled(
-            dockable,
-            DockCapability.Float,
-            DockCapabilityResolver.ResolveOperationDock(dockable));
-
     private void UpdateDockState()
     {
-        if (ResolveDockable() is not { Owner: IDock { Factory: { } factory } } dockable)
-        {
-            CanFloat = false;
-            IsFloating = false;
-            return;
-        }
-
-        IsFloating = factory is RuntimeDockFactory runtime && runtime.IsFloating(dockable);
-        // The two are one control in two states: a panel already in its own window
-        // is offered the way back instead of the way out.
-        CanFloat = !IsFloating && CanFloatDockable(dockable);
+        IsFloating = FloatingPanelLayer.For(this) is not null;
+        CanFloat = !IsFloating;
     }
 
     private void UpdateSlotVisibility() => UpdateSlotVisibility(Bounds.Width);

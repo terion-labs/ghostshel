@@ -266,6 +266,51 @@
         </ControlTemplate>
       </Setter>
     </ControlTheme>
+    <!--
+      A floated panel: placed by its own coordinates over the workspace, wearing
+      the same chrome it wears docked. Only the resize grip is added, because a
+      panel in the layout is resized by the splitters around it and one out here
+      has none.
+    -->
+    <ControlTheme x:Key="{x:Type controls:FloatingPanelLayer}" TargetType="controls:FloatingPanelLayer">
+      <Setter Property="ItemsPanel">
+        <ItemsPanelTemplate>
+          <Canvas ClipToBounds="False" />
+        </ItemsPanelTemplate>
+      </Setter>
+      <Setter Property="ItemContainerTheme">
+        <ControlTheme TargetType="ContentPresenter">
+          <Setter Property="Canvas.Left" Value="{Binding X}" />
+          <Setter Property="Canvas.Top" Value="{Binding Y}" />
+          <Setter Property="Width" Value="{Binding Width}" />
+          <Setter Property="Height" Value="{Binding Height}" />
+        </ControlTheme>
+      </Setter>
+      <Setter Property="ItemTemplate">
+        <DataTemplate>
+          <Grid>
+            <ContentControl
+                Content="{Binding Panel}"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch" />
+            <Border
+                Name="PART_ResizeGrip"
+                Width="16"
+                Height="16"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Background="Transparent"
+                Cursor="BottomRightCorner"
+                AutomationProperties.Name="Resize this panel" />
+          </Grid>
+        </DataTemplate>
+      </Setter>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ItemsPresenter ItemsPanel="{TemplateBinding ItemsPanel}" />
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
     <ControlTheme x:Key="{x:Type controls:IdentityTile}" TargetType="controls:IdentityTile">
       <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
       <Setter Property="Width" Value="{DynamicResource ShellTileSizeMd}" />

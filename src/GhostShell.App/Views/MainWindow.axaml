@@ -188,6 +188,7 @@
         x:Name="WorkspaceRouteView"
         ActivateTabRequested="OnActivateTabClick"
         AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
+        FloatPanelRequested="OnFloatRuntimePanelRequested"
         ApproveAgentActionRequested="OnApproveAgentActionClick"
         CancelAgentActionRequested="OnCancelAgentActionClick"
         CancelAgentChatRequested="OnCancelAgentChatClick"

@@ -90,10 +90,22 @@ public sealed class PanelDockHandle : ContentControl
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
-            _pressOrigin = e.GetPosition(this);
+            return;
         }
+
+        // A floating panel has no place in the layout to be dragged to, so the
+        // same grab moves it instead. One gesture, two meanings, decided by where
+        // the panel is rather than by which control was built.
+        if (FloatingPanelLayer.For(this) is { } floating)
+        {
+            floating.BeginMove(this, e);
+            e.Handled = true;
+            return;
+        }
+
+        _pressOrigin = e.GetPosition(this);
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
