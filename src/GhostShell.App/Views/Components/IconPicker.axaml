@@ -15,7 +15,7 @@
       <TextBox
           x:Name="SearchInput"
           Text="{Binding SearchText, ElementName=Root, Mode=TwoWay}"
-          Watermark="Search all icons…"
+          PlaceholderText="Search all icons…"
           AutomationProperties.Name="Search icons">
         <TextBox.InnerLeftContent>
           <icons:SymbolIcon Margin="{controls:Inset Left=Sm}" Symbol="Search" FontSize="13" Foreground="{DynamicResource ShellMutedBrush}" />

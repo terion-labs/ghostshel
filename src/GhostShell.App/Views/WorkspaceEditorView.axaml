@@ -85,7 +85,7 @@
                     FontSize="{DynamicResource ShellFontSize22}"
                     FontWeight="SemiBold"
                     Text="{Binding Name, Mode=TwoWay}"
-                    Watermark="Operations"
+                    PlaceholderText="Operations"
                     AutomationProperties.Name="Workspace name" />
                 <Button
                     Grid.Column="1"
@@ -290,7 +290,7 @@
 
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding CanEditAlias}">
                   <TextBlock FontWeight="SemiBold" Text="Tab name in this workspace" />
-                  <TextBox Text="{Binding Alias, Mode=TwoWay}" Watermark="Optional label used only in this workspace" />
+                  <TextBox Text="{Binding Alias, Mode=TwoWay}" PlaceholderText="Optional label used only in this workspace" />
                 </StackPanel>
 
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding IsConnection}">
@@ -401,7 +401,7 @@
 
                           <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding SupportsLocation}">
                             <TextBlock FontWeight="SemiBold" Text="Startup location" />
-                            <TextBox Text="{Binding StartupLocation, Mode=TwoWay}" Watermark="Optional working directory or URL" />
+                            <TextBox Text="{Binding StartupLocation, Mode=TwoWay}" PlaceholderText="Optional working directory or URL" />
                           </StackPanel>
 
                           <Grid
@@ -415,7 +415,7 @@
                                   AcceptsReturn="True"
                                   Text="{Binding StartupCommands, Mode=TwoWay}"
                                   TextWrapping="NoWrap"
-                                  Watermark="One command per line"
+                                  PlaceholderText="One command per line"
                                   AutomationProperties.Name="{Binding KindLabel, StringFormat=Startup commands for {0} workspace tab panel}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" MinWidth="260" Spacing="{DynamicResource ShellSpaceXs}">
@@ -461,7 +461,7 @@
                   AcceptsReturn="True"
                   Text="{Binding Description, Mode=TwoWay}"
                   TextWrapping="Wrap"
-                  Watermark="Release watch for the production API"
+                  PlaceholderText="Release watch for the production API"
                   AutomationProperties.Name="Workspace description" />
             </controls:SettingRow>
             <controls:SettingRow

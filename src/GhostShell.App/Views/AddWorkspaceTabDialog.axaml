@@ -28,7 +28,7 @@
         x:Name="SearchInput"
         Grid.Row="1"
         Margin="{controls:Inset Horizontal=Lg, Top=Md}"
-        Watermark="Search connections and screens…"
+        PlaceholderText="Search connections and screens…"
         TextChanged="OnSearchChanged"
         AutomationProperties.Name="Search connections and screens">
       <TextBox.InnerLeftContent>
@@ -77,7 +77,7 @@
           <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <TextBox
                 x:Name="NewScreenName"
-                Watermark="Screen name"
+                PlaceholderText="Screen name"
                 AutomationProperties.Name="Name for the new screen" />
             <ComboBox
                 x:Name="NewScreenLayout"
