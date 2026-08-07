@@ -293,15 +293,33 @@
                 Content="{Binding Panel}"
                 HorizontalContentAlignment="Stretch"
                 VerticalContentAlignment="Stretch" />
+            <!--
+              A corner worth aiming at. The mark is smaller than the target it
+              stands for: what has to be easy is landing on it, not seeing it.
+              The glyph takes no pointer input of its own, so the press is always
+              attributed to the grip around it.
+            -->
             <Border
                 Name="PART_ResizeGrip"
-                Width="16"
-                Height="16"
+                Width="26"
+                Height="26"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Bottom"
                 Background="Transparent"
                 Cursor="BottomRightCorner"
-                AutomationProperties.Name="Resize this panel" />
+                AutomationProperties.Name="Resize this panel">
+              <Path
+                  Width="10"
+                  Height="10"
+                  Margin="{controls:Inset Right=Xs, Bottom=Xs}"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Bottom"
+                  Data="M 0,10 L 10,0 M 5,10 L 10,5"
+                  IsHitTestVisible="False"
+                  Opacity="0.55"
+                  Stroke="{DynamicResource ShellMutedBrush}"
+                  StrokeThickness="1.25" />
+            </Border>
           </Grid>
         </DataTemplate>
       </Setter>
