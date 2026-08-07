@@ -7,11 +7,13 @@ namespace GhostShell.App.ViewModels;
 /// <summary>
 /// Who can do what to one item, as something to look at and change.
 ///
-/// Two shapes, one dialog. A filesystem answers with nine bits and the editor
-/// shows a grid of checkboxes; an object store answers with a list of parties
-/// and the editor shows one row each. Neither is converted into the other,
-/// because the conversion would be a lie in both directions — an object store
-/// has no group, and a filesystem has no notion of a named account.
+/// Two models, one table. A filesystem has three parties — the owner, the group
+/// and everyone — and an object store has as many as it has accounts; either
+/// way the question is the same one, so the answer is one row per party with
+/// what that party is allowed beside it. That is the shape people already read
+/// this in, and it beats a grid of nine checkboxes for everything except the
+/// execute bit, which gets a column of its own because a shell is exactly where
+/// that bit matters.
 /// </summary>
 public sealed class FileAccessControlEditorViewModel : ObservableObject
 {
@@ -32,10 +34,13 @@ public sealed class FileAccessControlEditorViewModel : ObservableObject
         ItemName = itemName;
         CanEdit = canEdit;
         Summary = accessControl.Mode is not null
-            ? $"Permission bits on {connectionName}"
+            ? OwnerAndGroup(accessControl, connectionName)
             : $"Access control list on {connectionName}";
-        Grants = [.. accessControl.Grants.Select(grant =>
-            new FileAccessGrantViewModel(grant))];
+        Rows = accessControl.Mode is not null
+            ? [.. Enum.GetValues<FilePanelPosixWho>().Select(who =>
+                new FileAccessRowViewModel(who, this))]
+            : [.. accessControl.Grants.Select(grant =>
+                new FileAccessRowViewModel(grant))];
     }
 
     public string ItemName { get; }
@@ -54,65 +59,15 @@ public sealed class FileAccessControlEditorViewModel : ObservableObject
 
     public bool HasMode => _original.Mode is not null;
 
-    public bool HasGrants => Grants.Count > 0;
+    /// <summary>One row per party, whichever model the connection answered in.</summary>
+    public ObservableCollection<FileAccessRowViewModel> Rows { get; }
 
-    public ObservableCollection<FileAccessGrantViewModel> Grants { get; }
-
+    /// <summary>
+    /// The mode as it is written and as a listing shows it. Kept because the
+    /// number is what anybody working at a shell actually wants to see, and
+    /// because a table of privileges cannot express the odd combinations.
+    /// </summary>
     public string ModeText => $"{_mode.Octal}  {_mode.Symbolic}";
-
-    public bool OwnerRead
-    {
-        get => Has(FilePanelPosixWho.Owner, FilePanelPosixRight.Read);
-        set => Set(FilePanelPosixWho.Owner, FilePanelPosixRight.Read, value);
-    }
-
-    public bool OwnerWrite
-    {
-        get => Has(FilePanelPosixWho.Owner, FilePanelPosixRight.Write);
-        set => Set(FilePanelPosixWho.Owner, FilePanelPosixRight.Write, value);
-    }
-
-    public bool OwnerExecute
-    {
-        get => Has(FilePanelPosixWho.Owner, FilePanelPosixRight.Execute);
-        set => Set(FilePanelPosixWho.Owner, FilePanelPosixRight.Execute, value);
-    }
-
-    public bool GroupRead
-    {
-        get => Has(FilePanelPosixWho.Group, FilePanelPosixRight.Read);
-        set => Set(FilePanelPosixWho.Group, FilePanelPosixRight.Read, value);
-    }
-
-    public bool GroupWrite
-    {
-        get => Has(FilePanelPosixWho.Group, FilePanelPosixRight.Write);
-        set => Set(FilePanelPosixWho.Group, FilePanelPosixRight.Write, value);
-    }
-
-    public bool GroupExecute
-    {
-        get => Has(FilePanelPosixWho.Group, FilePanelPosixRight.Execute);
-        set => Set(FilePanelPosixWho.Group, FilePanelPosixRight.Execute, value);
-    }
-
-    public bool OtherRead
-    {
-        get => Has(FilePanelPosixWho.Other, FilePanelPosixRight.Read);
-        set => Set(FilePanelPosixWho.Other, FilePanelPosixRight.Read, value);
-    }
-
-    public bool OtherWrite
-    {
-        get => Has(FilePanelPosixWho.Other, FilePanelPosixRight.Write);
-        set => Set(FilePanelPosixWho.Other, FilePanelPosixRight.Write, value);
-    }
-
-    public bool OtherExecute
-    {
-        get => Has(FilePanelPosixWho.Other, FilePanelPosixRight.Execute);
-        set => Set(FilePanelPosixWho.Other, FilePanelPosixRight.Execute, value);
-    }
 
     /// <summary>
     /// The change to send, or null when nothing was changed — an Apply that
@@ -136,9 +91,9 @@ public sealed class FileAccessControlEditorViewModel : ObservableObject
                     version: _original.Version);
         }
 
-        var grants = Grants
-            .Where(grant => grant.Rights != FilePanelAccessRight.None)
-            .Select(grant => grant.ToGrant())
+        var grants = Rows
+            .Where(row => row.Rights != FilePanelAccessRight.None)
+            .Select(row => row.ToGrant())
             .ToArray();
         var unchanged = grants.Length == _original.Grants.Count
             && grants.Zip(_original.Grants).All(pair =>
@@ -152,9 +107,9 @@ public sealed class FileAccessControlEditorViewModel : ObservableObject
                 version: _original.Version);
     }
 
-    private bool Has(FilePanelPosixWho who, FilePanelPosixRight right) => _mode.Has(who, right);
+    internal bool Has(FilePanelPosixWho who, FilePanelPosixRight right) => _mode.Has(who, right);
 
-    private void Set(FilePanelPosixWho who, FilePanelPosixRight right, bool granted)
+    internal void Set(FilePanelPosixWho who, FilePanelPosixRight right, bool granted)
     {
         if (Has(who, right) == granted)
         {
@@ -162,102 +117,182 @@ public sealed class FileAccessControlEditorViewModel : ObservableObject
         }
 
         _mode = _mode.With(who, right, granted);
-        OnPropertyChanged(PropertyName(who, right));
         OnPropertyChanged(nameof(ModeText));
     }
 
-    private static string PropertyName(FilePanelPosixWho who, FilePanelPosixRight right) =>
-        (who == FilePanelPosixWho.Other ? "Other" : who.ToString()) + right;
+    private static string OwnerAndGroup(FilePanelAccessControl accessControl, string connection)
+    {
+        // Named where the connection knows the names. A POSIX filesystem read
+        // through .NET does not: the runtime exposes the bits and not the
+        // account behind them, and a name guessed from this process would be
+        // wrong for every file belonging to somebody else.
+        var parties = new[] { accessControl.Owner, accessControl.Group }
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToArray();
+        return parties.Length == 0
+            ? $"Permission bits on {connection}"
+            : $"{string.Join(" · ", parties)} on {connection}";
+    }
 }
 
 /// <summary>
-/// One party and what it holds, as a row with a single choice. The service's
-/// five permissions are offered as the four a person actually picks between:
-/// nothing, read, read and write, everything.
+/// One party and what it is allowed. The privileges offered are the ones a
+/// person picks between rather than the bits underneath, and reading is what a
+/// row means when it is left alone.
 /// </summary>
-public sealed class FileAccessGrantViewModel : ObservableObject
+public sealed class FileAccessRowViewModel : ObservableObject
 {
-    private static readonly (string Label, FilePanelAccessRight Rights)[] Options =
+    private static readonly (string Label, FilePanelAccessRight Rights)[] PosixPrivileges =
     [
+        ("Read & Write", FilePanelAccessRight.Read | FilePanelAccessRight.Write),
+        ("Read only", FilePanelAccessRight.Read),
+        ("Write only", FilePanelAccessRight.Write),
         ("No access", FilePanelAccessRight.None),
-        ("Read", FilePanelAccessRight.Read),
-        ("Read and write", FilePanelAccessRight.Read | FilePanelAccessRight.Write),
-        ("Full control", FilePanelAccessRight.FullControl),
     ];
 
-    private readonly FilePanelGrantee _grantee;
-    private string _permission;
+    private static readonly (string Label, FilePanelAccessRight Rights)[] GrantPrivileges =
+    [
+        ("Full control", FilePanelAccessRight.FullControl),
+        ("Read & Write", FilePanelAccessRight.Read | FilePanelAccessRight.Write),
+        ("Read only", FilePanelAccessRight.Read),
+        ("Write only", FilePanelAccessRight.Write),
+        ("No access", FilePanelAccessRight.None),
+    ];
 
-    public FileAccessGrantViewModel(FilePanelAccessGrant grant)
+    private readonly FileAccessControlEditorViewModel? _mode;
+    private readonly FilePanelPosixWho _who;
+    private readonly FilePanelGrantee? _grantee;
+    private readonly (string Label, FilePanelAccessRight Rights)[] _privileges;
+    private string _privilege;
+    private FilePanelAccessRight _rights;
+
+    /// <summary>A party of a filesystem: the owner, the group, or everyone.</summary>
+    internal FileAccessRowViewModel(
+        FilePanelPosixWho who,
+        FileAccessControlEditorViewModel mode)
+    {
+        _mode = mode;
+        _who = who;
+        _privileges = PosixPrivileges;
+        _rights =
+            (mode.Has(who, FilePanelPosixRight.Read) ? FilePanelAccessRight.Read : 0)
+            | (mode.Has(who, FilePanelPosixRight.Write) ? FilePanelAccessRight.Write : 0);
+        _privilege = Nearest(_rights, _privileges);
+        Name = who switch
+        {
+            FilePanelPosixWho.Owner => "Owner",
+            FilePanelPosixWho.Group => "Group",
+            _ => "Everyone",
+        };
+        Detail = string.Empty;
+        ShowsExecute = true;
+    }
+
+    /// <summary>A party of an object store: an account, or a well-known group.</summary>
+    public FileAccessRowViewModel(FilePanelAccessGrant grant)
     {
         ArgumentNullException.ThrowIfNull(grant);
         _grantee = grant.Grantee;
-        Rights = grant.Rights;
-        _permission = Nearest(grant.Rights);
+        _privileges = GrantPrivileges;
+        _rights = grant.Rights;
+        _privilege = Nearest(grant.Rights, _privileges);
+        Name = grant.Grantee.Label;
+        // What the connection calls this party underneath the readable name,
+        // where the two differ — a canonical account id means nothing on its
+        // own, and without it two accounts named alike cannot be told apart.
+        var detail = grant.Grantee.DisplayName is not null && grant.Grantee.Id is not null
+            ? grant.Grantee.Id
+            : grant.Grantee.Kind.ToString();
+        Detail = string.Equals(detail, Name, StringComparison.Ordinal)
+            ? string.Empty
+            : detail;
     }
 
-    public string Grantee => _grantee.Label;
+    public string Name { get; }
 
-    /// <summary>
-    /// What the connection calls this party underneath the readable name, where
-    /// the two differ — a canonical account id means nothing on its own, and
-    /// leaving it out means two accounts named alike cannot be told apart.
-    /// </summary>
-    public string Detail
+    public string Detail { get; }
+
+    public bool HasDetail => Detail.Length > 0;
+
+    public IReadOnlyList<string> Choices => _privileges.Select(option => option.Label).ToArray();
+
+    public string Privilege
     {
-        get
-        {
-            var detail = _grantee.DisplayName is not null && _grantee.Id is not null
-                ? _grantee.Id
-                : _grantee.Kind.ToString();
-            // A well-known group is its own detail, and saying "Everyone"
-            // twice on two lines reads as a rendering fault.
-            return string.Equals(detail, Grantee, StringComparison.Ordinal)
-                ? string.Empty
-                : detail;
-        }
-    }
-
-    public IReadOnlyList<string> Choices { get; } =
-        Options.Select(option => option.Label).ToArray();
-
-    public string Permission
-    {
-        get => _permission;
+        get => _privilege;
         set
         {
-            if (SetProperty(ref _permission, value))
+            if (!SetProperty(ref _privilege, value))
             {
-                Rights = Options.FirstOrDefault(option => option.Label == value).Rights;
-                OnPropertyChanged(nameof(PermissionLabel));
+                return;
             }
+
+            _rights = _privileges.FirstOrDefault(option => option.Label == value).Rights;
+            if (_mode is not null)
+            {
+                _mode.Set(
+                    _who,
+                    FilePanelPosixRight.Read,
+                    _rights.HasFlag(FilePanelAccessRight.Read));
+                _mode.Set(
+                    _who,
+                    FilePanelPosixRight.Write,
+                    _rights.HasFlag(FilePanelAccessRight.Write));
+            }
+
+            OnPropertyChanged(nameof(PrivilegeLabel));
         }
     }
 
-    public string PermissionLabel => $"What {Grantee} is granted";
-
-    public FilePanelAccessRight Rights { get; private set; }
-
-    public FilePanelAccessGrant ToGrant() => new(_grantee, Rights);
+    public string PrivilegeLabel => $"What {Name} is allowed";
 
     /// <summary>
-    /// A grant the four choices cannot express exactly — read plus the right to
-    /// change the list, say — shows as the smallest choice that covers it, so
-    /// leaving the row alone never quietly takes something away.
+    /// Only a filesystem has one. Finder hides it and a shell cannot: the
+    /// difference between a script that runs and one that does not is this bit.
     /// </summary>
-    private static string Nearest(FilePanelAccessRight rights)
+    public bool ShowsExecute { get; }
+
+    public bool CanRun
     {
-        foreach (var option in Options)
+        get => _mode?.Has(_who, FilePanelPosixRight.Execute) == true;
+        set
         {
-            if ((rights & ~option.Rights) == FilePanelAccessRight.None
-                && option.Rights != FilePanelAccessRight.None)
+            if (_mode is null || CanRun == value)
             {
-                return option.Label;
+                return;
+            }
+
+            _mode.Set(_who, FilePanelPosixRight.Execute, value);
+            OnPropertyChanged();
+        }
+    }
+
+    internal FilePanelAccessRight Rights => _rights;
+
+    internal FilePanelAccessGrant ToGrant() => new(
+        _grantee ?? throw new InvalidOperationException(
+            "A filesystem's parties are written back as a mode, not as grants."),
+        _rights);
+
+    /// <summary>
+    /// A grant the choices cannot express exactly — read plus the right to
+    /// change the list, say — shows as the smallest one that covers it, and
+    /// keeps what it actually has until somebody picks something else. Leaving
+    /// a row alone must never quietly take a permission away.
+    /// </summary>
+    private static string Nearest(
+        FilePanelAccessRight rights,
+        (string Label, FilePanelAccessRight Rights)[] privileges)
+    {
+        for (var index = privileges.Length - 1; index >= 0; index--)
+        {
+            if ((rights & ~privileges[index].Rights) == FilePanelAccessRight.None
+                && (privileges[index].Rights != FilePanelAccessRight.None
+                    || rights == FilePanelAccessRight.None))
+            {
+                return privileges[index].Label;
             }
         }
 
-        return rights == FilePanelAccessRight.None
-            ? Options[0].Label
-            : Options[^1].Label;
+        return privileges[0].Label;
     }
 }

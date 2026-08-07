@@ -132,6 +132,20 @@ public sealed class CatalogFileProviderRuntime :
         CancellationToken cancellationToken) =>
         UseActiveAsync((client, token) => client.DeleteAsync(request, token), cancellationToken);
 
+    public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
+        FilePanelAccessControlRequest request,
+        CancellationToken cancellationToken) =>
+        UseActiveAsync(
+            (client, token) => client.GetAccessControlAsync(request, token),
+            cancellationToken);
+
+    public ValueTask<FilePanelResult<FilePanelAccessControl>> SetAccessControlAsync(
+        FilePanelSetAccessControlRequest request,
+        CancellationToken cancellationToken) =>
+        UseActiveAsync(
+            (client, token) => client.SetAccessControlAsync(request, token),
+            cancellationToken);
+
     public async ValueTask<FilePanelResult<FilePanelTransferSnapshot>> EnqueueAsync(
         FilePanelTransferRequest request,
         CancellationToken cancellationToken)
@@ -991,6 +1005,20 @@ internal sealed class GenerationBoundFilePanelClient :
         CancellationToken cancellationToken) =>
         UseAsync(
             (client, token) => client.DeleteAsync(request, token),
+            cancellationToken);
+
+    public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
+        FilePanelAccessControlRequest request,
+        CancellationToken cancellationToken) =>
+        UseAsync(
+            (client, token) => client.GetAccessControlAsync(request, token),
+            cancellationToken);
+
+    public ValueTask<FilePanelResult<FilePanelAccessControl>> SetAccessControlAsync(
+        FilePanelSetAccessControlRequest request,
+        CancellationToken cancellationToken) =>
+        UseAsync(
+            (client, token) => client.SetAccessControlAsync(request, token),
             cancellationToken);
 
     public ValueTask<FilePanelResult<FilePanelTransferSnapshot>> EnqueueAsync(

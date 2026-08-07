@@ -4,10 +4,13 @@ using GhostShell.Application;
 namespace GhostShell.App.Tests;
 
 /// <summary>
-/// The permissions dialog. Two shapes share it, and the one thing both must get
-/// right is that closing it without changing anything is not a write: a write
-/// bumps a version somebody else may be holding, and on an object store it
-/// replaces the whole list.
+/// The permissions dialog: one table of parties for both models, because a
+/// filesystem's owner-group-everyone and an object store's accounts are the
+/// same question asked of different systems.
+///
+/// The one thing both must get right is that closing without changing anything
+/// is not a write — a write bumps a version somebody else may be holding, and
+/// on an object store it replaces the whole list.
 /// </summary>
 public sealed class FileAccessControlEditorViewModelTests
 {
@@ -25,19 +28,24 @@ public sealed class FileAccessControlEditorViewModelTests
             canEdit);
 
     [Fact]
-    public void A_filesystem_shows_its_bits_and_not_a_list_of_grants()
+    public void A_filesystem_shows_its_three_parties_and_what_each_is_allowed()
     {
-        var editor = Posix(0b110_100_100);
+        var editor = Posix(0b111_101_100);
 
         Assert.True(editor.HasMode);
-        Assert.False(editor.HasGrants);
-        Assert.True(editor.OwnerRead);
-        Assert.True(editor.OwnerWrite);
-        Assert.False(editor.OwnerExecute);
-        Assert.True(editor.GroupRead);
-        Assert.False(editor.GroupWrite);
-        Assert.False(editor.OtherWrite);
-        Assert.Contains("644", editor.ModeText, StringComparison.Ordinal);
+        Assert.Equal(["Owner", "Group", "Everyone"], editor.Rows.Select(row => row.Name));
+        Assert.Equal("Read & Write", editor.Rows[0].Privilege);
+        Assert.Equal("Read only", editor.Rows[1].Privilege);
+        Assert.Equal("Read only", editor.Rows[2].Privilege);
+        Assert.Contains("754", editor.ModeText, StringComparison.Ordinal);
+
+        // The execute bit gets a column of its own. Finder hides it; a shell
+        // cannot, because it is the difference between a script that runs and
+        // one that does not.
+        Assert.All(editor.Rows, row => Assert.True(row.ShowsExecute));
+        Assert.True(editor.Rows[0].CanRun);
+        Assert.True(editor.Rows[1].CanRun);
+        Assert.False(editor.Rows[2].CanRun);
     }
 
     [Fact]
@@ -47,28 +55,42 @@ public sealed class FileAccessControlEditorViewModelTests
 
         Assert.Null(editor.BuildRequest());
 
-        // And setting a bit back the way it was is still nothing.
-        editor.OwnerRead = false;
-        editor.OwnerRead = true;
+        // And setting a row back the way it was is still nothing.
+        editor.Rows[0].Privilege = "Read only";
+        editor.Rows[0].Privilege = "Read & Write";
 
         Assert.Null(editor.BuildRequest());
     }
 
     [Fact]
-    public void A_changed_bit_is_sent_as_the_whole_mode()
+    public void Changing_a_party_is_sent_as_the_whole_mode()
     {
         var editor = Posix(0b110_100_100);
 
-        editor.OwnerExecute = true;
-        editor.GroupExecute = true;
-        editor.OtherExecute = true;
+        editor.Rows[1].Privilege = "No access";
+        editor.Rows[0].CanRun = true;
 
         var request = editor.BuildRequest();
 
         Assert.NotNull(request);
-        Assert.Equal("755", request!.Mode!.Octal);
+        Assert.Equal("704", request!.Mode!.Octal);
         Assert.Null(request.Grants);
         Assert.Equal(Location, request.Location);
+    }
+
+    /// <summary>
+    /// Execute is separate from the privilege, so setting one must not disturb
+    /// the other — a row switched to read-only keeps whether it can run.
+    /// </summary>
+    [Fact]
+    public void The_run_column_and_the_privilege_do_not_reach_into_each_other()
+    {
+        var editor = Posix(0b111_101_101);
+
+        editor.Rows[0].Privilege = "Read only";
+
+        Assert.True(editor.Rows[0].CanRun);
+        Assert.Equal("555", editor.BuildRequest()!.Mode!.Octal);
     }
 
     /// <summary>
@@ -80,7 +102,7 @@ public sealed class FileAccessControlEditorViewModelTests
     {
         var editor = Posix(0b110_100_100, canEdit: false);
 
-        editor.OwnerExecute = true;
+        editor.Rows[0].CanRun = true;
 
         Assert.False(editor.CanEdit);
         Assert.Null(editor.BuildRequest());
@@ -95,7 +117,7 @@ public sealed class FileAccessControlEditorViewModelTests
             canEdit: true);
 
     [Fact]
-    public void An_object_store_shows_one_row_per_party_and_no_bits()
+    public void An_object_store_shows_one_row_per_party_and_no_run_column()
     {
         var editor = ObjectStore(
             new FilePanelAccessGrant(
@@ -106,10 +128,10 @@ public sealed class FileAccessControlEditorViewModelTests
                 FilePanelAccessRight.FullControl));
 
         Assert.False(editor.HasMode);
-        Assert.True(editor.HasGrants);
-        Assert.Equal(["Everyone", "p3179430"], editor.Grants.Select(grant => grant.Grantee));
-        Assert.Equal("Read", editor.Grants[0].Permission);
-        Assert.Equal("Full control", editor.Grants[1].Permission);
+        Assert.Equal(["Everyone", "p3179430"], editor.Rows.Select(row => row.Name));
+        Assert.Equal("Read only", editor.Rows[0].Privilege);
+        Assert.Equal("Full control", editor.Rows[1].Privilege);
+        Assert.All(editor.Rows, row => Assert.False(row.ShowsExecute));
         Assert.Null(editor.BuildRequest());
     }
 
@@ -124,7 +146,7 @@ public sealed class FileAccessControlEditorViewModelTests
                 new FilePanelGrantee(FilePanelGranteeKind.User, "p3179430"),
                 FilePanelAccessRight.FullControl));
 
-        editor.Grants[0].Permission = "No access";
+        editor.Rows[0].Privilege = "No access";
 
         var request = editor.BuildRequest();
 
@@ -138,10 +160,9 @@ public sealed class FileAccessControlEditorViewModelTests
     }
 
     /// <summary>
-    /// A grant the four choices cannot express exactly — read plus the right to
-    /// change the list — shows as the smallest choice that covers it, and keeps
-    /// the grant it actually has until somebody picks something else. Leaving a
-    /// row alone must never quietly take a permission away.
+    /// A grant the choices cannot express exactly shows as the smallest one
+    /// that covers it, and keeps what it actually has until somebody picks
+    /// something else. Leaving a row alone never quietly takes a right away.
     /// </summary>
     [Fact]
     public void A_grant_the_choices_cannot_express_is_shown_rounded_up_and_kept_exactly()
@@ -152,14 +173,11 @@ public sealed class FileAccessControlEditorViewModelTests
                 new FilePanelGrantee(FilePanelGranteeKind.User, "auditor"),
                 exact));
 
-        Assert.Equal("Full control", editor.Grants[0].Permission);
-        Assert.Equal(exact, editor.Grants[0].Rights);
+        Assert.Equal("Full control", editor.Rows[0].Privilege);
         Assert.Null(editor.BuildRequest());
 
-        // And picking something is what changes it.
-        editor.Grants[0].Permission = "Read";
+        editor.Rows[0].Privilege = "Read only";
 
-        Assert.Equal(FilePanelAccessRight.Read, editor.Grants[0].Rights);
         Assert.Equal(
             FilePanelAccessRight.Read,
             Assert.Single(editor.BuildRequest()!.Grants!).Rights);
