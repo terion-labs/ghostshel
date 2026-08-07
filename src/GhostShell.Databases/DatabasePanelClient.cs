@@ -151,7 +151,29 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
     public DatabaseConnectionDetails ParseConnectionDetails(
         string driverId,
         string connectionString) =>
-        Resolve(driverId).ParseDetails(connectionString ?? string.Empty);
+        ResolveDetails(Resolve(driverId), connectionString ?? string.Empty);
+
+    /// <summary>
+    /// A URL pasted into the connection box fills the host, port, database and
+    /// credential fields too, rather than sitting there as one opaque line —
+    /// so the engines that speak one are asked to translate before the fields
+    /// are read out of it.
+    /// </summary>
+    private static DatabaseConnectionDetails ResolveDetails(
+        IDatabaseDriver driver,
+        string connectionString)
+    {
+        try
+        {
+            return driver.ParseDetails(driver.NormalizeConnectionString(connectionString));
+        }
+        catch (ArgumentException)
+        {
+            // A URL naming something this build cannot honour is still worth
+            // showing as it was typed; the refusal is raised when it is used.
+            return driver.ParseDetails(connectionString);
+        }
+    }
 
     public string BuildConnectionString(string driverId, DatabaseConnectionDetails details)
     {

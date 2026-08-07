@@ -114,6 +114,6 @@ public sealed class PostgresConnectionStringsTests
             "postgresql://alice@db.example.test/app?sslmode=require&gssencmode=require"));
 
         Assert.Contains("gssencmode", refusal.Message, StringComparison.Ordinal);
-        Assert.Contains("Host=", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("keyword=value", refusal.Message, StringComparison.Ordinal);
     }
 }

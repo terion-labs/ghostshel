@@ -95,7 +95,8 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
             // A memory token is already exact; path normalization would only
             // mangle it.
             ? connectionString
-            : FileConnectionStrings.Normalize(connectionString);
+            : FileConnectionStrings.Normalize(
+                FileConnectionUrls.StripScheme(connectionString, "sqlite", "sqlite3"));
 
     public string ListTablesSql => """
         SELECT name, type FROM sqlite_master
@@ -156,7 +157,10 @@ internal sealed class PostgresFamilyDriver(
         connectionStringHint);
 
     public DbConnection CreateConnection(string connectionString) =>
-        new NpgsqlConnection(PostgresConnectionStrings.Normalize(connectionString));
+        new NpgsqlConnection(connectionString);
+
+    public string NormalizeConnectionString(string connectionString) =>
+        PostgresConnectionStrings.Normalize(connectionString);
 
     public string ListTablesSql => """
         SELECT table_name,
@@ -174,15 +178,14 @@ internal sealed class PostgresFamilyDriver(
 
     public DatabaseEndpoint? GetEndpoint(string connectionString)
     {
-        var builder = new NpgsqlConnectionStringBuilder(
-            PostgresConnectionStrings.Normalize(connectionString));
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
         return string.IsNullOrWhiteSpace(builder.Host)
             ? null
             : new DatabaseEndpoint(builder.Host, builder.Port);
     }
 
     public string RewriteEndpoint(string connectionString, string host, int port) =>
-        new NpgsqlConnectionStringBuilder(PostgresConnectionStrings.Normalize(connectionString))
+        new NpgsqlConnectionStringBuilder(connectionString)
         {
             Host = host,
             Port = port,
@@ -195,10 +198,8 @@ internal sealed class PostgresFamilyDriver(
         ["Username", "User ID", "UserName", "User Id"],
         ["Password"]);
 
-    // A URL pasted into the connection box fills the host, port, database and
-    // credential fields too, rather than sitting there as one opaque line.
     public DatabaseConnectionDetails ParseDetails(string connectionString) =>
-        DetailKeys.Parse(PostgresConnectionStrings.Normalize(connectionString));
+        DetailKeys.Parse(connectionString);
 
     public string BuildConnectionString(DatabaseConnectionDetails details) =>
         DetailKeys.Build(details);
@@ -217,6 +218,54 @@ internal sealed class MySqlFamilyDriver(
 
     public DbConnection CreateConnection(string connectionString) =>
         new MySqlConnection(connectionString);
+
+    private static readonly Dictionary<string, string> UrlParameterNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            // MySQL Shell's spelling of the one parameter a hosted MySQL URL
+            // usually carries.
+            ["ssl-mode"] = "SslMode",
+            ["ssl-ca"] = "SslCa",
+            ["ssl-cert"] = "SslCert",
+            ["ssl-key"] = "SslKey",
+        };
+
+    public string NormalizeConnectionString(string connectionString)
+    {
+        if (ConnectionUrl.TryParse(connectionString, "mysql", "mariadb") is not { } url)
+        {
+            return connectionString;
+        }
+
+        var builder = new MySqlConnectionStringBuilder();
+        if (url.Hosts.Length > 0)
+        {
+            builder.Server = url.Host ?? url.Hosts;
+        }
+
+        if (url.Port is { } port)
+        {
+            builder.Port = (uint)port;
+        }
+
+        if (url.Database is { } database)
+        {
+            builder.Database = database;
+        }
+
+        if (url.Username is { } username)
+        {
+            builder.UserID = username;
+        }
+
+        if (url.Password is { } password)
+        {
+            builder.Password = password;
+        }
+
+        url.ApplyParameters(builder, "MySQL", UrlParameterNames);
+        return builder.ConnectionString;
+    }
 
     public string ListTablesSql => """
         SELECT table_name,
@@ -270,6 +319,46 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
 
     public DbConnection CreateConnection(string connectionString) =>
         new SqlConnection(connectionString);
+
+    /// <summary>
+    /// <c>sqlserver://host:1433;database=app</c> is how JDBC writes it and how
+    /// the tools that grew up around JDBC repeat it; <c>mssql://</c> with a
+    /// path is the other spelling. Both land in one DataSource, because that is
+    /// where this provider keeps the address.
+    /// </summary>
+    public string NormalizeConnectionString(string connectionString)
+    {
+        if (ConnectionUrl.TryParse(connectionString, "sqlserver", "mssql") is not { } url)
+        {
+            return connectionString;
+        }
+
+        var builder = new SqlConnectionStringBuilder();
+        if (url.Hosts.Length > 0)
+        {
+            builder.DataSource = url.Port is { } port
+                ? $"{url.Host},{port}"
+                : url.Hosts;
+        }
+
+        if (url.Database is { } database)
+        {
+            builder.InitialCatalog = database;
+        }
+
+        if (url.Username is { } username)
+        {
+            builder.UserID = username;
+        }
+
+        if (url.Password is { } password)
+        {
+            builder.Password = password;
+        }
+
+        url.ApplyParameters(builder, "SQL Server");
+        return builder.ConnectionString;
+    }
 
     public string ListTablesSql => """
         SELECT TABLE_NAME,
@@ -352,7 +441,8 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
         new DuckDBConnection(connectionString);
 
     public string NormalizeConnectionString(string connectionString) =>
-        FileConnectionStrings.Normalize(connectionString);
+        FileConnectionStrings.Normalize(
+            FileConnectionUrls.StripScheme(connectionString, "duckdb"));
 
     public string ListTablesSql => """
         SELECT table_name,
@@ -412,6 +502,42 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
 
     public DbConnection CreateConnection(string connectionString) =>
         new OracleConnection(connectionString);
+
+    /// <summary>
+    /// <c>oracle://user:password@host:1521/FREEPDB1</c>, which is the URL form
+    /// the tooling around Oracle settled on. It becomes Easy Connect —
+    /// host:port/service — because that is the one address form this provider
+    /// can also tunnel.
+    /// </summary>
+    public string NormalizeConnectionString(string connectionString)
+    {
+        if (ConnectionUrl.TryParse(connectionString, "oracle") is not { } url)
+        {
+            return connectionString;
+        }
+
+        var builder = new OracleConnectionStringBuilder();
+        if (url.Hosts.Length > 0)
+        {
+            var address = url.Port is { } port ? $"{url.Host}:{port}" : url.Hosts;
+            builder.DataSource = url.Database is { } service
+                ? $"{address}/{service}"
+                : address;
+        }
+
+        if (url.Username is { } username)
+        {
+            builder.UserID = username;
+        }
+
+        if (url.Password is { } password)
+        {
+            builder.Password = password;
+        }
+
+        url.ApplyParameters(builder, "Oracle");
+        return builder.ConnectionString;
+    }
 
     public string ListTablesSql => """
         SELECT table_name, 'table' FROM user_tables
@@ -513,6 +639,49 @@ internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
     public DbConnection CreateConnection(string connectionString) =>
         new FbConnection(connectionString);
 
+    /// <summary>
+    /// <c>firebird://user:password@host:3050//var/db/app.fdb</c>. The database
+    /// is a path on the server, so what follows the host is kept whole rather
+    /// than read as a name.
+    /// </summary>
+    public string NormalizeConnectionString(string connectionString)
+    {
+        if (ConnectionUrl.TryParse(connectionString, "firebird", "firebirdsql")
+            is not { } url)
+        {
+            return connectionString;
+        }
+
+        var builder = new FbConnectionStringBuilder();
+        if (url.Hosts.Length > 0)
+        {
+            builder.DataSource = url.Host ?? url.Hosts;
+        }
+
+        if (url.Port is { } port)
+        {
+            builder.Port = port;
+        }
+
+        if (url.Database is { } database)
+        {
+            builder.Database = database;
+        }
+
+        if (url.Username is { } username)
+        {
+            builder.UserID = username;
+        }
+
+        if (url.Password is { } password)
+        {
+            builder.Password = password;
+        }
+
+        url.ApplyParameters(builder, "Firebird");
+        return builder.ConnectionString;
+    }
+
     public string ListTablesSql => """
         SELECT TRIM(rdb$relation_name),
                CASE WHEN rdb$view_blr IS NULL THEN 'table' ELSE 'view' END
@@ -565,6 +734,47 @@ internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
 
     public DbConnection CreateConnection(string connectionString) =>
         new ClickHouseConnection(connectionString);
+
+    /// <summary>
+    /// <c>clickhouse://user:password@host:8123/database</c>, as clickhouse-client
+    /// and the JDBC driver write it.
+    /// </summary>
+    public string NormalizeConnectionString(string connectionString)
+    {
+        if (ConnectionUrl.TryParse(connectionString, "clickhouse") is not { } url)
+        {
+            return connectionString;
+        }
+
+        var builder = new System.Data.Common.DbConnectionStringBuilder();
+        if (url.Hosts.Length > 0)
+        {
+            builder["Host"] = url.Host ?? url.Hosts;
+        }
+
+        if (url.Port is { } port)
+        {
+            builder["Port"] = port;
+        }
+
+        if (url.Database is { } database)
+        {
+            builder["Database"] = database;
+        }
+
+        if (url.Username is { } username)
+        {
+            builder["Username"] = username;
+        }
+
+        if (url.Password is { } password)
+        {
+            builder["Password"] = password;
+        }
+
+        url.ApplyParameters(builder, "ClickHouse");
+        return builder.ConnectionString;
+    }
 
     public string ListTablesSql => """
         SELECT name,
