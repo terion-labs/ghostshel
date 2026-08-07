@@ -58,6 +58,34 @@ public sealed class BrowserRuntimePanelViewModelTests
     }
 
     /// <summary>
+    /// A panel floated into a window of its own takes its surface with it, and
+    /// brings it back. By the time it comes back the window it was in has closed
+    /// — so the layer that still holds the surface is not one of the layers any
+    /// more, and looking for it among the living found nothing. Adding a control
+    /// that still has a parent throws, and it took the shell down with it.
+    /// </summary>
+    [Fact]
+    public void A_surface_moves_between_layers_even_when_the_one_it_left_is_gone()
+    {
+        // Any parent at all, not only a layer the shell still knows about — a
+        // plain panel stands in for the layer of a window that has closed, which
+        // is exactly the parent nothing was looking for.
+        var left = new Panel();
+        var arrived = new NativeSurfaceLayer();
+        var surface = new Border();
+
+        left.Children.Add(surface);
+
+        arrived.Present(surface, new Rect(5, 6, 400, 300));
+
+        Assert.DoesNotContain(surface, left.Children);
+        Assert.Contains(surface, arrived.Children);
+        Assert.True(surface.IsVisible);
+        Assert.Equal(5, Canvas.GetLeft(surface));
+        Assert.Equal(400, surface.Width);
+    }
+
+    /// <summary>
     /// A native view is composited above everything the shell draws, so the only
     /// way to show something over it is for it to leave. Suspending is that, and
     /// it must be exactly reversible: the dock's placement targets are unreachable

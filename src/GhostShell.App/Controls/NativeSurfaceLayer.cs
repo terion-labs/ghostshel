@@ -126,11 +126,15 @@ internal sealed class NativeSurfaceLayer : Canvas
     }
 
     /// <summary>
-    /// The layer for a control's window, or null before it has one.
+    /// The layer for a control's window, or null until that window has one.
     ///
-    /// The shell's own window declares one. A panel floated into a window of its
-    /// own gets one made here, because a floated panel is still a panel and its
-    /// surface still has to outlive the views that draw it.
+    /// The shell's own window declares one in markup. A floated panel's window is
+    /// Dock's, and its content is the dockable itself — a view model drawn
+    /// through a template — so there is nothing there to declare a layer beside
+    /// and nothing to wrap: replacing that content puts a panel where a dockable
+    /// was expected, and the window draws the words "Avalonia.Controls.Panel".
+    /// The overlay every top level keeps for what is drawn over its content is
+    /// where a native surface belongs.
     /// </summary>
     public static NativeSurfaceLayer? For(Visual visual)
     {
@@ -150,11 +154,6 @@ internal sealed class NativeSurfaceLayer : Canvas
             return null;
         }
 
-        // Not by replacing the window's content. A floated panel's window keeps a
-        // dockable there — a view model, drawn through a template — so there was
-        // nothing to wrap, no layer was ever made, and a floated browser came up
-        // showing nothing at all. Every top level has an overlay for things drawn
-        // over its content, which is what a native surface is.
         var layer = new NativeSurfaceLayer { ClipToBounds = false };
         overlay.Children.Add(layer);
         return layer;
@@ -200,17 +199,26 @@ internal sealed class NativeSurfaceLayer : Canvas
     /// Takes a surface out of whichever layer currently holds it, so another can
     /// take it. Not the same as releasing it: the panel still owns it, and the
     /// layer it is moving to is about to show it.
+    ///
+    /// Asked of the surface rather than of the layers, because by the time a
+    /// panel comes back the window it was in has usually closed, and a layer
+    /// stops being one of the layers the moment its window goes — while the
+    /// surface is still parented to it. Looking for it among the living found
+    /// nothing, and adding a control that still has a parent throws.
     /// </summary>
     private static void Surrender(Control surface)
     {
-        foreach (var layer in Layers.ToArray())
+        if (surface.GetVisualParent() is not Panel previous)
         {
-            if (layer.Children.Contains(surface))
-            {
-                layer._wanted.Remove(surface);
-                layer.Children.Remove(surface);
-            }
+            return;
         }
+
+        if (previous is NativeSurfaceLayer layer)
+        {
+            layer._wanted.Remove(surface);
+        }
+
+        previous.Children.Remove(surface);
     }
 
     /// <summary>
