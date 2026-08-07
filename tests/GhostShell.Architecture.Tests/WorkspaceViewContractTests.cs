@@ -198,11 +198,13 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal("AgentWorkspaceSurface", AttributeValue(agentWorkspace, "Name"));
         Assert.Equal("Right", AttributeValue(agentWorkspace, "DockPanel.Dock"));
         Assert.Equal("352", AttributeValue(agentWorkspace, "Width"));
-        // The shortcut row already contributes half the top gutter below its
-        // centred controls, so the agent supplies the other half rather than
-        // visually doubling only that edge.
+        // No top. The chrome band above is twice the window buttons' axis and
+        // centres what it holds on it, so it already ends a full gap below the
+        // tab strip — not the half this once assumed. Everything in the body
+        // therefore leaves its top edge to the band, or the space over the
+        // panels comes out half again wider than the space beside them.
         Assert.Equal(
-            "{controls:Inset Right=Sm, Top=Sm, Bottom=Sm}",
+            "{controls:Inset Right=Sm, Bottom=Sm}",
             AttributeValue(agentWorkspace, "Margin"));
         Assert.Equal(
             "{Binding IsAgentPanelVisible}",

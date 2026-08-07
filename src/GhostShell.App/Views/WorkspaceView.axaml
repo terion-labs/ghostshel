@@ -267,6 +267,7 @@
           Width="190"
           Classes="FloatingSidebar"
           controls:Concentric.IsEnabled="True"
+          Margin="{controls:Inset Horizontal=Sm, Bottom=Sm}"
           Padding="{controls:Inset Horizontal=Xs, Vertical=Sm}"
           DockPanel.Dock="{Binding TabStripDock}"
           IsVisible="{Binding IsTabStripVisibleOnSide}">
@@ -292,7 +293,7 @@
           x:Name="AgentWorkspaceSurface"
           DockPanel.Dock="Right"
           Width="352"
-          Margin="{controls:Inset Right=Sm, Top=Sm, Bottom=Sm}"
+          Margin="{controls:Inset Right=Sm, Bottom=Sm}"
           AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
           ApproveAgentActionRequested="OnApproveAgentActionClick"
           CancelAgentActionRequested="OnCancelAgentActionClick"
@@ -313,9 +314,11 @@
 
       <!-- The canvas gutter matches the splitter step, so a panel's distance to
            the rail, to the agent panel, and to its neighbour panel all read as
-           the same gap. -->
+           the same gap. No top gutter: the chrome band above already ends one
+           below the tab strip, and adding a second put half again as much space
+           over the panels as beside them. -->
       <Grid
-          Margin="{controls:Inset Sm}"
+          Margin="{controls:Inset Horizontal=Sm, Bottom=Sm}"
           IsVisible="{Binding IsWorkspaceCanvasVisible}">
         <!-- One canvas per open workspace, and switching shows a different
              one rather than rebuilding the only one.

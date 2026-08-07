@@ -37,7 +37,12 @@ public sealed class WorkspaceGutterContractTests
 
         var canvasMargin = (string?)canvas.Attribute("Margin");
 
-        Assert.Equal("{controls:Inset Sm}", canvasMargin);
+        // Three sides, not four: the chrome band above the canvas is twice the
+        // window buttons' axis and centres what it holds on it, so it already
+        // ends a gap below the tab strip. The canvas adding a fourth spent that
+        // gap twice and left the space over the panels half again wider than
+        // the space beside them.
+        Assert.Equal("{controls:Inset Horizontal=Sm, Bottom=Sm}", canvasMargin);
         Assert.Empty(panelMargins);
         Assert.Single(
             canvas.Descendants(),

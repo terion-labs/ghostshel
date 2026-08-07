@@ -663,16 +663,19 @@
   </Style>
 
   <!-- The route's content panel: the same floating surface as the sidebar next
-       to it, minus the left margin the sidebar's right margin already provides. -->
-  <!-- The workspace canvas already contributes the gutter on the facing edge.
-       The top matches the canvas gutter, so the rails and the panels start on
-       the same line rather than the rails riding a step higher. -->
+       to it, minus the left margin the sidebar's right margin already provides.
+
+       No top, for the same reason the route sidebar has none: the chrome band
+       is as tall as twice the window buttons' axis and centres what it holds on
+       that axis, so it already ends a gap below the tab strip. Adding one here
+       spent that gap twice, and the space above the panels came out half again
+       wider than the space beside them. -->
   <Style Selector="Border.FloatingSidebar.workspaceLeft">
-    <Setter Property="Margin" Value="{controls:Inset Left=Sm, Top=Sm, Bottom=Sm}" />
+    <Setter Property="Margin" Value="{controls:Inset Left=Sm, Bottom=Sm}" />
   </Style>
 
   <Style Selector="Border.FloatingSidebar.workspaceRight">
-    <Setter Property="Margin" Value="{controls:Inset Right=Sm, Top=Sm, Bottom=Sm}" />
+    <Setter Property="Margin" Value="{controls:Inset Right=Sm, Bottom=Sm}" />
   </Style>
 
   <Style Selector="Button.RuntimeHomeTab">
