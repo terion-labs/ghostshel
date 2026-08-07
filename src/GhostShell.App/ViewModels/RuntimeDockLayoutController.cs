@@ -680,6 +680,11 @@ internal sealed class RuntimeDockLayoutController
 
     private void Changed()
     {
+        // Panels attached and removed through the controller never reach the
+        // factory's own mutation hooks, and a panel that has only ever been
+        // placed — never dragged — is exactly the one most likely to be floated
+        // first. It has to know where it was too.
+        Factory.RememberHomes();
         _revision++;
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -789,12 +794,15 @@ internal sealed class RuntimeDockFactory : Factory
         }
 
         // Resolved before the removal, so the search never meets the leaf that is
-        // in the middle of collapsing.
-        var target = FindDocumentLeaf(home, document);
+        // in the middle of collapsing. Where it went out from is preferred, and
+        // any occupied leaf is the fallback for a neighbour that has since been
+        // closed.
+        var placement = RecalledPlacement(home, document)
+            ?? (FindDocumentLeaf(home, document), DockOperation.Right);
         RemoveDockable(document, collapse: true);
 
         var leaf = CreateLeaf(document, $"panel-dock-{document.Id}");
-        if (target is null)
+        if (placement.Target is null)
         {
             home.VisibleDockables ??= CreateList<IDockable>();
             AddDockable(home, leaf);
@@ -802,7 +810,7 @@ internal sealed class RuntimeDockFactory : Factory
         }
         else
         {
-            SplitToDock(target, leaf, DockOperation.Right);
+            SplitToDock(placement.Target, leaf, placement.Operation);
         }
 
         // The document arrives owned by the leaf it has just left. Nothing else
@@ -821,6 +829,125 @@ internal sealed class RuntimeDockFactory : Factory
         SetActiveDockable(document);
         NotifyLayoutMutated();
         return true;
+    }
+
+    /// <summary>
+    /// Where a panel sat while it was last in the workspace: the panel it was
+    /// beside, and which side of it.
+    ///
+    /// Kept as a neighbour rather than as a position, because a position stops
+    /// meaning anything the moment anything else moves. A neighbour survives the
+    /// rest of the layout being rearranged around it, and where it no longer
+    /// exists the panel simply comes back beside whatever is there.
+    /// </summary>
+    private readonly Dictionary<string, PanelHome> _homes = new(StringComparer.Ordinal);
+
+    private readonly record struct PanelHome(string NeighbourId, DockOperation Operation);
+
+    /// <summary>
+    /// Notes where every docked panel currently is.
+    ///
+    /// Recorded continuously rather than at the moment of floating, because a
+    /// panel can leave by a route this factory never sees: Dock's own drag pulls
+    /// a dockable straight out into a window without going through anything we
+    /// override. By the time we are asked to put it back, the last place it was
+    /// has to be something we already knew.
+    /// </summary>
+    internal void RememberHomes()
+    {
+        if (HomeLayout is not { } home)
+        {
+            return;
+        }
+
+        RememberHomes(home);
+    }
+
+    private void RememberHomes(IDock dock)
+    {
+        var siblings = (dock.VisibleDockables ?? [])
+            .Where(child => child is not IProportionalDockSplitter)
+            .ToArray();
+        var vertical = dock is IProportionalDock
+        {
+            Orientation: Orientation.Vertical,
+        };
+
+        for (var index = 0; index < siblings.Length; index++)
+        {
+            if (siblings[index] is IDock nested)
+            {
+                RememberHomes(nested);
+            }
+
+            if (FirstDocument(siblings[index]) is not { Id: { Length: > 0 } id } )
+            {
+                continue;
+            }
+
+            // The panel before this one, so returning puts it back on the same
+            // side; the one after it where this is the first.
+            var (neighbour, operation) = index > 0
+                ? (siblings[index - 1], vertical ? DockOperation.Bottom : DockOperation.Right)
+                : index + 1 < siblings.Length
+                    ? (siblings[index + 1], vertical ? DockOperation.Top : DockOperation.Left)
+                    : (null, DockOperation.Right);
+            if (neighbour is null || FirstDocument(neighbour) is not { Id: { Length: > 0 } } anchor)
+            {
+                _homes.Remove(id);
+                continue;
+            }
+
+            _homes[id] = new PanelHome(anchor.Id, operation);
+        }
+    }
+
+    private static IDocument? FirstDocument(IDockable dockable) => dockable switch
+    {
+        IDocument document => document,
+        IDock dock => (dock.VisibleDockables ?? [])
+            .Select(FirstDocument)
+            .FirstOrDefault(found => found is not null),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The place a returning panel asked for, if the panel it named is still
+    /// there.
+    /// </summary>
+    private (IDock? Target, DockOperation Operation)? RecalledPlacement(
+        IDock home,
+        IDocument document)
+    {
+        if (document.Id is not { Length: > 0 } id
+            || !_homes.TryGetValue(id, out var recalled))
+        {
+            return null;
+        }
+
+        var anchor = FindDocumentById(home, recalled.NeighbourId);
+        return anchor?.Owner is IDock leaf
+            ? (leaf, recalled.Operation)
+            : null;
+    }
+
+    private static IDocument? FindDocumentById(IDock dock, string id)
+    {
+        foreach (var child in dock.VisibleDockables ?? [])
+        {
+            if (child is IDocument document
+                && string.Equals(document.Id, id, StringComparison.Ordinal))
+            {
+                return document;
+            }
+
+            if (child is IDock nested && FindDocumentById(nested, id) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -954,8 +1081,11 @@ internal sealed class RuntimeDockFactory : Factory
         base.InitDockWindow(window, owner);
     }
 
-    private void NotifyLayoutMutated() =>
+    private void NotifyLayoutMutated()
+    {
+        RememberHomes();
         LayoutMutated?.Invoke(this, EventArgs.Empty);
+    }
 
     private static bool HasSingleDocument(IDock dock, IDockable document) =>
         dock.VisibleDockables is { Count: 1 } visible

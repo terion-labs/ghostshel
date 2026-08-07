@@ -408,6 +408,82 @@ public sealed class RuntimeDockLayoutPersistenceTests
         Assert.Same(document, leaf.ActiveDockable);
     }
 
+    /// <summary>
+    /// A panel comes back where it was, not merely somewhere. It is remembered by
+    /// the panel it sat beside rather than by a position, so the rest of the
+    /// workspace can be rearranged while it is away and the answer still means
+    /// something.
+    /// </summary>
+    [Theory]
+    [InlineData(PanelSplitOrientation.LeftRight, Orientation.Horizontal)]
+    [InlineData(PanelSplitOrientation.TopBottom, Orientation.Vertical)]
+    public void A_returning_panel_takes_the_side_it_left_from(
+        PanelSplitOrientation split,
+        Orientation orientation)
+    {
+        var tab = NewTab($"dock-back-side-{orientation}");
+        var first = Panel("dock-back-side-first");
+        tab.AddPanel(first);
+        var second = tab.SplitWithPlaceholder(first.Id, split);
+        Assert.NotNull(second);
+
+        var before = DocumentOrder(tab, orientation);
+        var document = Enumerate(tab.DockLayout).OfType<IDocument>()
+            .Single(candidate => candidate.Id == second!.Id.Value);
+        var factory = (RuntimeDockFactory)tab.DockFactory;
+        Float(tab, factory, document);
+
+        Assert.True(factory.DockBack(document));
+
+        Assert.Equal(before, DocumentOrder(tab, orientation));
+    }
+
+    /// <summary>
+    /// The panel it named has been closed while it was away. It still comes back.
+    /// </summary>
+    [Fact]
+    public void A_returning_panel_settles_for_any_place_when_its_neighbour_has_gone()
+    {
+        var tab = NewTab("dock-back-lost-neighbour");
+        var staying = Panel("dock-back-lost-staying");
+        var leaving = Panel("dock-back-lost-leaving");
+        var neighbour = Panel("dock-back-lost-neighbour-panel");
+        tab.AddPanel(staying);
+        tab.AddPanel(neighbour);
+        tab.AddPanel(leaving);
+
+        var document = Enumerate(tab.DockLayout).OfType<IDocument>()
+            .Single(candidate => candidate.Id == leaving.Id.Value);
+        var factory = (RuntimeDockFactory)tab.DockFactory;
+        Float(tab, factory, document);
+        tab.RemovePanel(neighbour.Id);
+
+        Assert.True(factory.DockBack(document));
+        Assert.Contains(
+            Enumerate(tab.DockLayout).OfType<IDocument>(),
+            candidate => ReferenceEquals(candidate, document));
+    }
+
+    private static string[] DocumentOrder(RuntimeTabViewModel tab, Orientation orientation)
+    {
+        var split = Enumerate(tab.DockLayout).OfType<ProportionalDock>()
+            .First(dock => dock.Orientation == orientation);
+        return (split.VisibleDockables ?? [])
+            .Select(FirstDocumentIn)
+            .Where(id => id is not null)
+            .Select(id => id!)
+            .ToArray();
+    }
+
+    private static string? FirstDocumentIn(IDockable dockable) => dockable switch
+    {
+        IDocument document => document.Id,
+        IDock dock => (dock.VisibleDockables ?? [])
+            .Select(FirstDocumentIn)
+            .FirstOrDefault(found => found is not null),
+        _ => null,
+    };
+
     [Fact]
     public void A_panel_that_never_left_cannot_be_docked_back()
     {

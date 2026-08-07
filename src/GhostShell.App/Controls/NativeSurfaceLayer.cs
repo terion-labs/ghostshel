@@ -163,6 +163,13 @@ internal sealed class NativeSurfaceLayer : Canvas
         ArgumentNullException.ThrowIfNull(surface);
         if (!Children.Contains(surface))
         {
+            // A panel floated into a window of its own, or came back from one.
+            // Its surface goes with it — and it can only be in one place, so the
+            // layer it was in has to let go before this one can take it. Adding a
+            // control that still has a parent throws, which is why a floated
+            // browser showed an empty panel: the page was still parented to the
+            // window it had left.
+            Surrender(surface);
             Children.Add(surface);
         }
 
@@ -181,6 +188,23 @@ internal sealed class NativeSurfaceLayer : Canvas
         surface.Height = bounds.Height;
         _wanted[surface] = true;
         Apply(surface);
+    }
+
+    /// <summary>
+    /// Takes a surface out of whichever layer currently holds it, so another can
+    /// take it. Not the same as releasing it: the panel still owns it, and the
+    /// layer it is moving to is about to show it.
+    /// </summary>
+    private static void Surrender(Control surface)
+    {
+        foreach (var layer in Layers.ToArray())
+        {
+            if (layer.Children.Contains(surface))
+            {
+                layer._wanted.Remove(surface);
+                layer.Children.Remove(surface);
+            }
+        }
     }
 
     /// <summary>
