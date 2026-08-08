@@ -50,7 +50,14 @@ public interface IDatabaseTunnelFactory
 /// <summary>A table or view visible to the connected principal.</summary>
 public sealed record DatabaseTableDescriptor(
     string Name,
-    DatabaseTableKind Kind);
+    DatabaseTableKind Kind,
+    string? Catalog = null,
+    string? Schema = null)
+{
+    public DatabaseObjectId Id => new(Catalog, Schema, Name);
+
+    public string DisplayName => Id.DisplayName;
+}
 
 public enum DatabaseTableKind
 {
@@ -60,7 +67,17 @@ public enum DatabaseTableKind
 
 public sealed record DatabaseColumnDescriptor(
     string Name,
-    string DataTypeName);
+    string DataTypeName,
+    DatabaseValueKind ValueKind = DatabaseValueKind.Other,
+    string? ClrTypeName = null,
+    bool? IsNullable = null,
+    bool IsKey = false,
+    bool IsIdentity = false,
+    bool IsReadOnly = false,
+    string? BaseColumnName = null,
+    string? DefaultExpression = null,
+    DatabaseObjectId? BaseObject = null,
+    bool IsHidden = false);
 
 /// <summary>
 /// One bounded query result. Rows are pre-rendered to display text because the
@@ -72,7 +89,22 @@ public sealed record DatabaseQueryPage(
     IReadOnlyList<IReadOnlyList<string?>> Rows,
     bool Truncated,
     int RowsAffected,
-    TimeSpan Elapsed);
+    TimeSpan Elapsed,
+    IReadOnlyList<IReadOnlyList<DatabaseValue>>? TypedRows = null)
+{
+    /// <summary>
+    /// Typed values when supplied by the provider client, otherwise a compatible
+    /// text projection for lightweight clients and older saved test fixtures.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<DatabaseValue>> ValueRows => TypedRows
+        ?? Rows
+            .Select(row => (IReadOnlyList<DatabaseValue>)row
+                .Select((value, index) => DatabaseValue.FromDisplay(
+                    value,
+                    index < Columns.Count ? Columns[index].ValueKind : DatabaseValueKind.Text))
+                .ToArray())
+            .ToArray();
+}
 
 /// <summary>
 /// The application-facing boundary of the multi-driver database engine. The
@@ -108,8 +140,104 @@ public interface IDatabasePanelClient
         int maxRows,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Executes a result query while asking the provider for base-table lineage.
+    /// Providers may supply no lineage; callers must still fail closed before
+    /// enabling row mutations.
+    /// </summary>
+    Task<DatabaseQueryPage> QueryWithProvenanceAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sql,
+        int maxRows,
+        CancellationToken cancellationToken) =>
+        QueryAsync(
+            driverId,
+            connectionString,
+            tunnel,
+            sql,
+            maxRows,
+            cancellationToken);
+
+    /// <summary>
+    /// Re-reads a successful result-producing statement through a bounded,
+    /// provider-owned outer query. This keeps filtering and ordering on the
+    /// database instead of sorting only the currently materialized page.
+    /// </summary>
+    Task<DatabaseTablePage> ReadQueryAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sourceSql,
+        IReadOnlyList<DatabaseColumnDescriptor> sourceColumns,
+        DatabaseTableQuery query,
+        CancellationToken cancellationToken) =>
+        Task.FromException<DatabaseTablePage>(new NotSupportedException(
+            "This database client does not expose structured query-result browsing."));
+
+    /// <summary>
+    /// Counts the rows produced by a successful, repeatable result query after
+    /// applying the same typed filters used by the page reader.
+    /// </summary>
+    Task<long> CountQueryRowsAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sourceSql,
+        IReadOnlyList<DatabaseColumnDescriptor> sourceColumns,
+        IReadOnlyList<DatabaseFilterCondition> filters,
+        CancellationToken cancellationToken) =>
+        Task.FromException<long>(new NotSupportedException(
+            "This database client does not expose query-result row counts."));
+
+    Task<DatabaseObjectDetails> GetObjectDetailsAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor databaseObject,
+        CancellationToken cancellationToken) =>
+        Task.FromException<DatabaseObjectDetails>(new NotSupportedException(
+            "This database client does not expose structure metadata."));
+
+    Task<DatabaseTablePage> ReadTableAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor table,
+        DatabaseTableQuery query,
+        CancellationToken cancellationToken) =>
+        Task.FromException<DatabaseTablePage>(new NotSupportedException(
+            "This database client does not expose typed table browsing."));
+
+    Task<DatabaseMutationResult> ApplyTableChangesAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor table,
+        DatabaseTableChanges changes,
+        CancellationToken cancellationToken) =>
+        Task.FromException<DatabaseMutationResult>(new NotSupportedException(
+            "This database client does not expose row editing."));
+
+    /// <summary>
+    /// Builds one executable INSERT statement using the active driver's
+    /// identifier, literal, and type rules. The row must already be mapped to
+    /// the supplied physical table metadata.
+    /// </summary>
+    string BuildInsertStatement(
+        string driverId,
+        DatabaseObjectDetails details,
+        DatabaseInsertedRow row) =>
+        throw new NotSupportedException(
+            "This database client does not expose INSERT script generation.");
+
     /// <summary>A driver-quoted preview statement for one table.</summary>
     string BuildTablePreviewQuery(string driverId, string tableName, int limit);
+
+    /// <summary>A driver-quoted preview statement preserving qualification.</summary>
+    string BuildTablePreviewQuery(string driverId, DatabaseObjectId table, int limit) =>
+        BuildTablePreviewQuery(driverId, table.Name, limit);
 
     /// <summary>Decomposes a connection string into structural fields.</summary>
     DatabaseConnectionDetails ParseConnectionDetails(string driverId, string connectionString);

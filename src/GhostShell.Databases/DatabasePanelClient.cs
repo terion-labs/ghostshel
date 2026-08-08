@@ -18,6 +18,8 @@ namespace GhostShell.Databases;
 /// </summary>
 public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
 {
+    private const int MaximumTablePageSize = 5000;
+
     private readonly IReadOnlyDictionary<string, IDatabaseDriver> _drivers;
     private readonly IDatabaseTunnelFactory? _tunnelFactory;
     private readonly ConcurrentDictionary<
@@ -66,13 +68,15 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                 while (await reader.ReadAsync(token).ConfigureAwait(false))
                 {
                     tables.Add(new DatabaseTableDescriptor(
-                        reader.GetString(0),
+                        reader.GetString(2),
                         string.Equals(
-                            reader.GetString(1),
+                            reader.GetString(3).Trim(),
                             "view",
                             StringComparison.OrdinalIgnoreCase)
                             ? DatabaseTableKind.View
-                            : DatabaseTableKind.Table));
+                            : DatabaseTableKind.Table,
+                        reader.IsDBNull(0) ? null : reader.GetString(0),
+                        reader.IsDBNull(1) ? null : reader.GetString(1)));
                 }
 
                 return (IReadOnlyList<DatabaseTableDescriptor>)tables;
@@ -86,6 +90,47 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
         ConnectionProfile? tunnel,
         string sql,
         int maxRows,
+        CancellationToken cancellationToken) =>
+        await QueryCoreAsync(
+            driverId,
+            connectionString,
+            tunnel,
+            sql,
+            maxRows,
+            requestKeyInfo: false,
+            cancellationToken).ConfigureAwait(false);
+
+    public async Task<DatabaseQueryPage> QueryWithProvenanceAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sql,
+        int maxRows,
+        CancellationToken cancellationToken) =>
+        await QueryCoreAsync(
+            driverId,
+            connectionString,
+            tunnel,
+            sql,
+            maxRows,
+            // FirebirdSql.Data can leave an otherwise valid result cursor
+            // unusable when CommandBehavior.KeyInfo is requested for a
+            // projection such as SELECT 1 FROM RDB$DATABASE. Do not retry the
+            // statement after that failure: SELECT may invoke user functions,
+            // so running it twice is not a safe metadata fallback. Firebird's
+            // ordinary column schema remains the conservative provenance
+            // source and simply fails closed when the provider omits lineage.
+            requestKeyInfo: IsResultQuery(sql)
+                && !string.Equals(driverId, "firebird", StringComparison.Ordinal),
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task<DatabaseQueryPage> QueryCoreAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sql,
+        int maxRows,
+        bool requestKeyInfo,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sql);
@@ -97,46 +142,255 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
             tunnel,
             async (effectiveConnectionString, token) =>
             {
-                var stopwatch = Stopwatch.StartNew();
                 await using var connection = driver.CreateConnection(effectiveConnectionString);
                 await connection.OpenAsync(token).ConfigureAwait(false);
-                await using var command = connection.CreateCommand();
-                command.CommandText = sql;
-                await using var reader = await command.ExecuteReaderAsync(token)
+                var result = await ExecuteQueryAsync(
+                        connection,
+                        new DatabaseSqlCommand(sql, []),
+                        maxRows,
+                        schema: null,
+                        token,
+                        requestKeyInfo)
                     .ConfigureAwait(false);
-                var columns = Enumerable.Range(0, reader.FieldCount)
-                    .Select(ordinal => new DatabaseColumnDescriptor(
-                        reader.GetName(ordinal),
-                        reader.GetDataTypeName(ordinal)))
-                    .ToArray();
-                var rows = new List<IReadOnlyList<string?>>();
-                var truncated = false;
-                while (await reader.ReadAsync(token).ConfigureAwait(false))
+                if (requestKeyInfo
+                    && string.Equals(driverId, "duckdb", StringComparison.Ordinal))
                 {
-                    if (rows.Count >= maxRows)
-                    {
-                        truncated = true;
-                        break;
-                    }
-
-                    var cells = new string?[columns.Length];
-                    for (var ordinal = 0; ordinal < columns.Length; ordinal++)
-                    {
-                        cells[ordinal] = reader.IsDBNull(ordinal)
-                            ? null
-                            : RenderValue(reader.GetValue(ordinal));
-                    }
-
-                    rows.Add(cells);
+                    result = await DuckDbQueryProvenance.EnrichAsync(
+                            connection,
+                            sql,
+                            result,
+                            token)
+                        .ConfigureAwait(false);
                 }
 
-                stopwatch.Stop();
-                return new DatabaseQueryPage(
-                    columns,
-                    rows,
-                    truncated,
-                    Math.Max(0, reader.RecordsAffected),
-                    stopwatch.Elapsed);
+                return requestKeyInfo
+                    ? NormalizeProviderProvenance(driverId, result)
+                    : result;
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DatabaseObjectDetails> GetObjectDetailsAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor databaseObject,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(databaseObject);
+        var driver = Resolve(driverId);
+        var dialect = DatabaseSqlDialect.For(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                return await new DatabaseMetadataReader(dialect)
+                    .ReadAsync(connection, databaseObject, token)
+                    .ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DatabaseTablePage> ReadQueryAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sourceSql,
+        IReadOnlyList<DatabaseColumnDescriptor> sourceColumns,
+        DatabaseTableQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceSql);
+        ArgumentNullException.ThrowIfNull(sourceColumns);
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentOutOfRangeException.ThrowIfNegative(query.Offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.Limit, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(query.Limit, MaximumTablePageSize);
+        var driver = Resolve(driverId);
+        var dialect = DatabaseSqlDialect.For(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                var requestedLimit = query.Limit;
+                var readQuery = query with { Limit = requestedLimit + 1 };
+                var command = dialect.BuildQuerySelect(sourceSql, sourceColumns, readQuery);
+                var result = await ExecuteQueryAsync(
+                        connection,
+                        command,
+                        readQuery.Limit,
+                        schema: null,
+                        token)
+                    .ConfigureAwait(false);
+                result = PreserveQueryColumnContext(result, sourceColumns);
+                var hasLookAheadRow = result.ValueRows.Count > requestedLimit;
+                var pageResult = hasLookAheadRow
+                    ? result with
+                    {
+                        Rows = result.Rows.Take(requestedLimit).ToArray(),
+                        TypedRows = result.ValueRows.Take(requestedLimit).ToArray(),
+                        Truncated = true,
+                    }
+                    : result;
+                var totalRows = await ExecuteCountAsync(
+                        connection,
+                        dialect.BuildQueryCount(sourceSql, sourceColumns, query.Filters),
+                        token)
+                    .ConfigureAwait(false);
+                return new DatabaseTablePage(
+                    pageResult,
+                    query.Offset,
+                    requestedLimit,
+                    hasLookAheadRow,
+                    totalRows);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<long> CountQueryRowsAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sourceSql,
+        IReadOnlyList<DatabaseColumnDescriptor> sourceColumns,
+        IReadOnlyList<DatabaseFilterCondition> filters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceSql);
+        ArgumentNullException.ThrowIfNull(sourceColumns);
+        ArgumentNullException.ThrowIfNull(filters);
+        var driver = Resolve(driverId);
+        var dialect = DatabaseSqlDialect.For(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                return await ExecuteCountAsync(
+                        connection,
+                        dialect.BuildQueryCount(sourceSql, sourceColumns, filters),
+                        token)
+                    .ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DatabaseTablePage> ReadTableAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor table,
+        DatabaseTableQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentOutOfRangeException.ThrowIfNegative(query.Offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.Limit, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(query.Limit, MaximumTablePageSize);
+        var driver = Resolve(driverId);
+        var dialect = DatabaseSqlDialect.For(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                var details = await new DatabaseMetadataReader(dialect)
+                    .ReadAsync(connection, table, token, includeIndexes: false)
+                    .ConfigureAwait(false);
+                var canPage = details.PrimaryKey.Count > 0;
+                if (!canPage && query.Offset > 0)
+                {
+                    throw new InvalidOperationException(
+                        "This object has no primary key, so only its first page can be read safely.");
+                }
+
+                var requestedLimit = query.Limit;
+                var readQuery = query with
+                {
+                    Limit = query.Limit + 1,
+                };
+                var command = dialect.BuildSelect(table.Id, details.Columns, readQuery);
+                var result = await ExecuteQueryAsync(
+                        connection,
+                        command,
+                        readQuery.Limit,
+                        details.Columns,
+                        token)
+                    .ConfigureAwait(false);
+                var hasLookAheadRow = result.ValueRows.Count > requestedLimit;
+                var pageResult = hasLookAheadRow
+                    ? result with
+                    {
+                        Rows = result.Rows.Take(requestedLimit).ToArray(),
+                        TypedRows = result.ValueRows.Take(requestedLimit).ToArray(),
+                        Truncated = true,
+                    }
+                    : result;
+                var totalRows = await ExecuteCountAsync(
+                        connection,
+                        dialect.BuildCount(table.Id, details.Columns, query.Filters),
+                        token)
+                    .ConfigureAwait(false);
+                return new DatabaseTablePage(
+                    pageResult,
+                    query.Offset,
+                    requestedLimit,
+                    hasLookAheadRow && canPage,
+                    totalRows);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DatabaseMutationResult> ApplyTableChangesAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor table,
+        DatabaseTableChanges changes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        ArgumentNullException.ThrowIfNull(changes);
+        if (changes.IsEmpty)
+        {
+            return new DatabaseMutationResult(0, 0, 0);
+        }
+
+        var driver = Resolve(driverId);
+        var dialect = DatabaseSqlDialect.For(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                var details = await new DatabaseMetadataReader(dialect)
+                    .ReadAsync(connection, table, token, includeIndexes: false)
+                    .ConfigureAwait(false);
+                if (!details.CanEdit)
+                {
+                    throw new InvalidOperationException(details.ReadOnlyReason ?? "This table is read-only.");
+                }
+
+                return await ApplyChangesAsync(connection, dialect, details, changes, token)
+                    .ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -146,6 +400,31 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         return Resolve(driverId).BuildPreviewQuery(tableName, limit);
+    }
+
+    public string BuildInsertStatement(
+        string driverId,
+        DatabaseObjectDetails details,
+        DatabaseInsertedRow row)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+        ArgumentNullException.ThrowIfNull(row);
+        if (details.Object.Kind != DatabaseTableKind.Table)
+        {
+            throw new InvalidOperationException("INSERT scripts require a physical table.");
+        }
+
+        return DatabaseSqlDialect.For(driverId)
+            .BuildInsertStatement(details.Object.Id, details, row);
+    }
+
+    public string BuildTablePreviewQuery(string driverId, DatabaseObjectId table, int limit)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        return DatabaseSqlDialect.For(driverId)
+            .BuildSelect(table, [], DatabaseTableQuery.FirstPage(limit))
+            .Sql;
     }
 
     public DatabaseConnectionDetails ParseConnectionDetails(
@@ -280,14 +559,289 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                 nameof(driverId));
     }
 
-    private static string RenderValue(object value) => value switch
+    private static async Task<DatabaseQueryPage> ExecuteQueryAsync(
+        DbConnection connection,
+        DatabaseSqlCommand statement,
+        int maxRows,
+        IReadOnlyList<DatabaseColumnSchema>? schema,
+        CancellationToken cancellationToken,
+        bool requestKeyInfo = false)
     {
-        bool flag => flag ? "true" : "false",
-        byte[] bytes => $"0x{Convert.ToHexString(bytes.AsSpan(0, Math.Min(bytes.Length, 32)))}"
-            + (bytes.Length > 32 ? $"… ({bytes.Length} bytes)" : string.Empty),
-        DateTime dateTime => dateTime.ToString("O", CultureInfo.InvariantCulture),
-        DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("O", CultureInfo.InvariantCulture),
-        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? string.Empty,
-    };
+        var stopwatch = Stopwatch.StartNew();
+        await using var command = CreateCommand(connection, statement);
+        var behavior = requestKeyInfo ? CommandBehavior.KeyInfo : CommandBehavior.Default;
+        await using var reader = await command.ExecuteReaderAsync(behavior, cancellationToken)
+            .ConfigureAwait(false);
+        var described = DatabaseValueMaterializer.DescribeColumns(reader);
+        var visibleOrdinals = described
+            .Select((column, ordinal) => (column, ordinal))
+            .Where(item => !item.column.IsHidden)
+            .ToArray();
+        var columns = schema is null
+            ? visibleOrdinals.Select(item => item.column).ToArray()
+            : visibleOrdinals
+                .Select(item => MergeSchema(item.column, schema))
+                .ToArray();
+        var values = new List<IReadOnlyList<DatabaseValue>>();
+        var displayRows = new List<IReadOnlyList<string?>>();
+        var truncated = false;
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (values.Count >= maxRows)
+            {
+                truncated = true;
+                break;
+            }
+
+            var typedRow = new DatabaseValue[columns.Length];
+            var displayRow = new string?[columns.Length];
+            for (var ordinal = 0; ordinal < columns.Length; ordinal++)
+            {
+                var readerOrdinal = visibleOrdinals[ordinal].ordinal;
+                var value = DatabaseValueMaterializer.Materialize(
+                    reader,
+                    readerOrdinal,
+                    columns[ordinal]);
+                typedRow[ordinal] = value;
+                displayRow[ordinal] = value.IsNull ? null : value.DisplayText;
+            }
+
+            values.Add(typedRow);
+            displayRows.Add(displayRow);
+        }
+
+        stopwatch.Stop();
+        var safeColumns = DatabaseValueMaterializer.ReconcileColumnSafety(columns, values);
+        return new DatabaseQueryPage(
+            safeColumns,
+            displayRows,
+            truncated,
+            Math.Max(0, reader.RecordsAffected),
+            stopwatch.Elapsed,
+            values);
+    }
+
+    private static bool IsResultQuery(string sql)
+    {
+        var statement = sql.AsSpan().TrimStart();
+        return statement.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
+            || statement.StartsWith("WITH", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static DatabaseColumnDescriptor MergeSchema(
+        DatabaseColumnDescriptor column,
+        IReadOnlyList<DatabaseColumnSchema> schema)
+    {
+        var metadata = schema.FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, column.Name, StringComparison.Ordinal));
+        return metadata is null
+            ? column
+            : column with
+            {
+                DataTypeName = metadata.DataTypeName,
+                ValueKind = metadata.ValueKind == DatabaseValueKind.Other
+                    ? column.ValueKind
+                    : metadata.ValueKind,
+                IsNullable = metadata.IsNullable,
+                IsKey = metadata.IsPrimaryKey,
+                IsIdentity = metadata.IsIdentity,
+                IsReadOnly = !metadata.CanEdit,
+                BaseColumnName = metadata.Name,
+                DefaultExpression = metadata.DefaultExpression,
+            };
+    }
+
+    private static DatabaseQueryPage PreserveQueryColumnContext(
+        DatabaseQueryPage result,
+        IReadOnlyList<DatabaseColumnDescriptor> sourceColumns)
+    {
+        if (result.Columns.Count != sourceColumns.Count)
+        {
+            return result;
+        }
+
+        var columns = result.Columns
+            .Select((column, ordinal) =>
+            {
+                var source = sourceColumns[ordinal];
+                return string.Equals(column.Name, source.Name, StringComparison.Ordinal)
+                    ? column with
+                    {
+                        IsNullable = source.IsNullable,
+                        IsKey = source.IsKey,
+                        IsIdentity = source.IsIdentity,
+                        // Several providers describe every column projected by
+                        // our derived-table wrapper as read-only even when the
+                        // proven source column is writable. The wrapper is a
+                        // browsing implementation detail; mutation safety comes
+                        // from the exact source provenance and table metadata.
+                        // Provider-owned values still fail closed later through
+                        // ReconcileColumnSafety/HasDisplayOnlyValue.
+                        IsReadOnly = source.IsReadOnly,
+                        BaseColumnName = source.BaseColumnName,
+                        DefaultExpression = source.DefaultExpression,
+                        BaseObject = source.BaseObject,
+                    }
+                    : column;
+            })
+            .ToArray();
+        return result with { Columns = columns };
+    }
+
+    private static DatabaseQueryPage NormalizeProviderProvenance(
+        string driverId,
+        DatabaseQueryPage result)
+    {
+        if (!string.Equals(driverId, "sqlite", StringComparison.Ordinal))
+        {
+            return result;
+        }
+
+        var columns = result.Columns
+            .Select(column => column.BaseObject is { } source
+                    && string.Equals(source.Catalog, "main", StringComparison.OrdinalIgnoreCase)
+                ? column with { BaseObject = source with { Catalog = null } }
+                : column)
+            .ToArray();
+        return result with { Columns = columns };
+    }
+
+    private static DbCommand CreateCommand(
+        DbConnection connection,
+        DatabaseSqlCommand statement,
+        DbTransaction? transaction = null)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = statement.Sql;
+        command.Transaction = transaction;
+        foreach (var value in statement.Parameters)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = value.Name;
+            parameter.Value = value.Value ?? DBNull.Value;
+            command.Parameters.Add(parameter);
+        }
+
+        return command;
+    }
+
+    private static async Task<long> ExecuteCountAsync(
+        DbConnection connection,
+        DatabaseSqlCommand statement,
+        CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand(connection, statement);
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (value is null or DBNull)
+        {
+            throw new InvalidOperationException("The database did not return a row count.");
+        }
+
+        long count;
+        try
+        {
+            count = Convert.ToInt64(value, CultureInfo.InvariantCulture);
+        }
+        catch (Exception exception) when (exception is FormatException
+            or InvalidCastException
+            or OverflowException)
+        {
+            throw new InvalidOperationException(
+                "The database returned an invalid row count.",
+                exception);
+        }
+
+        return count >= 0
+            ? count
+            : throw new InvalidOperationException("The database returned a negative row count.");
+    }
+
+    private static async Task<DatabaseMutationResult> ApplyChangesAsync(
+        DbConnection connection,
+        DatabaseSqlDialect dialect,
+        DatabaseObjectDetails details,
+        DatabaseTableChanges changes,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var inserted = 0;
+        var updated = 0;
+        var deleted = 0;
+        try
+        {
+            foreach (var row in changes.Inserts)
+            {
+                inserted += await ExecuteMutationAsync(
+                        connection,
+                        transaction,
+                        dialect.BuildInsert(details.Object.Id, details, row),
+                        expectSingleRow: true,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            foreach (var row in changes.Updates)
+            {
+                var affected = await ExecuteMutationAsync(
+                        connection,
+                        transaction,
+                        dialect.BuildUpdate(details.Object.Id, details, row),
+                        expectSingleRow: false,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (affected == 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    return new DatabaseMutationResult(0, 0, 0, true, "The row changed since it was loaded.");
+                }
+
+                updated += affected;
+            }
+
+            foreach (var row in changes.Deletes)
+            {
+                var affected = await ExecuteMutationAsync(
+                        connection,
+                        transaction,
+                        dialect.BuildDelete(details.Object.Id, details, row),
+                        expectSingleRow: false,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (affected == 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    return new DatabaseMutationResult(0, 0, 0, true, "The row changed since it was loaded.");
+                }
+
+                deleted += affected;
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new DatabaseMutationResult(inserted, updated, deleted);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static async Task<int> ExecuteMutationAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        DatabaseSqlCommand statement,
+        bool expectSingleRow,
+        CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand(connection, statement, transaction);
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        if (affected < 0 || affected > 1 || (expectSingleRow && affected != 1))
+        {
+            throw new InvalidOperationException(
+                $"A row mutation affected {affected} rows; exactly one was expected.");
+        }
+
+        return affected;
+    }
 }

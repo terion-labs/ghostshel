@@ -405,6 +405,94 @@ internal sealed class QaFileProviderRuntime : IFileProviderProfileRuntime
 /// </summary>
 internal sealed class QaDatabasePanelClient : IDatabasePanelClient
 {
+    private static readonly IReadOnlyList<DatabaseColumnSchema> DeploymentSchema =
+    [
+        new(
+            "id",
+            1,
+            "BIGINT",
+            DatabaseValueKind.SignedInteger,
+            typeof(long).FullName,
+            IsNullable: false,
+            IsPrimaryKey: true,
+            PrimaryKeyOrdinal: 1,
+            IsIdentity: true,
+            IsReadOnly: true),
+        new(
+            "service",
+            2,
+            "VARCHAR(128)",
+            DatabaseValueKind.Text,
+            typeof(string).FullName,
+            IsNullable: false,
+            Length: 128),
+        new(
+            "region",
+            3,
+            "VARCHAR(32)",
+            DatabaseValueKind.Text,
+            typeof(string).FullName,
+            IsNullable: false,
+            Length: 32),
+        new(
+            "status",
+            4,
+            "VARCHAR(32)",
+            DatabaseValueKind.Text,
+            typeof(string).FullName,
+            IsNullable: true,
+            DefaultExpression: "'pending'",
+            Length: 32),
+        new(
+            "deployed_at",
+            5,
+            "TIMESTAMP WITH TIME ZONE",
+            DatabaseValueKind.TimestampWithZone,
+            typeof(DateTimeOffset).FullName,
+            IsNullable: false,
+            DefaultExpression: "CURRENT_TIMESTAMP"),
+    ];
+
+    private static readonly IReadOnlyList<DatabaseIndexSchema> DeploymentIndexes =
+    [
+        new(
+            "deployments_pkey",
+            "btree",
+            IsUnique: true,
+            IsPrimary: true,
+            IsValid: true,
+            [new DatabaseIndexColumn("id", 1)]),
+        new(
+            "ix_deployments_service_region",
+            "btree",
+            IsUnique: false,
+            IsPrimary: false,
+            IsValid: true,
+            [
+                new DatabaseIndexColumn("service", 1),
+                new DatabaseIndexColumn("region", 2),
+                new DatabaseIndexColumn("status", 3, IsIncluded: true),
+            ]),
+        new(
+            "ix_deployments_failures",
+            "btree",
+            IsUnique: false,
+            IsPrimary: false,
+            IsValid: true,
+            [new DatabaseIndexColumn("deployed_at", 1, IsDescending: true)],
+            Predicate: "status = 'rolled-back'"),
+    ];
+
+    private static readonly QaDeployment[] Deployments =
+    [
+        new(184, "billing-api", "eu-central-1", "healthy", At(21, 14, 9)),
+        new(183, "billing-api", "us-east-1", "healthy", At(21, 12, 44)),
+        new(182, "checkout-web", "eu-central-1", "rolled-back", At(19, 3, 18)),
+        new(181, "ledger-worker", "eu-central-1", "healthy", At(17, 40, 51)),
+        new(180, "ledger-worker", "us-east-1", null, At(17, 39, 12)),
+        new(179, "checkout-web", "ap-south-1", "healthy", At(15, 22, 30)),
+    ];
+
     public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } =
     [
         new("postgres", "PostgreSQL", "Host=localhost;Database=app;Username=postgres"),
@@ -433,13 +521,103 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
         string sql,
         int maxRows,
         CancellationToken cancellationToken) =>
-        Task.FromResult(new DatabaseQueryPage(
+        Task.FromResult(CreateQueryPage(includeProvenance: false));
+
+    public Task<DatabaseQueryPage> QueryWithProvenanceAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sql,
+        int maxRows,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(CreateQueryPage(includeProvenance: true));
+
+    public async Task<DatabaseTablePage> ReadQueryAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sourceSql,
+        IReadOnlyList<DatabaseColumnDescriptor> sourceColumns,
+        DatabaseTableQuery query,
+        CancellationToken cancellationToken)
+    {
+        _ = sourceSql;
+        var page = await ReadTableAsync(
+            driverId,
+            connectionString,
+            tunnel,
+            new DatabaseTableDescriptor("deployments", DatabaseTableKind.Table),
+            query,
+            cancellationToken);
+        return sourceColumns.Count == page.Result.Columns.Count
+            ? page with { Result = page.Result with { Columns = sourceColumns } }
+            : page;
+    }
+
+    public Task<long> CountQueryRowsAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        string sourceSql,
+        IReadOnlyList<DatabaseColumnDescriptor> sourceColumns,
+        IReadOnlyList<DatabaseFilterCondition> filters,
+        CancellationToken cancellationToken)
+    {
+        _ = driverId;
+        _ = connectionString;
+        _ = tunnel;
+        _ = sourceSql;
+        _ = sourceColumns;
+        cancellationToken.ThrowIfCancellationRequested();
+        var count = Deployments.LongCount(row => filters.All(filter => Matches(row, filter)));
+        return Task.FromResult(count);
+    }
+
+    private static DatabaseQueryPage CreateQueryPage(bool includeProvenance)
+    {
+        var baseObject = includeProvenance
+            ? new DatabaseObjectId(null, null, "deployments")
+            : null;
+        return new DatabaseQueryPage(
             [
-                new("id", "INTEGER"),
-                new("service", "TEXT"),
-                new("region", "TEXT"),
-                new("status", "TEXT"),
-                new("deployed_at", "TEXT"),
+                new(
+                    "id",
+                    "INTEGER",
+                    DatabaseValueKind.SignedInteger,
+                    IsNullable: false,
+                    IsKey: includeProvenance,
+                    IsIdentity: includeProvenance,
+                    IsReadOnly: includeProvenance,
+                    BaseColumnName: includeProvenance ? "id" : null,
+                    BaseObject: baseObject),
+                new(
+                    "service",
+                    "TEXT",
+                    DatabaseValueKind.Text,
+                    IsNullable: false,
+                    BaseColumnName: includeProvenance ? "service" : null,
+                    BaseObject: baseObject),
+                new(
+                    "region",
+                    "TEXT",
+                    DatabaseValueKind.Text,
+                    IsNullable: false,
+                    BaseColumnName: includeProvenance ? "region" : null,
+                    BaseObject: baseObject),
+                new(
+                    "status",
+                    "TEXT",
+                    DatabaseValueKind.Text,
+                    IsNullable: true,
+                    BaseColumnName: includeProvenance ? "status" : null,
+                    BaseObject: baseObject),
+                new(
+                    "deployed_at",
+                    "TEXT",
+                    DatabaseValueKind.TimestampWithZone,
+                    IsNullable: false,
+                    BaseColumnName: includeProvenance ? "deployed_at" : null,
+                    BaseObject: baseObject),
             ],
             [
                 new string?[] { "184", "billing-api", "eu-central-1", "healthy", "2026-08-02T21:14:09Z" },
@@ -451,10 +629,110 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
             ],
             Truncated: false,
             RowsAffected: 0,
-            TimeSpan.FromMilliseconds(12)));
+            TimeSpan.FromMilliseconds(12));
+    }
+
+    public Task<DatabaseObjectDetails> GetObjectDetailsAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor databaseObject,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var canEdit = databaseObject.Kind == DatabaseTableKind.Table;
+        return Task.FromResult(new DatabaseObjectDetails(
+            databaseObject,
+            DeploymentSchema,
+            canEdit ? DeploymentIndexes : [],
+            canEdit,
+            canEdit ? null : "Views are read-only."));
+    }
+
+    public Task<DatabaseTablePage> ReadTableAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor table,
+        DatabaseTableQuery query,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentOutOfRangeException.ThrowIfNegative(query.Offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.Limit, 1);
+
+        IEnumerable<QaDeployment> rows = table.Name == "recent_failures"
+            ? Deployments.Where(row => row.Status == "rolled-back")
+            : Deployments;
+        var filteredRows = rows
+            .Where(row => query.Filters.All(filter => Matches(row, filter)))
+            .ToArray();
+        var ordered = Sort(filteredRows, query.Sorts);
+        var window = ordered
+            .Skip(query.Offset)
+            .Take(query.Limit + 1)
+            .ToArray();
+        var hasMore = window.Length > query.Limit;
+        var pageRows = window.Take(query.Limit).ToArray();
+        var columns = DeploymentSchema
+            .Select(column => new DatabaseColumnDescriptor(
+                column.Name,
+                column.DataTypeName,
+                column.ValueKind,
+                column.ClrTypeName,
+                column.IsNullable,
+                column.IsPrimaryKey,
+                column.IsIdentity,
+                !column.CanEdit,
+                column.Name))
+            .ToArray();
+        var values = pageRows
+            .Select(row => (IReadOnlyList<DatabaseValue>)ToValues(row))
+            .ToArray();
+        var displayRows = values
+            .Select(row => (IReadOnlyList<string?>)row
+                .Select(value => value.IsNull ? null : value.DisplayText)
+                .ToArray())
+            .ToArray();
+        var result = new DatabaseQueryPage(
+            columns,
+            displayRows,
+            hasMore,
+            RowsAffected: 0,
+            TimeSpan.FromMilliseconds(8),
+            values);
+        return Task.FromResult(new DatabaseTablePage(
+            result,
+            query.Offset,
+            query.Limit,
+            hasMore,
+            filteredRows.LongLength));
+    }
+
+    public Task<DatabaseMutationResult> ApplyTableChangesAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        DatabaseTableDescriptor table,
+        DatabaseTableChanges changes,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new DatabaseMutationResult(
+            changes.Inserts.Count,
+            changes.Updates.Count,
+            changes.Deletes.Count,
+            Message: changes.IsEmpty ? "No changes to save." : "Changes saved."));
+    }
 
     public string BuildTablePreviewQuery(string driverId, string tableName, int limit) =>
         $"SELECT * FROM \"{tableName}\" LIMIT {limit};";
+
+    public string BuildInsertStatement(
+        string driverId,
+        DatabaseObjectDetails details,
+        DatabaseInsertedRow row) =>
+        $"INSERT INTO \"{details.Object.Name}\" DEFAULT VALUES;";
 
     public DatabaseConnectionDetails ParseConnectionDetails(
         string driverId,
@@ -510,6 +788,130 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
             }
         }
     }
+
+    private static DateTimeOffset At(int hour, int minute, int second) =>
+        new(2026, 8, 2, hour, minute, second, TimeSpan.Zero);
+
+    private static DatabaseValue[] ToValues(QaDeployment row) =>
+    [
+        new(row.Id, DatabaseValueKind.SignedInteger, row.Id.ToString(CultureInfo.InvariantCulture)),
+        new(row.Service, DatabaseValueKind.Text, row.Service),
+        new(row.Region, DatabaseValueKind.Text, row.Region),
+        new(row.Status, DatabaseValueKind.Text, row.Status ?? "NULL"),
+        new(
+            row.DeployedAt,
+            DatabaseValueKind.TimestampWithZone,
+            row.DeployedAt.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)),
+    ];
+
+    private static bool Matches(QaDeployment row, DatabaseFilterCondition filter)
+    {
+        var current = ColumnValue(row, filter.ColumnName);
+        if (filter.Operator == DatabaseFilterOperator.IsNull)
+        {
+            return current is null;
+        }
+
+        if (filter.Operator == DatabaseFilterOperator.IsNotNull)
+        {
+            return current is not null;
+        }
+
+        var comparison = Compare(current, filter.Value);
+        var currentText = Convert.ToString(current, CultureInfo.InvariantCulture) ?? string.Empty;
+        var expectedText = Convert.ToString(filter.Value, CultureInfo.InvariantCulture) ?? string.Empty;
+        return filter.Operator switch
+        {
+            DatabaseFilterOperator.Equal => comparison == 0,
+            DatabaseFilterOperator.NotEqual => comparison != 0,
+            DatabaseFilterOperator.LessThan => comparison < 0,
+            DatabaseFilterOperator.LessThanOrEqual => comparison <= 0,
+            DatabaseFilterOperator.GreaterThan => comparison > 0,
+            DatabaseFilterOperator.GreaterThanOrEqual => comparison >= 0,
+            DatabaseFilterOperator.Contains => currentText.Contains(expectedText, StringComparison.OrdinalIgnoreCase),
+            DatabaseFilterOperator.StartsWith => currentText.StartsWith(expectedText, StringComparison.OrdinalIgnoreCase),
+            DatabaseFilterOperator.EndsWith => currentText.EndsWith(expectedText, StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
+    }
+
+    private static IReadOnlyList<QaDeployment> Sort(
+        IEnumerable<QaDeployment> rows,
+        IReadOnlyList<DatabaseSort> sorts)
+    {
+        var result = rows.ToList();
+        if (sorts.Count == 0)
+        {
+            return result;
+        }
+
+        result.Sort((left, right) =>
+        {
+            foreach (var sort in sorts)
+            {
+                var comparison = Compare(
+                    ColumnValue(left, sort.ColumnName),
+                    ColumnValue(right, sort.ColumnName));
+                if (comparison != 0)
+                {
+                    return sort.Descending ? -comparison : comparison;
+                }
+            }
+
+            return 0;
+        });
+        return result;
+    }
+
+    private static object? ColumnValue(QaDeployment row, string columnName) =>
+        columnName.ToLowerInvariant() switch
+        {
+            "id" => row.Id,
+            "service" => row.Service,
+            "region" => row.Region,
+            "status" => row.Status,
+            "deployed_at" => row.DeployedAt,
+            _ => null,
+        };
+
+    private static int Compare(object? left, object? right)
+    {
+        if (left is null || right is null)
+        {
+            return left is null ? right is null ? 0 : -1 : 1;
+        }
+
+        if (left is long integer
+            && long.TryParse(
+                Convert.ToString(right, CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture,
+                out var expectedInteger))
+        {
+            return integer.CompareTo(expectedInteger);
+        }
+
+        if (left is DateTimeOffset timestamp
+            && DateTimeOffset.TryParse(
+                Convert.ToString(right, CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var expectedTimestamp))
+        {
+            return timestamp.CompareTo(expectedTimestamp);
+        }
+
+        return string.Compare(
+            Convert.ToString(left, CultureInfo.InvariantCulture),
+            Convert.ToString(right, CultureInfo.InvariantCulture),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record QaDeployment(
+        long Id,
+        string Service,
+        string Region,
+        string? Status,
+        DateTimeOffset DeployedAt);
 }
 
 /// <summary>

@@ -2985,7 +2985,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             PreviewTitle,
             _databaseClient,
             SqliteDriverId,
-            connectionString);
+            connectionString,
+            forcedReadOnlyReason: "Database file previews are read-only.");
         _databaseMemoryRegistration = registration;
         _databasePreview = viewer;
         OnPropertyChanged(nameof(DatabasePreview));

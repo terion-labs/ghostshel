@@ -285,15 +285,15 @@ public sealed class ProjectDependencyTests
 
     /// <summary>
     /// Avalonia framework packages that do not ship on the framework's own
-    /// release train. The web view stopped at 12.0.1 while the framework went
-    /// on to 12.0.5, and it binds its Avalonia dependency as a floor rather
-    /// than an exact version, so it resolves against the newer framework
-    /// perfectly well. Holding the whole framework back to match it would cost
-    /// the drawn-decorations transparency fix for nothing.
+    /// release train. WebView and DataGrid stopped at 12.0.1 while the
+    /// framework went on to 12.0.5; their package dependencies explicitly
+    /// resolve Avalonia 12.0.5, so holding the framework back to match their
+    /// package labels would lose later fixes for nothing.
     /// </summary>
     private static readonly string[] IndependentlyReleasedAvaloniaPackages =
     [
         "Avalonia.Controls.WebView",
+        "Avalonia.Controls.DataGrid",
     ];
 
     /// <summary>

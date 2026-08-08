@@ -25,6 +25,7 @@
 
     <controls:PanelChrome.Leading>
       <components:PanelConnectionSelectorView
+          IsEnabled="{Binding CanChangeConnection}"
           Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
           SelectedLabel="{Binding ConnectionDisplayName}"
           ConnectionSelected="OnConnectionSelected"
@@ -43,7 +44,11 @@
 
     <Grid RowDefinitions="Auto,*">
       <Border Grid.Row="0" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
-        <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid
+            Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+            ColumnDefinitions="Auto,*,Auto"
+            ColumnSpacing="{DynamicResource ShellSpaceSm}"
+            IsEnabled="{Binding CanChangeConnection}">
           <ComboBox
               MinWidth="128"
               VerticalAlignment="Center"

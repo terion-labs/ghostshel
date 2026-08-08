@@ -213,6 +213,9 @@
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
+    <!-- DataGrid is a separate Avalonia package and does not inherit a control
+         theme from FluentTheme; without this include it has no visual template. -->
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
     <dockThemes:DockFluentTheme DensityStyle="Compact" />
     <!-- The colour picker ships its own theme; without it the swatches render
          at zero size and the palette cards lose their colour wells. -->

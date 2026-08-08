@@ -57,6 +57,12 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (args is ["--compare", var sourcePath, var implementationPath, var outputPath])
+        {
+            WriteSideBySideComparison(sourcePath, implementationPath, outputPath);
+            return;
+        }
+
         if (args is ["--verify-terminal-font"])
         {
             IsTerminalFontVerification = true;
@@ -75,6 +81,40 @@ internal static class Program
         RequestedRoutes = args.Skip(1).ToArray();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
+    }
+
+    private static void WriteSideBySideComparison(
+        string sourcePath,
+        string implementationPath,
+        string outputPath)
+    {
+        const uint columnWidth = 920;
+        const uint gutter = 8;
+        using var source = new ImageMagick.MagickImage(sourcePath);
+        using var implementation = new ImageMagick.MagickImage(implementationPath);
+        source.Resize(new ImageMagick.MagickGeometry(columnWidth, 0));
+        implementation.Resize(new ImageMagick.MagickGeometry(columnWidth, 0));
+        var height = Math.Max(source.Height, implementation.Height);
+        using var comparison = new ImageMagick.MagickImage(
+            new ImageMagick.MagickColor("#111111"),
+            (columnWidth * 2) + gutter,
+            height);
+        comparison.Composite(
+            source,
+            0,
+            (int)(height - source.Height) / 2,
+            ImageMagick.CompositeOperator.Over);
+        comparison.Composite(
+            implementation,
+            (int)(columnWidth + gutter),
+            (int)(height - implementation.Height) / 2,
+            ImageMagick.CompositeOperator.Over);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
+        comparison.Format = ImageMagick.MagickFormat.Png;
+        comparison.Write(outputPath);
+        Console.WriteLine(
+            $"COMPARE {sourcePath} + {implementationPath} -> {outputPath} "
+            + $"({comparison.Width}x{comparison.Height})");
     }
 
     private static AppBuilder BuildAvaloniaApp() =>
@@ -834,6 +874,20 @@ internal sealed class QaApplication : Avalonia.Application
                 },
             };
         }, null),
+        // The real database grid context menu, opened over a real SQLite value
+        // and rendered at Retina density so its item rhythm and nested-menu
+        // affordances can be compared to the supplied reference without a
+        // desktop screenshot permission.
+        ("database-context-menu-2x", CreateDatabaseContextMenuProbe, null),
+        // The same real database grid in the three states fixed by the latest
+        // interaction pass: a compact Quick Look, an explicit descending
+        // server sort, and a context menu opened after running an edited raw
+        // query whose complete base-table provenance keeps mutations safe.
+        ("database-quick-look-compact-2x", CreateDatabaseQuickLookCompactProbe, null),
+        ("database-sort-descending-2x", CreateDatabaseSortDescendingProbe, null),
+        ("database-raw-query-context-menu-2x", CreateDatabaseRawQueryContextMenuProbe, null),
+        ("database-copy-insert-2x", CreateDatabaseCopyInsertProbe, null),
+        ("database-pagination-count-2x", CreateDatabasePaginationCountProbe, null),
         // The file preview's syntax highlighting over a C# sample, so token
         // colouring is reviewable rather than assumed from the grammar name.
         // A source file in a narrow panel: long lines wrap rather than run off
@@ -1797,6 +1851,409 @@ internal sealed class QaApplication : Avalonia.Application
         command.ExecuteNonQuery();
     }
 
+    private static Window CreateDatabaseContextMenuProbe()
+    {
+        var viewer = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "probe.db",
+            new GhostShell.Databases.DatabasePanelClient(),
+            "sqlite",
+            Program.SqliteProbePath);
+        var view = new GhostShell.App.Views.Components.DatabaseWorkspaceView
+        {
+            DataContext = viewer,
+        };
+        var prepared = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var window = new Window
+        {
+            Width = 920,
+            Height = 620,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Child = view,
+            },
+            Tag = prepared.Task,
+        };
+        window.Opened += async (_, _) =>
+        {
+            try
+            {
+                await viewer.ConnectAsync();
+                var table = viewer.Tables.Single(item =>
+                    string.Equals(
+                        item.Descriptor.Name,
+                        "deployments",
+                        StringComparison.Ordinal));
+                await viewer.PreviewTableAsync(table);
+                window.UpdateLayout();
+
+                var grid = window.GetVisualDescendants()
+                    .OfType<DataGrid>()
+                    .Single(control => string.Equals(
+                        AutomationProperties.GetName(control),
+                        "Database rows",
+                        StringComparison.Ordinal));
+                var row = viewer.ResultRows[0];
+                var column = grid.Columns.Single(candidate =>
+                    candidate.Tag is DatabaseResultColumnViewModel descriptor
+                    && string.Equals(descriptor.Name, "service", StringComparison.Ordinal));
+                grid.SelectedItem = row;
+                grid.CurrentColumn = column;
+                grid.ScrollIntoView(row, column);
+                window.UpdateLayout();
+                var cell = row.Cells[column.DisplayIndex];
+                var cellContainer = grid.GetVisualDescendants()
+                    .OfType<DataGridCell>()
+                    .FirstOrDefault(candidate => candidate
+                        .GetVisualDescendants()
+                        .Any(descendant => ReferenceEquals(descendant.DataContext, cell)))
+                    ?? throw new InvalidOperationException(
+                        "The database context-menu probe did not realize its target cell.");
+                cellContainer.RaiseEvent(new ContextRequestedEventArgs
+                {
+                    RoutedEvent = InputElement.ContextRequestedEvent,
+                });
+                window.UpdateLayout();
+                if (grid.ContextMenu?.IsOpen != true)
+                {
+                    throw new InvalidOperationException(
+                        "The database context-menu probe did not open the real grid menu.");
+                }
+
+                // The off-screen QA platform deliberately has no native save
+                // picker, while a desktop app window does. Normalize that one
+                // platform capability so the reference comparison captures the
+                // ordinary enabled desktop state; export behavior is exercised
+                // separately through the injected headless storage fixture.
+                var export = grid.ContextMenu.Items
+                    .OfType<MenuItem>()
+                    .Single(item => string.Equals(
+                        AutomationProperties.GetName(item),
+                        "Export the current database page",
+                        StringComparison.Ordinal));
+                export.IsEnabled = true;
+
+                prepared.SetResult();
+            }
+            catch (Exception exception)
+            {
+                prepared.SetException(exception);
+            }
+        };
+        window.Closed += (_, _) => viewer.Dispose();
+        return window;
+    }
+
+    private static Window CreateDatabaseQuickLookCompactProbe() =>
+        CreatePreparedDatabaseProbe(
+            width: 720,
+            height: 560,
+            async (window, viewer, _) =>
+            {
+                await PreviewQaDeploymentTableAsync(viewer);
+                var (grid, row, column) = SelectDatabaseProbeCell(
+                    window,
+                    viewer,
+                    "service");
+                viewer.SetSelectedCellText(
+                    column.DisplayIndex,
+                    "How automakers are responding to the 25% car tariffs so far — "
+                    + "a deliberately long value that wraps inside the compact editor.");
+                OpenDatabaseProbeContextMenu(window, grid);
+                var quickLook = grid.ContextMenu!.Items
+                    .OfType<MenuItem>()
+                    .Single(candidate => string.Equals(
+                        AutomationProperties.GetName(candidate),
+                        "Open the active database cell in Quick Look",
+                        StringComparison.Ordinal));
+                grid.ContextMenu.Close();
+                window.UpdateLayout();
+                quickLook.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(80);
+                Dispatcher.UIThread.RunJobs();
+
+                var editor = TopLevel.GetTopLevel(grid)?.FocusManager?.GetFocusedElement()
+                    as TextBox;
+                if (editor is null
+                    || !string.Equals(
+                        AutomationProperties.GetName(editor),
+                        "Quick Look value for service",
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "The compact database probe did not open the real Quick Look editor.");
+                }
+
+                var popupHost = editor.GetVisualAncestors().Last();
+                var presenter = popupHost.GetVisualDescendants()
+                    .OfType<FlyoutPresenter>()
+                    .Single();
+                var dialog = popupHost.GetVisualDescendants()
+                    .OfType<Grid>()
+                    .Single(candidate => string.Equals(
+                        AutomationProperties.GetName(candidate),
+                        "Database cell Quick Look dialog",
+                        StringComparison.Ordinal));
+                var apply = presenter.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(candidate => string.Equals(
+                        AutomationProperties.GetName(candidate),
+                        "Apply the Quick Look database cell value",
+                        StringComparison.Ordinal));
+                var cancel = presenter.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(candidate => string.Equals(
+                        AutomationProperties.GetName(candidate),
+                        "Close the database cell Quick Look",
+                        StringComparison.Ordinal));
+                if (!apply.IsEffectivelyVisible
+                    || !cancel.IsEffectivelyVisible
+                    || dialog.Bounds.Width > grid.Bounds.Width
+                    || dialog.Bounds.Height > grid.Bounds.Height)
+                {
+                    throw new InvalidOperationException(
+                        "The compact Quick Look escaped the grid viewport or hid an action.");
+                }
+            });
+
+    private static Window CreateDatabaseSortDescendingProbe() =>
+        CreatePreparedDatabaseProbe(
+            width: 920,
+            height: 620,
+            async (window, viewer, _) =>
+            {
+                await PreviewQaDeploymentTableAsync(viewer);
+                await viewer.ToggleTableSortAsync("service");
+                await viewer.ToggleTableSortAsync("service");
+                window.UpdateLayout();
+
+                var grid = DatabaseProbeGrid(window);
+                var descendingHeader = grid.GetVisualDescendants()
+                    .OfType<Control>()
+                    .SingleOrDefault(candidate => string.Equals(
+                        AutomationProperties.GetName(candidate),
+                        "Sort database column service, descending",
+                        StringComparison.Ordinal));
+                if (descendingHeader is null
+                    || viewer.ResultColumns.Single(column => column.Name == "service")
+                        .SortDescending is not true)
+                {
+                    throw new InvalidOperationException(
+                        "The database sort probe did not render the descending header state.");
+                }
+            });
+
+    private static Window CreateDatabaseRawQueryContextMenuProbe() =>
+        CreatePreparedDatabaseProbe(
+            width: 920,
+            height: 620,
+            async (window, viewer, _) =>
+            {
+                await PreviewQaDeploymentTableAsync(viewer);
+                viewer.QueryText = """
+                    SELECT id, service, region, status, deployed_at
+                    FROM deployments
+                    WHERE id >= 179
+                    ORDER BY id DESC;
+                    """;
+                await viewer.RunQueryAsync();
+                if (!viewer.CanMutateRows)
+                {
+                    throw new InvalidOperationException(
+                        "The exact-provenance raw-query probe unexpectedly became read-only.");
+                }
+
+                var (grid, _, _) = SelectDatabaseProbeCell(window, viewer, "service");
+                OpenDatabaseProbeContextMenu(window, grid);
+                var mutationItems = new[]
+                {
+                    "Paste a database cell value from the clipboard",
+                    "Add a database row from the context menu",
+                    "Duplicate the selected database row",
+                    "Set the active database cell value",
+                    "Delete the selected database row from the context menu",
+                };
+                foreach (var automationName in mutationItems)
+                {
+                    var item = grid.ContextMenu!.Items
+                        .OfType<MenuItem>()
+                        .Single(candidate => string.Equals(
+                            AutomationProperties.GetName(candidate),
+                            automationName,
+                            StringComparison.Ordinal));
+                    if (!item.IsVisible || !item.IsEnabled)
+                    {
+                        throw new InvalidOperationException(
+                            $"Raw-query action '{automationName}' was hidden or disabled.");
+                    }
+                }
+
+                var export = grid.ContextMenu!.Items
+                    .OfType<MenuItem>()
+                    .Single(item => string.Equals(
+                        AutomationProperties.GetName(item),
+                        "Export the current database page",
+                        StringComparison.Ordinal));
+                export.IsEnabled = true;
+            });
+
+    private static Window CreateDatabaseCopyInsertProbe() =>
+        CreatePreparedDatabaseProbe(
+            width: 920,
+            height: 620,
+            async (_, viewer, _) =>
+            {
+                await PreviewQaDeploymentTableAsync(viewer);
+                viewer.SelectRow(viewer.ResultRows[0]);
+                if (!viewer.CanCopySelectedRowAsInsert)
+                {
+                    throw new InvalidOperationException(
+                        "The row inspector did not enable provider-aware INSERT copy.");
+                }
+            });
+
+    private static Window CreateDatabasePaginationCountProbe() =>
+        CreatePreparedDatabaseProbe(
+            width: 920,
+            height: 620,
+            async (window, viewer, _) =>
+            {
+                await PreviewQaDeploymentTableAsync(viewer);
+                window.UpdateLayout();
+                var pageLimit = window.GetVisualDescendants()
+                    .OfType<TextBox>()
+                    .Single(control => string.Equals(
+                        AutomationProperties.GetName(control),
+                        "Database page row limit",
+                        StringComparison.Ordinal));
+                var total = window.GetVisualDescendants()
+                    .OfType<TextBlock>()
+                    .Single(control => string.Equals(
+                        AutomationProperties.GetName(control),
+                        "Total matching database rows",
+                        StringComparison.Ordinal));
+                var expectedTotal = viewer.TotalRowsText;
+                if (pageLimit.Text != "200"
+                    || total.Text != expectedTotal
+                    || viewer.TotalRows <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"The pager rendered '{pageLimit.Text} / {total.Text}' "
+                        + $"instead of '200 / {expectedTotal}'.");
+                }
+            });
+
+    private static Window CreatePreparedDatabaseProbe(
+        double width,
+        double height,
+        Func<Window, DatabaseRuntimePanelViewModel,
+            GhostShell.App.Views.Components.DatabaseWorkspaceView, Task> prepare)
+    {
+        var viewer = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "deployments.db",
+            new QaDatabasePanelClient(),
+            "sqlite",
+            "Data Source=:memory:");
+        var view = new GhostShell.App.Views.Components.DatabaseWorkspaceView
+        {
+            DataContext = viewer,
+        };
+        var prepared = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var window = new Window
+        {
+            Width = width,
+            Height = height,
+            CanResize = false,
+            ShowInTaskbar = false,
+            Content = new Border
+            {
+                Classes = { "FloatingSidebar" },
+                Child = view,
+            },
+            Tag = prepared.Task,
+        };
+        window.Opened += async (_, _) =>
+        {
+            try
+            {
+                await viewer.ConnectAsync();
+                await prepare(window, viewer, view);
+                window.UpdateLayout();
+                prepared.SetResult();
+            }
+            catch (Exception exception)
+            {
+                prepared.SetException(exception);
+            }
+        };
+        window.Closed += (_, _) => viewer.Dispose();
+        return window;
+    }
+
+    private static async Task PreviewQaDeploymentTableAsync(
+        DatabaseRuntimePanelViewModel viewer)
+    {
+        var table = viewer.Tables.Single(item => string.Equals(
+            item.Descriptor.Name,
+            "deployments",
+            StringComparison.Ordinal));
+        await viewer.PreviewTableAsync(table);
+    }
+
+    private static DataGrid DatabaseProbeGrid(Window window) =>
+        window.GetVisualDescendants()
+            .OfType<DataGrid>()
+            .Single(control => string.Equals(
+                AutomationProperties.GetName(control),
+                "Database rows",
+                StringComparison.Ordinal));
+
+    private static (DataGrid Grid, DatabaseResultRowViewModel Row, DataGridColumn Column)
+        SelectDatabaseProbeCell(
+            Window window,
+            DatabaseRuntimePanelViewModel viewer,
+            string columnName)
+    {
+        window.UpdateLayout();
+        var grid = DatabaseProbeGrid(window);
+        var row = viewer.ResultRows[0];
+        var column = grid.Columns.Single(candidate =>
+            candidate.Tag is DatabaseResultColumnViewModel descriptor
+            && string.Equals(descriptor.Name, columnName, StringComparison.Ordinal));
+        grid.SelectedItem = row;
+        grid.CurrentColumn = column;
+        grid.ScrollIntoView(row, column);
+        Dispatcher.UIThread.RunJobs();
+        if (!ReferenceEquals(viewer.SelectedRow, row))
+        {
+            viewer.SelectRow(row);
+        }
+
+        window.UpdateLayout();
+        return (grid, row, column);
+    }
+
+    private static void OpenDatabaseProbeContextMenu(Window window, DataGrid grid)
+    {
+        grid.RaiseEvent(new ContextRequestedEventArgs
+        {
+            RoutedEvent = InputElement.ContextRequestedEvent,
+        });
+        window.UpdateLayout();
+        if (grid.ContextMenu?.IsOpen != true)
+        {
+            throw new InvalidOperationException(
+                "The database probe did not open the real grid context menu.");
+        }
+    }
+
     /// <summary>
     /// The zoomable picture viewer over the JPEG probe. The adjustment runs on
     /// the first real layout pass — before the view has bounds there is no
@@ -2274,6 +2731,11 @@ internal sealed class QaApplication : Avalonia.Application
         dialog.Position = new PixelPoint(-4000, -4000);
         dialog.ShowInTaskbar = false;
         dialog.Show();
+        if (dialog.Tag is Task preparation)
+        {
+            await preparation.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
         await Task.Delay(260);
         Dispatcher.UIThread.RunJobs();
         dialog.UpdateLayout();
@@ -2282,17 +2744,38 @@ internal sealed class QaApplication : Avalonia.Application
         // A "-2x" suffix renders at Retina density, so glyph-placement issues
         // that only appear under fractional-scale pixel snapping are capturable.
         var scale = name.EndsWith("-2x", StringComparison.Ordinal) ? 2 : 1;
-        var width = (int)Math.Ceiling(Math.Max(dialog.Bounds.Width, 1)) * scale;
-        var height = (int)Math.Ceiling(Math.Max(dialog.Bounds.Height, 1)) * scale;
+        Control captureTarget = dialog;
+        ContextMenu? contextMenu = null;
+        if (name.StartsWith("database-context-menu", StringComparison.Ordinal))
+        {
+            var grid = dialog.GetVisualDescendants()
+                .OfType<DataGrid>()
+                .Single(control => string.Equals(
+                    AutomationProperties.GetName(control),
+                    "Database rows",
+                    StringComparison.Ordinal));
+            contextMenu = grid.ContextMenu
+                ?? throw new InvalidOperationException("The database grid context menu is missing.");
+            if (!contextMenu.IsOpen)
+            {
+                throw new InvalidOperationException("The database grid context menu did not open.");
+            }
+
+            captureTarget = contextMenu;
+        }
+
+        var width = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Width, 1)) * scale;
+        var height = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Height, 1)) * scale;
         var path = Path.Combine(Program.OutputDirectory, $"{name}.png");
         using (var bitmap = new RenderTargetBitmap(
                    new PixelSize(width, height),
                    new Vector(96 * scale, 96 * scale)))
         {
-            bitmap.Render(dialog);
+            bitmap.Render(captureTarget);
             bitmap.Save(path);
         }
 
+        contextMenu?.Close();
         dialog.Close();
         Console.WriteLine($"CAPTURE {name} -> {path} ({width}x{height})");
     }

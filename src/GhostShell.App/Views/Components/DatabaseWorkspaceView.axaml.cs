@@ -1,51 +1,192 @@
+using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views.Components;
 
 /// <summary>
-/// The database workspace itself — objects list, statement editor, result grid,
-/// and row inspector — without any panel chrome, so a docked database panel and
-/// a file preview show the same viewer rather than two that drift apart.
+/// Database workspace interaction that belongs to Avalonia controls: responsive
+/// panel geometry, dynamic DataGrid columns, active-cell actions, and clipboard.
+/// Database operations and edit state remain in the panel view model.
 /// </summary>
 public sealed partial class DatabaseWorkspaceView : UserControl
 {
-    private bool _resizingInspector;
-    private double _resizeOriginX;
-    private double _resizeOriginWidth;
-
-    /// <summary>
-    /// Below this width the objects list and the result grid cannot both hold a
-    /// usable width, so the list folds into a picker beside the statement
-    /// editor and gives its space to the results.
-    /// </summary>
     private const double ObjectsListMinimumWorkspaceWidth = 520;
-
-    /// <summary>The narrowest the objects list may be dragged while shown.</summary>
     private const double ObjectsListMinimumWidth = 120;
-
-    /// <summary>The width the results keep while the objects list is shown.</summary>
     private const double ResultsMinimumWidth = 240;
 
-    /// <summary>
-    /// The width the objects list had while it was shown, so folding and
-    /// unfolding does not discard a width the user chose with the splitter.
-    /// </summary>
+    private DatabaseRuntimePanelViewModel? _observedPanel;
     private GridLength _objectsWidth = new(196);
     private bool _objectsFolded;
+    private bool _resizingInspector;
+    private bool _syncingSelection;
+    private double _resizeOriginX;
+    private double _resizeOriginWidth;
 
     public DatabaseWorkspaceView()
     {
         InitializeComponent();
+        InitializeDatabaseContextMenu();
+        DataContextChanged += (_, _) => ObservePanel();
+        ObservePanel();
     }
+
+    private DatabaseRuntimePanelViewModel? Panel =>
+        DataContext as DatabaseRuntimePanelViewModel;
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
         SetObjectsFolded(e.NewSize.Width < ObjectsListMinimumWorkspaceWidth);
+    }
+
+    private void ObservePanel()
+    {
+        InvalidateDatabaseContextMenu(closePopup: true);
+        if (_observedPanel is not null)
+        {
+            _observedPanel.PropertyChanged -= OnPanelPropertyChanged;
+        }
+
+        _observedPanel = Panel;
+        if (_observedPanel is not null)
+        {
+            _observedPanel.PropertyChanged += OnPanelPropertyChanged;
+        }
+
+        RebuildResultColumns();
+        SyncModeButtons();
+        SyncSelectedRow();
+    }
+
+    private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        if (e.PropertyName is null
+            or nameof(DatabaseRuntimePanelViewModel.ResultRows)
+            or nameof(DatabaseRuntimePanelViewModel.ResultColumns)
+            or nameof(DatabaseRuntimePanelViewModel.SelectedObject))
+        {
+            InvalidateDatabaseContextMenu(closePopup: true);
+        }
+
+        if (e.PropertyName is null or nameof(DatabaseRuntimePanelViewModel.ResultColumns))
+        {
+            RebuildResultColumns();
+        }
+
+        if (e.PropertyName is null or nameof(DatabaseRuntimePanelViewModel.CanSortTable))
+        {
+            SyncResultColumnSorting();
+        }
+
+        if (e.PropertyName is null
+            or nameof(DatabaseRuntimePanelViewModel.SelectedMode)
+            or nameof(DatabaseRuntimePanelViewModel.SelectedObject))
+        {
+            SyncModeButtons();
+        }
+
+        if (e.PropertyName is null or nameof(DatabaseRuntimePanelViewModel.SelectedRow))
+        {
+            SyncSelectedRow();
+        }
+    }
+
+    private void RebuildResultColumns()
+    {
+        if (_observedPanel is null)
+        {
+            ResultDataGrid.Columns.Clear();
+            return;
+        }
+
+        var replacements = _observedPanel.ResultColumns;
+        if (ResultDataGrid.Columns.Count == replacements.Count
+            && replacements
+                .Select((column, ordinal) => DatabaseDataGridColumnFactory.CanReuse(
+                    ResultDataGrid.Columns[ordinal],
+                    column))
+                .All(canReuse => canReuse))
+        {
+            for (var ordinal = 0; ordinal < replacements.Count; ordinal++)
+            {
+                DatabaseDataGridColumnFactory.Refresh(
+                    ResultDataGrid.Columns[ordinal],
+                    replacements[ordinal],
+                    _observedPanel.CanSortTable);
+            }
+
+            return;
+        }
+
+        ResultDataGrid.Columns.Clear();
+
+        foreach (var column in DatabaseDataGridColumnFactory.Create(
+                     replacements,
+                     _observedPanel.CanSortTable))
+        {
+            ResultDataGrid.Columns.Add(column);
+        }
+    }
+
+    private void SyncResultColumnSorting()
+    {
+        var canSort = _observedPanel?.CanSortTable == true;
+        foreach (var column in ResultDataGrid.Columns)
+        {
+            column.CanUserSort = canSort;
+        }
+    }
+
+    private void SyncModeButtons()
+    {
+        var panel = _observedPanel;
+        DataModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Data;
+        StructureModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Structure;
+        IndexesModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Indexes;
+        var hasObject = panel?.SelectedObject is not null;
+        StructureModeButton.IsEnabled = hasObject;
+        IndexesModeButton.IsEnabled = hasObject;
+    }
+
+    private void SyncSelectedRow()
+    {
+        if (_syncingSelection)
+        {
+            return;
+        }
+
+        _syncingSelection = true;
+        try
+        {
+            ResultDataGrid.SelectedItem = _observedPanel?.SelectedRow;
+            if (_observedPanel is { SelectedRow: { } row } panel)
+            {
+                // ResultRows and SelectedRow are published back-to-back when a
+                // row is staged. Let ItemsSource process the new collection
+                // before asking the virtualized grid to realize its last row.
+                _ = DispatcherTimer.RunOnce(
+                    () =>
+                    {
+                        if (ReferenceEquals(_observedPanel, panel)
+                            && ReferenceEquals(panel.SelectedRow, row))
+                        {
+                            ResultDataGrid.ScrollIntoView(row, null);
+                        }
+                    },
+                    TimeSpan.FromMilliseconds(1),
+                    DispatcherPriority.Background);
+            }
+        }
+        finally
+        {
+            _syncingSelection = false;
+        }
     }
 
     private void SetObjectsFolded(bool folded)
@@ -59,11 +200,8 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         if (folded)
         {
             _objectsWidth = columns[0].Width;
-            // A zero width alone is not enough: a column is clamped to its own
-            // MinWidth, so the folded list would keep reserving an invisible
-            // gutter and push the results off the edge. The results column's
-            // minimum goes too — once it is the only column, it must be free to
-            // be as narrow as the panel is.
+            // A zero width alone remains clamped by MinWidth, so all three
+            // constraints are released while the objects list is folded.
             columns[0].MinWidth = 0;
             columns[0].Width = new GridLength(0);
             columns[1].Width = new GridLength(0);
@@ -83,6 +221,23 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         ObjectsPicker.IsVisible = folded;
     }
 
+    private void OnDataModeClick(object? sender, RoutedEventArgs e) =>
+        SetMode(DatabaseWorkspaceMode.Data);
+
+    private void OnStructureModeClick(object? sender, RoutedEventArgs e) =>
+        SetMode(DatabaseWorkspaceMode.Structure);
+
+    private void OnIndexesModeClick(object? sender, RoutedEventArgs e) =>
+        SetMode(DatabaseWorkspaceMode.Indexes);
+
+    private void SetMode(DatabaseWorkspaceMode mode)
+    {
+        Panel?.SetMode(mode);
+        // Clicking an already-selected ToggleButton tries to uncheck it. The
+        // workspace mode is exclusive, so restore all three from source state.
+        SyncModeButtons();
+    }
+
     private void OnPickedTableClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
@@ -91,20 +246,6 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         {
             ObjectsPicker.Flyout?.Hide();
             _ = panel.PreviewTableAsync(table);
-        }
-    }
-
-    private DatabaseRuntimePanelViewModel? Panel => DataContext as DatabaseRuntimePanelViewModel;
-
-    private void OnQueryKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter
-            && (e.KeyModifiers.HasFlag(KeyModifiers.Meta)
-                || e.KeyModifiers.HasFlag(KeyModifiers.Control))
-            && Panel is { } panel)
-        {
-            e.Handled = true;
-            _ = panel.RunQueryAsync();
         }
     }
 
@@ -118,14 +259,188 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         }
     }
 
-    private void OnResultRowPressed(object? sender, PointerPressedEventArgs e)
+    private void OnQueryKeyDown(object? sender, KeyEventArgs e)
     {
-        _ = e;
-        if (sender is Control { DataContext: DatabaseResultRowViewModel row }
+        if (e.Key == Key.Enter
+            && (e.KeyModifiers.HasFlag(KeyModifiers.Meta)
+                || e.KeyModifiers.HasFlag(KeyModifiers.Control))
             && Panel is { } panel)
         {
-            panel.SelectRow(row);
+            e.Handled = true;
+            _ = panel.RunQueryAsync();
         }
+    }
+
+    private async void OnFilterValueKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && Panel is { } panel)
+        {
+            e.Handled = true;
+            await panel.ApplyFilterAsync();
+        }
+    }
+
+    private async void OnApplyFilterClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Panel is { } panel)
+        {
+            await panel.ApplyFilterAsync();
+        }
+    }
+
+    private async void OnClearFilterClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Panel is { } panel)
+        {
+            await panel.ClearFilterAsync();
+        }
+    }
+
+    private async void OnPreviousPageClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Panel is { } panel)
+        {
+            await panel.PreviousPageAsync();
+        }
+    }
+
+    private async void OnNextPageClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Panel is { } panel)
+        {
+            await panel.NextPageAsync();
+        }
+    }
+
+    private async void OnPageLimitKeyDown(object? sender, KeyEventArgs e)
+    {
+        _ = sender;
+        if (e.Key != Key.Enter || Panel is not { } panel)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await panel.ApplyPageLimitAsync();
+    }
+
+    private void OnResultSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (_syncingSelection || Panel is not { } panel)
+        {
+            return;
+        }
+
+        var selected = ResultDataGrid.SelectedItem as DatabaseResultRowViewModel;
+        if (!ReferenceEquals(panel.SelectedRow, selected))
+        {
+            panel.SelectRow(selected);
+        }
+    }
+
+    private void OnResultSorting(object? sender, DataGridColumnEventArgs e)
+    {
+        _ = sender;
+        // Avalonia otherwise sorts the current ItemsSource locally after the
+        // event returns. The database owns ordering for the complete result set.
+        e.Handled = true;
+        if (Panel is not { CanSortTable: true } panel
+            || e.Column.Tag is not DatabaseResultColumnViewModel column)
+        {
+            return;
+        }
+
+        // File-backed providers can complete the database read synchronously.
+        // Replacing DataGrid columns while its header MouseUp route is still
+        // unwinding causes re-entrant layout (and an allocation loop in
+        // Avalonia Headless). Always let the input route finish first.
+        _ = DispatcherTimer.RunOnce(
+            () =>
+            {
+                if (ReferenceEquals(Panel, panel))
+                {
+                    _ = panel.ToggleTableSortAsync(column.Name);
+                }
+            },
+            TimeSpan.FromMilliseconds(1),
+            DispatcherPriority.Background);
+    }
+
+    private void OnAddRowClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Panel?.AddRow();
+    }
+
+    private void OnDeleteRowClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ResultDataGrid.CancelEdit();
+        Panel?.DeleteSelectedRow();
+    }
+
+    private void OnSetNullClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        var ordinal = ResultDataGrid.CurrentColumn?.DisplayIndex;
+        CommitGridEdit();
+        if (ordinal is { } value)
+        {
+            Panel?.SetSelectedCellNull(value);
+        }
+    }
+
+    private void OnSetDefaultClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        var ordinal = ResultDataGrid.CurrentColumn?.DisplayIndex;
+        CommitGridEdit();
+        if (ordinal is { } value)
+        {
+            Panel?.SetSelectedCellDefault(value);
+        }
+    }
+
+    private async void OnRevertChangesClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ResultDataGrid.CancelEdit();
+        if (Panel is { } panel)
+        {
+            await panel.RevertChangesAsync();
+        }
+    }
+
+    private async void OnSaveChangesClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        CommitGridEdit();
+        if (Panel is { } panel)
+        {
+            await panel.SaveChangesAsync();
+        }
+    }
+
+    private void CommitGridEdit()
+    {
+        ResultDataGrid.CommitEdit(DataGridEditingUnit.Cell, exitEditingMode: true);
+        ResultDataGrid.CommitEdit(DataGridEditingUnit.Row, exitEditingMode: true);
     }
 
     private void OnDismissInspectorClick(object? sender, RoutedEventArgs e)
@@ -155,6 +470,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
 
     private void OnInspectorResizeReleased(object? sender, PointerReleasedEventArgs e)
     {
+        _ = sender;
         _resizingInspector = false;
         e.Pointer.Capture(null);
     }
@@ -173,7 +489,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         await CopySelectedRowAsync(static (panel, row) => panel.BuildRowCsv(row));
     }
 
-    private async void OnCopyRowSqlClick(object? sender, RoutedEventArgs e)
+    private async void OnCopyRowInsertClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
@@ -183,10 +499,25 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     private async Task CopySelectedRowAsync(
         Func<DatabaseRuntimePanelViewModel, DatabaseResultRowViewModel, string> build)
     {
-        if (Panel is { SelectedRow: { } row } panel
-            && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        var panel = Panel;
+        var row = panel?.SelectedRow;
+        CommitGridEdit();
+        if (panel is not null && row is not null && IsRowCurrent(panel, row))
         {
-            await clipboard.SetTextAsync(build(panel, row));
+            try
+            {
+                var text = build(panel, row);
+                await CopyTextAsync(text, panel);
+            }
+            catch (OperationCanceledException)
+            {
+                // Clipboard ownership can disappear during shutdown.
+            }
+            catch (Exception exception)
+            {
+                panel.ReportInteractionError(
+                    $"Could not format the selected database row: {exception.Message}");
+            }
         }
     }
 }

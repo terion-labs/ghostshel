@@ -1923,6 +1923,11 @@ public sealed partial class MainWindow
             return;
         }
 
+        if (!await ConfirmDiscardDatabaseChangesAsync(tab.Panels))
+        {
+            return;
+        }
+
         if (tab.Panels.All(panel => panel is FileRuntimePanelViewModel { HostedClient: null }
                 or UnavailableRuntimePanelViewModel
                 or TerminalRuntimePanelViewModel { SessionRequest: null }
@@ -2048,27 +2053,57 @@ public sealed partial class MainWindow
         }
     }
 
-    private Task<bool> CloseRuntimePanelAsync(RuntimePanelViewModel panel) => panel switch
+    private async Task<bool> CloseRuntimePanelAsync(RuntimePanelViewModel panel)
     {
-        UnavailableRuntimePanelViewModel => Task.FromResult(true),
-        FileRuntimePanelViewModel { HostedClient: null } => Task.FromResult(true),
-        TerminalRuntimePanelViewModel { SessionRequest: null } => Task.FromResult(true),
-        StatisticsRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
-        ProcessMonitorRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
-        FileRuntimePanelViewModel filePanel => RunCloseFlowAsync((decision, token) =>
-            ViewModel.CloseFilePanelAsync(filePanel, decision, token)),
-        _ => RunCloseFlowAsync((decision, token) =>
-            ViewModel.ClosePanelAsync(panel.Id, decision, token)),
-    };
+        if (!await ConfirmDiscardDatabaseChangesAsync([panel]))
+        {
+            return false;
+        }
+
+        return await (panel switch
+        {
+            UnavailableRuntimePanelViewModel => Task.FromResult(true),
+            FileRuntimePanelViewModel { HostedClient: null } => Task.FromResult(true),
+            TerminalRuntimePanelViewModel { SessionRequest: null } => Task.FromResult(true),
+            StatisticsRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
+            ProcessMonitorRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
+            FileRuntimePanelViewModel filePanel => RunCloseFlowAsync((decision, token) =>
+                ViewModel.CloseFilePanelAsync(filePanel, decision, token)),
+            _ => RunCloseFlowAsync((decision, token) =>
+                ViewModel.ClosePanelAsync(panel.Id, decision, token)),
+        });
+    }
 
     private async Task CloseActiveTabAsync()
     {
         if (ViewModel.RuntimeWorkspace?.ActiveTab is { } tab
+            && await ConfirmDiscardDatabaseChangesAsync(tab.Panels)
             && await RunCloseFlowAsync((decision, token) =>
                 ViewModel.CloseTabAsync(tab.Id, decision, token)))
         {
             _ = await ViewModel.RemoveTabAsync(tab.Id, _lifetime.Token);
         }
+    }
+
+    private async Task<bool> ConfirmDiscardDatabaseChangesAsync(
+        IEnumerable<RuntimePanelViewModel> panels)
+    {
+        var dirtyPanels = panels
+            .OfType<DatabaseRuntimePanelViewModel>()
+            .Where(panel => panel.HasPendingChanges)
+            .ToArray();
+        if (dirtyPanels.Length == 0)
+        {
+            return true;
+        }
+
+        var detail = dirtyPanels.Length == 1
+            ? $"The unsaved row changes in {dirtyPanels[0].SelectedObjectName} will be lost."
+            : $"Unsaved row changes in {dirtyPanels.Length} database panels will be lost.";
+        return await new DiscardChangesDialog(
+                "Discard database changes?",
+                detail)
+            .ShowDialog<bool>(this);
     }
 
     private async Task RenameActiveTabAsync()

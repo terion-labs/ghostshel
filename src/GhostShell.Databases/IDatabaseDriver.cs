@@ -21,8 +21,9 @@ public interface IDatabaseDriver
     string NormalizeConnectionString(string connectionString) => connectionString;
 
     /// <summary>
-    /// A statement returning (name, kind) rows for tables and views, ordered by
-    /// name, where kind is the literal 'table' or 'view'.
+    /// A statement returning (catalog, schema, name, kind) rows for tables and
+    /// views, ordered by qualified name. Missing qualification components are
+    /// returned as SQL NULL; kind is the literal 'table' or 'view'.
     /// </summary>
     string ListTablesSql { get; }
 

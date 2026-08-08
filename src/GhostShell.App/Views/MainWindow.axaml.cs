@@ -826,6 +826,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        var runtime = ViewModel.OpenWorkspaces.FirstOrDefault(candidate =>
+            candidate.Id == instanceId);
+        if (runtime is not null
+            && !await ConfirmDiscardDatabaseChangesAsync(runtime.Tabs.SelectMany(tab =>
+                tab.Panels)))
+        {
+            return;
+        }
+
         if (await RunCloseFlowAsync((decision, cancellationToken) =>
                 ViewModel.CloseWorkspaceAsync(instanceId, decision, cancellationToken)))
         {
@@ -2105,6 +2114,13 @@ public sealed partial class MainWindow : Window
                     "Discard workspace changes?",
                     "The unsaved workspace order, tabs, panels, and startup settings will be lost when GhostShell closes.")
                 .ShowDialog<bool>(this))
+        {
+            return;
+        }
+
+        if (!await ConfirmDiscardDatabaseChangesAsync(
+                viewModel.OpenWorkspaces.SelectMany(workspace =>
+                    workspace.Tabs.SelectMany(tab => tab.Panels))))
         {
             return;
         }

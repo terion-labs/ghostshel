@@ -1,0 +1,72 @@
+name: Database viewer integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/database-viewer-integration.yml"
+      - "scripts/test-database-viewer-integration.sh"
+      - "src/GhostShell.App/**"
+      - "src/GhostShell.Application/**"
+      - "src/GhostShell.Databases/**"
+      - "tests/GhostShell.Databases.IntegrationTests/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-viewer-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  provider-conformance:
+    name: ${{ matrix.provider }} conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        provider:
+          - sqlite
+          - duckdb
+          - postgres
+          - cockroach
+          - redshift
+          - mysql
+          - mariadb
+          - sqlserver
+          - oracle
+          - firebird
+          - clickhouse
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Expose the SDK at the repository-local path
+        shell: bash
+        run: |
+          mkdir -p .dotnet
+          ln -s "$(command -v dotnet)" .dotnet/dotnet
+
+      - name: Run database viewer conformance
+        run: >-
+          ./scripts/test-database-viewer-integration.sh
+          ${{ matrix.provider }}
+          --logger "trx;LogFileName=database-viewer-${{ matrix.provider }}.trx"
+
+      - name: Upload test result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: database-viewer-${{ matrix.provider }}-results
+          path: tests/GhostShell.Databases.IntegrationTests/TestResults/*.trx
+          if-no-files-found: warn

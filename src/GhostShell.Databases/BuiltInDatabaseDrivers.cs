@@ -99,7 +99,7 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
                 FileConnectionUrls.StripScheme(connectionString, "sqlite", "sqlite3"));
 
     public string ListTablesSql => """
-        SELECT name, type FROM sqlite_master
+        SELECT NULL, NULL, name, type FROM sqlite_master
         WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
         ORDER BY name;
         """;
@@ -163,11 +163,11 @@ internal sealed class PostgresFamilyDriver(
         PostgresConnectionStrings.Normalize(connectionString);
 
     public string ListTablesSql => """
-        SELECT table_name,
+        SELECT table_catalog, table_schema, table_name,
                CASE table_type WHEN 'VIEW' THEN 'view' ELSE 'table' END
         FROM information_schema.tables
         WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY table_name;
+        ORDER BY table_schema, table_name;
         """;
 
     public string QuoteIdentifier(string identifier) =>
@@ -268,7 +268,7 @@ internal sealed class MySqlFamilyDriver(
     }
 
     public string ListTablesSql => """
-        SELECT table_name,
+        SELECT NULL, table_schema, table_name,
                CASE table_type WHEN 'VIEW' THEN 'view' ELSE 'table' END
         FROM information_schema.tables
         WHERE table_schema = DATABASE()
@@ -361,10 +361,10 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
     }
 
     public string ListTablesSql => """
-        SELECT TABLE_NAME,
+        SELECT TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME,
                CASE TABLE_TYPE WHEN 'VIEW' THEN 'view' ELSE 'table' END
         FROM INFORMATION_SCHEMA.TABLES
-        ORDER BY TABLE_NAME;
+        ORDER BY TABLE_SCHEMA, TABLE_NAME;
         """;
 
     public string QuoteIdentifier(string identifier) =>
@@ -445,11 +445,11 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
             FileConnectionUrls.StripScheme(connectionString, "duckdb"));
 
     public string ListTablesSql => """
-        SELECT table_name,
+        SELECT table_catalog, table_schema, table_name,
                CASE table_type WHEN 'VIEW' THEN 'view' ELSE 'table' END
         FROM information_schema.tables
         WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-        ORDER BY table_name;
+        ORDER BY table_schema, table_name;
         """;
 
     public string QuoteIdentifier(string identifier) =>
@@ -540,10 +540,10 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
     }
 
     public string ListTablesSql => """
-        SELECT table_name, 'table' FROM user_tables
+        SELECT NULL, USER, table_name, 'table' FROM user_tables
         UNION ALL
-        SELECT view_name, 'view' FROM user_views
-        ORDER BY 1
+        SELECT NULL, USER, view_name, 'view' FROM user_views
+        ORDER BY 3
         """;
 
     public string QuoteIdentifier(string identifier) =>
@@ -683,11 +683,13 @@ internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
     }
 
     public string ListTablesSql => """
-        SELECT TRIM(rdb$relation_name),
-               CASE WHEN rdb$view_blr IS NULL THEN 'table' ELSE 'view' END
+        SELECT NULL, NULL, TRIM(rdb$relation_name),
+               CAST(
+                   CASE WHEN rdb$relation_type = 1 THEN 'view' ELSE 'table' END
+                   AS VARCHAR(5))
         FROM rdb$relations
         WHERE COALESCE(rdb$system_flag, 0) = 0
-        ORDER BY 1
+        ORDER BY 3
         """;
 
     public string QuoteIdentifier(string identifier) =>
@@ -777,7 +779,7 @@ internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
     }
 
     public string ListTablesSql => """
-        SELECT name,
+        SELECT NULL, database, name,
                CASE WHEN engine = 'View' THEN 'view' ELSE 'table' END
         FROM system.tables
         WHERE database = currentDatabase()

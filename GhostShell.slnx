@@ -30,6 +30,7 @@
     <Project Path="tests/GhostShell.Browser.Tests/GhostShell.Browser.Tests.csproj" />
     <Project Path="tests/GhostShell.Core.Tests/GhostShell.Core.Tests.csproj" />
     <Project Path="tests/GhostShell.Databases.Tests/GhostShell.Databases.Tests.csproj" />
+    <Project Path="tests/GhostShell.Databases.IntegrationTests/GhostShell.Databases.IntegrationTests.csproj" />
     <Project Path="tests/GhostShell.Files.Tests/GhostShell.Files.Tests.csproj" />
     <Project Path="tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj" />
     <Project Path="tests/GhostShell.Mcp.Tests/GhostShell.Mcp.Tests.csproj" />
