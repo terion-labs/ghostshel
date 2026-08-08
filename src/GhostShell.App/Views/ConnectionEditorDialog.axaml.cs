@@ -78,6 +78,10 @@ public sealed partial class ConnectionEditorDialog : Window
         {
             await files.TestAsync(_lifetime.Token);
         }
+        else if (ViewModel is { IsDatabase: true, Database: { } database })
+        {
+            await database.TestAsync(_lifetime.Token);
+        }
     }
 
     private async void OnTrustHostKeyClick(object? sender, RoutedEventArgs e)
@@ -121,7 +125,7 @@ public sealed partial class ConnectionEditorDialog : Window
         {
             HideValidationError();
             var saveConnection = _purpose != ConnectionEditorDialogPurpose.Connect
-                || !ViewModel.IsTerminal
+                || !ViewModel.SupportsUnsavedConnect
                 || this.FindControl<CheckBox>("SaveConnectionCheckBox")?.IsChecked == true;
             Close(ViewModel.CreateSaveResult(saveConnection));
         }

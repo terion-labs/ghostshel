@@ -3160,7 +3160,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             database = new DatabaseConnectionEditorViewModel(
                 _databasePanelClient,
                 _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
-                existing);
+                existing,
+                existing?.PasswordSecret is { } storedSecret
+                    ? token => ResolveDatabasePasswordAsync(storedSecret, token)
+                    : null);
         }
 
         return new UnifiedConnectionEditorViewModel(
@@ -11498,9 +11501,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             var profile = stored.Value;
-            var tunnel = profile.TunnelConnectionId is { } tunnelId
-                ? FindConnection(tunnelId)
-                : recoveredTunnel;
+            var tunnel = ResolveDatabaseTunnel(profile) ?? recoveredTunnel;
             return CreateDatabasePanel(
                 panelId,
                 title,
@@ -11516,6 +11517,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             parsed?.ConnectionString,
             recoveredTunnel);
     }
+
+    /// <summary>
+    /// The tunnel a database profile connects through: a saved SSH connection
+    /// when referenced, else the profile's own inline tunnel.
+    /// </summary>
+    public ConnectionProfile? ResolveDatabaseTunnel(DatabaseConnectionProfile profile) =>
+        profile.TunnelConnectionId is { } tunnelId
+            ? FindConnection(tunnelId)
+            : profile.InlineTunnel;
 
     /// <summary>Every saved database connection, for panel pickers.</summary>
     public IReadOnlyList<DatabaseConnectionProfile> DatabaseConnectionOptions =>
@@ -11538,6 +11548,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         DatabaseConnectionDetails details,
         bool storePassword,
         ConnectionId? tunnelConnectionId,
+        DatabaseInlineTunnelRequest? inlineTunnel = null,
         CancellationToken cancellationToken = default)
     {
         ClearError();
@@ -11578,6 +11589,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             secret = reference;
         }
 
+        ConnectionProfile? inline = null;
+        if (inlineTunnel is { } tunnelRequest)
+        {
+            inline = await BuildInlineTunnelAsync(
+                profileId,
+                name.Trim(),
+                tunnelRequest,
+                existing?.Value.InlineTunnel,
+                cancellationToken);
+            if (inline is null)
+            {
+                return null;
+            }
+        }
+
         var profile = new DatabaseConnectionProfile(
             profileId,
             DatabaseConnectionProfile.CurrentSchemaVersion,
@@ -11587,7 +11613,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 driverId,
                 details with { Password = null }),
             secret,
-            tunnelConnectionId);
+            inline is null ? tunnelConnectionId : null,
+            inline);
         var saved = await _catalog.SaveDatabaseConnectionAsync(
             profile,
             existing?.Revision,
@@ -11600,6 +11627,66 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(DatabaseConnectionOptions));
         return saved.Value!.Value;
+    }
+
+    /// <summary>
+    /// Turns the editor's inline-tunnel request into the profile stored inside
+    /// the database connection. The tunnel's id derives from the database
+    /// profile so its keychain password stays scoped and resolvable across
+    /// edits; a request with no new password keeps the stored one.
+    /// </summary>
+    private async Task<ConnectionProfile?> BuildInlineTunnelAsync(
+        DatabaseConnectionProfileId profileId,
+        string name,
+        DatabaseInlineTunnelRequest request,
+        ConnectionProfile? existingInline,
+        CancellationToken cancellationToken)
+    {
+        var tunnelId = DatabaseConnectionProfile.InlineTunnelId(profileId);
+        ConnectionAuthentication authentication;
+        if (request.UseAgent)
+        {
+            authentication = new ConnectionAuthentication.SshAgent();
+        }
+        else if (!string.IsNullOrEmpty(request.Password))
+        {
+            var reference = SecretRef.New();
+            var bytes = Encoding.UTF8.GetBytes(request.Password);
+            using var material = SecretMaterial.TakeOwnership(bytes);
+            var created = await _secretVault.CreateAsync(
+                new CreateSecretRequest(
+                    reference,
+                    $"{name} tunnel password",
+                    SecretKind.Password,
+                    new SecretScope(SecretScopeKind.Connection, tunnelId.Value),
+                    new SecretUsePurpose(
+                        SecretUseKind.ConnectionAuthentication,
+                        tunnelId.Value)),
+                material,
+                cancellationToken);
+            if (created is SecretVaultResult<SecretMetadata>.Failure failure)
+            {
+                SetError(failure.Error.Message);
+                return null;
+            }
+
+            authentication = new ConnectionAuthentication.Password(reference);
+        }
+        else if (existingInline?.Authentication is ConnectionAuthentication.Password kept)
+        {
+            authentication = kept;
+        }
+        else
+        {
+            SetError("The SSH tunnel needs a password, or switch it to the SSH agent.");
+            return null;
+        }
+
+        return DatabaseConnectionEditorViewModel.BuildInlineTunnelProfile(
+            tunnelId,
+            $"{name} tunnel",
+            request,
+            authentication);
     }
 
     /// <summary>Resolves a stored database password from the OS vault.</summary>

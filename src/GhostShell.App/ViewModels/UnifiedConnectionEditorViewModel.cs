@@ -47,8 +47,13 @@ public abstract record UnifiedConnectionEditorResult
     public sealed record Files(
         FileProviderProfileSaveRequest Request) : UnifiedConnectionEditorResult;
 
+    /// <summary>
+    /// A database profile. <paramref name="SaveConnection"/> mirrors the
+    /// terminal purpose: false connects once without persisting.
+    /// </summary>
     public sealed record Database(
-        DatabaseConnectionSaveRequest Request) : UnifiedConnectionEditorResult;
+        DatabaseConnectionSaveRequest Request,
+        bool SaveConnection = true) : UnifiedConnectionEditorResult;
 }
 
 /// <summary>
@@ -120,10 +125,15 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
 
     public bool IsDatabase => Family == SavedConnectionFamily.Database;
 
-    /// <summary>Databases have no bounded probe yet; opening validates them.</summary>
-    public bool CanTest => !IsDatabase;
+    public bool CanTest => true;
 
-    public string TestLabel => IsFiles ? "Test" : "Run diagnostics";
+    public string TestLabel => IsTerminal ? "Run diagnostics" : "Test";
+
+    /// <summary>
+    /// Families whose connect purpose can open without persisting. Files
+    /// panels bind to a stored profile, so they always save.
+    /// </summary>
+    public bool SupportsUnsavedConnect => IsTerminal || IsDatabase;
 
     public bool IsEditing => LockedFamily switch
     {
@@ -174,7 +184,8 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
             SavedConnectionFamily.Files => new UnifiedConnectionEditorResult.Files(
                 Files!.CreateSaveRequest()),
             SavedConnectionFamily.Database => new UnifiedConnectionEditorResult.Database(
-                Database!.CreateSaveRequest()),
+                Database!.CreateSaveRequest(),
+                saveConnection),
             _ => throw new ArgumentOutOfRangeException(nameof(Family), Family, null),
         };
 

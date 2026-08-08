@@ -15,22 +15,44 @@ public sealed record DatabaseConnectionSaveRequest(
     string DriverId,
     DatabaseConnectionDetails Details,
     bool StorePassword,
-    ConnectionId? TunnelConnectionId);
+    ConnectionId? TunnelConnectionId,
+    DatabaseInlineTunnelRequest? InlineTunnel = null);
 
-public sealed record DatabaseTunnelOption(ConnectionId? Id, string Name)
+/// <summary>
+/// An SSH tunnel that lives only inside the database profile. A null password
+/// with <see cref="UseAgent"/> false means "keep the stored one".
+/// </summary>
+public sealed record DatabaseInlineTunnelRequest(
+    string Host,
+    int Port,
+    string? Username,
+    bool UseAgent,
+    string? Password);
+
+public sealed record DatabaseTunnelOption(
+    ConnectionId? Id,
+    string Name,
+    bool IsInline = false)
 {
-    public string DisplayName => Id is null ? "No tunnel" : Name;
+    public string DisplayName => Id is null && !IsInline ? "No tunnel" : Name;
 }
 
 /// <summary>
 /// Structural editor for a saved database connection: driver, endpoint or file,
-/// credentials, and an optional SSH tunnel. The stored connection string never
-/// carries the password; the field here feeds the OS vault when requested.
+/// credentials, and an optional SSH tunnel — saved or living only in this
+/// profile. Fields and a pasted connection string (URL or keyword form) are two
+/// views of the same connection; the string never stores the password.
 /// </summary>
 public sealed class DatabaseConnectionEditorViewModel : ObservableObject
 {
+    public const string AgentAuthentication = "SSH agent";
+    public const string PasswordAuthentication = "Password (OS keychain)";
+
     private readonly IDatabasePanelClient _client;
+    private readonly IReadOnlyList<ConnectionProfile> _connections;
     private readonly DatabaseConnectionProfileId? _existingId;
+    private readonly ConnectionProfile? _existingInlineTunnel;
+    private readonly Func<CancellationToken, Task<string?>>? _storedPasswordResolver;
     private DatabaseDriverDescriptor _selectedDriver;
     private DatabaseTunnelOption _selectedTunnel;
     private string _name = string.Empty;
@@ -42,14 +64,26 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
     private string _filePath = string.Empty;
     private string _options = string.Empty;
     private bool _storePassword;
+    private bool _useConnectionString;
+    private string _connectionStringInput = string.Empty;
+    private string _tunnelHost = string.Empty;
+    private string _tunnelPort = string.Empty;
+    private string _tunnelUsername = string.Empty;
+    private string _tunnelPassword = string.Empty;
+    private string _tunnelAuthentication = AgentAuthentication;
+    private string _testStatus = "Not tested";
+    private string _testDetail =
+        "Save is allowed without a test; connecting validates the server again.";
 
     public DatabaseConnectionEditorViewModel(
         IDatabasePanelClient client,
         IReadOnlyList<ConnectionProfile> connections,
-        DatabaseConnectionProfile? existing = null)
+        DatabaseConnectionProfile? existing = null,
+        Func<CancellationToken, Task<string?>>? storedPasswordResolver = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
-        ArgumentNullException.ThrowIfNull(connections);
+        _connections = connections ?? throw new ArgumentNullException(nameof(connections));
+        _storedPasswordResolver = storedPasswordResolver;
         Drivers = client.Drivers;
         _selectedDriver = Drivers[0];
         TunnelOptions = BuildTunnelOptions(connections, existing);
@@ -61,12 +95,15 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
         }
 
         _existingId = existing.Id;
+        _existingInlineTunnel = existing.InlineTunnel;
         _name = existing.Name;
         _selectedDriver = Drivers.FirstOrDefault(item => item.Id == existing.DriverId)
             ?? Drivers[0];
-        _selectedTunnel = TunnelOptions.FirstOrDefault(item =>
-                item.Id == existing.TunnelConnectionId)
-            ?? TunnelOptions[0];
+        _selectedTunnel = existing.InlineTunnel is not null
+            ? TunnelOptions.First(item => item.IsInline)
+            : TunnelOptions.FirstOrDefault(item =>
+                    !item.IsInline && item.Id == existing.TunnelConnectionId)
+                ?? TunnelOptions[0];
         HasStoredPassword = existing.PasswordSecret is not null;
         var details = client.ParseConnectionDetails(
             existing.DriverId,
@@ -77,6 +114,18 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
         _username = details.Username ?? string.Empty;
         _filePath = details.FilePath ?? string.Empty;
         _options = details.Options ?? string.Empty;
+
+        if (existing.InlineTunnel is { Endpoint: ConnectionEndpoint.Ssh ssh } inline)
+        {
+            _tunnelHost = ssh.Host;
+            _tunnelPort = ssh.Port.ToString(CultureInfo.InvariantCulture);
+            _tunnelUsername = ssh.Username ?? string.Empty;
+            HasStoredTunnelPassword =
+                inline.Authentication is ConnectionAuthentication.Password;
+            _tunnelAuthentication = HasStoredTunnelPassword
+                ? PasswordAuthentication
+                : AgentAuthentication;
+        }
     }
 
     public bool IsEditing => _existingId is not null;
@@ -85,8 +134,14 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
 
     public IReadOnlyList<DatabaseTunnelOption> TunnelOptions { get; }
 
+    public IReadOnlyList<string> TunnelAuthenticationChoices { get; } =
+        [AgentAuthentication, PasswordAuthentication];
+
     /// <summary>A stored keychain password exists and is kept unless replaced.</summary>
     public bool HasStoredPassword { get; }
+
+    /// <summary>The inline tunnel keeps a stored keychain password.</summary>
+    public bool HasStoredTunnelPassword { get; }
 
     public DatabaseDriverDescriptor SelectedDriver
     {
@@ -97,6 +152,10 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(IsFileBased));
                 OnPropertyChanged(nameof(IsServerBased));
+                OnPropertyChanged(nameof(PortPlaceholder));
+                OnPropertyChanged(nameof(DatabaseLabel));
+                OnPropertyChanged(nameof(ConnectionStringHint));
+                OnPropertyChanged(nameof(ShowsTunnel));
             }
         }
     }
@@ -104,12 +163,67 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
     public DatabaseTunnelOption SelectedTunnel
     {
         get => _selectedTunnel;
-        set => SetProperty(ref _selectedTunnel, value);
+        set
+        {
+            if (SetProperty(ref _selectedTunnel, value) && value is not null)
+            {
+                OnPropertyChanged(nameof(IsInlineTunnel));
+            }
+        }
     }
+
+    public bool IsInlineTunnel => SelectedTunnel.IsInline;
 
     public bool IsFileBased => SelectedDriver.IsFileBased;
 
     public bool IsServerBased => !SelectedDriver.IsFileBased;
+
+    /// <summary>File engines have no endpoint, so nothing to tunnel.</summary>
+    public bool ShowsTunnel => IsServerBased;
+
+    /// <summary>The engine's usual port, shown as the empty field's hint.</summary>
+    public string PortPlaceholder =>
+        SelectedDriver.DefaultPort?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+
+    /// <summary>What this engine calls the thing it connects to.</summary>
+    public string DatabaseLabel => SelectedDriver.DatabaseLabel;
+
+    public string ConnectionStringHint => SelectedDriver.ConnectionStringHint;
+
+    /// <summary>
+    /// True when the connection is described by one pasted string (URL or
+    /// keyword form) instead of the structured fields. Switching back to the
+    /// fields reads the string into them, so nothing typed is lost.
+    /// </summary>
+    public bool UseConnectionString
+    {
+        get => _useConnectionString;
+        set
+        {
+            if (!SetProperty(ref _useConnectionString, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(UseFields));
+            if (!value)
+            {
+                AdoptConnectionStringIntoFields();
+            }
+            else if (string.IsNullOrWhiteSpace(_connectionStringInput))
+            {
+                PrefillConnectionStringFromFields();
+            }
+        }
+    }
+
+    public bool UseFields => !UseConnectionString;
+
+    public string ConnectionStringInput
+    {
+        get => _connectionStringInput;
+        set => SetProperty(ref _connectionStringInput, value);
+    }
 
     public string Name
     {
@@ -165,6 +279,57 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
         set => SetProperty(ref _storePassword, value);
     }
 
+    public string TunnelHost
+    {
+        get => _tunnelHost;
+        set => SetProperty(ref _tunnelHost, value);
+    }
+
+    public string TunnelPort
+    {
+        get => _tunnelPort;
+        set => SetProperty(ref _tunnelPort, value);
+    }
+
+    public string TunnelUsername
+    {
+        get => _tunnelUsername;
+        set => SetProperty(ref _tunnelUsername, value);
+    }
+
+    public string TunnelPassword
+    {
+        get => _tunnelPassword;
+        set => SetProperty(ref _tunnelPassword, value);
+    }
+
+    public string TunnelAuthentication
+    {
+        get => _tunnelAuthentication;
+        set
+        {
+            if (SetProperty(ref _tunnelAuthentication, value))
+            {
+                OnPropertyChanged(nameof(TunnelUsesPassword));
+            }
+        }
+    }
+
+    public bool TunnelUsesPassword =>
+        TunnelAuthentication == PasswordAuthentication;
+
+    public string TestStatus
+    {
+        get => _testStatus;
+        private set => SetProperty(ref _testStatus, value);
+    }
+
+    public string TestDetail
+    {
+        get => _testDetail;
+        private set => SetProperty(ref _testDetail, value);
+    }
+
     public DatabaseConnectionSaveRequest CreateSaveRequest()
     {
         if (string.IsNullOrWhiteSpace(Name))
@@ -172,7 +337,132 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
             throw new ArgumentException("Connection name is required.");
         }
 
-        DatabaseConnectionDetails details;
+        var details = ResolveDetails();
+
+        // The connection string must round-trip through the driver before the
+        // request leaves the dialog, so malformed options fail here as a
+        // validation error rather than during the save.
+        _ = _client.BuildConnectionString(SelectedDriver.Id, details);
+        var inlineTunnel = IsServerBased && IsInlineTunnel
+            ? CreateInlineTunnelRequest()
+            : null;
+        return new DatabaseConnectionSaveRequest(
+            _existingId,
+            Name.Trim(),
+            SelectedDriver.Id,
+            details,
+            StorePassword,
+            IsInlineTunnel ? null : SelectedTunnel.Id,
+            inlineTunnel);
+    }
+
+    /// <summary>
+    /// The bounded reachability test: open one connection, read the session
+    /// facts, close it. Runs through the same tunnel the connection would use.
+    /// </summary>
+    public async Task TestAsync(CancellationToken cancellationToken)
+    {
+        DatabaseConnectionSaveRequest request;
+        try
+        {
+            request = CreateSaveRequest();
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException)
+        {
+            TestStatus = "Validation failed";
+            TestDetail = exception.Message;
+            return;
+        }
+
+        ConnectionProfile? tunnel;
+        try
+        {
+            tunnel = ResolveTestTunnel(request);
+        }
+        catch (InvalidOperationException exception)
+        {
+            TestStatus = "Test unavailable";
+            TestDetail = exception.Message;
+            return;
+        }
+
+        var password = request.Details.Password;
+        if (password is null && HasStoredPassword && _storedPasswordResolver is not null)
+        {
+            password = await _storedPasswordResolver(cancellationToken);
+        }
+
+        var connectionString = _client.BuildConnectionString(
+            request.DriverId,
+            request.Details with { Password = password });
+        TestStatus = "Testing connection";
+        TestDetail = "Opening a connection and reading the server's session facts…";
+        try
+        {
+            var info = await _client.DescribeSessionAsync(
+                request.DriverId,
+                connectionString,
+                tunnel,
+                cancellationToken);
+            TestStatus = "Connected";
+            var facts = new List<string> { SelectedDriver.DisplayName };
+            if (info.ServerVersion is { } version)
+            {
+                facts[0] = $"{SelectedDriver.DisplayName} {version}";
+            }
+
+            facts.Add(info.TlsProtocol ?? "no TLS");
+            if (tunnel is not null)
+            {
+                facts.Add($"via SSH ({tunnel.Name})");
+            }
+
+            TestDetail = string.Join(" · ", facts);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            TestStatus = "Test failed";
+            TestDetail = exception.Message;
+        }
+    }
+
+    /// <summary>
+    /// Builds the profile an inline tunnel becomes, shared by the save path
+    /// and the editor's own test.
+    /// </summary>
+    public static ConnectionProfile BuildInlineTunnelProfile(
+        ConnectionId id,
+        string name,
+        DatabaseInlineTunnelRequest request,
+        ConnectionAuthentication authentication) =>
+        new(
+            id,
+            ConnectionProfile.CurrentSchemaVersion,
+            name,
+            new ConnectionEndpoint.Ssh(request.Host, request.Port, request.Username),
+            authentication,
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.AcceptNew);
+
+    private DatabaseConnectionDetails ResolveDetails()
+    {
+        if (UseConnectionString)
+        {
+            if (string.IsNullOrWhiteSpace(ConnectionStringInput))
+            {
+                throw new ArgumentException("Enter a connection string or URL first.");
+            }
+
+            return _client.ParseConnectionDetails(
+                SelectedDriver.Id,
+                ConnectionStringInput.Trim());
+        }
+
         if (IsFileBased)
         {
             if (string.IsNullOrWhiteSpace(FilePath))
@@ -180,48 +470,173 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
                 throw new ArgumentException("Database file path is required.");
             }
 
-            details = new DatabaseConnectionDetails(
+            return new DatabaseConnectionDetails(
                 FilePath: FilePath.Trim(),
                 Options: Optional(Options));
         }
-        else
+
+        return new DatabaseConnectionDetails(
+            Optional(Host),
+            ParsePort(Port, "Port"),
+            Optional(DatabaseName),
+            Optional(Username),
+            string.IsNullOrEmpty(Password) ? null : Password,
+            Options: Optional(Options));
+    }
+
+    private DatabaseInlineTunnelRequest CreateInlineTunnelRequest()
+    {
+        if (string.IsNullOrWhiteSpace(TunnelHost))
         {
-            int? port = null;
-            if (!string.IsNullOrWhiteSpace(Port))
-            {
-                if (!int.TryParse(
-                        Port.Trim(),
-                        NumberStyles.None,
-                        CultureInfo.InvariantCulture,
-                        out var parsed)
-                    || parsed is < 1 or > 65_535)
-                {
-                    throw new ArgumentException("Port must be a number between 1 and 65535.");
-                }
-
-                port = parsed;
-            }
-
-            details = new DatabaseConnectionDetails(
-                Optional(Host),
-                port,
-                Optional(DatabaseName),
-                Optional(Username),
-                string.IsNullOrEmpty(Password) ? null : Password,
-                Options: Optional(Options));
+            throw new ArgumentException("The SSH tunnel needs a host.");
         }
 
-        // The connection string must round-trip through the driver before the
-        // request leaves the dialog, so malformed options fail here as a
-        // validation error rather than during the save.
-        _ = _client.BuildConnectionString(SelectedDriver.Id, details);
-        return new DatabaseConnectionSaveRequest(
-            _existingId,
-            Name.Trim(),
-            SelectedDriver.Id,
-            details,
-            StorePassword,
-            SelectedTunnel.Id);
+        var useAgent = !TunnelUsesPassword;
+        var password = string.IsNullOrEmpty(TunnelPassword) ? null : TunnelPassword;
+        if (!useAgent && password is null && !HasStoredTunnelPassword)
+        {
+            throw new ArgumentException(
+                "The SSH tunnel needs a password, or switch it to the SSH agent.");
+        }
+
+        return new DatabaseInlineTunnelRequest(
+            TunnelHost.Trim(),
+            ParsePort(TunnelPort, "Tunnel port") ?? 22,
+            Optional(TunnelUsername),
+            useAgent,
+            useAgent ? null : password);
+    }
+
+    private ConnectionProfile? ResolveTestTunnel(DatabaseConnectionSaveRequest request)
+    {
+        if (request.TunnelConnectionId is { } savedId)
+        {
+            return _connections.FirstOrDefault(item => item.Id == savedId)
+                ?? throw new InvalidOperationException(
+                    "The selected SSH tunnel connection no longer exists.");
+        }
+
+        if (request.InlineTunnel is not { } inline)
+        {
+            return null;
+        }
+
+        ConnectionAuthentication authentication;
+        if (inline.UseAgent)
+        {
+            authentication = new ConnectionAuthentication.SshAgent();
+        }
+        else if (inline.Password is not null)
+        {
+            // A freshly typed tunnel password reaches the OS keychain on save;
+            // until then the tunnel opener has nothing to resolve.
+            throw new InvalidOperationException(
+                "Tunnel passwords are stored in the OS keychain on save. "
+                + "Save the connection first, then test.");
+        }
+        else if (_existingInlineTunnel?.Authentication
+            is ConnectionAuthentication.Password stored)
+        {
+            authentication = stored;
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "The SSH tunnel has no stored password to test with.");
+        }
+
+        return BuildInlineTunnelProfile(
+            DatabaseConnectionProfile.InlineTunnelId(
+                _existingId ?? DatabaseConnectionProfileId.New()),
+            $"{Name.Trim()} tunnel",
+            inline,
+            authentication);
+    }
+
+    /// <summary>
+    /// Reads a pasted string into the structured fields when the user switches
+    /// back — the two views describe one connection. A string the driver
+    /// refuses leaves the fields as they were.
+    /// </summary>
+    private void AdoptConnectionStringIntoFields()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionStringInput))
+        {
+            return;
+        }
+
+        DatabaseConnectionDetails details;
+        try
+        {
+            details = _client.ParseConnectionDetails(
+                SelectedDriver.Id,
+                _connectionStringInput.Trim());
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        Host = details.Host ?? string.Empty;
+        Port = details.Port?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        DatabaseName = details.Database ?? string.Empty;
+        Username = details.Username ?? string.Empty;
+        if (details.Password is { } password)
+        {
+            Password = password;
+        }
+
+        FilePath = details.FilePath ?? string.Empty;
+        Options = details.Options ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Seeds the string view from the fields — without the password, which
+    /// never renders back into plain text.
+    /// </summary>
+    private void PrefillConnectionStringFromFields()
+    {
+        try
+        {
+            var details = IsFileBased
+                ? new DatabaseConnectionDetails(
+                    FilePath: Optional(FilePath),
+                    Options: Optional(Options))
+                : new DatabaseConnectionDetails(
+                    Optional(Host),
+                    ParsePort(Port, "Port"),
+                    Optional(DatabaseName),
+                    Optional(Username),
+                    Options: Optional(Options));
+            ConnectionStringInput = _client.BuildConnectionString(
+                SelectedDriver.Id,
+                details);
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or FormatException)
+        {
+            // Half-filled fields are not worth blocking the switch over.
+        }
+    }
+
+    private static int? ParsePort(string value, string label)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (!int.TryParse(
+                value.Trim(),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var parsed)
+            || parsed is < 1 or > 65_535)
+        {
+            throw new ArgumentException($"{label} must be a number between 1 and 65535.");
+        }
+
+        return parsed;
     }
 
     private static IReadOnlyList<DatabaseTunnelOption> BuildTunnelOptions(
@@ -242,6 +657,7 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
             options.Add(new DatabaseTunnelOption(tunnelId, $"Missing · {tunnelId.Value}"));
         }
 
+        options.Add(new DatabaseTunnelOption(null, "Custom — this connection only", IsInline: true));
         return options.AsReadOnly();
     }
 

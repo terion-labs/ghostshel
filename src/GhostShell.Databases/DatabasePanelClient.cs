@@ -84,6 +84,65 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<string>> ListDatabasesAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken)
+    {
+        var driver = Resolve(driverId);
+        if (driver.ListDatabasesSql is not { } sql)
+        {
+            return [];
+        }
+
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                await using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                var names = new List<string>();
+                await using var reader = await command.ExecuteReaderAsync(token)
+                    .ConfigureAwait(false);
+                while (await reader.ReadAsync(token).ConfigureAwait(false))
+                {
+                    if (!reader.IsDBNull(0))
+                    {
+                        names.Add(reader.GetString(0));
+                    }
+                }
+
+                return (IReadOnlyList<string>)names;
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DatabaseSessionInfo> DescribeSessionAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken)
+    {
+        var driver = Resolve(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                return await driver.DescribeSessionAsync(connection, token)
+                    .ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<DatabaseQueryPage> QueryAsync(
         string driverId,
         string connectionString,

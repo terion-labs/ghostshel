@@ -25,7 +25,8 @@ public static class BuiltInDatabaseDrivers
         new PostgresFamilyDriver(
             "postgres",
             "PostgreSQL",
-            "Host=localhost;Port=5432;Database=app;Username=postgres;Password=…"),
+            "Host=localhost;Port=5432;Database=app;Username=postgres;Password=…",
+            5432),
         new MySqlFamilyDriver(
             "mysql",
             "MySQL",
@@ -38,11 +39,13 @@ public static class BuiltInDatabaseDrivers
         new PostgresFamilyDriver(
             "cockroach",
             "CockroachDB",
-            "Host=localhost;Port=26257;Database=app;Username=root;SSL Mode=Disable"),
+            "Host=localhost;Port=26257;Database=app;Username=root;SSL Mode=Disable",
+            26257),
         new PostgresFamilyDriver(
             "redshift",
             "Amazon Redshift",
-            "Host=cluster.region.redshift.amazonaws.com;Port=5439;Database=app;Username=…;Password=…"),
+            "Host=cluster.region.redshift.amazonaws.com;Port=5439;Database=app;Username=…;Password=…",
+            5439),
         new DuckDbDatabaseDriver(),
         new OracleDatabaseDriver(),
         new FirebirdDatabaseDriver(),
@@ -149,18 +152,41 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
 internal sealed class PostgresFamilyDriver(
     string id,
     string displayName,
-    string connectionStringHint) : IDatabaseDriver
+    string connectionStringHint,
+    int defaultPort) : IDatabaseDriver
 {
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         id,
         displayName,
-        connectionStringHint);
+        connectionStringHint,
+        DefaultPort: defaultPort,
+        CanListDatabases: true);
 
     public DbConnection CreateConnection(string connectionString) =>
         new NpgsqlConnection(connectionString);
 
     public string NormalizeConnectionString(string connectionString) =>
         PostgresConnectionStrings.Normalize(connectionString);
+
+    public string ListDatabasesSql => """
+        SELECT datname FROM pg_database
+        WHERE NOT datistemplate
+        ORDER BY datname;
+        """;
+
+    public async ValueTask<DatabaseSessionInfo> DescribeSessionAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken) =>
+        new(
+            DatabaseSessionProbes.TryGetServerVersion(connection),
+            // pg_stat_ssl names the negotiated protocol for this backend; the
+            // row's version is NULL on a plaintext connection. Redshift and
+            // CockroachDB lack the view and answer with no fact.
+            await DatabaseSessionProbes.TryQueryScalarAsync(
+                connection,
+                "SELECT version FROM pg_stat_ssl WHERE pid = pg_backend_pid();",
+                0,
+                cancellationToken).ConfigureAwait(false));
 
     public string ListTablesSql => """
         SELECT table_catalog, table_schema, table_name,
@@ -214,10 +240,32 @@ internal sealed class MySqlFamilyDriver(
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         id,
         displayName,
-        connectionStringHint);
+        connectionStringHint,
+        DefaultPort: 3306,
+        CanListDatabases: true);
 
     public DbConnection CreateConnection(string connectionString) =>
         new MySqlConnection(connectionString);
+
+    public string ListDatabasesSql => """
+        SELECT schema_name FROM information_schema.schemata
+        ORDER BY schema_name;
+        """;
+
+    public async ValueTask<DatabaseSessionInfo> DescribeSessionAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken) =>
+        new(
+            DatabaseSessionProbes.TryGetServerVersion(connection),
+            // SHOW answers in (Variable_name, Value) pairs; the fact is the
+            // second column, and an empty value means a plaintext session.
+            // This spelling predates performance_schema, so it holds across
+            // every MySQL and MariaDB this driver can reach.
+            await DatabaseSessionProbes.TryQueryScalarAsync(
+                connection,
+                "SHOW SESSION STATUS LIKE 'Ssl_version';",
+                1,
+                cancellationToken).ConfigureAwait(false));
 
     private static readonly Dictionary<string, string> UrlParameterNames =
         new(StringComparer.OrdinalIgnoreCase)
@@ -315,10 +363,37 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "sqlserver",
         "SQL Server",
-        "Server=localhost,1433;Database=app;User ID=sa;Password=…;TrustServerCertificate=True");
+        "Server=localhost,1433;Database=app;User ID=sa;Password=…;TrustServerCertificate=True",
+        DefaultPort: 1433,
+        CanListDatabases: true);
 
     public DbConnection CreateConnection(string connectionString) =>
         new SqlConnection(connectionString);
+
+    public string ListDatabasesSql => """
+        SELECT name FROM sys.databases
+        WHERE state = 0
+        ORDER BY name;
+        """;
+
+    public async ValueTask<DatabaseSessionInfo> DescribeSessionAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken) =>
+        new(
+            DatabaseSessionProbes.TryGetServerVersion(connection),
+            // The server says whether the session is encrypted but not which
+            // protocol carried it, so the fact is the family name only.
+            string.Equals(
+                await DatabaseSessionProbes.TryQueryScalarAsync(
+                    connection,
+                    "SELECT encrypt_option FROM sys.dm_exec_connections "
+                    + "WHERE session_id = @@SPID;",
+                    0,
+                    cancellationToken).ConfigureAwait(false),
+                "TRUE",
+                StringComparison.OrdinalIgnoreCase)
+                ? "TLS"
+                : null);
 
     /// <summary>
     /// <c>sqlserver://host:1433;database=app</c> is how JDBC writes it and how
@@ -498,10 +573,31 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "oracle",
         "Oracle",
-        "Data Source=localhost:1521/FREEPDB1;User Id=app;Password=…");
+        "Data Source=localhost:1521/FREEPDB1;User Id=app;Password=…",
+        DefaultPort: 1521,
+        // Oracle connects to a service, and enumerating other services is a
+        // listener question SQL cannot ask.
+        DatabaseLabel: "Service");
 
     public DbConnection CreateConnection(string connectionString) =>
         new OracleConnection(connectionString);
+
+    public async ValueTask<DatabaseSessionInfo> DescribeSessionAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken) =>
+        new(
+            DatabaseSessionProbes.TryGetServerVersion(connection),
+            // The session context names its transport: tcps is TLS, tcp is not.
+            string.Equals(
+                await DatabaseSessionProbes.TryQueryScalarAsync(
+                    connection,
+                    "SELECT SYS_CONTEXT('USERENV', 'NETWORK_PROTOCOL') FROM DUAL",
+                    0,
+                    cancellationToken).ConfigureAwait(false),
+                "tcps",
+                StringComparison.OrdinalIgnoreCase)
+                ? "TLS"
+                : null);
 
     /// <summary>
     /// <c>oracle://user:password@host:1521/FREEPDB1</c>, which is the URL form
@@ -634,7 +730,11 @@ internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "firebird",
         "Firebird",
-        "DataSource=localhost;Database=/path/to/app.fdb;User=SYSDBA;Password=…");
+        "DataSource=localhost;Database=/path/to/app.fdb;User=SYSDBA;Password=…",
+        DefaultPort: 3050,
+        // A Firebird database is a server-side file path; there is nothing to
+        // enumerate over the wire.
+        DatabaseLabel: "Database path");
 
     public DbConnection CreateConnection(string connectionString) =>
         new FbConnection(connectionString);
@@ -732,10 +832,17 @@ internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
     public DatabaseDriverDescriptor Descriptor { get; } = new(
         "clickhouse",
         "ClickHouse",
-        "Host=localhost;Port=8123;Database=default;Username=default;Password=…");
+        "Host=localhost;Port=8123;Database=default;Username=default;Password=…",
+        DefaultPort: 8123,
+        CanListDatabases: true);
 
     public DbConnection CreateConnection(string connectionString) =>
         new ClickHouseConnection(connectionString);
+
+    public string ListDatabasesSql => """
+        SELECT name FROM system.databases
+        ORDER BY name;
+        """;
 
     /// <summary>
     /// <c>clickhouse://user:password@host:8123/database</c>, as clickhouse-client

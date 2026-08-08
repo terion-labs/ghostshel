@@ -2,12 +2,30 @@ using GhostShell.Core;
 
 namespace GhostShell.Application;
 
-/// <summary>One selectable database driver, described for pickers.</summary>
+/// <summary>
+/// One selectable database driver, described for pickers and editors. The
+/// facts the UI shapes itself around live here so a form never hard-codes an
+/// engine: the default port fills the placeholder, <see cref="DatabaseLabel"/>
+/// names what the engine calls a database (Oracle connects to a service), and
+/// <see cref="CanListDatabases"/> gates the database selector.
+/// </summary>
 public sealed record DatabaseDriverDescriptor(
     string Id,
     string DisplayName,
     string ConnectionStringHint,
-    bool IsFileBased = false);
+    bool IsFileBased = false,
+    int? DefaultPort = null,
+    string DatabaseLabel = "Database",
+    bool CanListDatabases = false);
+
+/// <summary>
+/// Facts about an established session that only the server can answer. Every
+/// member is optional: a probe that an engine cannot answer is a missing fact,
+/// never a failed connection.
+/// </summary>
+public sealed record DatabaseSessionInfo(
+    string? ServerVersion = null,
+    string? TlsProtocol = null);
 
 /// <summary>
 /// The structural view of a connection string, for the details dialog. File
@@ -127,6 +145,29 @@ public interface IDatabasePanelClient
         string connectionString,
         ConnectionProfile? tunnel,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Names the databases the connected principal can see, for the database
+    /// selector. Engines that cannot enumerate (file engines, Oracle services,
+    /// Firebird's server-side paths) return an empty list.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListDatabasesAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+
+    /// <summary>
+    /// Reads session facts — server version, negotiated TLS — from a fresh
+    /// connection. Also serves as the bounded reachability test for editors.
+    /// </summary>
+    Task<DatabaseSessionInfo> DescribeSessionAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new DatabaseSessionInfo());
 
     /// <summary>
     /// Executes one statement. Result sets are capped at <paramref name="maxRows"/>

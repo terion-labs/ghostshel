@@ -1065,6 +1065,7 @@ public sealed partial class MainWindow : Window
                     database.Request.Details,
                     database.Request.StorePassword,
                     database.Request.TunnelConnectionId,
+                    database.Request.InlineTunnel,
                     _lifetime.Token);
                 break;
             default:

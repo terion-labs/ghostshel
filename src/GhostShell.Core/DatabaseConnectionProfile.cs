@@ -33,7 +33,8 @@ public sealed record DatabaseConnectionProfile : IDurableDefinition
         string driverId,
         string connectionString,
         SecretRef? passwordSecret = null,
-        ConnectionId? tunnelConnectionId = null)
+        ConnectionId? tunnelConnectionId = null,
+        ConnectionProfile? inlineTunnel = null)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -42,7 +43,16 @@ public sealed record DatabaseConnectionProfile : IDurableDefinition
         ConnectionString = connectionString ?? string.Empty;
         PasswordSecret = passwordSecret;
         TunnelConnectionId = tunnelConnectionId;
+        InlineTunnel = inlineTunnel;
     }
+
+    /// <summary>
+    /// The id an inline tunnel is created under. Deriving it from the profile
+    /// keeps it stable across edits, so the vault secret scoped to it stays
+    /// resolvable.
+    /// </summary>
+    public static ConnectionId InlineTunnelId(DatabaseConnectionProfileId profileId) =>
+        new($"db-tunnel-{profileId.Value}");
 
     public static DefinitionKind Kind => DefinitionKind.DatabaseConnection;
 
@@ -64,7 +74,19 @@ public sealed record DatabaseConnectionProfile : IDurableDefinition
     /// <summary>The vault entry holding the password, when stored.</summary>
     public SecretRef? PasswordSecret { get; }
 
+    /// <summary>A saved SSH connection this profile tunnels through.</summary>
     public ConnectionId? TunnelConnectionId { get; }
+
+    /// <summary>
+    /// A tunnel that lives only inside this profile — for the database that
+    /// has its own bastion, not worth a saved terminal connection. Mutually
+    /// exclusive with <see cref="TunnelConnectionId"/>.
+    /// </summary>
+    public ConnectionProfile? InlineTunnel { get; }
+
+    /// <summary>Resolvable tunnel intent: the saved reference wins by validation.</summary>
+    [JsonIgnore]
+    public bool HasTunnel => TunnelConnectionId is not null || InlineTunnel is not null;
 
     public DefinitionValidationResult Validate()
     {
@@ -82,6 +104,22 @@ public sealed record DatabaseConnectionProfile : IDurableDefinition
             issues.Add(new(
                 DefinitionValidationCode.InvalidEntry,
                 "A saved database connection needs a connection string.",
+                Id.Value));
+        }
+
+        if (TunnelConnectionId is not null && InlineTunnel is not null)
+        {
+            issues.Add(new(
+                DefinitionValidationCode.InvalidEntry,
+                "A database connection tunnels through a saved connection or its own — not both.",
+                Id.Value));
+        }
+
+        if (InlineTunnel is { } inline && inline.Endpoint is not ConnectionEndpoint.Ssh)
+        {
+            issues.Add(new(
+                DefinitionValidationCode.InvalidEntry,
+                "An inline database tunnel must be an SSH endpoint.",
                 Id.Value));
         }
 

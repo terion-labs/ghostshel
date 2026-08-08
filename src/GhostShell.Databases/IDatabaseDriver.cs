@@ -27,6 +27,27 @@ public interface IDatabaseDriver
     /// </summary>
     string ListTablesSql { get; }
 
+    /// <summary>
+    /// A statement returning one database name per row, for the database
+    /// selector — or null when the engine has nothing to enumerate: file
+    /// engines open exactly one file, Firebird names a server-side path, and
+    /// Oracle's services resolve outside SQL. The descriptor's
+    /// CanListDatabases must agree with this member.
+    /// </summary>
+    string? ListDatabasesSql => null;
+
+    /// <summary>
+    /// Session facts read from an already-open connection. The default answers
+    /// with the provider's server version and no TLS fact; engines that can
+    /// name their negotiated protocol override. A fact the server will not
+    /// give up is null, never an exception — the connection itself is fine.
+    /// </summary>
+    ValueTask<DatabaseSessionInfo> DescribeSessionAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new DatabaseSessionInfo(
+            DatabaseSessionProbes.TryGetServerVersion(connection)));
+
     string QuoteIdentifier(string identifier);
 
     string BuildPreviewQuery(string tableName, int limit);
