@@ -195,4 +195,18 @@
     <Exec Command="&quot;$(GhostShellRepositoryRoot)scripts/declare-macos-sdk26.sh&quot; &quot;$(TargetDir)$(AssemblyName)&quot;" />
   </Target>
 
+  <!-- CEF on macOS must run from an application bundle so its framework and
+       five helper subprocess bundles resolve through Contents/Frameworks. -->
+  <Target
+      Name="ConfigureMacOsDevelopmentRun"
+      BeforeTargets="ComputeRunArguments"
+      Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(GhostShellCefMacRuntime)' == 'true'">
+    <PropertyGroup>
+      <GhostShellForwardedRunArguments>$(RunArguments)</GhostShellForwardedRunArguments>
+      <GhostShellMacDevelopmentApp>$(MSBuildProjectDirectory)/$(IntermediateOutputPath)macos-run/GhostShell.dev.app</GhostShellMacDevelopmentApp>
+      <RunCommand>$(GhostShellRepositoryRoot)scripts/run-macos-development.sh</RunCommand>
+      <RunArguments>--target-directory &quot;$(TargetDir)&quot; --cef-runtime-root &quot;$(GhostShellCefRuntimeArtifactDirectory)&quot; --app &quot;$(GhostShellMacDevelopmentApp)&quot; --info-plist-template &quot;$(GhostShellRepositoryRoot)tools/GhostShell.Packaging/MacOS/Info.plist.template&quot; -- $(GhostShellForwardedRunArguments)</RunArguments>
+    </PropertyGroup>
+  </Target>
+
 </Project>

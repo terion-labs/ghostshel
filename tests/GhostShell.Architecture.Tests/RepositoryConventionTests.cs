@@ -114,6 +114,29 @@ public sealed partial class RepositoryConventionTests
         Assert.Contains("\"GhostShell.Previews.dll\"", packageScript, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Macos_dotnet_run_assembles_the_required_cef_application_bundle()
+    {
+        var desktopProject = File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot,
+                "src",
+                "GhostShell.Desktop",
+                "GhostShell.Desktop.csproj"));
+        var developmentRunner = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "run-macos-development.sh"));
+
+        Assert.Contains("ConfigureMacOsDevelopmentRun", desktopProject, StringComparison.Ordinal);
+        Assert.Contains(
+            "BeforeTargets=\"ComputeRunArguments\"",
+            desktopProject,
+            StringComparison.Ordinal);
+        Assert.Contains("scripts/run-macos-development.sh", desktopProject, StringComparison.Ordinal);
+        Assert.Contains("Chromium Embedded Framework.framework", developmentRunner, StringComparison.Ordinal);
+        Assert.Contains("GhostSHELL Helper (Renderer)", developmentRunner, StringComparison.Ordinal);
+        Assert.Contains("Contents/MacOS/GhostShell", developmentRunner, StringComparison.Ordinal);
+    }
+
     private static readonly string RepositoryRoot = FindRepositoryRoot();
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();

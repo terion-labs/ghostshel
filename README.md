@@ -29,6 +29,7 @@ Install the workspace-local .NET SDK, then build the pinned libghostty-vt runtim
 ```sh
 GHOSTSHELL_SKIP_NATIVE=1 ./scripts/bootstrap.sh
 ./scripts/build-libghostty-vt.sh
+./scripts/build-cef-runtime.sh --rid osx-arm64
 ```
 
 The first native build downloads the pinned Zig toolchain and Ghostty source and can take several minutes. The build applies the reviewed overlay to a disposable checkout, runs Ghostty's patched VT tests, verifies every managed import plus the exact GhostSHELL extension ABI, and publishes the library, reviewed export manifest, license, receipt, and pinned Bash/Fish/Zsh integration resources under `native/artifacts/<rid>`. It also fetches the official JetBrains Mono 2.304 dependency declared by that Ghostty pin, verifies the regular/bold/italic/bold-italic faces and OFL by exact hash, and publishes their independently receipted cross-platform closure under `native/artifacts/common`.
@@ -39,6 +40,11 @@ Build, test, and run:
 ./scripts/check.sh
 ./.dotnet/dotnet run --project src/GhostShell.Desktop/GhostShell.Desktop.csproj
 ```
+
+On macOS, `dotnet run` assembles the framework-dependent build into a private
+development `.app` under `src/GhostShell.Desktop/obj` before starting it. This
+preserves CEF's required `Contents/Frameworks` layout without weakening the
+verified native-payload checks used by release packaging.
 
 Verify the real PTY/libghostty-vt pipeline, split UTF-8 input, render damage,
 terminal-controlled cursor and underline state, semantic shell events, PTY
