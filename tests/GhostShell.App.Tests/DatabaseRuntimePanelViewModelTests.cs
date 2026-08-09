@@ -342,7 +342,9 @@ public sealed class DatabaseRuntimePanelViewModelTests
             driverId: "sqlite",
             connectionString: "Data Source=demo.db");
         await panel.Initialization;
-        Assert.Equal("Direct", panel.ConnectionDisplayName);
+        // The pill names the bound connection; a raw target reads as its
+        // driver. The tunnel is connection configuration, not the label.
+        Assert.Equal("SQLite", panel.ConnectionDisplayName);
         Assert.Null(client.LastTunnel);
 
         var bastion = new ConnectionProfile(
@@ -362,7 +364,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             await Task.Yield();
         }
 
-        Assert.Equal("bastion-eu", panel.ConnectionDisplayName);
+        Assert.Equal("SQLite", panel.ConnectionDisplayName);
         Assert.Equal(bastion.Id, panel.TunnelConnectionId);
         Assert.True(panel.IsConnected);
         Assert.Same(bastion, client.LastTunnel);
@@ -383,7 +385,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             await Task.Yield();
         }
 
-        Assert.Equal("Direct", panel.ConnectionDisplayName);
+        Assert.Equal("SQLite", panel.ConnectionDisplayName);
         Assert.Null(panel.TunnelConnectionId);
         Assert.Null(client.LastTunnel);
     }

@@ -120,6 +120,7 @@
           CloseRequested="OnCloseRuntimePanelClick"
           ConnectionSelected="OnPanelConnectionSelected"
           NewConnectionRequested="OnPanelNewConnectionRequested"
+          EditConnectionRequested="OnPanelEditDatabaseConnectionRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />

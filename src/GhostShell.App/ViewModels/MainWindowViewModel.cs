@@ -416,6 +416,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<PanelConnectionOptionViewModel> FileConnectionOptions =>
         BuildFileConnectionOptions();
 
+    /// <summary>
+    /// What the database panel's connection pill offers: saved database
+    /// connections — not tunnels; a profile carries its own route.
+    /// </summary>
+    public IEnumerable<PanelConnectionOptionViewModel> DatabasePanelConnectionOptions =>
+        _catalog.Snapshot.DatabaseConnections.Select(item =>
+        {
+            var profile = item.Value;
+            var driver = _databasePanelClient?.Drivers
+                .FirstOrDefault(descriptor => descriptor.Id == profile.DriverId);
+            return new PanelConnectionOptionViewModel(
+                new PanelConnectionOptionViewModel.Target.Database(profile.Id),
+                profile.Name,
+                driver?.DisplayName ?? profile.DriverId,
+                DatabaseConnectionDetailText(profile),
+                CanOpen: _databasePanelClient is not null);
+        });
+
     public ObservableCollection<LauncherScreenViewModel> Screens { get; } = [];
 
     public ObservableCollection<LayoutCardViewModel> Layouts { get; } = [];
@@ -5119,20 +5137,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        if (livePanel is DatabaseRuntimePanelViewModel database)
+        if (livePanel is DatabaseRuntimePanelViewModel)
         {
-            // The database panel tunnels through the connection rather than
-            // being rebuilt on it; a local connection means a direct one.
-            if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
-            {
-                SetError("Database viewers tunnel through SSH connections only.");
-                return false;
-            }
-
-            database.SetTunnel(connection);
-            workspace.AddConnections(Connections.Where(item => item.Id == connection.Id));
-            QueueRuntimeRecoverySnapshot();
-            return true;
+            // The database panel binds to saved database connections through
+            // its own selector; a terminal connection is never its target.
+            SetError("Choose a database connection from the panel selector.");
+            return false;
         }
 
         RuntimePanelViewModel replacement;
@@ -9524,6 +9534,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             static (a, b) => a.PresentsSameAs(b));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(PanelConnectionOptions));
+        OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
         OnPropertyChanged(nameof(FileConnectionOptions));
         OnPropertyChanged(nameof(HasNoConnections));
         OnPropertyChanged(nameof(HasTerminalConnections));
@@ -11527,6 +11538,91 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ? FindConnection(tunnelId)
             : profile.InlineTunnel;
 
+    /// <summary>
+    /// Rebinds a live database panel to a saved connection, tunnel and all.
+    /// The panel is stateless between operations, so nothing is torn down —
+    /// it simply connects to the new target.
+    /// </summary>
+    public bool ReplaceDatabasePanelConnection(
+        DatabaseRuntimePanelViewModel panel,
+        DatabaseConnectionProfileId profileId)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        ClearError();
+        var profile = FindDatabaseConnection(profileId);
+        if (profile is null)
+        {
+            SetError("That database connection no longer exists.");
+            return false;
+        }
+
+        panel.ApplySavedConnection(profile, tunnel: ResolveDatabaseTunnel(profile));
+        QueueRuntimeRecoverySnapshot();
+        return true;
+    }
+
+    /// <summary>
+    /// The editor's "connect without saving": the request becomes an
+    /// in-memory profile the panel binds to. The typed password becomes the
+    /// session password; nothing reaches the catalog or the vault — which is
+    /// also why an inline tunnel needing a stored password must be saved.
+    /// </summary>
+    public bool BindUnsavedDatabaseConnection(
+        DatabaseRuntimePanelViewModel panel,
+        DatabaseConnectionSaveRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        ArgumentNullException.ThrowIfNull(request);
+        ClearError();
+        if (_databasePanelClient is null)
+        {
+            SetError("The database drivers are unavailable in this build.");
+            return false;
+        }
+
+        ConnectionProfile? tunnel = null;
+        if (request.TunnelConnectionId is { } tunnelId)
+        {
+            tunnel = FindConnection(tunnelId);
+            if (tunnel is null)
+            {
+                SetError("That SSH tunnel connection no longer exists.");
+                return false;
+            }
+        }
+        else if (request.InlineTunnel is { } inline)
+        {
+            if (!inline.UseAgent)
+            {
+                SetError(
+                    "Tunnel passwords live in the OS keychain. "
+                    + "Save the connection to use a password tunnel.");
+                return false;
+            }
+
+            tunnel = DatabaseConnectionEditorViewModel.BuildInlineTunnelProfile(
+                DatabaseConnectionProfile.InlineTunnelId(DatabaseConnectionProfileId.New()),
+                $"{request.Name} tunnel",
+                inline,
+                new ConnectionAuthentication.SshAgent());
+        }
+
+        var profile = new DatabaseConnectionProfile(
+            DatabaseConnectionProfileId.New(),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            request.Name,
+            request.DriverId,
+            _databasePanelClient.BuildConnectionString(
+                request.DriverId,
+                request.Details with { Password = null }));
+        panel.ApplySavedConnection(
+            profile,
+            request.Details.Password,
+            tunnel,
+            persisted: false);
+        return true;
+    }
+
     /// <summary>Every saved database connection, for panel pickers.</summary>
     public IReadOnlyList<DatabaseConnectionProfile> DatabaseConnectionOptions =>
         _catalog.Snapshot.DatabaseConnections.Select(item => item.Value).ToArray();
@@ -11626,6 +11722,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(DatabaseConnectionOptions));
+        OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
         return saved.Value!.Value;
     }
 

@@ -25,5 +25,7 @@ public sealed record PanelConnectionOptionViewModel(
         public sealed record Connection(ConnectionId Id) : Target;
 
         public sealed record FileProvider(FileProviderProfileId Id) : Target;
+
+        public sealed record Database(DatabaseConnectionProfileId Id) : Target;
     }
 }

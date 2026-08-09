@@ -22,6 +22,8 @@ public sealed class DatabaseDriverOptionViewModel(DatabaseDriverDescriptor descr
     public string ConnectionStringHint { get; } = descriptor.ConnectionStringHint;
 
     public bool IsFileBased { get; } = descriptor.IsFileBased;
+
+    public bool CanListDatabases { get; } = descriptor.CanListDatabases;
 }
 
 public sealed class DatabaseTableItemViewModel(DatabaseTableDescriptor table)

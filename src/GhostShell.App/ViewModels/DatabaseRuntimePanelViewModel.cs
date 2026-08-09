@@ -44,6 +44,11 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private readonly CancellationTokenSource _lifetime = new();
     private bool _disposed;
     private ConnectionProfile? _tunnelConnection;
+    private IReadOnlyList<string> _databases = [];
+    private string? _selectedDatabase;
+    private bool _suppressDatabaseSwitch;
+    private DatabaseSessionInfo _sessionInfo = new();
+    private bool _isPersistedConnection = true;
     private DatabaseConnectionProfile? _savedConnection;
     private string? _sessionPassword;
     private DatabaseDriverOptionViewModel _selectedDriver;
@@ -137,7 +142,16 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 string.Equals(option.Id, effectiveDriverId, StringComparison.Ordinal))
             ?? DriverOptions[0];
         _connectionString = savedConnection?.ConnectionString ?? connectionString ?? string.Empty;
-        ConnectCommand = new AsyncActionCommand(ConnectAsync, () => CanChangeConnection);
+        ConnectCommand = new AsyncActionCommand(
+            ConnectAsync,
+            () => CanChangeConnection && HasConnectionTarget);
+        DisconnectCommand = new AsyncActionCommand(
+            () =>
+            {
+                Disconnect();
+                return Task.CompletedTask;
+            },
+            () => IsConnected && CanChangeConnection);
         RunQueryCommand = new AsyncActionCommand(
             RunQueryAsync,
             () => !IsBusy && IsConnected && !HasPendingChanges);
@@ -164,14 +178,18 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     public string AddressBarText => _savedConnection?.Name ?? MaskedConnectionString;
 
     /// <summary>
-    /// Binds this panel to a saved connection: driver and address become the
-    /// profile's, the address bar shows its name, and connecting resolves the
-    /// stored password — or asks for one. A session password supplied by the
-    /// save flow avoids re-asking for what the user just typed.
+    /// Binds this panel to a connection profile: driver, address, and tunnel
+    /// become the profile's, and connecting resolves the stored password — or
+    /// asks for one. A session password supplied by the editor avoids
+    /// re-asking for what the user just typed. A non-persisted profile (the
+    /// editor's "connect without saving") behaves identically but recovers as
+    /// a raw target rather than a dangling saved reference.
     /// </summary>
     public void ApplySavedConnection(
         DatabaseConnectionProfile profile,
-        string? sessionPassword = null)
+        string? sessionPassword = null,
+        ConnectionProfile? tunnel = null,
+        bool persisted = true)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (HasPendingChanges)
@@ -181,7 +199,9 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         _savedConnection = profile;
+        _isPersistedConnection = persisted;
         _sessionPassword = string.IsNullOrEmpty(sessionPassword) ? null : sessionPassword;
+        _tunnelConnection = tunnel?.Endpoint is ConnectionEndpoint.Ssh ? tunnel : null;
         var driver = DriverOptions.FirstOrDefault(option =>
             string.Equals(option.Id, profile.DriverId, StringComparison.Ordinal));
         if (driver is not null)
@@ -190,11 +210,15 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             OnPropertyChanged(nameof(SelectedDriver));
         }
 
+        SetDatabases([]);
+        SessionInfo = new DatabaseSessionInfo();
         ConnectionString = profile.ConnectionString;
         OnPropertyChanged(nameof(IsSavedConnection));
         OnPropertyChanged(nameof(SavedConnectionName));
         OnPropertyChanged(nameof(AddressBarText));
         OnPropertyChanged(nameof(RecoveryTarget));
+        OnPropertyChanged(nameof(TunnelConnectionId));
+        OnPropertyChanged(nameof(ConnectionDisplayName));
         _ = ConnectAsync();
     }
 
@@ -248,6 +272,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     public Task Initialization { get; }
 
     public ICommand ConnectCommand { get; }
+
+    public ICommand DisconnectCommand { get; }
 
     public ICommand RunQueryCommand { get; }
 
@@ -682,7 +708,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     /// The durable "driverId:connection string" address, or null while the
     /// panel has no usable target. Recovery and workspace autosave persist it.
     /// </summary>
-    public string? RecoveryTarget => _savedConnection is { } saved
+    public string? RecoveryTarget => _savedConnection is { } saved && _isPersistedConnection
         ? $"saved:{saved.Id.Value}"
         : string.IsNullOrWhiteSpace(ConnectionString)
             ? null
@@ -691,8 +717,224 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     /// <summary>The SSH connection queries tunnel through, or null for direct.</summary>
     public ConnectionId? TunnelConnectionId => _tunnelConnection?.Id;
 
-    /// <summary>The selector label, mirroring the File Viewer's connection pill.</summary>
-    public string ConnectionDisplayName => _tunnelConnection?.Name ?? "Direct";
+    /// <summary>
+    /// The connection pill's label: the profile this panel is bound to, or an
+    /// invitation when it has nothing to connect to yet.
+    /// </summary>
+    public string ConnectionDisplayName => _savedConnection?.Name
+        ?? (string.IsNullOrWhiteSpace(ConnectionString)
+            ? "Select connection"
+            : SelectedDriver.DisplayName);
+
+    /// <summary>Something to connect to exists — a target, saved or raw.</summary>
+    public bool HasConnectionTarget => !string.IsNullOrWhiteSpace(ConnectionString);
+
+    /// <summary>One button reads as the action it would perform.</summary>
+    public string ConnectButtonLabel => IsConnected ? "Reconnect" : "Connect";
+
+    /// <summary>Session facts read after connecting; empty when unknown.</summary>
+    public DatabaseSessionInfo SessionInfo
+    {
+        get => _sessionInfo;
+        private set
+        {
+            if (SetProperty(ref _sessionInfo, value))
+            {
+                OnPropertyChanged(nameof(ConnectionSummary));
+            }
+        }
+    }
+
+    /// <summary>Databases the connected principal may switch to.</summary>
+    public IReadOnlyList<string> Databases => _databases;
+
+    /// <summary>The selector shows only when there is a real choice to make.</summary>
+    public bool HasDatabaseChoices => _databases.Count > 0;
+
+    /// <summary>
+    /// The database the session is in. Picking another rebuilds the address
+    /// with it and reconnects — which is what USE means everywhere.
+    /// </summary>
+    public string? SelectedDatabase
+    {
+        get => _selectedDatabase;
+        set
+        {
+            if (!SetProperty(ref _selectedDatabase, value)
+                || _suppressDatabaseSwitch
+                || value is null)
+            {
+                return;
+            }
+
+            _ = SwitchDatabaseAsync(value);
+        }
+    }
+
+    /// <summary>
+    /// The status bar's account of the session: engine and version, transport
+    /// security, route, principal, database, and selected object. Never the
+    /// connection string.
+    /// </summary>
+    public string ConnectionSummary
+    {
+        get
+        {
+            if (!IsConnected)
+            {
+                return string.Empty;
+            }
+
+            var details = _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString);
+            var facts = new List<string>
+            {
+                SessionInfo.ServerVersion is { } version
+                    ? $"{SelectedDriver.DisplayName} {version}"
+                    : SelectedDriver.DisplayName,
+            };
+            if (SessionInfo.TlsProtocol is { } tls)
+            {
+                facts.Add(tls);
+            }
+
+            if (_tunnelConnection is { } tunnel)
+            {
+                facts.Add($"SSH:{tunnel.Name}");
+            }
+
+            if (details.Username is { } user)
+            {
+                facts.Add(user);
+            }
+
+            var database = SelectedDatabase ?? details.Database;
+            if (!string.IsNullOrEmpty(database))
+            {
+                facts.Add(database);
+            }
+
+            if (_selectedObject is { } selected)
+            {
+                facts.Add(selected.Name);
+            }
+
+            return string.Join(" : ", facts);
+        }
+    }
+
+    private void SetDatabases(IReadOnlyList<string> databases)
+    {
+        _databases = databases;
+        OnPropertyChanged(nameof(Databases));
+        OnPropertyChanged(nameof(HasDatabaseChoices));
+    }
+
+    /// <summary>
+    /// Reads the optional session facts after a proven connection: version and
+    /// TLS for the status bar, the database list for the selector. A probe the
+    /// server refuses leaves the facts empty — the connection itself already
+    /// succeeded.
+    /// </summary>
+    private async Task RefreshSessionFactsAsync(CancellationToken cancellationToken)
+    {
+        var connectionString = await ResolveEffectiveConnectionStringAsync(cancellationToken);
+        try
+        {
+            SessionInfo = await _client.DescribeSessionAsync(
+                SelectedDriver.Id,
+                connectionString,
+                _tunnelConnection,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            SessionInfo = new DatabaseSessionInfo();
+        }
+
+        var databases = Array.Empty<string>() as IReadOnlyList<string>;
+        if (SelectedDriver.CanListDatabases)
+        {
+            try
+            {
+                databases = await _client.ListDatabasesAsync(
+                    SelectedDriver.Id,
+                    connectionString,
+                    _tunnelConnection,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                databases = [];
+            }
+        }
+
+        SetDatabases(databases);
+        _suppressDatabaseSwitch = true;
+        try
+        {
+            SelectedDatabase = _client
+                .ParseConnectionDetails(SelectedDriver.Id, ConnectionString)
+                .Database;
+        }
+        finally
+        {
+            _suppressDatabaseSwitch = false;
+        }
+
+        OnPropertyChanged(nameof(ConnectionSummary));
+    }
+
+    private async Task SwitchDatabaseAsync(string database)
+    {
+        if (HasPendingChanges)
+        {
+            ErrorMessage = "Save or revert the pending row changes before switching databases.";
+            return;
+        }
+
+        var details = _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString);
+        if (string.Equals(details.Database, database, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // The saved profile stays bound: the switch is session state, and
+        // recovery returns to the profile's own database.
+        ConnectionString = _client.BuildConnectionString(
+            SelectedDriver.Id,
+            details with { Database = database });
+        await ConnectAsync();
+    }
+
+    /// <summary>
+    /// Forgets the session without touching what it pointed at: tables, the
+    /// database list, and session facts clear; the bound connection stays so
+    /// Connect brings it back.
+    /// </summary>
+    public void Disconnect()
+    {
+        if (HasPendingChanges)
+        {
+            ErrorMessage = "Save or revert the pending row changes before disconnecting.";
+            return;
+        }
+
+        SetConnected(false);
+        ClearSelectedObject();
+        _allTables = [];
+        RefreshTables();
+        SetDatabases([]);
+        SessionInfo = new DatabaseSessionInfo();
+        ErrorMessage = null;
+    }
 
     /// <summary>
     /// Routes queries through an SSH local port-forward over the given
@@ -757,6 +999,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             RefreshTables();
             SetConnected(true);
             OnPropertyChanged(nameof(RecoveryTarget));
+            await RefreshSessionFactsAsync(cancellationToken);
         });
     }
 
@@ -2155,6 +2398,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
     private void PublishInteractionStates()
     {
+        OnPropertyChanged(nameof(ConnectionSummary));
         OnPropertyChanged(nameof(CanMutateRows));
         OnPropertyChanged(nameof(CanDeleteSelectedRow));
         OnPropertyChanged(nameof(CanDuplicateSelectedRow));
@@ -2813,12 +3057,15 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         _isConnected = value;
         OnPropertyChanged(nameof(IsConnected));
         OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(ConnectButtonLabel));
+        OnPropertyChanged(nameof(ConnectionSummary));
         RaiseCommandStates();
     }
 
     private void RaiseCommandStates()
     {
         (ConnectCommand as AsyncActionCommand)?.RaiseCanExecuteChanged();
+        (DisconnectCommand as AsyncActionCommand)?.RaiseCanExecuteChanged();
         (RunQueryCommand as AsyncActionCommand)?.RaiseCanExecuteChanged();
     }
 }

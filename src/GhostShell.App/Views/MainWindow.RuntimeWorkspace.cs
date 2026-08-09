@@ -1163,6 +1163,15 @@ public sealed partial class MainWindow
             return;
         }
 
+        if (panel is DatabaseRuntimePanelViewModel database
+            && e.Selection is PanelConnectionOptionViewModel.Target.Database databaseTarget)
+        {
+            // A database panel holds no session, so rebinding needs no close
+            // flow — it simply connects to the newly chosen profile.
+            _ = ViewModel.ReplaceDatabasePanelConnection(database, databaseTarget.Id);
+            return;
+        }
+
         if (e.Selection is PanelConnectionOptionViewModel.Target.Connection connectionTarget)
         {
             await SwitchRuntimePanelConnectionAsync(
@@ -1182,6 +1191,12 @@ public sealed partial class MainWindow
         if (panel is FileRuntimePanelViewModel files)
         {
             await CreateAndSwitchFileConnectionAsync(files);
+            return;
+        }
+
+        if (panel is DatabaseRuntimePanelViewModel database)
+        {
+            await CreateAndBindDatabaseConnectionAsync(database);
             return;
         }
 
@@ -1212,6 +1227,111 @@ public sealed partial class MainWindow
             await SwitchRuntimePanelConnectionAsync(
                 panel,
                 () => ViewModel.ReplacePanelConnection(panel, terminal.Request.Profile));
+        }
+        catch (InvalidOperationException exception)
+        {
+            ViewModel.SetError(exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// The database panel's "New connection": the editor opens on the database
+    /// family with the connect purpose. Saving binds the persisted profile;
+    /// unchecking "Save connection" binds an in-memory one that recovers as a
+    /// raw target. Either way the typed password rides along as the session
+    /// password so it is not asked for twice.
+    /// </summary>
+    private async Task CreateAndBindDatabaseConnectionAsync(
+        DatabaseRuntimePanelViewModel panel)
+    {
+        try
+        {
+            var editor = ViewModel.CreateUnifiedConnectionEditor(
+                SavedConnectionFamily.Database,
+                initialFamily: SavedConnectionFamily.Database);
+            var result = await new ConnectionEditorDialog(
+                    editor,
+                    ConnectionEditorDialogPurpose.Connect)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is not UnifiedConnectionEditorResult.Database database)
+            {
+                return;
+            }
+
+            if (database.SaveConnection)
+            {
+                var profile = await ViewModel.SaveDatabaseConnectionAsync(
+                    database.Request.ExistingId,
+                    database.Request.Name,
+                    database.Request.DriverId,
+                    database.Request.Details,
+                    database.Request.StorePassword,
+                    database.Request.TunnelConnectionId,
+                    database.Request.InlineTunnel,
+                    _lifetime.Token);
+                if (profile is not null)
+                {
+                    panel.ApplySavedConnection(
+                        profile,
+                        database.Request.Details.Password,
+                        ViewModel.ResolveDatabaseTunnel(profile));
+                }
+
+                return;
+            }
+
+            _ = ViewModel.BindUnsavedDatabaseConnection(panel, database.Request);
+        }
+        catch (InvalidOperationException exception)
+        {
+            ViewModel.SetError(exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// The panel's gear: its saved connection opens in the editor, and the
+    /// saved changes reconnect the panel through the updated profile.
+    /// </summary>
+    private async void OnPanelEditDatabaseConnectionRequested(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Control { DataContext: DatabaseRuntimePanelViewModel panel }
+            || panel.SavedConnectionId is not { } profileId)
+        {
+            return;
+        }
+
+        try
+        {
+            var editor = ViewModel.CreateUnifiedConnectionEditor(
+                SavedConnectionFamily.Database,
+                databaseProfileId: profileId,
+                initialFamily: SavedConnectionFamily.Database);
+            var result = await new ConnectionEditorDialog(editor)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is not UnifiedConnectionEditorResult.Database database)
+            {
+                return;
+            }
+
+            var profile = await ViewModel.SaveDatabaseConnectionAsync(
+                database.Request.ExistingId,
+                database.Request.Name,
+                database.Request.DriverId,
+                database.Request.Details,
+                database.Request.StorePassword,
+                database.Request.TunnelConnectionId,
+                database.Request.InlineTunnel,
+                _lifetime.Token);
+            if (profile is not null)
+            {
+                panel.ApplySavedConnection(
+                    profile,
+                    database.Request.Details.Password,
+                    ViewModel.ResolveDatabaseTunnel(profile));
+            }
         }
         catch (InvalidOperationException exception)
         {
@@ -1293,8 +1413,8 @@ public sealed partial class MainWindow
                 processes.ConnectionId == target.Id,
             (
                 DatabaseRuntimePanelViewModel database,
-                PanelConnectionOptionViewModel.Target.Connection target) =>
-                database.TunnelConnectionId == target.Id,
+                PanelConnectionOptionViewModel.Target.Database target) =>
+                database.SavedConnectionId == target.Id,
             _ => false,
         };
 

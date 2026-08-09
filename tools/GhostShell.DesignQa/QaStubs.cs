@@ -495,10 +495,41 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
 
     public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } =
     [
-        new("postgres", "PostgreSQL", "Host=localhost;Database=app;Username=postgres"),
-        new("mysql", "MySQL", "Server=localhost;Database=app;User ID=root"),
+        new(
+            "postgres",
+            "PostgreSQL",
+            "Host=localhost;Database=app;Username=postgres",
+            DefaultPort: 5432,
+            CanListDatabases: true),
+        new(
+            "mysql",
+            "MySQL",
+            "Server=localhost;Database=app;User ID=root",
+            DefaultPort: 3306,
+            CanListDatabases: true),
         new("sqlite", "SQLite", "/path/to/database.db", IsFileBased: true),
     ];
+
+    /// <summary>Captures show a full session line, never a connection string.</summary>
+    public Task<DatabaseSessionInfo> DescribeSessionAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(driverId switch
+        {
+            "postgres" => new DatabaseSessionInfo("16.4", "TLSv1.3"),
+            "mysql" => new DatabaseSessionInfo("8.4.2", "TLSv1.2"),
+            _ => new DatabaseSessionInfo("3.46.1"),
+        });
+
+    public Task<IReadOnlyList<string>> ListDatabasesAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>(
+            driverId is "sqlite" ? [] : ["app", "app_staging", "postgres"]);
 
     public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
         string driverId,

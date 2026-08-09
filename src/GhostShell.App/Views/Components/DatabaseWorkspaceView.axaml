@@ -214,7 +214,7 @@
               </Button.Flyout>
             </Button>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock
                   FontSize="{DynamicResource ShellFontSize11}"
                   FontWeight="SemiBold"
@@ -416,13 +416,13 @@
                     </Button>
                     <StackPanel
                         Orientation="Horizontal"
-                        Spacing="5"
+                        Spacing="{DynamicResource ShellSpaceXs}"
                         VerticalAlignment="Center"
                         ToolTip.Tip="Rows per page / total matching rows">
                       <TextBox
                           Width="52"
                           MinHeight="32"
-                          Padding="8,4"
+                          Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
                           HorizontalContentAlignment="Center"
                           VerticalContentAlignment="Center"
                           Text="{Binding PageLimitText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -796,18 +796,22 @@
         Background="{DynamicResource ShellSurfaceBrush}"
         BorderBrush="{DynamicResource ShellBorderBrush}"
         BorderThickness="0,1,0,0">
-      <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto">
+      <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <TextBlock
             VerticalAlignment="Center"
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize9}"
             Text="{Binding ResultSummary}" />
+        <!-- The session, never the connection string: engine and version,
+             transport security, route, principal, database, object. -->
         <TextBlock
             Grid.Column="1"
             VerticalAlignment="Center"
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize9}"
-            Text="{Binding SelectedDriver.DisplayName}" />
+            Text="{Binding ConnectionSummary}"
+            TextTrimming="CharacterEllipsis"
+            AutomationProperties.Name="Connection summary" />
       </Grid>
     </Border>
   </Grid>

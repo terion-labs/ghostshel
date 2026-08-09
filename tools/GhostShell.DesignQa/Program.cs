@@ -1506,17 +1506,6 @@ internal sealed class QaApplication : Avalonia.Application
                 initialFamily: SavedConnectionFamily.Database)), null),
         ("dialog-ai-provider-editor", () => new AiProviderProfileEditorDialog(
             new AiProviderProfileEditorViewModel(new QaAiProfileRuntime(), [])), null),
-        ("dialog-database-connection", () => new DatabaseConnectionDetailsDialog(
-            "PostgreSQL",
-            isFileBased: false,
-            new GhostShell.Application.DatabaseConnectionDetails(
-                "db.internal",
-                5432,
-                "coreapi",
-                "ops",
-                "s3cret",
-                null,
-                "SSL Mode=Require")), null),
         ("dialog-mcp-server-editor", () => new McpServerProfileEditorDialog(
             new McpServerProfileEditorViewModel()), null),
         ("dialog-saved-screen-editor", () => new SavedScreenEditorDialog(
@@ -1787,12 +1776,14 @@ internal sealed class QaApplication : Avalonia.Application
                 new TabInstanceId("qa-tab-database"),
                 "deployments-db",
                 "Local");
+            // A server engine, so the capture exercises the database selector
+            // and the full session line in the status bar.
             var panel = new DatabaseRuntimePanelViewModel(
                 new PanelInstanceId("qa-panel-database"),
                 "Database",
                 new QaDatabasePanelClient(),
-                driverId: "sqlite",
-                connectionString: "Data Source=/srv/app/production.db");
+                driverId: "postgres",
+                connectionString: "Host=db.internal;Port=5432;Database=app;Username=ops");
             tab.AddPanel(panel);
             _ = tab.ActivatePanel(panel.Id);
             // The stub completes synchronously, so the capture shows real rows,
