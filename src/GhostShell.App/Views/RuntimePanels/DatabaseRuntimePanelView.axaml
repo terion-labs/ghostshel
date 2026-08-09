@@ -102,8 +102,13 @@
           </StackPanel>
 
           <!-- The three perspectives on the selected object, out of the
-               connection group: switching views is not a connection change. -->
-          <Border Grid.Column="1" VerticalAlignment="Center" Classes="Segmented">
+               connection group: switching views is not a connection change.
+               The database overview is not an object; they hide with it. -->
+          <Border
+              Grid.Column="1"
+              VerticalAlignment="Center"
+              Classes="Segmented"
+              IsVisible="{Binding !IsDatabaseOverview}">
             <UniformGrid Columns="3">
               <ToggleButton
                   x:Name="DataModeButton"

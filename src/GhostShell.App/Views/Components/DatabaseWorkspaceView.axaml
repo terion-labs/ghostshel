@@ -69,6 +69,8 @@
                catalog overview. -->
           <Button
               Classes="ListRow"
+              Classes.selected="{Binding IsDatabaseOverview}"
+              Margin="{controls:Inset Top=Sm}"
               Click="OnDatabaseHeaderClick"
               IsEnabled="{Binding IsConnected}"
               ToolTip.Tip="Show the database's objects"
@@ -108,6 +110,7 @@
                 <DataTemplate>
                   <Button
                       Classes="ListRow"
+                      Classes.selected="{Binding IsSelected}"
                       Click="OnTableClick"
                       ToolTip.Tip="{Binding KindLabel}"
                       AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}">
@@ -208,6 +211,7 @@
                           <DataTemplate>
                             <Button
                                 Classes="ListRow"
+                                Classes.selected="{Binding IsSelected}"
                                 Click="OnPickedTableClick"
                                 ToolTip.Tip="{Binding KindLabel}"
                                 AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}">
@@ -311,77 +315,91 @@
                 <!-- Stackable conditions: each row can be switched off without
                      losing what it says; Apply reads every included row. -->
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" IsEnabled="{Binding CanFilterTable}">
-                  <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding FilterRows}">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                          <StackPanel Spacing="{DynamicResource ShellSpaceXs}" />
-                        </ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-                            <CheckBox
-                                IsChecked="{Binding IsIncluded, Mode=TwoWay}"
-                                ToolTip.Tip="Include this condition"
-                                AutomationProperties.Name="Include this filter condition" />
-                            <ComboBox
-                                Width="116"
-                                Classes="Compact"
-                                ItemsSource="{Binding Columns}"
-                                SelectedItem="{Binding Column, Mode=TwoWay}"
-                                PlaceholderText="Column"
-                                AutomationProperties.Name="Filter column">
-                              <ComboBox.ItemTemplate>
-                                <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
-                              </ComboBox.ItemTemplate>
-                            </ComboBox>
-                            <ComboBox
-                                Width="116"
-                                Classes="Compact"
-                                ItemsSource="{Binding Operators}"
-                                SelectedItem="{Binding Operator, Mode=TwoWay}"
-                                PlaceholderText="Operator"
-                                AutomationProperties.Name="Filter operator">
-                              <ComboBox.ItemTemplate>
-                                <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                              </ComboBox.ItemTemplate>
-                            </ComboBox>
-                            <TextBox
-                                Width="120"
-                                Classes="Compact"
-                                Text="{Binding Value, Mode=TwoWay}"
-                                IsVisible="{Binding NeedsValue}"
-                                PlaceholderText="Value"
-                                KeyDown="OnFilterValueKeyDown"
-                                AutomationProperties.Name="Filter value" />
-                            <Button
-                                Classes="SecondaryButton Compact"
-                                Click="OnApplyFilterClick"
-                                Content="Apply"
-                                AutomationProperties.Name="Apply the table filter" />
-                            <Button
-                                Classes="IconButton"
-                                Click="OnRemoveFilterRowClick"
-                                ToolTip.Tip="Remove this condition"
-                                AutomationProperties.Name="Remove this filter condition">
-                              <icons:SymbolIcon Symbol="Subtract" FontSize="11" />
-                            </Button>
-                            <Button
-                                Classes="IconButton"
-                                Click="OnAddFilterRowClick"
-                                ToolTip.Tip="Add a condition"
-                                AutomationProperties.Name="Add a filter condition">
-                              <icons:SymbolIcon Symbol="Add" FontSize="11" />
-                            </Button>
-                          </StackPanel>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
+                  <ItemsControl ItemsSource="{Binding FilterRows}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Spacing="{DynamicResource ShellSpaceXs}" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <!-- A fixed rail per part keeps stacked rows in
+                             columns; the value takes whatever is left. -->
+                        <Grid
+                            ColumnDefinitions="Auto,116,116,*,Auto,Auto,Auto"
+                            ColumnSpacing="{DynamicResource ShellSpaceXs}">
+                          <CheckBox
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding IsIncluded, Mode=TwoWay}"
+                              ToolTip.Tip="Include this condition"
+                              AutomationProperties.Name="Include this filter condition" />
+                          <ComboBox
+                              Grid.Column="1"
+                              Classes="Compact"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding Columns}"
+                              SelectedItem="{Binding Column, Mode=TwoWay}"
+                              PlaceholderText="Column"
+                              AutomationProperties.Name="Filter column">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <ComboBox
+                              Grid.Column="2"
+                              Classes="Compact"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding Operators}"
+                              SelectedItem="{Binding Operator, Mode=TwoWay}"
+                              PlaceholderText="Operator"
+                              AutomationProperties.Name="Filter operator">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <TextBox
+                              Grid.Column="3"
+                              Classes="Compact"
+                              VerticalAlignment="Center"
+                              Text="{Binding Value, Mode=TwoWay}"
+                              IsVisible="{Binding NeedsValue}"
+                              PlaceholderText="Value"
+                              KeyDown="OnFilterValueKeyDown"
+                              AutomationProperties.Name="Filter value" />
+                          <Button
+                              Grid.Column="4"
+                              Classes="SecondaryButton Compact"
+                              VerticalAlignment="Center"
+                              Click="OnApplyFilterClick"
+                              Content="Apply"
+                              AutomationProperties.Name="Apply the table filter" />
+                          <Button
+                              Grid.Column="5"
+                              Classes="IconButton"
+                              VerticalAlignment="Center"
+                              Click="OnRemoveFilterRowClick"
+                              ToolTip.Tip="Remove this condition"
+                              AutomationProperties.Name="Remove this filter condition">
+                            <icons:SymbolIcon Symbol="Subtract" FontSize="11" />
+                          </Button>
+                          <Button
+                              Grid.Column="6"
+                              Classes="IconButton"
+                              VerticalAlignment="Center"
+                              Click="OnAddFilterRowClick"
+                              ToolTip.Tip="Add a condition"
+                              AutomationProperties.Name="Add a filter condition">
+                            <icons:SymbolIcon Symbol="Add" FontSize="11" />
+                          </Button>
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                   <Button
                       Grid.Column="1"
-                      VerticalAlignment="Top"
+                      VerticalAlignment="Center"
                       Classes="TextButton Compact"
                       Click="OnClearFilterClick"
                       Content="Clear"

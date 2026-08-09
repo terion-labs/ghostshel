@@ -71,6 +71,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private IReadOnlyList<DatabaseStructureColumnViewModel> _structureColumns = [];
     private IReadOnlyList<DatabaseIndexViewModel> _indexes = [];
     private IReadOnlyList<DatabaseFilterColumnViewModel> _filterColumns = [];
+    private bool _isDatabaseOverview;
     private DatabaseTableQuery _tableQuery = DatabaseTableQuery.FirstPage(PreviewRows);
     private DatabaseResultSource _resultSource;
     private string? _rawQuerySql;
@@ -1012,6 +1013,35 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         await ConnectAsync();
     }
 
+    /// <summary>
+    /// The database overview is on screen: the sidebar header highlights and
+    /// the object perspectives (Data/Structure/Indexes) do not apply.
+    /// </summary>
+    public bool IsDatabaseOverview => _isDatabaseOverview;
+
+    /// <summary>
+    /// The one place the selected object changes: the sidebar highlight and
+    /// the overview flag follow it everywhere.
+    /// </summary>
+    private void SetSelectedObjectItem(DatabaseTableItemViewModel? item)
+    {
+        _selectedObject = item;
+        _isDatabaseOverview = false;
+        foreach (var table in _allTables)
+        {
+            table.IsSelected = ReferenceEquals(table, item);
+        }
+
+        if (item is not null)
+        {
+            // A restored object may not be in the sidebar list; it still reads
+            // as selected wherever it is shown.
+            item.IsSelected = true;
+        }
+
+        OnPropertyChanged(nameof(IsDatabaseOverview));
+    }
+
     /// <summary>The name the sidebar's database header wears.</summary>
     public string CurrentDatabaseLabel
     {
@@ -1079,6 +1109,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 widths))
             .ToArray();
         ResultSummary = $"{_allTables.Count} objects · {CurrentDatabaseLabel}";
+        _isDatabaseOverview = true;
+        OnPropertyChanged(nameof(IsDatabaseOverview));
     }
 
     /// <summary>
@@ -1205,7 +1237,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             SelectedDriver.Id,
             table.Descriptor.Id,
             PreviewRows);
-        _selectedObject = table;
+        SetSelectedObjectItem(table);
         _selectedObjectDetails = null;
         _queryProvenanceCandidate = null;
         _tableQuery = DatabaseTableQuery.FirstPage(PreviewRows);
@@ -2173,9 +2205,9 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
         if (details is not null)
         {
-            _selectedObject = _allTables
+            SetSelectedObjectItem(_allTables
                 .FirstOrDefault(table => table.Descriptor == details.Object)
-                ?? new DatabaseTableItemViewModel(details.Object);
+                ?? new DatabaseTableItemViewModel(details.Object));
             OnPropertyChanged(nameof(SelectedObject));
             OnPropertyChanged(nameof(HasSelectedObject));
             OnPropertyChanged(nameof(SelectedObjectName));
@@ -2194,7 +2226,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        _selectedObject = null;
+        SetSelectedObjectItem(null);
         _selectedObjectDetails = null;
         StructureColumns = [];
         Indexes = [];
@@ -2495,7 +2527,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             IsBusy = false;
             OnPropertyChanged(nameof(StatusText));
         }
-        _selectedObject = null;
+        SetSelectedObjectItem(null);
         _selectedObjectDetails = null;
         _queryProvenanceCandidate = null;
         _tableQuery = DatabaseTableQuery.FirstPage(PreviewRows);

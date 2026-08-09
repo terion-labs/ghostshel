@@ -864,9 +864,19 @@
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
   </Style>
 
-  <!-- Data grids present values, not prose; they read at the data size. -->
+  <!-- Data grids present values, not prose; they read at the data size. The
+       cell and header carry it explicitly because the DataGrid theme sets its
+       own font size, which beats inheritance from the grid. -->
   <Style Selector="DataGrid.DatabaseGrid">
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize11}" />
+  </Style>
+
+  <Style Selector="DataGrid.DatabaseGrid DataGridCell">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize11}" />
+  </Style>
+
+  <Style Selector="DataGrid.DatabaseGrid DataGridColumnHeader">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
   </Style>
 
   <!--
@@ -1329,6 +1339,11 @@
 
   <Style Selector="Button.ListRow:nth-child(1)">
     <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <!-- The row the workspace is showing wears the soft accent. -->
+  <Style Selector="Button.ListRow.selected">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
   </Style>
 
   <Style Selector="Border.ChooserIconTile">

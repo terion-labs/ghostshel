@@ -26,8 +26,10 @@ public sealed class DatabaseDriverOptionViewModel(DatabaseDriverDescriptor descr
     public bool CanListDatabases { get; } = descriptor.CanListDatabases;
 }
 
-public sealed class DatabaseTableItemViewModel(DatabaseTableDescriptor table)
+public sealed class DatabaseTableItemViewModel(DatabaseTableDescriptor table) : ObservableObject
 {
+    private bool _isSelected;
+
     public DatabaseTableDescriptor Descriptor { get; } = table;
 
     public string Name { get; } = table.DisplayName;
@@ -35,6 +37,13 @@ public sealed class DatabaseTableItemViewModel(DatabaseTableDescriptor table)
     public bool IsView { get; } = table.Kind == DatabaseTableKind.View;
 
     public string KindLabel { get; } = table.Kind == DatabaseTableKind.View ? "View" : "Table";
+
+    /// <summary>The sidebar highlights the object the workspace is showing.</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
 }
 
 /// <summary>
