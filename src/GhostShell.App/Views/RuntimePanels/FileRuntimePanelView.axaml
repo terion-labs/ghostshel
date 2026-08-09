@@ -431,12 +431,7 @@
               <Button Grid.Column="2" Classes="IconButton" Click="OnDismissOperationIssueClick" AutomationProperties.Name="Dismiss File Viewer operation status"><icons:SymbolIcon Symbol="Dismiss" FontSize="11" /></Button>
             </Grid>
           </controls:SurfaceCard>
-          <ProgressBar
-              Height="2"
-              HorizontalAlignment="Stretch"
-              VerticalAlignment="Top"
-              IsIndeterminate="True"
-              IsVisible="{Binding ShowNavigationProgress}" />
+          <ProgressBar Classes="WorkingStripe" IsVisible="{Binding ShowNavigationProgress}" />
         </Grid>
 
         <Border
@@ -643,11 +638,7 @@
                    a reading being prepared should say so without taking away
                    the one already on screen. -->
               <ProgressBar
-                  VerticalAlignment="Top"
-                  HorizontalAlignment="Stretch"
-                  Height="2"
-                  MinHeight="2"
-                  IsIndeterminate="True"
+                  Classes="WorkingStripe"
                   IsVisible="{Binding IsPreviewLoading}"
                   AutomationProperties.Name="Preparing preview" />
               <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowPreviewProgressDetail}">

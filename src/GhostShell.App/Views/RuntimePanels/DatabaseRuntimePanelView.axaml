@@ -130,13 +130,7 @@
 
       <Grid Grid.Row="1">
         <components:DatabaseWorkspaceView />
-        <!-- The same working stripe the File Viewer runs under its header. -->
-        <ProgressBar
-            Height="2"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Top"
-            IsIndeterminate="True"
-            IsVisible="{Binding IsBusy}" />
+        <ProgressBar Classes="WorkingStripe" IsVisible="{Binding IsBusy}" />
       </Grid>
     </Grid>
   </controls:PanelChrome>

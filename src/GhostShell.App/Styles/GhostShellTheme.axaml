@@ -826,6 +826,20 @@
     <Setter Property="Background" Value="{DynamicResource ShellSuccessBrush}" />
   </Style>
 
+  <!--
+    The working stripe: a 2px indeterminate run under a panel's header while it
+    is busy. The track is transparent so only the moving segment shows — the
+    stripe is a pulse over the content, not a bar reserving a lane of chrome.
+  -->
+  <Style Selector="ProgressBar.WorkingStripe">
+    <Setter Property="Height" Value="2" />
+    <Setter Property="MinHeight" Value="2" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="IsIndeterminate" Value="True" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
 
   <!--
     A single setting on the raised surface. Settings pages group these under a
