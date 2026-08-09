@@ -948,6 +948,37 @@ public sealed class DatabaseRowFieldViewModel : ObservableObject, IDisposable
 
     public bool HasValidationError => !string.IsNullOrWhiteSpace(_cell.ValidationError);
 
+    private string? _grammarSource;
+    private string? _grammarExtension;
+
+    /// <summary>
+    /// The grammar this value reads as — declared kind first, then a bounded
+    /// sniff for plain text. Cached per text instance so grid keystrokes do
+    /// not re-parse the value.
+    /// </summary>
+    public string? GrammarExtension
+    {
+        get
+        {
+            var text = _cell.IsNull ? null : _cell.Text;
+            if (!ReferenceEquals(_grammarSource, text))
+            {
+                _grammarSource = text;
+                _grammarExtension = DatabaseValueGrammar.DetectExtension(
+                    _cell.Column.ValueKind,
+                    text);
+            }
+
+            return _grammarExtension;
+        }
+    }
+
+    public bool HasGrammar => GrammarExtension is not null;
+
+    /// <summary>The synthetic name the preview's grammar registry resolves.</summary>
+    public string? GrammarFileName =>
+        GrammarExtension is { } extension ? $"value{extension}" : null;
+
     public void BeginEdit()
     {
         if (!CanEdit)
@@ -983,6 +1014,9 @@ public sealed class DatabaseRowFieldViewModel : ObservableObject, IDisposable
             case nameof(DatabaseResultCellViewModel.State):
                 OnPropertyChanged(nameof(Text));
                 OnPropertyChanged(nameof(IsNull));
+                OnPropertyChanged(nameof(GrammarExtension));
+                OnPropertyChanged(nameof(HasGrammar));
+                OnPropertyChanged(nameof(GrammarFileName));
                 break;
             case nameof(DatabaseResultCellViewModel.ValidationError):
                 OnPropertyChanged(nameof(ValidationError));

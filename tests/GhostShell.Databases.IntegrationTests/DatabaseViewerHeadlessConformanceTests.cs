@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.Components;
 using GhostShell.App.Views.RuntimePanels;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -1235,7 +1236,7 @@ public sealed partial class DatabaseViewerConformanceTests
         public Button RunQueryButton =>
             NamedControl<Button>("Run the SQL statement");
 
-        public TextBox QueryEditor => NamedControl<TextBox>("SQL statement");
+        public CodeEditBox QueryEditor => NamedControl<CodeEditBox>("SQL statement");
 
         public DataGrid RowsGrid => NamedControl<DataGrid>("Database rows");
 

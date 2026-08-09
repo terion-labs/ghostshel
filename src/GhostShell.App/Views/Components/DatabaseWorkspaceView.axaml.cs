@@ -35,7 +35,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         // One binding for the expanded editor's lifetime; which cell it edits
         // is its DataContext, set when a prose-sized cell begins editing.
         CellExpandEditor.Bind(
-            TextBox.TextProperty,
+            CodeEditBox.TextProperty,
             new Avalonia.Data.Binding(nameof(DatabaseResultCellViewModel.EditText))
             {
                 Mode = Avalonia.Data.BindingMode.TwoWay,
@@ -68,6 +68,9 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         }
 
         CellExpandEditor.DataContext = cell;
+        CellExpandEditor.GrammarExtension = DatabaseValueGrammar.DetectExtension(
+            cell.Column.ValueKind,
+            cell.IsNull ? null : cell.EditText);
         CellExpandPopup.PlacementTarget = e.EditingElement;
         CellExpandPopup.IsOpen = true;
         Dispatcher.UIThread.Post(
@@ -75,8 +78,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
             {
                 if (CellExpandPopup.IsOpen)
                 {
-                    CellExpandEditor.Focus();
-                    CellExpandEditor.CaretIndex = CellExpandEditor.Text?.Length ?? 0;
+                    CellExpandEditor.FocusEditor(caretToEnd: true);
                 }
             },
             DispatcherPriority.Input);
@@ -293,7 +295,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         }
     }
 
-    private void OnQueryKeyDown(object? sender, KeyEventArgs e)
+    private void OnQueryEditorKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter
             && (e.KeyModifiers.HasFlag(KeyModifiers.Meta)

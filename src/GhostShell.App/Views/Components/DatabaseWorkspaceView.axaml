@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:local="using:GhostShell.App.Views.Components"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <UserControl.Styles>
@@ -260,16 +261,14 @@
                claiming a column: the statement is the surface, the trigger is
                an icon, and Cmd+Enter is the real interface. -->
           <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}">
-            <TextBox
-                Classes="QueryEditor"
+            <local:CodeEditBox
+                x:Name="QueryEditorBox"
                 MinHeight="58"
                 MaxHeight="132"
-                AcceptsReturn="True"
-                FontFamily="{DynamicResource ShellDataFontFamily}"
+                GrammarExtension=".sql"
                 Text="{Binding QueryText, Mode=TwoWay}"
-                TextWrapping="NoWrap"
-                PlaceholderText="SELECT …"
-                KeyDown="OnQueryKeyDown"
+                Watermark="SELECT …"
+                EditorKeyDown="OnQueryEditorKeyDown"
                 AutomationProperties.Name="SQL statement" />
             <Button
                 HorizontalAlignment="Right"
@@ -680,23 +679,17 @@
                   Placement="BottomEdgeAlignedLeft"
                   PlacementConstraintAdjustment="FlipY, SlideX">
                 <Border
-                    Background="{DynamicResource ShellSurfaceRaisedBrush}"
+                    Padding="{controls:Inset Xs}"
+                    Background="{DynamicResource ShellPopupSurfaceBrush}"
                     BorderBrush="{DynamicResource ShellAccentBrush}"
                     BorderThickness="1"
                     CornerRadius="{DynamicResource ShellControlCornerRadius}">
-                  <TextBox
+                  <local:CodeEditBox
                       x:Name="CellExpandEditor"
                       Width="320"
                       MinHeight="104"
                       MaxHeight="200"
-                      AcceptsReturn="True"
-                      TextWrapping="Wrap"
-                      FontFamily="{DynamicResource ShellDataFontFamily}"
-                      FontSize="{DynamicResource ShellFontSize11}"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      CornerRadius="0"
-                      KeyDown="OnCellExpandEditorKeyDown"
+                      EditorKeyDown="OnCellExpandEditorKeyDown"
                       AutomationProperties.Name="Expanded cell editor" />
                 </Border>
               </Popup>
@@ -842,25 +835,38 @@
                                     </Button>
                                   </StackPanel>
                                 </Grid>
-                                <TextBlock
-                                    Classes.Muted="{Binding IsNull}"
-                                    FontFamily="{DynamicResource ShellDataFontFamily}"
-                                    FontSize="{DynamicResource ShellFontSize10}"
-                                    IsVisible="{Binding !IsEditing}"
-                                    Text="{Binding Text}"
-                                    TextWrapping="Wrap" />
-                                <TextBox
-                                    Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-                                    MinHeight="24"
-                                    MaxHeight="200"
-                                    AcceptsReturn="True"
-                                    TextWrapping="Wrap"
-                                    FontFamily="{DynamicResource ShellDataFontFamily}"
-                                    FontSize="{DynamicResource ShellFontSize10}"
-                                    IsVisible="{Binding IsEditing}"
-                                    Text="{Binding Draft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    KeyDown="OnFieldDraftKeyDown"
-                                    AutomationProperties.Name="{Binding Name, StringFormat=Draft value for {0}}" />
+                                <Panel IsVisible="{Binding !IsEditing}">
+                                  <TextBlock
+                                      Classes.Muted="{Binding IsNull}"
+                                      FontFamily="{DynamicResource ShellDataFontFamily}"
+                                      FontSize="{DynamicResource ShellFontSize10}"
+                                      IsVisible="{Binding !HasGrammar}"
+                                      Text="{Binding Text}"
+                                      TextWrapping="Wrap" />
+                                  <!-- Values that read as code read highlighted:
+                                       the same engine as the file previews,
+                                       keyed by the value's detected grammar. -->
+                                  <local:CodePreviewView
+                                      FitsContent="True"
+                                      ShowLineNumbers="False"
+                                      IsVisible="{Binding HasGrammar}"
+                                      Text="{Binding Text}"
+                                      FileName="{Binding GrammarFileName}" />
+                                </Panel>
+                                <Border
+                                    BorderBrush="{DynamicResource ShellBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{DynamicResource ShellControlCornerRadius}"
+                                    Padding="{controls:Inset Xs}"
+                                    IsVisible="{Binding IsEditing}">
+                                  <local:CodeEditBox
+                                      MinHeight="24"
+                                      MaxHeight="200"
+                                      GrammarExtension="{Binding GrammarExtension}"
+                                      Text="{Binding Draft, Mode=TwoWay}"
+                                      EditorKeyDown="OnFieldDraftKeyDown"
+                                      AutomationProperties.Name="{Binding Name, StringFormat=Draft value for {0}}" />
+                                </Border>
                                 <TextBlock
                                     Classes="Muted"
                                     FontSize="{DynamicResource ShellFontSize9}"

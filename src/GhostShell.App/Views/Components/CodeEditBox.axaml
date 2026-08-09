@@ -1,0 +1,27 @@
+<UserControl
+    x:Class="GhostShell.App.Views.Components.CodeEditBox"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:avaloniaEdit="using:AvaloniaEdit"
+    xmlns:controls="using:GhostShell.App.Controls"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch">
+  <Panel>
+    <avaloniaEdit:TextEditor
+        x:Name="Editor"
+        Background="Transparent"
+        FontFamily="{DynamicResource ShellDataFontFamily}"
+        FontSize="{DynamicResource ShellFontSize11}"
+        HorizontalScrollBarVisibility="Disabled"
+        VerticalScrollBarVisibility="Auto"
+        ShowLineNumbers="False"
+        WordWrap="True" />
+    <TextBlock
+        x:Name="WatermarkText"
+        Margin="{controls:Inset Horizontal=Xs}"
+        VerticalAlignment="Top"
+        Classes="Muted"
+        IsHitTestVisible="False"
+        IsVisible="False" />
+  </Panel>
+</UserControl>

@@ -1981,13 +1981,17 @@ internal sealed class QaApplication : Avalonia.Application
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
 
-                var editor = TopLevel.GetTopLevel(grid)?.FocusManager?.GetFocusedElement()
-                    as TextBox;
-                if (editor is null
-                    || !string.Equals(
-                        AutomationProperties.GetName(editor),
+                // Focus lands inside the AvaloniaEdit text area; the expanded
+                // editor is the CodeEditBox ancestor wearing the name.
+                var focused = TopLevel.GetTopLevel(grid)?.FocusManager?.GetFocusedElement()
+                    as Visual;
+                var editor = focused?.GetVisualAncestors()
+                    .OfType<GhostShell.App.Views.Components.CodeEditBox>()
+                    .FirstOrDefault(candidate => string.Equals(
+                        AutomationProperties.GetName(candidate),
                         "Expanded cell editor",
-                        StringComparison.Ordinal))
+                        StringComparison.Ordinal));
+                if (editor is null)
                 {
                     throw new InvalidOperationException(
                         "Editing a text cell did not open and focus the expanded editor.");

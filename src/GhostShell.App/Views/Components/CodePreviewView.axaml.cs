@@ -41,11 +41,13 @@ public sealed partial class CodePreviewView : UserControl
         AvaloniaProperty.Register<CodePreviewView, bool>(nameof(WordWrap), defaultValue: true);
 
     /// <summary>
-    /// One registry per theme for the whole application. Building it parses
-    /// the shipped grammar and theme definitions, and a preview with several
-    /// fenced blocks would otherwise do that once per block.
+    /// Whether the gutter shows line numbers. A file preview earns them; a
+    /// short value inside a narrow inspector column does not.
     /// </summary>
-    private static readonly Dictionary<ThemeName, RegistryOptions> SharedRegistries = [];
+    public static readonly StyledProperty<bool> ShowLineNumbersProperty =
+        AvaloniaProperty.Register<CodePreviewView, bool>(
+            nameof(ShowLineNumbers),
+            defaultValue: true);
 
     private RegistryOptions? _registryOptions;
     private TextMate.Installation? _textMate;
@@ -104,6 +106,12 @@ public sealed partial class CodePreviewView : UserControl
         set => SetValue(WordWrapProperty, value);
     }
 
+    public bool ShowLineNumbers
+    {
+        get => GetValue(ShowLineNumbersProperty);
+        set => SetValue(ShowLineNumbersProperty, value);
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -142,6 +150,10 @@ public sealed partial class CodePreviewView : UserControl
                 ? Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
                 : Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         }
+        else if (change.Property == ShowLineNumbersProperty)
+        {
+            Editor.ShowLineNumbers = ShowLineNumbers;
+        }
     }
 
     /// <summary>
@@ -170,7 +182,7 @@ public sealed partial class CodePreviewView : UserControl
                     return;
                 }
 
-                var options = _registryOptions ??= SharedRegistry(CurrentThemeName());
+                var options = _registryOptions ??= TextMateRegistries.For(CurrentThemeName());
                 // Nothing to install for a file no grammar covers: compiling a
                 // grammar costs tens of milliseconds, and a plain fenced block
                 // would pay it for a highlighting that never happens.
@@ -186,17 +198,6 @@ public sealed partial class CodePreviewView : UserControl
     }
 
     private bool IsAttachedToVisualTree() => VisualRoot is not null;
-
-    private static RegistryOptions SharedRegistry(ThemeName theme)
-    {
-        if (!SharedRegistries.TryGetValue(theme, out var options))
-        {
-            options = new RegistryOptions(theme);
-            SharedRegistries[theme] = options;
-        }
-
-        return options;
-    }
 
     private void SyncDocument()
     {
