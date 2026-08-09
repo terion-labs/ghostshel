@@ -9,12 +9,30 @@
     Margin="{DynamicResource ShellTabStripTopClearance}"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <ScrollViewer
-      x:Name="TabScrollViewer"
-      HorizontalScrollBarVisibility="{Binding HorizontalScrollBars, ElementName=Root}"
-      VerticalScrollBarVisibility="{Binding VerticalScrollBars, ElementName=Root}"
-      AutomationProperties.Name="Open runtime tabs">
-    <StackPanel Orientation="{Binding Orientation, ElementName=Root}" Spacing="{DynamicResource ShellSpaceXs}">
+  <!-- The add button lives outside the scroll: it is always reachable, no
+       matter how many tabs overflowed. The scrollbar is hidden — overflow
+       announces itself as a fade at the strip's edge instead of a bar. -->
+  <DockPanel>
+    <Button
+        x:Name="AddTabButton"
+        DockPanel.Dock="Right"
+        Width="22"
+        Height="22"
+        Padding="0"
+        Margin="{controls:Inset Left=Xs}"
+        VerticalAlignment="Center"
+        Classes="IconButton"
+        Click="OnAddTab"
+        ToolTip.Tip="New tab"
+        AutomationProperties.Name="Open a new tab">
+      <icons:SymbolIcon Symbol="Add" FontSize="12" />
+    </Button>
+    <ScrollViewer
+        x:Name="TabScrollViewer"
+        HorizontalScrollBarVisibility="{Binding HorizontalScrollBars, ElementName=Root}"
+        VerticalScrollBarVisibility="{Binding VerticalScrollBars, ElementName=Root}"
+        ScrollChanged="OnTabScrollChanged"
+        AutomationProperties.Name="Open runtime tabs">
       <ItemsControl ItemsSource="{Binding Tabs, ElementName=Root}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
@@ -117,17 +135,6 @@
         </DataTemplate>
       </ItemsControl.ItemTemplate>
       </ItemsControl>
-      <Button
-          x:Name="AddTabButton"
-          Width="22"
-          Height="22"
-          Padding="0"
-          Classes="IconButton"
-          Click="OnAddTab"
-          ToolTip.Tip="New tab"
-          AutomationProperties.Name="Open a new tab">
-        <icons:SymbolIcon Symbol="Add" FontSize="12" />
-      </Button>
-    </StackPanel>
-  </ScrollViewer>
+    </ScrollViewer>
+  </DockPanel>
 </UserControl>

@@ -27,6 +27,8 @@ public sealed partial class RuntimeTabStripView : UserControl
     public RuntimeTabStripView()
     {
         InitializeComponent();
+        SyncAddButtonDock();
+        SizeChanged += (_, _) => UpdateOverflowFade();
     }
 
     public IEnumerable? Tabs
@@ -46,13 +48,15 @@ public sealed partial class RuntimeTabStripView : UserControl
         set => SetValue(OrientationProperty, value);
     }
 
+    // Hidden, not Auto: the strip still scrolls along its axis, but overflow
+    // shows as an edge fade rather than as a scrollbar under the tabs.
     public ScrollBarVisibility HorizontalScrollBars => Orientation == Orientation.Horizontal
-        ? ScrollBarVisibility.Auto
+        ? ScrollBarVisibility.Hidden
         : ScrollBarVisibility.Disabled;
 
     public ScrollBarVisibility VerticalScrollBars => Orientation == Orientation.Horizontal
         ? ScrollBarVisibility.Disabled
-        : ScrollBarVisibility.Auto;
+        : ScrollBarVisibility.Hidden;
 
     /// <summary>Raised when the strip's own add-a-tab control is pressed.</summary>
     public event EventHandler<RoutedEventArgs>? AddTabRequested;
@@ -85,7 +89,72 @@ public sealed partial class RuntimeTabStripView : UserControl
             RaisePropertyChanged(
                 nameof(HorizontalScrollBars),
                 nameof(VerticalScrollBars));
+            SyncAddButtonDock();
+            UpdateOverflowFade();
         }
+    }
+
+    /// <summary>The add button sits past the strip's growing end, outside the scroll.</summary>
+    private void SyncAddButtonDock() =>
+        DockPanel.SetDock(
+            AddTabButton,
+            Orientation == Orientation.Horizontal
+                ? Avalonia.Controls.Dock.Right
+                : Avalonia.Controls.Dock.Bottom);
+
+    private void OnTabScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        UpdateOverflowFade();
+    }
+
+    /// <summary>
+    /// Overflow announces itself as a fade: tabs dissolve at whichever edge
+    /// more of them are hiding behind. At rest with everything visible there
+    /// is no mask at all.
+    /// </summary>
+    private void UpdateOverflowFade()
+    {
+        var horizontal = Orientation == Orientation.Horizontal;
+        var extent = horizontal
+            ? TabScrollViewer.Extent.Width
+            : TabScrollViewer.Extent.Height;
+        var viewport = horizontal
+            ? TabScrollViewer.Viewport.Width
+            : TabScrollViewer.Viewport.Height;
+        var offset = horizontal ? TabScrollViewer.Offset.X : TabScrollViewer.Offset.Y;
+        var fadeStart = offset > 1;
+        var fadeEnd = extent - viewport - offset > 1;
+        if (viewport <= 0 || (!fadeStart && !fadeEnd))
+        {
+            TabScrollViewer.OpacityMask = null;
+            return;
+        }
+
+        var fade = Math.Min(28, viewport / 4) / viewport;
+        TabScrollViewer.OpacityMask = new Avalonia.Media.LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = horizontal
+                ? new RelativePoint(1, 0, RelativeUnit.Relative)
+                : new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops =
+            {
+                new Avalonia.Media.GradientStop(
+                    fadeStart
+                        ? Avalonia.Media.Colors.Transparent
+                        : Avalonia.Media.Colors.Black,
+                    0),
+                new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, fadeStart ? fade : 0),
+                new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, fadeEnd ? 1 - fade : 1),
+                new Avalonia.Media.GradientStop(
+                    fadeEnd
+                        ? Avalonia.Media.Colors.Transparent
+                        : Avalonia.Media.Colors.Black,
+                    1),
+            },
+        };
     }
 
     private void RaisePropertyChanged(params string[] names)
