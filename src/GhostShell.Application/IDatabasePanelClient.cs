@@ -241,6 +241,19 @@ public interface IDatabasePanelClient
         Task.FromException<DatabaseObjectDetails>(new NotSupportedException(
             "This database client does not expose structure metadata."));
 
+    /// <summary>
+    /// Reads every physical table, its columns, and its foreign-key edges as a
+    /// provider-neutral graph. Views are intentionally excluded because they
+    /// do not own referential constraints.
+    /// </summary>
+    Task<DatabaseSchemaGraph> GetDatabaseSchemaGraphAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken) =>
+        Task.FromException<DatabaseSchemaGraph>(new NotSupportedException(
+            "This database client does not expose a database schema graph."));
+
     Task<DatabaseTablePage> ReadTableAsync(
         string driverId,
         string connectionString,

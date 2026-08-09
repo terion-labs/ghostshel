@@ -12,23 +12,6 @@
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
     AutomationProperties.Name="Database panel">
-  <UserControl.Styles>
-    <!-- On the database overview the perspectives fade out but keep their
-         space: collapsing them re-measures the whole header, and selecting
-         an object must never move the controls under the cursor. -->
-    <Style Selector="Border.PerspectiveToggle">
-      <Setter Property="Transitions">
-        <Transitions>
-          <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="Border.PerspectiveToggle.overviewHidden">
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="IsEnabled" Value="False" />
-      <Setter Property="IsHitTestVisible" Value="False" />
-    </Style>
-  </UserControl.Styles>
   <controls:PanelChrome
       CloseLabel="Close database panel"
       CloseRequested="OnCloseClick"
@@ -121,12 +104,12 @@
           <!-- The three perspectives on the selected object, out of the
                connection group: switching views is not a connection change.
                The database overview is not an object; they fade with it. -->
-          <Border
-              Grid.Column="1"
-              VerticalAlignment="Center"
-              Classes="Segmented PerspectiveToggle"
-              Classes.overviewHidden="{Binding IsDatabaseOverview}">
-            <UniformGrid Columns="3">
+          <Grid Grid.Column="1" VerticalAlignment="Center">
+            <Border
+                VerticalAlignment="Center"
+                Classes="Segmented PerspectiveToggle"
+                IsVisible="{Binding !IsDatabaseOverview}">
+              <UniformGrid Columns="3">
               <ToggleButton
                   x:Name="DataModeButton"
                   Classes="Segment"
@@ -145,8 +128,32 @@
                   Click="OnIndexesModeClick"
                   Content="Indexes"
                   AutomationProperties.Name="Show table indexes" />
-            </UniformGrid>
-          </Border>
+              </UniformGrid>
+            </Border>
+
+            <!-- Database-level perspectives occupy the same stable header
+                 slot as table perspectives. The diagram is rendered in-app;
+                 its portable Mermaid source remains available to copy/save. -->
+            <Border
+                VerticalAlignment="Center"
+                Classes="Segmented PerspectiveToggle"
+                IsVisible="{Binding IsDatabaseOverview}">
+              <UniformGrid Columns="2">
+                <ToggleButton
+                    x:Name="ObjectsOverviewButton"
+                    Classes="Segment"
+                    Click="OnObjectsOverviewClick"
+                    Content="Objects"
+                    AutomationProperties.Name="Show database objects" />
+                <ToggleButton
+                    x:Name="DiagramOverviewButton"
+                    Classes="Segment"
+                    Click="OnDiagramOverviewClick"
+                    Content="ER Diagram"
+                    AutomationProperties.Name="Show database Mermaid ER diagram" />
+              </UniformGrid>
+            </Border>
+          </Grid>
         </Grid>
       </Border>
 

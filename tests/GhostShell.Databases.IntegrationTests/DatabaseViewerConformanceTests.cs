@@ -26,6 +26,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         await WaitUntilReadyAsync(client, environment, timeout.Token);
         await SeedAsync(client, environment, timeout.Token);
         var objects = await AssertDriverAndCatalogAsync(client, environment, timeout.Token);
+        await AssertSchemaDiagramAsync(client, environment, objects, timeout.Token);
         await AssertTypedBrowsingAsync(client, environment, objects, timeout.Token);
         await AssertMutationsAsync(client, environment, objects, timeout.Token);
         await AssertViewModelJourneyAsync(client, environment, objects, timeout.Token);
@@ -38,6 +39,52 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         await AssertQueryFailureRecoveryAsync(client, environment, timeout.Token);
 
         output.WriteLine($"{provider.DisplayName}: complete conformance workflow passed.");
+    }
+
+    private static async Task AssertSchemaDiagramAsync(
+        DatabasePanelClient client,
+        DatabaseTestEnvironment environment,
+        DatabaseObjects objects,
+        CancellationToken cancellationToken)
+    {
+        var graph = await client.GetDatabaseSchemaGraphAsync(
+            environment.Provider.Id,
+            environment.ConnectionString,
+            tunnel: null,
+            cancellationToken);
+
+        Assert.NotEmpty(graph.Tables);
+        Assert.DoesNotContain(graph.Tables, table =>
+            table.Object.Kind == DatabaseTableKind.View);
+        var rows = Assert.Single(graph.Tables, table =>
+            table.Object.Id == objects.Rows.Id);
+        Assert.Equal(
+            objects.Rows.Name,
+            rows.Object.Name);
+        Assert.Contains(rows.Columns, column => column.Name == "id");
+        Assert.Contains(rows.Columns, column => column.Name == "title");
+
+        if (DiagramRelationshipSeed(environment.Provider.Id).Count > 0)
+        {
+            var child = Assert.Single(graph.Tables, table =>
+                table.Object.Name == "viewer_er_child");
+            var relationship = Assert.Single(child.ForeignKeys);
+            Assert.False(string.IsNullOrWhiteSpace(relationship.Name));
+            Assert.Equal("viewer_er_parent", relationship.ReferencedObject.Name);
+            var pair = Assert.Single(relationship.Columns);
+            Assert.Equal("parent_id", pair.ColumnName);
+            Assert.Equal("id", pair.ReferencedColumnName);
+        }
+
+        var mermaid = DatabaseMermaidErDiagram.Create(graph);
+        Assert.StartsWith("```mermaid", mermaid, StringComparison.Ordinal);
+        Assert.Contains(objects.Rows.DisplayName, mermaid, StringComparison.Ordinal);
+        if (DiagramRelationshipSeed(environment.Provider.Id).Count > 0)
+        {
+            Assert.Contains("viewer_er_parent", mermaid, StringComparison.Ordinal);
+            Assert.Contains("viewer_er_child", mermaid, StringComparison.Ordinal);
+        }
+        Assert.EndsWith("```\n", mermaid, StringComparison.Ordinal);
     }
 
     private static async Task WaitUntilReadyAsync(
@@ -89,7 +136,52 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
                 maxRows: 1,
                 cancellationToken);
         }
+
+        foreach (var statement in DiagramRelationshipSeed(environment.Provider.Id))
+        {
+            _ = await client.QueryAsync(
+                environment.Provider.Id,
+                environment.ConnectionString,
+                tunnel: null,
+                statement,
+                maxRows: 1,
+                cancellationToken);
+        }
     }
+
+    private static IReadOnlyList<string> DiagramRelationshipSeed(string providerId) =>
+        providerId switch
+        {
+            "sqlite" or "duckdb" or "postgres" or "cockroach" =>
+            [
+                "CREATE TABLE viewer_er_parent (id INTEGER PRIMARY KEY)",
+                "CREATE TABLE viewer_er_child (id INTEGER PRIMARY KEY, parent_id INTEGER, "
+                    + "CONSTRAINT fk_viewer_er_parent FOREIGN KEY (parent_id) "
+                    + "REFERENCES viewer_er_parent (id))",
+            ],
+            "mysql" or "mariadb" =>
+            [
+                "CREATE TABLE viewer_er_parent (id INT PRIMARY KEY) ENGINE=InnoDB",
+                "CREATE TABLE viewer_er_child (id INT PRIMARY KEY, parent_id INT, "
+                    + "CONSTRAINT fk_viewer_er_parent FOREIGN KEY (parent_id) "
+                    + "REFERENCES viewer_er_parent (id)) ENGINE=InnoDB",
+            ],
+            "sqlserver" =>
+            [
+                "CREATE TABLE [viewer_er_parent] ([id] INT PRIMARY KEY)",
+                "CREATE TABLE [viewer_er_child] ([id] INT PRIMARY KEY, [parent_id] INT, "
+                    + "CONSTRAINT [fk_viewer_er_parent] FOREIGN KEY ([parent_id]) "
+                    + "REFERENCES [viewer_er_parent] ([id]))",
+            ],
+            "oracle" or "firebird" =>
+            [
+                "CREATE TABLE \"viewer_er_parent\" (\"id\" INTEGER PRIMARY KEY)",
+                "CREATE TABLE \"viewer_er_child\" (\"id\" INTEGER PRIMARY KEY, \"parent_id\" INTEGER, "
+                    + "CONSTRAINT \"fk_viewer_er_parent\" FOREIGN KEY (\"parent_id\") "
+                    + "REFERENCES \"viewer_er_parent\" (\"id\"))",
+            ],
+            _ => [],
+        };
 
     private static async Task<DatabaseObjects> AssertDriverAndCatalogAsync(
         DatabasePanelClient client,

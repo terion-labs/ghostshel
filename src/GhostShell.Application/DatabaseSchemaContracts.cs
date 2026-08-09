@@ -45,6 +45,31 @@ public sealed record DatabaseIndexSchema(
     string? Predicate = null,
     IReadOnlyDictionary<string, string>? Details = null);
 
+/// <summary>One ordered child-to-parent column pair in a foreign key.</summary>
+public sealed record DatabaseForeignKeyColumn(
+    string ColumnName,
+    string ReferencedColumnName,
+    int Ordinal);
+
+/// <summary>
+/// A foreign-key relationship with the referenced object's qualification kept
+/// intact. The database layer maps provider catalogs into this model; diagram
+/// generation remains entirely provider-neutral.
+/// </summary>
+public sealed record DatabaseForeignKeySchema(
+    string Name,
+    DatabaseObjectId ReferencedObject,
+    IReadOnlyList<DatabaseForeignKeyColumn> Columns);
+
+/// <summary>One physical table in a database-wide schema graph.</summary>
+public sealed record DatabaseSchemaTable(
+    DatabaseTableDescriptor Object,
+    IReadOnlyList<DatabaseColumnSchema> Columns,
+    IReadOnlyList<DatabaseForeignKeySchema> ForeignKeys);
+
+/// <summary>A detached database graph suitable for ER-diagram exporters.</summary>
+public sealed record DatabaseSchemaGraph(IReadOnlyList<DatabaseSchemaTable> Tables);
+
 public sealed record DatabaseObjectDetails(
     DatabaseTableDescriptor Object,
     IReadOnlyList<DatabaseColumnSchema> Columns,

@@ -60,28 +60,68 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
             {
                 await using var connection = driver.CreateConnection(effectiveConnectionString);
                 await connection.OpenAsync(token).ConfigureAwait(false);
-                await using var command = connection.CreateCommand();
-                command.CommandText = driver.ListTablesSql;
-                var tables = new List<DatabaseTableDescriptor>();
-                await using var reader = await command.ExecuteReaderAsync(token)
-                    .ConfigureAwait(false);
-                while (await reader.ReadAsync(token).ConfigureAwait(false))
-                {
-                    tables.Add(new DatabaseTableDescriptor(
-                        reader.GetString(2),
-                        string.Equals(
-                            reader.GetString(3).Trim(),
-                            "view",
-                            StringComparison.OrdinalIgnoreCase)
-                            ? DatabaseTableKind.View
-                            : DatabaseTableKind.Table,
-                        reader.IsDBNull(0) ? null : reader.GetString(0),
-                        reader.IsDBNull(1) ? null : reader.GetString(1)));
-                }
-
-                return (IReadOnlyList<DatabaseTableDescriptor>)tables;
+                return await ReadTablesAsync(connection, driver, token).ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DatabaseSchemaGraph> GetDatabaseSchemaGraphAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken)
+    {
+        var driver = Resolve(driverId);
+        var dialect = DatabaseSqlDialect.For(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                var objects = await ReadTablesAsync(connection, driver, token).ConfigureAwait(false);
+                var reader = new DatabaseMetadataReader(dialect);
+                var tables = new List<DatabaseSchemaTable>();
+                foreach (var databaseObject in objects.Where(candidate =>
+                             candidate.Kind == DatabaseTableKind.Table))
+                {
+                    tables.Add(await reader
+                        .ReadSchemaTableAsync(connection, databaseObject, token)
+                        .ConfigureAwait(false));
+                }
+
+                return new DatabaseSchemaGraph(tables);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<DatabaseTableDescriptor>> ReadTablesAsync(
+        DbConnection connection,
+        IDatabaseDriver driver,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = driver.ListTablesSql;
+        var tables = new List<DatabaseTableDescriptor>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            tables.Add(new DatabaseTableDescriptor(
+                reader.GetString(2),
+                string.Equals(
+                    reader.GetString(3).Trim(),
+                    "view",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? DatabaseTableKind.View
+                    : DatabaseTableKind.Table,
+                reader.IsDBNull(0) ? null : reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1)));
+        }
+
+        return tables;
     }
 
     public async Task<IReadOnlyList<string>> ListDatabasesAsync(

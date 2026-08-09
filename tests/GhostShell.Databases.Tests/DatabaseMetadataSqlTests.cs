@@ -131,6 +131,36 @@ public sealed class DatabaseMetadataSqlTests
         Assert.Contains("CAST(create_table_query AS Nullable(String))", indexes, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("sqlite", "pragma_foreign_key_list")]
+    [InlineData("postgres", "referential_constraints")]
+    [InlineData("cockroach", "referential_constraints")]
+    [InlineData("mysql", "referenced_table_name IS NOT NULL")]
+    [InlineData("mariadb", "referenced_table_name IS NOT NULL")]
+    [InlineData("sqlserver", "sys.foreign_key_columns")]
+    [InlineData("duckdb", "referential_constraints")]
+    [InlineData("oracle", "child.constraint_type = 'R'")]
+    [InlineData("firebird", "rdb$ref_constraints")]
+    public void Foreign_key_catalog_sql_is_owned_by_each_supported_family(
+        string driverId,
+        string expectedFragment)
+    {
+        var sql = Reader(driverId).BuildForeignKeysSql(ObjectId);
+
+        Assert.Contains(expectedFragment, sql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("redshift")]
+    [InlineData("clickhouse")]
+    public void Providers_without_enforced_foreign_keys_fail_closed(string driverId)
+    {
+        var dialect = DatabaseSqlDialect.For(driverId);
+
+        Assert.False(dialect.SupportsForeignKeys);
+    }
+
     private static DatabaseMetadataReader Reader(string driverId) =>
         new(DatabaseSqlDialect.For(driverId));
 }

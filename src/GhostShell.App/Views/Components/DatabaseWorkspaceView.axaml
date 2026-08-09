@@ -256,7 +256,7 @@
             Grid.Row="1"
             BorderBrush="{DynamicResource ShellBorderBrush}"
             BorderThickness="0,0,0,1"
-            IsVisible="{Binding ShowData}">
+            IsVisible="{Binding ShowQueryEditor}">
           <!-- The run affordance floats over the editor's corner rather than
                claiming a column: the statement is the surface, the trigger is
                an icon, and Cmd+Enter is the real interface. -->
@@ -305,7 +305,7 @@
 
         <Grid Grid.Row="3">
           <!-- DATA -->
-          <Grid RowDefinitions="Auto,*" IsVisible="{Binding ShowData}">
+          <Grid RowDefinitions="Auto,*" IsVisible="{Binding ShowDataSurface}">
             <Border
                 BorderBrush="{DynamicResource ShellBorderBrush}"
                 BorderThickness="0,0,0,1"
@@ -421,6 +421,13 @@
                           Foreground="{DynamicResource ShellDangerBrush}"
                           IsEnabled="{Binding CanDeleteSelectedRow}"
                           AutomationProperties.Name="Delete the selected database row" />
+                      <Button
+                          Classes="TextButton Compact"
+                          Click="OnSetNullClick"
+                          Content="NULL"
+                          IsEnabled="{Binding CanSetSelectedCellNull}"
+                          ToolTip.Tip="Set the active cell to NULL"
+                          AutomationProperties.Name="Set the active cell to NULL" />
                       <Button
                           Classes="TextButton Compact"
                           Click="OnSetDefaultClick"
@@ -892,6 +899,59 @@
                 </Grid>
               </Border>
             </Grid>
+          </Grid>
+
+          <!-- DATABASE ER DIAGRAM -->
+          <Grid
+              RowDefinitions="Auto,*"
+              IsVisible="{Binding IsDatabaseDiagramOverview}">
+            <Border
+                Background="{DynamicResource ShellSurfaceBrush}"
+                BorderBrush="{DynamicResource ShellBorderBrush}"
+                BorderThickness="0,0,0,1">
+              <Grid
+                  Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                  ColumnDefinitions="*,Auto"
+                  ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock
+                      Classes="SectionHeading"
+                      Text="Mermaid ER diagram" />
+                  <TextBlock
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize9}"
+                      Text="Tables, columns, keys, and foreign-key relationships" />
+                </StackPanel>
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="{DynamicResource ShellSpaceXs}">
+                  <Button
+                      Classes="SecondaryButton Compact"
+                      Click="OnCopyMermaidDiagramClick"
+                      Content="Copy source"
+                      IsEnabled="{Binding HasMermaidDiagram}"
+                      AutomationProperties.Name="Copy the Mermaid ER diagram source" />
+                  <Button
+                      Classes="SecondaryButton Compact"
+                      Click="OnCopyMermaidSvgClick"
+                      Content="Copy SVG"
+                      IsEnabled="{Binding HasMermaidDiagram}"
+                      AutomationProperties.Name="Copy the rendered Mermaid ER diagram SVG" />
+                  <Button
+                      Classes="SecondaryButton Compact"
+                      Click="OnSaveMermaidDiagramClick"
+                      Content="Save…"
+                      IsEnabled="{Binding HasMermaidDiagram}"
+                      AutomationProperties.Name="Save the Mermaid ER diagram" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <local:DatabaseMermaidDiagramView
+                x:Name="MermaidDiagramRenderer"
+                Grid.Row="1"
+                MermaidSource="{Binding MermaidDiagramSource}" />
           </Grid>
 
           <!-- STRUCTURE -->

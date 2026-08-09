@@ -10,6 +10,20 @@ namespace GhostShell.Databases;
 /// </summary>
 internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
 {
+    public async Task<DatabaseSchemaTable> ReadSchemaTableAsync(
+        DbConnection connection,
+        DatabaseTableDescriptor descriptor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        var columns = await ReadColumnsAsync(connection, descriptor.Id, cancellationToken)
+            .ConfigureAwait(false);
+        var foreignKeys = await ReadForeignKeysAsync(connection, descriptor.Id, cancellationToken)
+            .ConfigureAwait(false);
+        return new DatabaseSchemaTable(descriptor, columns, foreignKeys);
+    }
+
     public async Task<DatabaseObjectDetails> ReadAsync(
         DbConnection connection,
         DatabaseTableDescriptor descriptor,
@@ -175,6 +189,60 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
                         .ToArray(),
                     first.Predicate,
                     details);
+            })
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<DatabaseForeignKeySchema>> ReadForeignKeysAsync(
+        DbConnection connection,
+        DatabaseObjectId objectId,
+        CancellationToken cancellationToken)
+    {
+        if (!dialect.SupportsForeignKeys)
+        {
+            return [];
+        }
+
+        var commandText = BuildForeignKeysSql(objectId);
+        if (commandText.Length == 0)
+        {
+            return [];
+        }
+
+        await using var command = CreateCommand(connection, commandText, objectId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var rows = new List<ForeignKeyRow>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            rows.Add(new ForeignKeyRow(
+                ReadString(reader, 0) ?? string.Empty,
+                ReadString(reader, 1) ?? string.Empty,
+                ReadString(reader, 2),
+                ReadString(reader, 3),
+                ReadString(reader, 4) ?? string.Empty,
+                ReadString(reader, 5) ?? string.Empty,
+                ReadInt32(reader, 6) ?? rows.Count + 1));
+        }
+
+        return rows
+            .GroupBy(row => row.Name, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var first = group.First();
+                return new DatabaseForeignKeySchema(
+                    first.Name,
+                    new DatabaseObjectId(
+                        first.ReferencedCatalog,
+                        first.ReferencedSchema,
+                        first.ReferencedTable),
+                    group
+                        .OrderBy(row => row.Ordinal)
+                        .Select(row => new DatabaseForeignKeyColumn(
+                            row.ColumnName,
+                            row.ReferencedColumnName,
+                            row.Ordinal))
+                        .ToArray());
             })
             .ToArray();
     }
@@ -609,6 +677,138 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
         };
     }
 
+    internal string BuildForeignKeysSql(DatabaseObjectId objectId)
+    {
+        var catalog = dialect.ParameterMarker("catalog");
+        var schema = dialect.ParameterMarker("schema");
+        var table = dialect.ParameterMarker(
+            dialect.Family == DatabaseFamily.Oracle ? "object_name" : "table");
+        return dialect.Family switch
+        {
+            DatabaseFamily.Sqlite => $"""
+                SELECT 'fk_' || id, "from", NULL, NULL, "table", "to", seq + 1
+                FROM pragma_foreign_key_list({table})
+                ORDER BY id, seq;
+                """,
+            DatabaseFamily.PostgreSql => $"""
+                SELECT tc.constraint_name, kcu.column_name,
+                       ccu.table_catalog, ccu.table_schema, ccu.table_name, ccu.column_name,
+                       kcu.ordinal_position
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON kcu.constraint_catalog = tc.constraint_catalog
+                 AND kcu.constraint_schema = tc.constraint_schema
+                 AND kcu.constraint_name = tc.constraint_name
+                JOIN information_schema.referential_constraints rc
+                  ON rc.constraint_catalog = tc.constraint_catalog
+                 AND rc.constraint_schema = tc.constraint_schema
+                 AND rc.constraint_name = tc.constraint_name
+                JOIN information_schema.key_column_usage ccu
+                  ON ccu.constraint_catalog = rc.unique_constraint_catalog
+                 AND ccu.constraint_schema = rc.unique_constraint_schema
+                 AND ccu.constraint_name = rc.unique_constraint_name
+                 AND ccu.ordinal_position = kcu.position_in_unique_constraint
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND tc.table_catalog = {catalog}
+                  AND tc.table_schema = {schema}
+                  AND tc.table_name = {table}
+                ORDER BY tc.constraint_name, kcu.ordinal_position;
+                """,
+            DatabaseFamily.MySql => $"""
+                SELECT kcu.constraint_name, kcu.column_name,
+                       NULL, kcu.referenced_table_schema,
+                       kcu.referenced_table_name, kcu.referenced_column_name,
+                       kcu.ordinal_position
+                FROM information_schema.key_column_usage kcu
+                WHERE kcu.table_schema = {schema} AND kcu.table_name = {table}
+                  AND kcu.referenced_table_name IS NOT NULL
+                ORDER BY kcu.constraint_name, kcu.ordinal_position;
+                """,
+            DatabaseFamily.SqlServer => $"""
+                SELECT fk.name, child_column.name,
+                       DB_NAME(), parent_schema.name, parent_table.name, parent_column.name,
+                       fkc.constraint_column_id
+                FROM sys.foreign_keys fk
+                JOIN sys.foreign_key_columns fkc
+                  ON fkc.constraint_object_id = fk.object_id
+                JOIN sys.tables child_table ON child_table.object_id = fk.parent_object_id
+                JOIN sys.schemas child_schema ON child_schema.schema_id = child_table.schema_id
+                JOIN sys.columns child_column
+                  ON child_column.object_id = child_table.object_id
+                 AND child_column.column_id = fkc.parent_column_id
+                JOIN sys.tables parent_table ON parent_table.object_id = fk.referenced_object_id
+                JOIN sys.schemas parent_schema ON parent_schema.schema_id = parent_table.schema_id
+                JOIN sys.columns parent_column
+                  ON parent_column.object_id = parent_table.object_id
+                 AND parent_column.column_id = fkc.referenced_column_id
+                WHERE DB_NAME() = {catalog} AND child_schema.name = {schema}
+                  AND child_table.name = {table}
+                ORDER BY fk.name, fkc.constraint_column_id;
+                """,
+            DatabaseFamily.DuckDb => $"""
+                SELECT tc.constraint_name, child.column_name,
+                       parent.table_catalog, parent.table_schema, parent.table_name, parent.column_name,
+                       child.ordinal_position
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage child
+                  ON child.constraint_catalog = tc.constraint_catalog
+                 AND child.constraint_schema = tc.constraint_schema
+                 AND child.constraint_name = tc.constraint_name
+                JOIN information_schema.referential_constraints rc
+                  ON rc.constraint_catalog = tc.constraint_catalog
+                 AND rc.constraint_schema = tc.constraint_schema
+                 AND rc.constraint_name = tc.constraint_name
+                JOIN information_schema.key_column_usage parent
+                  ON parent.constraint_catalog = rc.unique_constraint_catalog
+                 AND parent.constraint_schema = rc.unique_constraint_schema
+                 AND parent.constraint_name = rc.unique_constraint_name
+                 AND parent.ordinal_position = child.position_in_unique_constraint
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND tc.table_catalog = {catalog} AND tc.table_schema = {schema}
+                  AND tc.table_name = {table}
+                ORDER BY tc.constraint_name, child.ordinal_position;
+                """,
+            DatabaseFamily.Oracle => $"""
+                SELECT child.constraint_name, child_column.column_name,
+                       NULL, parent.owner, parent.table_name, parent_column.column_name,
+                       child_column.position
+                FROM all_constraints child
+                JOIN all_cons_columns child_column
+                  ON child_column.owner = child.owner
+                 AND child_column.constraint_name = child.constraint_name
+                JOIN all_constraints parent
+                  ON parent.owner = child.r_owner
+                 AND parent.constraint_name = child.r_constraint_name
+                JOIN all_cons_columns parent_column
+                  ON parent_column.owner = parent.owner
+                 AND parent_column.constraint_name = parent.constraint_name
+                 AND parent_column.position = child_column.position
+                WHERE child.constraint_type = 'R'
+                  AND child.owner = {schema} AND child.table_name = {table}
+                ORDER BY child.constraint_name, child_column.position
+                """,
+            DatabaseFamily.Firebird => $"""
+                SELECT trim(child.rdb$constraint_name), trim(child_segment.rdb$field_name),
+                       NULL, NULL, trim(parent.rdb$relation_name), trim(parent_segment.rdb$field_name),
+                       child_segment.rdb$field_position + 1
+                FROM rdb$relation_constraints child
+                JOIN rdb$ref_constraints reference
+                  ON reference.rdb$constraint_name = child.rdb$constraint_name
+                JOIN rdb$relation_constraints parent
+                  ON parent.rdb$constraint_name = reference.rdb$const_name_uq
+                JOIN rdb$index_segments child_segment
+                  ON child_segment.rdb$index_name = child.rdb$index_name
+                JOIN rdb$index_segments parent_segment
+                  ON parent_segment.rdb$index_name = parent.rdb$index_name
+                 AND parent_segment.rdb$field_position = child_segment.rdb$field_position
+                WHERE child.rdb$constraint_type = 'FOREIGN KEY'
+                  AND trim(child.rdb$relation_name) = {table}
+                ORDER BY child.rdb$constraint_name, child_segment.rdb$field_position
+                """,
+            _ => string.Empty,
+        };
+    }
+
     private static string? ReadString(DbDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal)
             ? null
@@ -656,4 +856,13 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
         string? Expression,
         string? Predicate,
         string? Definition);
+
+    private sealed record ForeignKeyRow(
+        string Name,
+        string ColumnName,
+        string? ReferencedCatalog,
+        string? ReferencedSchema,
+        string ReferencedTable,
+        string ReferencedColumnName,
+        int Ordinal);
 }

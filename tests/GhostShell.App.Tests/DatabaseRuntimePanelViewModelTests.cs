@@ -1234,6 +1234,67 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Successful_initial_connection_selects_the_database_overview()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+
+        await panel.Initialization;
+
+        Assert.True(panel.IsDatabaseOverview);
+        Assert.True(panel.IsDatabaseObjectsOverview);
+        Assert.Null(panel.SelectedObject);
+        Assert.Equal(panel.Tables.Count, panel.ResultRows.Count);
+        Assert.Equal(["Schema", "Name", "Kind"], panel.ResultColumns.Select(column => column.Name));
+    }
+
+    [Fact]
+    public async Task Database_overview_lazily_builds_and_caches_the_mermaid_diagram()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+
+        panel.ShowDatabaseOverview();
+        Assert.True(panel.IsDatabaseObjectsOverview);
+        Assert.False(panel.IsDatabaseDiagramOverview);
+
+        await panel.ShowDatabaseDiagramAsync();
+
+        Assert.True(panel.IsDatabaseDiagramOverview);
+        Assert.False(panel.ShowQueryEditor);
+        Assert.False(panel.ShowDataSurface);
+        Assert.True(panel.HasMermaidDiagram);
+        Assert.StartsWith("erDiagram", panel.MermaidDiagramSource, StringComparison.Ordinal);
+        Assert.Contains("```mermaid", panel.MermaidDiagramText, StringComparison.Ordinal);
+        Assert.Contains("people", panel.MermaidDiagramText, StringComparison.Ordinal);
+        Assert.Equal(1, client.SchemaGraphCallCount);
+
+        panel.ShowDatabaseOverview();
+        Assert.True(panel.IsDatabaseObjectsOverview);
+        Assert.True(panel.ShowDataSurface);
+        await panel.ShowDatabaseDiagramAsync();
+        Assert.Equal(1, client.SchemaGraphCallCount);
+
+        panel.ShowDatabaseOverview();
+        panel.QueryText = "SELECT id, name FROM people";
+        await panel.RunQueryAsync();
+        panel.ShowDatabaseOverview();
+        await panel.ShowDatabaseDiagramAsync();
+        Assert.Equal(2, client.SchemaGraphCallCount);
+    }
+
+    [Fact]
     public async Task Header_sort_toggles_direction_and_preserves_filter_and_page_size()
     {
         var client = new FakeDatabasePanelClient { TableHasMore = true };
@@ -2484,6 +2545,8 @@ public sealed class DatabaseRuntimePanelViewModelTests
 
         public int GetObjectDetailsCallCount { get; private set; }
 
+        public int SchemaGraphCallCount { get; private set; }
+
         public int ReadTableCallCount { get; private set; }
 
         public int ReadQueryCallCount { get; private set; }
@@ -2704,6 +2767,32 @@ public sealed class DatabaseRuntimePanelViewModelTests
                 ReadOnlyReason: databaseObject.Kind == DatabaseTableKind.View
                     ? "Views are read-only."
                     : null));
+        }
+
+        public Task<DatabaseSchemaGraph> GetDatabaseSchemaGraphAsync(
+            string driverId,
+            string connectionString,
+            ConnectionProfile? tunnel,
+            CancellationToken cancellationToken)
+        {
+            ThrowIfConfigured();
+            SchemaGraphCallCount++;
+            return Task.FromResult(new DatabaseSchemaGraph(
+            [
+                new DatabaseSchemaTable(
+                    new DatabaseTableDescriptor("people", DatabaseTableKind.Table),
+                    [
+                        new DatabaseColumnSchema(
+                            "id",
+                            1,
+                            "INTEGER",
+                            DatabaseValueKind.SignedInteger,
+                            IsNullable: false,
+                            IsPrimaryKey: true,
+                            PrimaryKeyOrdinal: 1),
+                    ],
+                    []),
+            ]));
         }
 
         public async Task<DatabaseTablePage> ReadTableAsync(

@@ -39,7 +39,9 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         _ = sender;
         if (e.PropertyName is null
             or nameof(DatabaseRuntimePanelViewModel.SelectedMode)
-            or nameof(DatabaseRuntimePanelViewModel.SelectedObject))
+            or nameof(DatabaseRuntimePanelViewModel.SelectedObject)
+            or nameof(DatabaseRuntimePanelViewModel.SelectedDatabaseOverviewMode)
+            or nameof(DatabaseRuntimePanelViewModel.IsDatabaseOverview))
         {
             SyncModeButtons();
         }
@@ -54,6 +56,8 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         var hasObject = panel?.SelectedObject is not null;
         StructureModeButton.IsEnabled = hasObject;
         IndexesModeButton.IsEnabled = hasObject;
+        ObjectsOverviewButton.IsChecked = panel?.IsDatabaseObjectsOverview == true;
+        DiagramOverviewButton.IsChecked = panel?.IsDatabaseDiagramOverview == true;
     }
 
     private void OnDataModeClick(object? sender, RoutedEventArgs e) =>
@@ -64,6 +68,26 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
 
     private void OnIndexesModeClick(object? sender, RoutedEventArgs e) =>
         SetMode(DatabaseWorkspaceMode.Indexes);
+
+    private void OnObjectsOverviewClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Panel?.ShowDatabaseOverview();
+        SyncModeButtons();
+    }
+
+    private async void OnDiagramOverviewClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Panel is { } panel)
+        {
+            await panel.ShowDatabaseDiagramAsync();
+        }
+
+        SyncModeButtons();
+    }
 
     private void SetMode(DatabaseWorkspaceMode mode)
     {

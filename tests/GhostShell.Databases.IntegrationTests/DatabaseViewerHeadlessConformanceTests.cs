@@ -37,6 +37,9 @@ public sealed partial class DatabaseViewerConformanceTests
             environment.Provider.Seed.RowsTable,
             async fixture =>
             {
+                Assert.True(panel.IsDatabaseObjectsOverview);
+                Assert.True(fixture.ObjectsOverviewButton.IsEffectivelyVisible);
+                Assert.True(fixture.ObjectsOverviewButton.IsChecked);
                 fixture.OpenObject(environment.Provider.Seed.RowsTable);
                 await WaitOnDispatcherAsync(
                     () => !panel.IsBusy
@@ -152,6 +155,60 @@ public sealed partial class DatabaseViewerConformanceTests
                 panel,
                 cancellationToken);
         }
+
+        // The diagram owns a separate source surface. Exercise it after row
+        // interactions so this journey ends in the same database-overview
+        // state a person deliberately selected.
+        await RunHeadlessFixtureSessionAsync(
+            panel,
+            environment.Provider.Seed.RowsTable,
+            fixture => AssertHeadlessDatabaseDiagramAsync(panel, fixture, cancellationToken),
+            cancellationToken);
+    }
+
+    private static async Task AssertHeadlessDatabaseDiagramAsync(
+        DatabaseRuntimePanelViewModel panel,
+        HeadlessViewFixture fixture,
+        CancellationToken cancellationToken)
+    {
+        fixture.Click(fixture.DatabaseOverviewButton);
+        await WaitOnDispatcherAsync(
+            () => panel.IsDatabaseObjectsOverview,
+            cancellationToken);
+        Assert.True(fixture.ObjectsOverviewButton.IsEffectivelyVisible);
+        Assert.True(fixture.ObjectsOverviewButton.IsChecked);
+
+        fixture.Click(fixture.DiagramOverviewButton);
+        await WaitOnDispatcherAsync(
+            () => !panel.IsBusy
+                && panel.IsDatabaseDiagramOverview
+                && panel.HasMermaidDiagram
+                && fixture.MermaidDiagramView.HasRenderedDiagram,
+            cancellationToken);
+
+        Assert.True(fixture.DiagramOverviewButton.IsChecked);
+        Assert.True(fixture.MermaidDiagramView.IsEffectivelyVisible);
+        Assert.True(fixture.MermaidDiagramView.HasRenderedDiagram);
+        Assert.Contains("<svg", fixture.MermaidDiagramView.RenderedSvg, StringComparison.Ordinal);
+        Assert.DoesNotContain("erDiagram", fixture.MermaidDiagramView.RenderedSvg, StringComparison.Ordinal);
+        await fixture.SetClipboardTextAsync("diagram clipboard sentinel");
+        fixture.InvokeClickHandler(fixture.CopyMermaidDiagramButton);
+        await WaitForClipboardTextAsync(
+            fixture,
+            panel.MermaidDiagramText,
+            cancellationToken);
+        fixture.InvokeClickHandler(fixture.CopyMermaidSvgButton);
+        await WaitForClipboardTextAsync(
+            fixture,
+            fixture.MermaidDiagramView.RenderedSvg,
+            cancellationToken);
+
+        fixture.Click(fixture.ObjectsOverviewButton);
+        await WaitOnDispatcherAsync(
+            () => panel.IsDatabaseObjectsOverview,
+            cancellationToken);
+        Assert.True(fixture.ObjectsOverviewButton.IsChecked);
+        Assert.False(fixture.MermaidDiagramView.IsEffectivelyVisible);
     }
 
     private static async Task RunHeadlessFixtureSessionAsync(
@@ -1199,6 +1256,24 @@ public sealed partial class DatabaseViewerConformanceTests
 
         public Button SaveButton => NamedControl<Button>("Save database changes");
 
+        public Button DatabaseOverviewButton =>
+            NamedControl<Button>("Show the database overview");
+
+        public ToggleButton ObjectsOverviewButton =>
+            NamedControl<ToggleButton>("Show database objects");
+
+        public ToggleButton DiagramOverviewButton =>
+            NamedControl<ToggleButton>("Show database Mermaid ER diagram");
+
+        public DatabaseMermaidDiagramView MermaidDiagramView =>
+            NamedControl<DatabaseMermaidDiagramView>("Rendered Mermaid ER diagram");
+
+        public Button CopyMermaidDiagramButton =>
+            NamedControl<Button>("Copy the Mermaid ER diagram source");
+
+        public Button CopyMermaidSvgButton =>
+            NamedControl<Button>("Copy the rendered Mermaid ER diagram SVG");
+
         public Button RowsObjectButton => ObjectButton(RowsTableName);
 
         public Button AddRowButton => NamedControl<Button>("Add a database row");
@@ -1372,6 +1447,12 @@ public sealed partial class DatabaseViewerConformanceTests
             DatabaseFilterOperator filterOperator,
             string value)
         {
+            // Provider reads can complete on a non-UI continuation immediately
+            // before this helper resumes. Force the bound ItemsControl to
+            // realize its new filter-row template before addressing controls.
+            UpdateLayout();
+            Dispatcher.UIThread.RunJobs();
+            UpdateLayout();
             var column = Assert.Single(
                 Panel.FilterColumns,
                 candidate => candidate.Name == columnName);

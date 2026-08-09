@@ -1,0 +1,86 @@
+<UserControl
+    x:Class="GhostShell.App.Views.Components.DatabaseMermaidDiagramView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:svg="clr-namespace:Avalonia.Svg.Skia;assembly=Svg.Controls.Skia.Avalonia"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch"
+    AutomationProperties.Name="Rendered Mermaid ER diagram">
+  <Grid>
+    <Border
+        x:Name="Viewport"
+        Background="{DynamicResource ShellBackgroundBrush}"
+        ClipToBounds="True"
+        Cursor="Hand">
+      <svg:Svg
+          x:Name="DiagramSurface"
+          HorizontalAlignment="Stretch"
+          VerticalAlignment="Stretch"
+          Stretch="Uniform"
+          StretchDirection="Both" />
+    </Border>
+
+    <Border
+        x:Name="Toolbar"
+        HorizontalAlignment="Right"
+        VerticalAlignment="Bottom"
+        Margin="{controls:Inset Md}"
+        Padding="{controls:Inset Horizontal=Xs, Vertical=Xs}"
+        Background="{DynamicResource ShellSurfaceBrush}"
+        BorderBrush="{DynamicResource ShellBorderBrush}"
+        BorderThickness="1"
+        CornerRadius="{DynamicResource ShellControlCornerRadius}">
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+        <Button
+            Classes="IconButton"
+            Click="OnZoomOutClick"
+            ToolTip.Tip="Zoom out"
+            AutomationProperties.Name="Zoom out of the ER diagram">
+          <icons:SymbolIcon Symbol="ZoomOut" FontSize="12" />
+        </Button>
+        <Button
+            x:Name="ZoomLevelButton"
+            Classes="Subtle"
+            MinWidth="48"
+            Padding="{controls:Inset Horizontal=Xs, Vertical=None}"
+            Click="OnFitClick"
+            ToolTip.Tip="Fit the whole diagram"
+            AutomationProperties.Name="Fit the ER diagram">
+          <TextBlock
+              x:Name="ZoomLevelText"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="Fit" />
+        </Button>
+        <Button
+            Classes="IconButton"
+            Click="OnZoomInClick"
+            ToolTip.Tip="Zoom in"
+            AutomationProperties.Name="Zoom into the ER diagram">
+          <icons:SymbolIcon Symbol="ZoomIn" FontSize="12" />
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <Border
+        x:Name="ErrorCard"
+        MaxWidth="620"
+        Margin="{controls:Inset Md}"
+        Padding="{controls:Inset Md}"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Center"
+        Background="{DynamicResource ShellDangerSoftBrush}"
+        BorderBrush="{DynamicResource ShellDangerBorderBrush}"
+        BorderThickness="1"
+        CornerRadius="{DynamicResource ShellControlCornerRadius}"
+        IsVisible="False">
+      <TextBlock
+          x:Name="ErrorText"
+          Foreground="{DynamicResource ShellDangerBrush}"
+          TextWrapping="Wrap"
+          AutomationProperties.LiveSetting="Assertive" />
+    </Border>
+  </Grid>
+</UserControl>

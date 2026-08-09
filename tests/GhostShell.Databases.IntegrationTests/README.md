@@ -29,6 +29,7 @@ Each selected provider runs one complete workflow that exercises:
 - driver lookup plus connection-string parse/rebuild and connection readiness;
 - table and view discovery, schema-qualified names, and hostile quoted identifiers;
 - structure metadata for primary keys, identity/default/generated/read-only columns, and indexes;
+- database-wide Mermaid ER diagrams from real column and foreign-key catalogs, including a rendered Objects/ER Diagram switch and clipboard action in the database-overview UI;
 - qualified and legacy table previews, maximum-row truncation, typed value materialization, and detached binary/large values;
 - deterministic sorting and paging, including the 200-row UI boundary and keyless-table paging restrictions;
 - every filter operator: equals, not equals, less/less-or-equal, greater/greater-or-equal, contains/not-contains, starts with, ends with, `IN`/`NOT IN`, is null, and is not null;

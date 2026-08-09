@@ -429,6 +429,17 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         Panel?.DeleteSelectedRow();
     }
 
+    private void OnSetNullClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        var ordinal = ResultDataGrid.CurrentColumn?.DisplayIndex;
+        CommitGridEdit();
+        if (ordinal is { } value)
+        {
+            Panel?.SetSelectedCellNull(value);
+        }
+    }
 
     private void OnSetDefaultClick(object? sender, RoutedEventArgs e)
     {

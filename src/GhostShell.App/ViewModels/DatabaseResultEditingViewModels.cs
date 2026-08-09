@@ -13,6 +13,12 @@ public enum DatabaseWorkspaceMode
     Indexes,
 }
 
+public enum DatabaseOverviewMode
+{
+    Objects,
+    ErDiagram,
+}
+
 public sealed class DatabaseDriverOptionViewModel(DatabaseDriverDescriptor descriptor)
 {
     public string Id { get; } = descriptor.Id;

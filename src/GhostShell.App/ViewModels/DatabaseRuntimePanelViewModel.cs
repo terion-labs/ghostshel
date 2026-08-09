@@ -72,6 +72,9 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private IReadOnlyList<DatabaseIndexViewModel> _indexes = [];
     private IReadOnlyList<DatabaseFilterColumnViewModel> _filterColumns = [];
     private bool _isDatabaseOverview;
+    private DatabaseOverviewMode _databaseOverviewMode;
+    private string _mermaidDiagramSource = string.Empty;
+    private string _mermaidDiagramText = string.Empty;
     private DatabaseTableQuery _tableQuery = DatabaseTableQuery.FirstPage(PreviewRows);
     private DatabaseResultSource _resultSource;
     private string? _rawQuerySql;
@@ -292,6 +295,46 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     public bool ShowStructure => SelectedMode == DatabaseWorkspaceMode.Structure;
 
     public bool ShowIndexes => SelectedMode == DatabaseWorkspaceMode.Indexes;
+
+    public DatabaseOverviewMode SelectedDatabaseOverviewMode
+    {
+        get => _databaseOverviewMode;
+        private set
+        {
+            if (SetProperty(ref _databaseOverviewMode, value))
+            {
+                OnPropertyChanged(nameof(IsDatabaseObjectsOverview));
+                OnPropertyChanged(nameof(IsDatabaseDiagramOverview));
+                OnPropertyChanged(nameof(ShowQueryEditor));
+                OnPropertyChanged(nameof(ShowDataSurface));
+            }
+        }
+    }
+
+    public bool IsDatabaseObjectsOverview => IsDatabaseOverview
+        && SelectedDatabaseOverviewMode == DatabaseOverviewMode.Objects;
+
+    public bool IsDatabaseDiagramOverview => IsDatabaseOverview
+        && SelectedDatabaseOverviewMode == DatabaseOverviewMode.ErDiagram;
+
+    public bool ShowQueryEditor => ShowData && !IsDatabaseDiagramOverview;
+
+    public bool ShowDataSurface => ShowData && !IsDatabaseDiagramOverview;
+
+    /// <summary>The raw Mermaid source consumed by the native SVG renderer.</summary>
+    public string MermaidDiagramSource
+    {
+        get => _mermaidDiagramSource;
+        private set => SetProperty(ref _mermaidDiagramSource, value);
+    }
+
+    public string MermaidDiagramText
+    {
+        get => _mermaidDiagramText;
+        private set => SetProperty(ref _mermaidDiagramText, value);
+    }
+
+    public bool HasMermaidDiagram => !string.IsNullOrWhiteSpace(MermaidDiagramText);
 
     public DatabaseTableItemViewModel? SelectedObject => _selectedObject;
 
@@ -1046,6 +1089,10 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         OnPropertyChanged(nameof(IsDatabaseOverview));
+        OnPropertyChanged(nameof(IsDatabaseObjectsOverview));
+        OnPropertyChanged(nameof(IsDatabaseDiagramOverview));
+        OnPropertyChanged(nameof(ShowQueryEditor));
+        OnPropertyChanged(nameof(ShowDataSurface));
     }
 
     /// <summary>The name the sidebar's database header wears.</summary>
@@ -1093,6 +1140,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         ClearSelectedObject();
+        SelectedDatabaseOverviewMode = DatabaseOverviewMode.Objects;
         var columns = new[]
         {
             new DatabaseColumnDescriptor("Schema", "TEXT", DatabaseValueKind.Text),
@@ -1117,6 +1165,51 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         ResultSummary = $"{_allTables.Count} objects · {CurrentDatabaseLabel}";
         _isDatabaseOverview = true;
         OnPropertyChanged(nameof(IsDatabaseOverview));
+        OnPropertyChanged(nameof(IsDatabaseObjectsOverview));
+        OnPropertyChanged(nameof(IsDatabaseDiagramOverview));
+        OnPropertyChanged(nameof(ShowQueryEditor));
+        OnPropertyChanged(nameof(ShowDataSurface));
+    }
+
+    /// <summary>
+    /// Opens the database-wide Mermaid ER source. The graph is loaded lazily
+    /// and cached for this connected catalog; reconnecting invalidates it.
+    /// </summary>
+    public async Task ShowDatabaseDiagramAsync()
+    {
+        if (IsBusy || !IsConnected)
+        {
+            return;
+        }
+
+        if (HasPendingChanges)
+        {
+            ErrorMessage = "Save or revert the pending row changes before leaving this object.";
+            return;
+        }
+
+        if (!IsDatabaseOverview)
+        {
+            ShowDatabaseOverview();
+        }
+
+        SelectedDatabaseOverviewMode = DatabaseOverviewMode.ErDiagram;
+        if (HasMermaidDiagram)
+        {
+            return;
+        }
+
+        await RunGuardedAsync(async cancellationToken =>
+        {
+            var graph = await _client.GetDatabaseSchemaGraphAsync(
+                SelectedDriver.Id,
+                await ResolveEffectiveConnectionStringAsync(cancellationToken),
+                _tunnelConnection,
+                cancellationToken);
+            MermaidDiagramSource = DatabaseMermaidErDiagram.CreateSource(graph);
+            MermaidDiagramText = DatabaseMermaidErDiagram.Create(graph);
+            OnPropertyChanged(nameof(HasMermaidDiagram));
+        });
     }
 
     /// <summary>
@@ -1198,6 +1291,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 await ResolveEffectiveConnectionStringAsync(cancellationToken),
                 _tunnelConnection,
                 cancellationToken);
+            ResetDatabaseDiagram();
             _allTables = tables
                 .Select(table => new DatabaseTableItemViewModel(table))
                 .ToArray();
@@ -1206,6 +1300,14 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             OnPropertyChanged(nameof(RecoveryTarget));
             await RefreshSessionFactsAsync(cancellationToken);
         });
+
+        if (IsConnected)
+        {
+            // A connected database is itself the initial selection. This
+            // avoids the contradictory startup state where the database was
+            // highlighted in the sidebar but table perspectives were active.
+            ShowDatabaseOverview();
+        }
     }
 
     public async Task RunQueryAsync()
@@ -1932,6 +2034,10 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 sql,
                 query,
                 canBrowse);
+            // Raw SQL can alter schema in provider-specific ways that are not
+            // safely recognizable from statement text alone. Any successful
+            // execution invalidates the lazy database diagram cache.
+            ResetDatabaseDiagram();
         });
 
     private async Task LoadResultQueryAsync(
@@ -3270,11 +3376,23 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         _isConnected = value;
+        if (!value)
+        {
+            ResetDatabaseDiagram();
+        }
         OnPropertyChanged(nameof(IsConnected));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(ConnectButtonLabel));
         OnPropertyChanged(nameof(ConnectionSummary));
         RaiseCommandStates();
+    }
+
+    private void ResetDatabaseDiagram()
+    {
+        MermaidDiagramSource = string.Empty;
+        MermaidDiagramText = string.Empty;
+        SelectedDatabaseOverviewMode = DatabaseOverviewMode.Objects;
+        OnPropertyChanged(nameof(HasMermaidDiagram));
     }
 
     private void RaiseCommandStates()

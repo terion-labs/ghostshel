@@ -504,11 +504,12 @@ public sealed partial class DatabaseWorkspaceView
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
         });
 
-        var actions = new StackPanel
+        var actions = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = smallSpace,
+            ItemSpacing = smallSpace,
+            LineSpacing = smallSpace,
         };
         var close = new Button { Content = canEdit ? "Cancel" : "Close" };
         AutomationProperties.SetName(close, "Close the database cell Quick Look");

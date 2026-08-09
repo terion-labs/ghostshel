@@ -35,12 +35,14 @@ internal sealed class DatabaseSqlDialect
         DatabaseFamily family,
         bool canEdit,
         bool supportsIndexes = true,
-        bool supportsPostgreSqlGeneratedColumns = false)
+        bool supportsPostgreSqlGeneratedColumns = false,
+        bool supportsForeignKeys = true)
     {
         Family = family;
         CanEdit = canEdit;
         SupportsIndexes = supportsIndexes;
         SupportsPostgreSqlGeneratedColumns = supportsPostgreSqlGeneratedColumns;
+        SupportsForeignKeys = supportsForeignKeys;
     }
 
     public DatabaseFamily Family { get; }
@@ -50,6 +52,8 @@ internal sealed class DatabaseSqlDialect
     public bool SupportsIndexes { get; }
 
     public bool SupportsPostgreSqlGeneratedColumns { get; }
+
+    public bool SupportsForeignKeys { get; }
 
     public static DatabaseSqlDialect For(string driverId) => driverId switch
     {
@@ -64,7 +68,8 @@ internal sealed class DatabaseSqlDialect
         "redshift" => new(
             DatabaseFamily.PostgreSql,
             canEdit: false,
-            supportsIndexes: false),
+            supportsIndexes: false,
+            supportsForeignKeys: false),
         "mysql" or "mariadb" => new(DatabaseFamily.MySql, canEdit: true),
         "sqlserver" => new(DatabaseFamily.SqlServer, canEdit: true),
         "duckdb" => new(DatabaseFamily.DuckDb, canEdit: true),
@@ -73,7 +78,10 @@ internal sealed class DatabaseSqlDialect
         // ClickHouse exposes UPDATE in recent releases, but mutation cost and
         // compatibility vary by server version. Browsing stays available while
         // row editing remains conservatively disabled.
-        "clickhouse" => new(DatabaseFamily.ClickHouse, canEdit: false),
+        "clickhouse" => new(
+            DatabaseFamily.ClickHouse,
+            canEdit: false,
+            supportsForeignKeys: false),
         _ => throw new ArgumentException($"Unknown database driver '{driverId}'.", nameof(driverId)),
     };
 

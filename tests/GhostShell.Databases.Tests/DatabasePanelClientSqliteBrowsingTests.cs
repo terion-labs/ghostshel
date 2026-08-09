@@ -52,6 +52,24 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
                     " key " INTEGER PRIMARY KEY,
                     " value " TEXT
                 );
+                CREATE TABLE authors (
+                    tenant_id INTEGER NOT NULL,
+                    id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, id)
+                );
+                CREATE TABLE article_links (
+                    id INTEGER PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    backup_author_id INTEGER,
+                    CONSTRAINT fk_article_author
+                        FOREIGN KEY (tenant_id, author_id)
+                        REFERENCES authors (tenant_id, id),
+                    CONSTRAINT fk_article_backup
+                        FOREIGN KEY (tenant_id, backup_author_id)
+                        REFERENCES authors (tenant_id, id)
+                );
                 """;
             schema.ExecuteNonQuery();
         }
@@ -82,6 +100,44 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
         {
             File.Delete(_databasePath);
         }
+    }
+
+    [Fact]
+    public async Task Reads_database_schema_graph_with_composite_and_nullable_foreign_keys()
+    {
+        await using var client = new DatabasePanelClient();
+
+        var graph = await client.GetDatabaseSchemaGraphAsync(
+            "sqlite",
+            ConnectionString,
+            tunnel: null,
+            CancellationToken.None);
+
+        Assert.DoesNotContain(graph.Tables, table =>
+            table.Object.Name == "odd.view");
+        var child = Assert.Single(graph.Tables, table =>
+            table.Object.Name == "article_links");
+        Assert.Equal(
+            ["id", "tenant_id", "author_id", "backup_author_id"],
+            child.Columns.Select(column => column.Name));
+        var required = Assert.Single(child.ForeignKeys, key =>
+            key.Name == "fk_0");
+        Assert.Equal("authors", required.ReferencedObject.Name);
+        Assert.Equal(
+            [("tenant_id", "tenant_id"), ("backup_author_id", "id")],
+            required.Columns.Select(column =>
+                (column.ColumnName, column.ReferencedColumnName)));
+        var second = Assert.Single(child.ForeignKeys, key => key.Name == "fk_1");
+        Assert.Equal(
+            [("tenant_id", "tenant_id"), ("author_id", "id")],
+            second.Columns.Select(column =>
+                (column.ColumnName, column.ReferencedColumnName)));
+
+        var mermaid = DatabaseMermaidErDiagram.Create(graph);
+        Assert.Contains("fk_0", mermaid, StringComparison.Ordinal);
+        Assert.Contains("fk_1", mermaid, StringComparison.Ordinal);
+        Assert.Contains("authors", mermaid, StringComparison.Ordinal);
+        Assert.Contains("article_links", mermaid, StringComparison.Ordinal);
     }
 
     [Fact]
