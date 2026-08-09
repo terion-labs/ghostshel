@@ -845,10 +845,18 @@
                                       TextWrapping="Wrap" />
                                   <!-- Values that read as code read highlighted:
                                        the same engine as the file previews,
-                                       keyed by the value's detected grammar. -->
+                                       keyed by the value's detected grammar.
+                                       Not FitsContent and not interactive: the
+                                       fit machinery writes the editor's height
+                                       inside this scrolling column and layout
+                                       feeds back on itself, and a wheel over
+                                       the value must scroll the inspector, not
+                                       an editor with nothing to scroll. Sized
+                                       by measure, it simply grows like the
+                                       plain text beside it does. -->
                                   <local:CodePreviewView
-                                      FitsContent="True"
                                       ShowLineNumbers="False"
+                                      IsHitTestVisible="False"
                                       IsVisible="{Binding HasGrammar}"
                                       Text="{Binding Text}"
                                       FileName="{Binding GrammarFileName}" />
