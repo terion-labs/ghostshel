@@ -998,3 +998,86 @@ public sealed class DatabaseFilterColumnViewModel(DatabaseColumnSchema column)
 public sealed record DatabaseFilterOperatorViewModel(
     DatabaseFilterOperator Operator,
     string Label);
+
+/// <summary>
+/// One condition in the stackable filter bar. A row can be switched off with
+/// its checkbox without losing what it says; applying reads every included,
+/// complete row. Operators follow the chosen column's semantic type.
+/// </summary>
+public sealed class DatabaseFilterRowViewModel : ObservableObject
+{
+    private readonly Func<DatabaseValueKind?, IReadOnlyList<DatabaseFilterOperatorViewModel>>
+        _operatorsFor;
+    private IReadOnlyList<DatabaseFilterOperatorViewModel> _operators;
+    private DatabaseFilterColumnViewModel? _column;
+    private DatabaseFilterOperatorViewModel? _operator;
+    private string _value = string.Empty;
+    private bool _isIncluded = true;
+
+    public DatabaseFilterRowViewModel(
+        IReadOnlyList<DatabaseFilterColumnViewModel> columns,
+        Func<DatabaseValueKind?, IReadOnlyList<DatabaseFilterOperatorViewModel>> operatorsFor)
+    {
+        Columns = columns ?? throw new ArgumentNullException(nameof(columns));
+        _operatorsFor = operatorsFor ?? throw new ArgumentNullException(nameof(operatorsFor));
+        _operators = operatorsFor(null);
+    }
+
+    public IReadOnlyList<DatabaseFilterColumnViewModel> Columns { get; }
+
+    public IReadOnlyList<DatabaseFilterOperatorViewModel> Operators
+    {
+        get => _operators;
+        private set => SetProperty(ref _operators, value);
+    }
+
+    /// <summary>An unchecked row keeps its condition but stays out of the query.</summary>
+    public bool IsIncluded
+    {
+        get => _isIncluded;
+        set => SetProperty(ref _isIncluded, value);
+    }
+
+    public DatabaseFilterColumnViewModel? Column
+    {
+        get => _column;
+        set
+        {
+            if (!SetProperty(ref _column, value))
+            {
+                return;
+            }
+
+            Operators = _operatorsFor(value?.ValueKind);
+            if (Operator is null
+                || Operators.All(option => option.Operator != Operator.Operator))
+            {
+                Operator = Operators[0];
+            }
+        }
+    }
+
+    public DatabaseFilterOperatorViewModel? Operator
+    {
+        get => _operator;
+        set
+        {
+            if (SetProperty(ref _operator, value))
+            {
+                OnPropertyChanged(nameof(NeedsValue));
+            }
+        }
+    }
+
+    public string Value
+    {
+        get => _value;
+        set => SetProperty(ref _value, value ?? string.Empty);
+    }
+
+    public bool NeedsValue => Operator?.Operator is not
+        (DatabaseFilterOperator.IsNull or DatabaseFilterOperator.IsNotNull);
+
+    /// <summary>Says something the query can use.</summary>
+    public bool IsComplete => Column is not null && Operator is not null;
+}

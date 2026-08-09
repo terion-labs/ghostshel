@@ -894,26 +894,30 @@ public sealed partial class DatabaseWorkspaceView
         }
     }
 
-    private async Task CopyTextAsync(
+    /// <summary>True when the text actually reached the clipboard.</summary>
+    private async Task<bool> CopyTextAsync(
         string text,
         DatabaseRuntimePanelViewModel panel)
     {
         if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
         {
-            return;
+            return false;
         }
 
         try
         {
             await clipboard.SetTextAsync(text);
+            return true;
         }
         catch (OperationCanceledException)
         {
             // Clipboard ownership can disappear during shutdown.
+            return false;
         }
         catch (Exception exception)
         {
             panel.ReportInteractionError($"Could not copy to the clipboard: {exception.Message}");
+            return false;
         }
     }
 

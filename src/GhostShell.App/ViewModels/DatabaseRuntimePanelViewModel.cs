@@ -71,11 +71,6 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private IReadOnlyList<DatabaseStructureColumnViewModel> _structureColumns = [];
     private IReadOnlyList<DatabaseIndexViewModel> _indexes = [];
     private IReadOnlyList<DatabaseFilterColumnViewModel> _filterColumns = [];
-    private IReadOnlyList<DatabaseFilterOperatorViewModel> _filterOperators =
-        AllFilterOperators;
-    private DatabaseFilterColumnViewModel? _filterColumn;
-    private DatabaseFilterOperatorViewModel? _filterOperator;
-    private string _filterValue = string.Empty;
     private DatabaseTableQuery _tableQuery = DatabaseTableQuery.FirstPage(PreviewRows);
     private DatabaseResultSource _resultSource;
     private string? _rawQuerySql;
@@ -320,43 +315,146 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     public IReadOnlyList<DatabaseFilterColumnViewModel> FilterColumns
     {
         get => _filterColumns;
-        private set => SetProperty(ref _filterColumns, value);
+        private set
+        {
+            if (SetProperty(ref _filterColumns, value))
+            {
+                RebuildFilterRows();
+            }
+        }
     }
 
-    public IReadOnlyList<DatabaseFilterOperatorViewModel> FilterOperators => _filterOperators;
+    /// <summary>
+    /// The stackable filter bar: one row per condition, each with its own
+    /// include switch. Applying reads every included, complete row.
+    /// </summary>
+    public ObservableCollection<DatabaseFilterRowViewModel> FilterRows { get; } = [];
+
+    /// <summary>The first row, which the single-filter surface reads and writes.</summary>
+    private DatabaseFilterRowViewModel PrimaryFilterRow
+    {
+        get
+        {
+            if (FilterRows.Count == 0)
+            {
+                FilterRows.Add(CreateFilterRow());
+            }
+
+            return FilterRows[0];
+        }
+    }
+
+    public void AddFilterRow(DatabaseFilterRowViewModel? after = null)
+    {
+        var index = after is null ? FilterRows.Count - 1 : FilterRows.IndexOf(after);
+        FilterRows.Insert(index + 1, CreateFilterRow());
+    }
+
+    /// <summary>Removing the last row leaves one blank row, never an empty bar.</summary>
+    public void RemoveFilterRow(DatabaseFilterRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        FilterRows.Remove(row);
+        if (FilterRows.Count == 0)
+        {
+            FilterRows.Add(CreateFilterRow());
+        }
+
+        RaisePrimaryFilterChanged();
+    }
+
+    private DatabaseFilterRowViewModel CreateFilterRow()
+    {
+        var row = new DatabaseFilterRowViewModel(
+            _filterColumns,
+            kind => FilterOperatorsFor(kind, includeListOperators: true));
+        row.PropertyChanged += (sender, _) =>
+        {
+            if (FilterRows.Count > 0 && ReferenceEquals(sender, FilterRows[0]))
+            {
+                RaisePrimaryFilterChanged();
+            }
+        };
+        return row;
+    }
+
+    /// <summary>
+    /// The columns changed under the bar: keep every condition that still names
+    /// a live column, drop the rest, and never present an empty bar.
+    /// </summary>
+    private void RebuildFilterRows()
+    {
+        var kept = FilterRows
+            .Where(row => row.Column is not null)
+            .Select(row => (
+                ColumnName: row.Column!.Name,
+                Operator: row.Operator?.Operator,
+                row.Value,
+                row.IsIncluded))
+            .ToArray();
+        FilterRows.Clear();
+        foreach (var previous in kept)
+        {
+            var column = _filterColumns.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, previous.ColumnName, StringComparison.Ordinal));
+            if (column is null)
+            {
+                continue;
+            }
+
+            var row = CreateFilterRow();
+            row.Column = column;
+            if (previous.Operator is { } filterOperator)
+            {
+                row.Operator = row.Operators.FirstOrDefault(option =>
+                        option.Operator == filterOperator)
+                    ?? row.Operator;
+            }
+
+            row.Value = previous.Value;
+            row.IsIncluded = previous.IsIncluded;
+            FilterRows.Add(row);
+        }
+
+        if (FilterRows.Count == 0)
+        {
+            FilterRows.Add(CreateFilterRow());
+        }
+
+        RaisePrimaryFilterChanged();
+    }
+
+    private void RaisePrimaryFilterChanged()
+    {
+        OnPropertyChanged(nameof(FilterColumn));
+        OnPropertyChanged(nameof(FilterOperator));
+        OnPropertyChanged(nameof(FilterValue));
+        OnPropertyChanged(nameof(FilterOperators));
+        OnPropertyChanged(nameof(FilterNeedsValue));
+    }
+
+    public IReadOnlyList<DatabaseFilterOperatorViewModel> FilterOperators =>
+        PrimaryFilterRow.Operators;
 
     public DatabaseFilterColumnViewModel? FilterColumn
     {
-        get => _filterColumn;
-        set
-        {
-            if (SetProperty(ref _filterColumn, value))
-            {
-                RefreshFilterOperators();
-            }
-        }
+        get => PrimaryFilterRow.Column;
+        set => PrimaryFilterRow.Column = value;
     }
 
     public DatabaseFilterOperatorViewModel? FilterOperator
     {
-        get => _filterOperator;
-        set
-        {
-            if (SetProperty(ref _filterOperator, value))
-            {
-                OnPropertyChanged(nameof(FilterNeedsValue));
-            }
-        }
+        get => PrimaryFilterRow.Operator;
+        set => PrimaryFilterRow.Operator = value;
     }
 
     public string FilterValue
     {
-        get => _filterValue;
-        set => SetProperty(ref _filterValue, value ?? string.Empty);
+        get => PrimaryFilterRow.Value;
+        set => PrimaryFilterRow.Value = value;
     }
 
-    public bool FilterNeedsValue => FilterOperator?.Operator is not
-        (DatabaseFilterOperator.IsNull or DatabaseFilterOperator.IsNotNull);
+    public bool FilterNeedsValue => PrimaryFilterRow.NeedsValue;
 
     public bool CanEditRows => _forcedReadOnlyReason is null
         && _selectedObjectDetails?.CanEdit == true;
@@ -914,6 +1012,75 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         await ConnectAsync();
     }
 
+    /// <summary>The name the sidebar's database header wears.</summary>
+    public string CurrentDatabaseLabel
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ConnectionString))
+            {
+                return SelectedDriver.DisplayName;
+            }
+
+            try
+            {
+                var details = _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString);
+                return SelectedDatabase
+                    ?? details.Database
+                    ?? (details.FilePath is { } path ? Path.GetFileName(path) : null)
+                    ?? SelectedDriver.DisplayName;
+            }
+            catch (Exception exception)
+                when (exception is ArgumentException or FormatException)
+            {
+                return SelectedDriver.DisplayName;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The database itself as the selected object: a read-only catalog of its
+    /// objects — schema, name, kind — in the result grid. Built from what
+    /// connecting already listed, so every engine answers identically.
+    /// </summary>
+    public void ShowDatabaseOverview()
+    {
+        if (IsBusy || !IsConnected)
+        {
+            return;
+        }
+
+        if (HasPendingChanges)
+        {
+            ErrorMessage = "Save or revert the pending row changes before leaving this object.";
+            return;
+        }
+
+        ClearSelectedObject();
+        var columns = new[]
+        {
+            new DatabaseColumnDescriptor("Schema", "TEXT", DatabaseValueKind.Text),
+            new DatabaseColumnDescriptor("Name", "TEXT", DatabaseValueKind.Text),
+            new DatabaseColumnDescriptor("Kind", "TEXT", DatabaseValueKind.Text),
+        };
+        double[] widths = [180, 280, 100];
+        ResultColumns = columns
+            .Select((column, ordinal) => new DatabaseResultColumnViewModel(column, widths[ordinal]))
+            .ToArray();
+        ResultRows = _allTables
+            .Select((table, index) => new DatabaseResultRowViewModel(
+                index + 1,
+                new string?[]
+                {
+                    table.Descriptor.Schema ?? table.Descriptor.Catalog,
+                    table.Descriptor.Name,
+                    table.KindLabel,
+                },
+                widths))
+            .ToArray();
+        ResultSummary = $"{_allTables.Count} objects · {CurrentDatabaseLabel}";
+    }
+
     /// <summary>
     /// Forgets the session without touching what it pointed at: tables, the
     /// database list, and session facts clear; the bound connection stays so
@@ -1073,28 +1240,41 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        if (FilterColumn is null || FilterOperator is null)
+        if (FilterRows.All(row => !row.IsComplete))
         {
             ErrorMessage = "Choose a column and operator first.";
             return;
         }
 
-        if (!TryParseFilterValue(
-                FilterValue,
-                FilterColumn.ValueKind,
-                FilterOperator.Operator,
-                out var value,
-                out var validationError))
+        var conditions = new List<DatabaseFilterCondition>();
+        foreach (var row in FilterRows)
         {
-            ErrorMessage = validationError;
-            return;
+            if (!row.IsIncluded || !row.IsComplete)
+            {
+                continue;
+            }
+
+            if (!TryParseFilterValue(
+                    row.Value,
+                    row.Column!.ValueKind,
+                    row.Operator!.Operator,
+                    out var value,
+                    out var validationError))
+            {
+                ErrorMessage = $"{row.Column.Name}: {validationError}";
+                return;
+            }
+
+            conditions.Add(new DatabaseFilterCondition(
+                row.Column.Name,
+                row.Operator.Operator,
+                value));
         }
 
+        // Every row unchecked is a deliberate "none of these": the query runs
+        // unfiltered rather than refusing.
         var query = new DatabaseTableQuery(
-            [new DatabaseFilterCondition(
-                FilterColumn.Name,
-                FilterOperator.Operator,
-                value)],
+            conditions,
             _tableQuery.Sorts,
             Offset: 0,
             Limit: _tableQuery.Limit);
@@ -1167,13 +1347,19 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        FilterColumn = filterColumn;
-        FilterOperator = option;
-        FilterValue = cell.IsNull
+        // A quick filter replaces the whole stack: it is "show me rows like
+        // this cell", not another condition on top of the current ones.
+        FilterRows.Clear();
+        var quickRow = CreateFilterRow();
+        quickRow.Column = filterColumn;
+        quickRow.Operator = option;
+        quickRow.Value = cell.IsNull
             ? string.Empty
             : filterOperator is DatabaseFilterOperator.In or DatabaseFilterOperator.NotIn
                 ? QuoteCsvField(cell.EditText)
                 : cell.EditText;
+        FilterRows.Add(quickRow);
+        RaisePrimaryFilterChanged();
         var query = new DatabaseTableQuery(
             [new DatabaseFilterCondition(cell.Column.Name, filterOperator, value)],
             _tableQuery.Sorts,
@@ -1189,7 +1375,9 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        FilterValue = string.Empty;
+        FilterRows.Clear();
+        FilterRows.Add(CreateFilterRow());
+        RaisePrimaryFilterChanged();
         var query = new DatabaseTableQuery([], _tableQuery.Sorts, 0, _tableQuery.Limit);
         await LoadResultQueryAsync(query, loadDetails: false);
     }
@@ -2399,6 +2587,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private void PublishInteractionStates()
     {
         OnPropertyChanged(nameof(ConnectionSummary));
+        OnPropertyChanged(nameof(CurrentDatabaseLabel));
         OnPropertyChanged(nameof(CanMutateRows));
         OnPropertyChanged(nameof(CanDeleteSelectedRow));
         OnPropertyChanged(nameof(CanDuplicateSelectedRow));
@@ -2417,18 +2606,6 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(CanSaveChanges));
     }
 
-    private void RefreshFilterOperators()
-    {
-        _filterOperators = FilterOperatorsFor(
-            FilterColumn?.ValueKind,
-            includeListOperators: true);
-        OnPropertyChanged(nameof(FilterOperators));
-        if (FilterOperator is null
-            || !_filterOperators.Any(option => option.Operator == FilterOperator.Operator))
-        {
-            FilterOperator = _filterOperators[0];
-        }
-    }
 
     private static IReadOnlyList<DatabaseFilterOperatorViewModel> FilterOperatorsFor(
         DatabaseValueKind? kind,

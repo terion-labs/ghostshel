@@ -106,11 +106,18 @@ public sealed class DatabaseWorkspaceFileExportTests : IDisposable
         var inspector = ApplicationViews
             .FindUniqueNamedElement("InspectorColumn")
             .Element;
+        // The copy buttons carry their label as a CopyLabel TextBlock so a
+        // success check can fade in over it after copying.
         var inspectorFormats = inspector.Descendants()
             .Where(element => element.Name.LocalName == "Button")
             .Where(element => (string?)element.Attribute("Click") is
                 "OnCopyRowJsonClick" or "OnCopyRowCsvClick" or "OnCopyRowInsertClick")
-            .Select(element => (string?)element.Attribute("Content") ?? string.Empty)
+            .Select(element => element.Descendants()
+                .Where(child => child.Name.LocalName == "TextBlock"
+                    && ((string?)child.Attribute("Classes") ?? string.Empty)
+                        .Contains("CopyLabel", StringComparison.Ordinal))
+                .Select(child => (string?)child.Attribute("Text") ?? string.Empty)
+                .FirstOrDefault() ?? string.Empty)
             .ToArray();
 
         Assert.Equal(["JSON", "CSV", "INSERT"], contextMenuFormats);

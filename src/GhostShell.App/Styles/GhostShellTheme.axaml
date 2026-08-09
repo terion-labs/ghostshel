@@ -840,6 +840,66 @@
     <Setter Property="Background" Value="Transparent" />
   </Style>
 
+  <!-- Dense control rows: filter bars and data toolbars. -->
+  <Style Selector="Button.Compact">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
+  </Style>
+
+  <Style Selector="ComboBox.Compact">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
+  </Style>
+
+  <Style Selector="TextBox.Compact">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
+  </Style>
+
+  <!-- Data grids present values, not prose; they read at the data size. -->
+  <Style Selector="DataGrid.DatabaseGrid">
+    <Setter Property="FontSize" Value="{DynamicResource ShellFontSize11}" />
+  </Style>
+
+  <!--
+    A copy button that answers: clicking swaps its label for a success check
+    that fades back to the label. The view toggles the "copied" class after
+    the clipboard write actually succeeds.
+  -->
+  <Style Selector="Button.CopyAction TextBlock.CopyLabel">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="Button.CopyAction.copied TextBlock.CopyLabel">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+
+  <Style Selector="Button.CopyAction icons|SymbolIcon.CopyCheck">
+    <Setter Property="Opacity" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellSuccessBrush}" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.2" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="Button.CopyAction.copied icons|SymbolIcon.CopyCheck">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
 
   <!--
     A single setting on the raised surface. Settings pages group these under a

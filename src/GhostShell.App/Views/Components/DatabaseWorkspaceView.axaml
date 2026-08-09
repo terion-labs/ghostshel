@@ -64,14 +64,41 @@
           x:Name="ObjectsSidebar"
           BorderBrush="{DynamicResource ShellBorderBrush}"
           BorderThickness="0,0,1,0">
-        <Grid RowDefinitions="Auto,*">
+        <Grid RowDefinitions="Auto,Auto,*">
+          <!-- The database itself heads its objects; selecting it opens the
+               catalog overview. -->
+          <Button
+              Classes="ListRow"
+              Click="OnDatabaseHeaderClick"
+              IsEnabled="{Binding IsConnected}"
+              ToolTip.Tip="Show the database's objects"
+              AutomationProperties.Name="Show the database overview">
+            <Grid
+                Margin="{controls:Inset Horizontal=Md, Vertical=Xs}"
+                ColumnDefinitions="Auto,*"
+                ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <icons:SymbolIcon
+                  VerticalAlignment="Center"
+                  Symbol="Database"
+                  FontSize="12"
+                  Foreground="{DynamicResource ShellAccentBrush}" />
+              <TextBlock
+                  Grid.Column="1"
+                  VerticalAlignment="Center"
+                  FontSize="{DynamicResource ShellFontSize11}"
+                  FontWeight="SemiBold"
+                  Text="{Binding CurrentDatabaseLabel}"
+                  TextTrimming="CharacterEllipsis" />
+            </Grid>
+          </Button>
           <TextBox
+              Grid.Row="1"
               Margin="{controls:Inset Sm}"
               Text="{Binding TableFilter, Mode=TwoWay}"
               PlaceholderText="Filter objects…"
               AutomationProperties.Name="Filter database objects" />
           <ScrollViewer
-              Grid.Row="1"
+              Grid.Row="2"
               HorizontalScrollBarVisibility="Disabled"
               VerticalScrollBarVisibility="Auto">
             <ItemsControl
@@ -281,105 +308,135 @@
                 BorderThickness="0,0,0,1"
                 IsVisible="{Binding HasResults}">
               <StackPanel Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" Spacing="{DynamicResource ShellSpaceXs}">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                  <StackPanel
-                      Orientation="Horizontal"
-                      Spacing="{DynamicResource ShellSpaceXs}"
-                      IsEnabled="{Binding CanFilterTable}">
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Classes="Muted"
-                        FontSize="{DynamicResource ShellFontSize9}"
-                        Text="Filter" />
-                    <ComboBox
-                        Width="112"
-                        ItemsSource="{Binding FilterColumns}"
-                        SelectedItem="{Binding FilterColumn, Mode=TwoWay}"
-                        PlaceholderText="Column"
-                        AutomationProperties.Name="Filter column">
-                      <ComboBox.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
-                      </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <ComboBox
-                        Width="124"
-                        ItemsSource="{Binding FilterOperators}"
-                        SelectedItem="{Binding FilterOperator, Mode=TwoWay}"
-                        PlaceholderText="Operator"
-                        AutomationProperties.Name="Filter operator">
-                      <ComboBox.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                      </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBox
-                        Width="132"
-                        Text="{Binding FilterValue, Mode=TwoWay}"
-                        IsVisible="{Binding FilterNeedsValue}"
-                        PlaceholderText="Value"
-                        KeyDown="OnFilterValueKeyDown"
-                        AutomationProperties.Name="Filter value" />
-                    <Button
-                        Classes="SecondaryButton"
-                        Click="OnApplyFilterClick"
-                        Content="Apply"
-                        AutomationProperties.Name="Apply the table filter" />
-                    <Button
-                        Classes="TextButton"
-                        Click="OnClearFilterClick"
-                        Content="Clear"
-                        AutomationProperties.Name="Clear the table filter" />
-                  </StackPanel>
-                </ScrollViewer>
+                <!-- Stackable conditions: each row can be switched off without
+                     losing what it says; Apply reads every included row. -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" IsEnabled="{Binding CanFilterTable}">
+                  <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding FilterRows}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Spacing="{DynamicResource ShellSpaceXs}" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                            <CheckBox
+                                IsChecked="{Binding IsIncluded, Mode=TwoWay}"
+                                ToolTip.Tip="Include this condition"
+                                AutomationProperties.Name="Include this filter condition" />
+                            <ComboBox
+                                Width="116"
+                                Classes="Compact"
+                                ItemsSource="{Binding Columns}"
+                                SelectedItem="{Binding Column, Mode=TwoWay}"
+                                PlaceholderText="Column"
+                                AutomationProperties.Name="Filter column">
+                              <ComboBox.ItemTemplate>
+                                <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                              </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <ComboBox
+                                Width="116"
+                                Classes="Compact"
+                                ItemsSource="{Binding Operators}"
+                                SelectedItem="{Binding Operator, Mode=TwoWay}"
+                                PlaceholderText="Operator"
+                                AutomationProperties.Name="Filter operator">
+                              <ComboBox.ItemTemplate>
+                                <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                              </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBox
+                                Width="120"
+                                Classes="Compact"
+                                Text="{Binding Value, Mode=TwoWay}"
+                                IsVisible="{Binding NeedsValue}"
+                                PlaceholderText="Value"
+                                KeyDown="OnFilterValueKeyDown"
+                                AutomationProperties.Name="Filter value" />
+                            <Button
+                                Classes="SecondaryButton Compact"
+                                Click="OnApplyFilterClick"
+                                Content="Apply"
+                                AutomationProperties.Name="Apply the table filter" />
+                            <Button
+                                Classes="IconButton"
+                                Click="OnRemoveFilterRowClick"
+                                ToolTip.Tip="Remove this condition"
+                                AutomationProperties.Name="Remove this filter condition">
+                              <icons:SymbolIcon Symbol="Subtract" FontSize="11" />
+                            </Button>
+                            <Button
+                                Classes="IconButton"
+                                Click="OnAddFilterRowClick"
+                                ToolTip.Tip="Add a condition"
+                                AutomationProperties.Name="Add a filter condition">
+                              <icons:SymbolIcon Symbol="Add" FontSize="11" />
+                            </Button>
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                  <Button
+                      Grid.Column="1"
+                      VerticalAlignment="Top"
+                      Classes="TextButton Compact"
+                      Click="OnClearFilterClick"
+                      Content="Clear"
+                      AutomationProperties.Name="Clear the table filter" />
+                </Grid>
 
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-                    <Button
-                        Classes="SecondaryButton"
-                        Click="OnAddRowClick"
-                        Content="Add row"
-                        IsEnabled="{Binding CanMutateRows}"
-                        AutomationProperties.Name="Add a database row" />
-                    <Button
-                        Classes="TextButton"
-                        Click="OnDeleteRowClick"
-                        Content="Delete"
-                        Foreground="{DynamicResource ShellDangerBrush}"
-                        IsEnabled="{Binding CanDeleteSelectedRow}"
-                        AutomationProperties.Name="Delete the selected database row" />
-                    <Button
-                        Classes="TextButton"
-                        Click="OnSetNullClick"
-                        Content="NULL"
-                        IsEnabled="{Binding CanSetSelectedCellNull}"
-                        ToolTip.Tip="Set the active cell to SQL NULL"
-                        AutomationProperties.Name="Set the active cell to NULL" />
-                    <Button
-                        Classes="TextButton"
-                        Click="OnSetDefaultClick"
-                        Content="DEFAULT"
-                        IsEnabled="{Binding CanSetSelectedCellDefault}"
-                        ToolTip.Tip="Use the column default for this new row"
-                        AutomationProperties.Name="Set the active cell to DEFAULT" />
-                    <Button
-                        Classes="TextButton"
-                        Click="OnRevertChangesClick"
-                        Content="Revert"
-                        IsEnabled="{Binding CanRevertChanges}"
-                        AutomationProperties.Name="Revert unsaved database changes" />
-                    <Button
-                        Classes="PrimaryButton"
-                        Click="OnSaveChangesClick"
-                        Content="Save"
-                        IsEnabled="{Binding CanSaveChanges}"
-                        AutomationProperties.Name="Save database changes" />
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Classes="Muted"
-                        FontSize="{DynamicResource ShellFontSize9}"
-                        Text="{Binding ReadOnlyReason}"
-                        IsVisible="{Binding HasReadOnlyReason}"
-                        TextTrimming="CharacterEllipsis"
-                        AutomationProperties.Name="Database read-only reason" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                      <Button
+                          Classes="SecondaryButton Compact"
+                          Click="OnAddRowClick"
+                          Content="Add row"
+                          IsEnabled="{Binding CanMutateRows}"
+                          AutomationProperties.Name="Add a database row" />
+                      <Button
+                          Classes="TextButton Compact"
+                          Click="OnDeleteRowClick"
+                          Content="Delete"
+                          Foreground="{DynamicResource ShellDangerBrush}"
+                          IsEnabled="{Binding CanDeleteSelectedRow}"
+                          AutomationProperties.Name="Delete the selected database row" />
+                      <Button
+                          Classes="TextButton Compact"
+                          Click="OnSetDefaultClick"
+                          Content="DEFAULT"
+                          IsEnabled="{Binding CanSetSelectedCellDefault}"
+                          ToolTip.Tip="Use the column default for this new row"
+                          AutomationProperties.Name="Set the active cell to DEFAULT" />
+                      <Button
+                          Classes="TextButton Compact"
+                          Click="OnRevertChangesClick"
+                          Content="Revert"
+                          IsEnabled="{Binding CanRevertChanges}"
+                          AutomationProperties.Name="Revert unsaved database changes" />
+                      <Button
+                          Classes="PrimaryButton Compact"
+                          Click="OnSaveChangesClick"
+                          Content="Save"
+                          IsEnabled="{Binding CanSaveChanges}"
+                          AutomationProperties.Name="Save database changes" />
+                      <TextBlock
+                          VerticalAlignment="Center"
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
+                          Text="{Binding ReadOnlyReason}"
+                          IsVisible="{Binding HasReadOnlyReason}"
+                          TextTrimming="CharacterEllipsis"
+                          AutomationProperties.Name="Database read-only reason" />
+                    </StackPanel>
+                  </ScrollViewer>
+
+                  <!-- Paging belongs at the edge: it is about the result set,
+                       not about editing rows. -->
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                     <Button
                         Classes="IconButton"
                         Click="OnPreviousPageClick"
@@ -395,10 +452,8 @@
                         ToolTip.Tip="Rows per page / total matching rows">
                       <TextBox
                           Width="52"
-                          MinHeight="32"
-                          Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                          Classes="Compact"
                           HorizontalContentAlignment="Center"
-                          VerticalContentAlignment="Center"
                           Text="{Binding PageLimitText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                           IsEnabled="{Binding CanChangePageLimit}"
                           KeyDown="OnPageLimitKeyDown"
@@ -426,7 +481,7 @@
                       <icons:SymbolIcon Symbol="ChevronRight" FontSize="11" />
                     </Button>
                   </StackPanel>
-                </ScrollViewer>
+                </Grid>
               </StackPanel>
             </Border>
 
@@ -619,7 +674,7 @@
               <Border
                   x:Name="InspectorColumn"
                   Grid.Column="1"
-                  Width="248"
+                  Width="330"
                   BorderBrush="{DynamicResource ShellBorderBrush}"
                   BorderThickness="1,0,0,0"
                   IsVisible="{Binding HasSelectedRow}">
@@ -660,15 +715,29 @@
                           Margin="{controls:Inset Horizontal=Md, Vertical=Xs}"
                           Orientation="Horizontal"
                           Spacing="{DynamicResource ShellSpaceXs}">
-                        <Button Classes="TextButton Accent" Click="OnCopyRowJsonClick" Content="JSON" AutomationProperties.Name="Copy the row as JSON" />
-                        <Button Classes="TextButton Accent" Click="OnCopyRowCsvClick" Content="CSV" AutomationProperties.Name="Copy the row as CSV" />
+                        <Button Classes="TextButton Accent CopyAction" Click="OnCopyRowJsonClick" AutomationProperties.Name="Copy the row as JSON">
+                          <Panel>
+                            <TextBlock Classes="CopyLabel" Text="JSON" />
+                            <icons:SymbolIcon Classes="CopyCheck" HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" />
+                          </Panel>
+                        </Button>
+                        <Button Classes="TextButton Accent CopyAction" Click="OnCopyRowCsvClick" AutomationProperties.Name="Copy the row as CSV">
+                          <Panel>
+                            <TextBlock Classes="CopyLabel" Text="CSV" />
+                            <icons:SymbolIcon Classes="CopyCheck" HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" />
+                          </Panel>
+                        </Button>
                         <Button
-                            Classes="TextButton Accent"
+                            Classes="TextButton Accent CopyAction"
                             Click="OnCopyRowInsertClick"
-                            Content="INSERT"
                             IsEnabled="{Binding CanCopySelectedRowAsInsert}"
                             ToolTip.Tip="Copy an executable INSERT for the active database"
-                            AutomationProperties.Name="Copy the row as INSERT" />
+                            AutomationProperties.Name="Copy the row as INSERT">
+                          <Panel>
+                            <TextBlock Classes="CopyLabel" Text="INSERT" />
+                            <icons:SymbolIcon Classes="CopyCheck" HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" />
+                          </Panel>
+                        </Button>
                       </StackPanel>
                     </Border>
                     <ScrollViewer

@@ -356,17 +356,6 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         Panel?.DeleteSelectedRow();
     }
 
-    private void OnSetNullClick(object? sender, RoutedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        var ordinal = ResultDataGrid.CurrentColumn?.DisplayIndex;
-        CommitGridEdit();
-        if (ordinal is { } value)
-        {
-            Panel?.SetSelectedCellNull(value);
-        }
-    }
 
     private void OnSetDefaultClick(object? sender, RoutedEventArgs e)
     {
@@ -442,27 +431,31 @@ public sealed partial class DatabaseWorkspaceView : UserControl
 
     private async void OnCopyRowJsonClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
-        await CopySelectedRowAsync(static (panel, row) => panel.BuildRowJson(row));
+        await CopySelectedRowAsync(
+            static (panel, row) => panel.BuildRowJson(row),
+            sender as Button);
     }
 
     private async void OnCopyRowCsvClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
-        await CopySelectedRowAsync(static (panel, row) => panel.BuildRowCsv(row));
+        await CopySelectedRowAsync(
+            static (panel, row) => panel.BuildRowCsv(row),
+            sender as Button);
     }
 
     private async void OnCopyRowInsertClick(object? sender, RoutedEventArgs e)
     {
-        _ = sender;
         _ = e;
-        await CopySelectedRowAsync(static (panel, row) => panel.BuildRowSqlInsert(row));
+        await CopySelectedRowAsync(
+            static (panel, row) => panel.BuildRowSqlInsert(row),
+            sender as Button);
     }
 
     private async Task CopySelectedRowAsync(
-        Func<DatabaseRuntimePanelViewModel, DatabaseResultRowViewModel, string> build)
+        Func<DatabaseRuntimePanelViewModel, DatabaseResultRowViewModel, string> build,
+        Button? source = null)
     {
         var panel = Panel;
         var row = panel?.SelectedRow;
@@ -472,7 +465,10 @@ public sealed partial class DatabaseWorkspaceView : UserControl
             try
             {
                 var text = build(panel, row);
-                await CopyTextAsync(text, panel);
+                if (await CopyTextAsync(text, panel))
+                {
+                    ShowCopyFeedback(source);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -483,6 +479,49 @@ public sealed partial class DatabaseWorkspaceView : UserControl
                 panel.ReportInteractionError(
                     $"Could not format the selected database row: {exception.Message}");
             }
+        }
+    }
+
+    /// <summary>
+    /// The copy answered: the button's label yields to a success check that
+    /// fades back once the moment has passed. The styles animate; this only
+    /// flips the class.
+    /// </summary>
+    private static void ShowCopyFeedback(Button? source)
+    {
+        if (source is null || source.Classes.Contains("copied"))
+        {
+            return;
+        }
+
+        source.Classes.Add("copied");
+        _ = DispatcherTimer.RunOnce(
+            () => source.Classes.Remove("copied"),
+            TimeSpan.FromSeconds(1.2));
+    }
+
+    private void OnDatabaseHeaderClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        CommitGridEdit();
+        Panel?.ShowDatabaseOverview();
+    }
+
+    private void OnAddFilterRowClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        Panel?.AddFilterRow(
+            (sender as Control)?.DataContext as DatabaseFilterRowViewModel);
+    }
+
+    private void OnRemoveFilterRowClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (Panel is { } panel
+            && (sender as Control)?.DataContext is DatabaseFilterRowViewModel row)
+        {
+            panel.RemoveFilterRow(row);
         }
     }
 }

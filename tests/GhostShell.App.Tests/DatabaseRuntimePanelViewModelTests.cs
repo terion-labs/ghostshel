@@ -1115,6 +1115,85 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Stacked_filter_rows_apply_together_and_unchecked_rows_stay_out()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+        await panel.PreviewTableAsync(panel.Tables[0]);
+
+        var first = panel.FilterRows[0];
+        first.Column = first.Columns.Single(column => column.Name == "id");
+        first.Operator = first.Operators.Single(option =>
+            option.Operator == DatabaseFilterOperator.GreaterThan);
+        first.Value = "40";
+        panel.AddFilterRow(first);
+        var second = panel.FilterRows[1];
+        second.Column = second.Columns.Single(column => column.Name == "name");
+        second.Operator = second.Operators.Single(option =>
+            option.Operator == DatabaseFilterOperator.Contains);
+        second.Value = "Ada";
+        panel.AddFilterRow(second);
+        var third = panel.FilterRows[2];
+        third.Column = third.Columns.Single(column => column.Name == "name");
+        third.Operator = third.Operators.Single(option =>
+            option.Operator == DatabaseFilterOperator.Contains);
+        third.Value = "ignored";
+        third.IsIncluded = false;
+
+        await panel.ApplyFilterAsync();
+
+        var query = Assert.IsType<DatabaseTableQuery>(client.LastTableQuery);
+        Assert.Equal(2, query.Filters.Count);
+        Assert.Equal("id", query.Filters[0].ColumnName);
+        Assert.Equal(40L, query.Filters[0].Value);
+        Assert.Equal("name", query.Filters[1].ColumnName);
+        Assert.Equal("Ada", query.Filters[1].Value);
+
+        // The applied conditions survive the reload as fresh rows. Removing
+        // down to nothing leaves one blank row, never an empty bar.
+        Assert.Equal(3, panel.FilterRows.Count);
+        foreach (var row in panel.FilterRows.ToArray())
+        {
+            panel.RemoveFilterRow(row);
+        }
+
+        var remaining = Assert.Single(panel.FilterRows);
+        Assert.Null(remaining.Column);
+    }
+
+    [Fact]
+    public async Task The_database_overview_lists_every_object_read_only()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+        await panel.PreviewTableAsync(panel.Tables[0]);
+
+        panel.ShowDatabaseOverview();
+
+        Assert.Null(panel.SelectedObject);
+        Assert.Equal(
+            ["Schema", "Name", "Kind"],
+            panel.ResultColumns.Select(column => column.Name).ToArray());
+        Assert.Equal(panel.Tables.Count, panel.ResultRows.Count);
+        Assert.Contains("objects", panel.ResultSummary, StringComparison.Ordinal);
+        // A catalog is a fact sheet: no editing, no paging, no filtering.
+        Assert.False(panel.CanMutateRows);
+        Assert.False(panel.CanFilterTable);
+    }
+
+    [Fact]
     public async Task Header_sort_toggles_direction_and_preserves_filter_and_page_size()
     {
         var client = new FakeDatabasePanelClient { TableHasMore = true };
