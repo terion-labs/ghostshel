@@ -32,7 +32,74 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         InitializeComponent();
         InitializeDatabaseContextMenu();
         DataContextChanged += (_, _) => ObservePanel();
+        // One binding for the expanded editor's lifetime; which cell it edits
+        // is its DataContext, set when a prose-sized cell begins editing.
+        CellExpandEditor.Bind(
+            TextBox.TextProperty,
+            new Avalonia.Data.Binding(nameof(DatabaseResultCellViewModel.EditText))
+            {
+                Mode = Avalonia.Data.BindingMode.TwoWay,
+                UpdateSourceTrigger = Avalonia.Data.UpdateSourceTrigger.PropertyChanged,
+            });
+        ResultDataGrid.PreparingCellForEdit += OnPreparingCellForEdit;
         ObservePanel();
+    }
+
+    /// <summary>
+    /// A prose-sized cell (text, JSON) grows an expanded editor beside the
+    /// cell instead of asking the user to write documents in one grid line.
+    /// Both editors stage into the same cell view model, so it does not matter
+    /// which one the keystrokes land in.
+    /// </summary>
+    private void OnPreparingCellForEdit(
+        object? sender,
+        DataGridPreparingCellForEditEventArgs e)
+    {
+        _ = sender;
+        var ordinal = ResultDataGrid.Columns.IndexOf(e.Column);
+        var cell = (e.Row?.DataContext as DatabaseResultRowViewModel)?.Cells
+            is { } cells && ordinal >= 0 && ordinal < cells.Count
+            ? cells[ordinal]
+            : null;
+        if (cell?.UsesLargeTextEditor != true)
+        {
+            CloseCellExpandEditor();
+            return;
+        }
+
+        CellExpandEditor.DataContext = cell;
+        CellExpandPopup.PlacementTarget = e.EditingElement;
+        CellExpandPopup.IsOpen = true;
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (CellExpandPopup.IsOpen)
+                {
+                    CellExpandEditor.Focus();
+                    CellExpandEditor.CaretIndex = CellExpandEditor.Text?.Length ?? 0;
+                }
+            },
+            DispatcherPriority.Input);
+    }
+
+    private void CloseCellExpandEditor()
+    {
+        CellExpandPopup.IsOpen = false;
+        CellExpandEditor.DataContext = null;
+    }
+
+    private void OnCellExpandEditorKeyDown(object? sender, KeyEventArgs e)
+    {
+        _ = sender;
+        // Enter closes (Shift+Enter keeps writing lines); Escape closes too —
+        // the staged text stays either way, and Revert remains the undo.
+        if ((e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            || e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            CloseCellExpandEditor();
+            ResultDataGrid.Focus();
+        }
     }
 
     private DatabaseRuntimePanelViewModel? Panel =>
@@ -46,6 +113,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
 
     private void ObservePanel()
     {
+        CloseCellExpandEditor();
         InvalidateDatabaseContextMenu(closePopup: true);
         if (_observedPanel is not null)
         {
@@ -71,6 +139,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
             or nameof(DatabaseRuntimePanelViewModel.SelectedObject))
         {
             InvalidateDatabaseContextMenu(closePopup: true);
+            CloseCellExpandEditor();
         }
 
         if (e.PropertyName is null or nameof(DatabaseRuntimePanelViewModel.ResultColumns))
@@ -301,6 +370,8 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     {
         _ = sender;
         _ = e;
+        // Moving to another row moves on from the expanded editor too.
+        CloseCellExpandEditor();
         if (_syncingSelection || Panel is not { } panel)
         {
             return;

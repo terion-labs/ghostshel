@@ -134,6 +134,13 @@ public sealed class DatabaseResultCellViewModel : ObservableObject
 
     public bool UsesTextEditor => IsEditable && !UsesBooleanEditor;
 
+    /// <summary>
+    /// Kinds whose values outgrow one line — prose and documents, not numbers
+    /// or dates. Editing one opens the expanded editor beside the cell.
+    /// </summary>
+    public bool UsesLargeTextEditor => UsesTextEditor
+        && Column.ValueKind is DatabaseValueKind.Text or DatabaseValueKind.Json;
+
     public bool IsReadOnly => !IsEditable;
 
     public DatabaseEditValueState State => _state;

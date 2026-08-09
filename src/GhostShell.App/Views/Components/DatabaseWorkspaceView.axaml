@@ -668,6 +668,39 @@
                 </DataGrid.ContextMenu>
               </DataGrid>
 
+              <!-- The expanded editor for prose-sized cells (text, JSON). It
+                   belongs to the workspace, not the cell template, so the
+                   grid's edit lifecycle cannot tear it down mid-keystroke;
+                   both editors stage into the same cell view model. It flips
+                   above the cell when the viewport runs out below. -->
+              <Popup
+                  x:Name="CellExpandPopup"
+                  IsLightDismissEnabled="True"
+                  OverlayDismissEventPassThrough="True"
+                  Placement="BottomEdgeAlignedLeft"
+                  PlacementConstraintAdjustment="FlipY, SlideX">
+                <Border
+                    Background="{DynamicResource ShellSurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource ShellAccentBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource ShellControlCornerRadius}">
+                  <TextBox
+                      x:Name="CellExpandEditor"
+                      Width="320"
+                      MinHeight="104"
+                      MaxHeight="200"
+                      AcceptsReturn="True"
+                      TextWrapping="Wrap"
+                      FontFamily="{DynamicResource ShellDataFontFamily}"
+                      FontSize="{DynamicResource ShellFontSize11}"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      CornerRadius="0"
+                      KeyDown="OnCellExpandEditorKeyDown"
+                      AutomationProperties.Name="Expanded cell editor" />
+                </Border>
+              </Popup>
+
               <StackPanel
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"

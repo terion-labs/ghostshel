@@ -884,6 +884,9 @@ internal sealed class QaApplication : Avalonia.Application
         // server sort, and a context menu opened after running an edited raw
         // query whose complete base-table provenance keeps mutations safe.
         ("database-quick-look-compact-2x", CreateDatabaseQuickLookCompactProbe, null),
+        // Editing a prose-sized cell grows the expanded editor beside it; the
+        // probe proves the popup opens on the real edit path and holds focus.
+        ("database-cell-expand-editor-2x", CreateDatabaseCellExpandProbe, null),
         ("database-sort-descending-2x", CreateDatabaseSortDescendingProbe, null),
         ("database-raw-query-context-menu-2x", CreateDatabaseRawQueryContextMenuProbe, null),
         ("database-copy-insert-2x", CreateDatabaseCopyInsertProbe, null),
@@ -1938,6 +1941,39 @@ internal sealed class QaApplication : Avalonia.Application
         window.Closed += (_, _) => viewer.Dispose();
         return window;
     }
+
+    private static Window CreateDatabaseCellExpandProbe() =>
+        CreatePreparedDatabaseProbe(
+            width: 720,
+            height: 560,
+            async (window, viewer, _) =>
+            {
+                await PreviewQaDeploymentTableAsync(viewer);
+                var (grid, _, _) = SelectDatabaseProbeCell(window, viewer, "service");
+                grid.BeginEdit();
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(80);
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+
+                var editor = TopLevel.GetTopLevel(grid)?.FocusManager?.GetFocusedElement()
+                    as TextBox;
+                if (editor is null
+                    || !string.Equals(
+                        AutomationProperties.GetName(editor),
+                        "Expanded cell editor",
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "Editing a text cell did not open and focus the expanded editor.");
+                }
+
+                editor.Text = "How automakers are responding to the 25% car tariffs "
+                    + "so far — a deliberately long value that wraps across the "
+                    + "expanded editor's five-or-so lines.";
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+            });
 
     private static Window CreateDatabaseQuickLookCompactProbe() =>
         CreatePreparedDatabaseProbe(

@@ -202,6 +202,9 @@ internal static class DatabaseDataGridColumnFactory
             VerticalContentAlignment = VerticalAlignment.Center,
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
+            // The editor sits inside a square grid cell; rounded corners would
+            // draw a pill floating in a rectangle.
+            CornerRadius = new CornerRadius(0),
         };
         editor.Bind(
             TextBox.TextProperty,
