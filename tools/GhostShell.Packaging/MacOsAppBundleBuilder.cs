@@ -12,7 +12,10 @@ public sealed record MacOsAppBundleRequest(
     string NativeBuildReceiptPath,
     string FontAssetsCatalogPath,
     string FontAssetsBuildReceiptPath,
-    string NuGetPackageRoot);
+    string NuGetPackageRoot,
+    string? CefRuntimeRoot = null,
+    string? CefRuntimeCatalogPath = null,
+    string CefRuntimeIdentifier = "osx-arm64");
 
 public sealed record MacOsAppBundleResult(
     string DestinationPath,
@@ -83,6 +86,15 @@ public sealed class MacOsAppBundleBuilder
     public MacOsAppBundleResult Build(MacOsAppBundleRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.CefRuntimeIdentifier != "osx-arm64")
+        {
+            throw new ArgumentException(
+                "Full macOS application packaging currently supports only "
+                + "osx-arm64; osx-x64 lacks a reviewed managed catalog and "
+                + "libghostty-vt receipt.",
+                nameof(request));
+        }
+
         ValidateVersion(request.ProductVersion, nameof(request.ProductVersion), 3, 3);
         ValidateVersion(request.BuildVersion, nameof(request.BuildVersion), 1, 3);
 
@@ -93,6 +105,7 @@ public sealed class MacOsAppBundleBuilder
             nameof(request.PublishDirectory));
         var destinationPath = MacOsPackagePaths.RequireDestination(request.DestinationPath);
         MacOsPackagePaths.ValidateSeparateTrees(publishDirectory, destinationPath);
+        var cefPlan = CreateCefPlan(request, publishDirectory, destinationPath);
 
         var sourceEntries = InspectPublishDirectory(
             publishDirectory,
@@ -136,8 +149,10 @@ public sealed class MacOsAppBundleBuilder
             ValidateFinalBudget(
                 sourceEntries,
                 managedEvidence.Files,
-                infoPlistBytes);
+                infoPlistBytes,
+                cefPlan);
             WriteManagedEvidence(licenseDirectory, managedEvidence.Files);
+            cefPlan?.CopyTo(contentsDirectory);
             File.WriteAllText(
                 Path.Combine(contentsDirectory, "Info.plist"),
                 infoPlist,
@@ -152,6 +167,7 @@ public sealed class MacOsAppBundleBuilder
                 request.BuildVersion,
                 sourceEntries.Count(entry => !entry.IsDirectory)
                 + managedEvidence.Files.Count
+                + (cefPlan?.FileCount ?? 0)
                 + 1);
 
             void ValidateNativeProvenance()
@@ -428,7 +444,8 @@ public sealed class MacOsAppBundleBuilder
     private static void ValidateFinalBudget(
         IReadOnlyList<SourceEntry> sourceEntries,
         IReadOnlyList<ManagedComponentEvidenceFile> evidenceFiles,
-        int infoPlistBytes)
+        int infoPlistBytes,
+        CefMacOsBundlePlan? cefPlan)
     {
         var evidenceDirectories = new HashSet<string>(StringComparer.Ordinal);
         foreach (var evidenceFile in evidenceFiles)
@@ -452,7 +469,8 @@ public sealed class MacOsAppBundleBuilder
             bytes = checked(
                 sourceEntries.Where(entry => !entry.IsDirectory)
                     .Sum(entry => entry.Length)
-                + evidenceFiles.Sum(file => (long)file.Content.Length));
+                + evidenceFiles.Sum(file => (long)file.Content.Length)
+                + (cefPlan?.TotalBytes ?? 0));
         }
         catch (OverflowException exception)
         {
@@ -462,16 +480,73 @@ public sealed class MacOsAppBundleBuilder
         }
 
         ValidateSourceBudget(
-            sourceEntries.Count(entry => !entry.IsDirectory) + evidenceFiles.Count,
+            sourceEntries.Count(entry => !entry.IsDirectory)
+            + evidenceFiles.Count
+            + (cefPlan?.FileCount ?? 0),
             sourceEntries.Count
             + evidenceFiles.Count
             + evidenceDirectories.Count
-            + NativeEvidenceDirectoryCount,
+            + NativeEvidenceDirectoryCount
+            + CountCefDirectories(cefPlan),
             Math.Max(
-                Math.Max(maximumSourceDepth, maximumEvidenceDepth),
+                Math.Max(
+                    Math.Max(maximumSourceDepth, maximumEvidenceDepth),
+                    cefPlan?.MaximumRelativePathDepth ?? 0),
                 NativeEvidenceDirectoryCount),
             bytes,
             infoPlistBytes);
+    }
+
+    private static CefMacOsBundlePlan? CreateCefPlan(
+        MacOsAppBundleRequest request,
+        string publishDirectory,
+        string destinationPath)
+    {
+        if (request.CefRuntimeRoot is null && request.CefRuntimeCatalogPath is null)
+        {
+            return null;
+        }
+
+        if (request.CefRuntimeRoot is null || request.CefRuntimeCatalogPath is null)
+        {
+            throw new ArgumentException(
+                "The CEF runtime root and catalog must be supplied together.",
+                nameof(request));
+        }
+
+        var runtimeRoot = MacOsPackagePaths.RequireExistingDirectory(
+            request.CefRuntimeRoot,
+            nameof(request.CefRuntimeRoot));
+        MacOsPackagePaths.ValidateSeparateTrees(runtimeRoot, publishDirectory);
+        MacOsPackagePaths.ValidateSeparateTrees(runtimeRoot, destinationPath);
+        return CefMacOsBundlePlan.Create(
+            runtimeRoot,
+            request.CefRuntimeCatalogPath,
+            request.CefRuntimeIdentifier);
+    }
+
+    private static int CountCefDirectories(CefMacOsBundlePlan? plan)
+    {
+        if (plan is null)
+        {
+            return 0;
+        }
+
+        var directories = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in plan.Files.Select(file => file.DestinationRelativePath)
+                     .Concat(plan.GeneratedFiles.Select(file => file.DestinationRelativePath)))
+        {
+            var parent = Path.GetDirectoryName(path.Replace(
+                '/',
+                Path.DirectorySeparatorChar));
+            while (!string.IsNullOrEmpty(parent))
+            {
+                directories.Add(parent);
+                parent = Path.GetDirectoryName(parent);
+            }
+        }
+
+        return directories.Count;
     }
 
     private static ManagedComponentEvidenceLimits CreateManagedEvidenceLimits(

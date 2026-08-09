@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Exclr8Cef.WebView</RootNamespace>
+    <AssemblyName>Exclr8Cef.WebView</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Packaging">
+    <PackageId>Exclr8Cef.WebView</PackageId>
+    <Version Condition="'$(Exclr8CefVersion)' != ''">$(Exclr8CefVersion)</Version>
+    <Version Condition="'$(Exclr8CefVersion)' == ''">0.8.0</Version>
+    <Authors>Exclr8</Authors>
+    <Description>Avalonia WebView control backed by Exclr8CEF (Chromium). Embeds a native Chromium browser inside an Avalonia visual tree via off-screen rendering, with full input forwarding, navigation, JS evaluation, PDF export, and IME support.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/alexmehlhorn/exclr8cef</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alexmehlhorn/exclr8cef</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>avalonia;chromium;cef;browser;webview</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Exclr8Cef\Exclr8Cef.csproj" />
+    <PackageReference Include="Avalonia" Version="12.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Exclr8Cef.WebView.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Exclr8Cef</RootNamespace>
+    <AssemblyName>Exclr8Cef</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Exclr8Cef.WebView.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup Label="Packaging">
+    <PackageId>Exclr8Cef</PackageId>
+    <Version Condition="'$(Exclr8CefVersion)' != ''">$(Exclr8CefVersion)</Version>
+    <Version Condition="'$(Exclr8CefVersion)' == ''">0.8.0</Version>
+    <Authors>Exclr8</Authors>
+    <Description>.NET bindings for Exclr8CEF — a custom Chromium binding tracking upstream CEF. Framework-agnostic; usable from console / WPF / MAUI / ASP.NET / services. Avalonia integration ships in Exclr8Cef.WebView.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/alexmehlhorn/exclr8cef</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alexmehlhorn/exclr8cef</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>chromium;cef;browser;webview;embedding</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <ItemGroup Label="Packaging">
+    <!-- runtime.json maps consumer RIDs to per-RID native runtime packages.
+         Generated at pack time by scripts/pack-managed.sh. -->
+    <None Include="runtime.json" Pack="true" PackagePath="/" Condition="Exists('runtime.json')" />
+  </ItemGroup>
+
+</Project>

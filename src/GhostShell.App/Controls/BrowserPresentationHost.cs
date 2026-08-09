@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -95,8 +94,7 @@ public sealed class BrowserPresentationHost : ContentControl
     private SessionId? _attachedSessionId;
     private AttachmentId? _attachmentId;
     private IBrowserRenderer? _subscribedRenderer;
-    private NativeSurfaceLayer? _layer;
-    private bool _isSurfaceSuspended;
+    private BrowserRendererView? _hostedRendererView;
     private long _initializationGeneration;
     private bool _isAttachedToVisualTree;
     private string _addressText = string.Empty;
@@ -109,43 +107,15 @@ public sealed class BrowserPresentationHost : ContentControl
     private bool _canGoForward;
     private bool _showFallback = true;
 
-    /// <summary>
-    /// Whether the page has stepped aside for something the shell needs seen —
-    /// the dock's placement targets during a drag. The panel shows what it is
-    /// while it has nothing to show, because a blank rectangle mid-drag reads as
-    /// a panel that has broken rather than one that is being moved.
-    /// </summary>
-    public static readonly DirectProperty<BrowserPresentationHost, bool>
-        IsSurfaceSuspendedProperty =
-            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, bool>(
-                nameof(IsSurfaceSuspended),
-                host => host.IsSurfaceSuspended);
-
-    public bool IsSurfaceSuspended
-    {
-        get => _isSurfaceSuspended;
-        private set => SetAndRaise(
-            IsSurfaceSuspendedProperty,
-            ref _isSurfaceSuspended,
-            value);
-    }
-
-    private void OnSurfaceSuspensionChanged(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        IsSurfaceSuspended = NativeSurfaceLayer.IsSuspended;
-    }
-
     public BrowserPresentationHost()
     {
         Focusable = true;
         HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
         VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
-        AutomationProperties.SetName(this, "Native web browser");
+        AutomationProperties.SetName(this, "Web browser");
         AutomationProperties.SetHelpText(
             this,
-            "Operating-system web content for this browser panel.");
+            "Web content for this browser panel.");
         AutomationProperties.SetLiveSetting(this, AutomationLiveSetting.Polite);
         AutomationProperties.SetItemStatus(this, StatusText);
     }
@@ -230,22 +200,10 @@ public sealed class BrowserPresentationHost : ContentControl
         private set => SetAndRaise(CanGoForwardProperty, ref _canGoForward, value);
     }
 
-    /// <summary>
-    /// Whether the panel is showing its own message instead of a page. The
-    /// native surface is hidden while it is: a native view draws over every
-    /// Avalonia pixel, so leaving it up would put an empty webview on top of the
-    /// explanation of why there is nothing to show.
-    /// </summary>
     public bool ShowFallback
     {
         get => _showFallback;
-        private set
-        {
-            if (SetAndRaise(ShowFallbackProperty, ref _showFallback, value))
-            {
-                PresentSurface();
-            }
-        }
+        private set => SetAndRaise(ShowFallbackProperty, ref _showFallback, value);
     }
 
     internal bool RequestInputFocus() =>
@@ -311,72 +269,72 @@ public sealed class BrowserPresentationHost : ContentControl
     {
         base.OnAttachedToVisualTree(e);
         _isAttachedToVisualTree = true;
-        LayoutUpdated += OnViewportLayoutUpdated;
-        NativeSurfaceLayer.SuspensionChanged += OnSurfaceSuspensionChanged;
-        IsSurfaceSuspended = NativeSurfaceLayer.IsSuspended;
+        HostRendererVisual();
         RestartSession();
     }
 
     /// <summary>
     /// The panel is off screen — another tab is in front, or this view is being
-    /// rebuilt because panels moved. Neither is a reason to stop anything: the
-    /// surface is hidden and the attachment is left alone, because it belongs to
-    /// the panel and the panel has not gone anywhere.
+    /// rebuilt because panels moved. Neither is a reason to detach or dispose
+    /// the renderer, because both belong to the panel rather than this host.
     /// </summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _isAttachedToVisualTree = false;
-        LayoutUpdated -= OnViewportLayoutUpdated;
-        NativeSurfaceLayer.SuspensionChanged -= OnSurfaceSuspensionChanged;
-        ConcealSurface();
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnViewportLayoutUpdated(object? sender, EventArgs e)
+    /// <summary>
+    /// Places the panel-owned browser visual directly in this content control.
+    /// A dock rebuild may create the arriving host before unbinding the departing
+    /// one, so adoption explicitly releases the previous host first.
+    /// </summary>
+    private void HostRendererVisual()
     {
-        _ = sender;
-        _ = e;
-        PresentSurface();
+        if (ReferenceEquals(_hostedRendererView, RendererView))
+        {
+            return;
+        }
+
+        if (_hostedRendererView is { } previous)
+        {
+            ReleaseRendererVisual(previous);
+        }
+
+        if (RendererView is not { } rendererView)
+        {
+            return;
+        }
+
+        rendererView.PresentationHost?.ReleaseRendererVisual(rendererView);
+        _hostedRendererView = rendererView;
+        rendererView.PresentationHost = this;
+        Content = rendererView.View;
     }
 
     /// <summary>
-    /// Puts the native view over this viewport. This control draws nothing
-    /// itself; it is the rectangle a surface is shown in, and moving it is the
-    /// whole of what a layout change does to a browser.
+    /// Stops this host from drawing a renderer without ending the panel-owned
+    /// attachment or renderer lifetime.
     /// </summary>
-    private void PresentSurface()
+    internal void ReleaseRendererVisual(BrowserRendererView rendererView)
     {
-        if (RendererView is not { } rendererView || !_isAttachedToVisualTree)
+        if (!ReferenceEquals(_hostedRendererView, rendererView))
         {
             return;
         }
 
-        var layer = _layer ??= NativeSurfaceLayer.For(this);
-        if (layer is null)
+        _hostedRendererView = null;
+        if (ReferenceEquals(Content, rendererView.View))
         {
-            return;
+            Content = null;
         }
 
-        rendererView.Layer = layer;
-        if (!IsEffectivelyVisible
-            || ShowFallback
-            || this.TranslatePoint(default, layer) is not { } origin)
+        if (ReferenceEquals(rendererView.PresentationHost, this))
         {
-            layer.Conceal(rendererView.View);
-            return;
+            rendererView.PresentationHost = null;
         }
 
-        layer.Present(
-            rendererView.View,
-            new Rect(origin, Bounds.Size));
-    }
-
-    private void ConcealSurface()
-    {
-        if (RendererView is { } rendererView && _layer is { } layer)
-        {
-            layer.Conceal(rendererView.View);
-        }
+        StopSession();
     }
 
     protected override void OnGotFocus(FocusChangedEventArgs e)
@@ -391,18 +349,11 @@ public sealed class BrowserPresentationHost : ContentControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        // No release here, on any of them. A host that stops pointing at a
-        // renderer has stopped drawing a panel, which is not the same as the
-        // panel being over — and this one line was the last place that still
-        // confused the two.
-        //
-        // It only ever fired when a panel's views were being exchanged, which is
-        // exactly when it must not: the departing view's binding unsets after the
-        // arriving one has taken the surface, so the surface it gave up was the
-        // one already on screen. Taking a native view out of the tree destroys
-        // it, so the page went with it — a blank document under a live session,
-        // which is what floating and docking back looked like. Releasing is the
-        // panel's end and nothing else: see BrowserRendererView.Dispose.
+        if (change.Property == RendererViewProperty)
+        {
+            HostRendererVisual();
+        }
+
         if (change.Property == SessionClientProperty
             || change.Property == SessionRequestProperty
             || change.Property == ClientIdProperty
@@ -423,11 +374,9 @@ public sealed class BrowserPresentationHost : ContentControl
             || ClientId is null
             || RendererView is not { } rendererView)
         {
-            SetWaitingState("Waiting for the native browser adapter.");
+            SetWaitingState("Waiting for the browser renderer.");
             return;
         }
-
-        PresentSurface();
 
         // The panel may already be attached — this view is simply the newest one
         // to draw it. Adopting that attachment is what makes a layout change cost
@@ -440,7 +389,7 @@ public sealed class BrowserPresentationHost : ContentControl
             return;
         }
 
-        SetWaitingState("Starting the native browser…", "Starting");
+        SetWaitingState("Starting the browser…", "Starting");
         var generation = ++_initializationGeneration;
         _attachmentLifetime = new CancellationTokenSource();
         _ = InitializeSessionAsync(generation, _attachmentLifetime.Token);
@@ -503,7 +452,7 @@ public sealed class BrowserPresentationHost : ContentControl
                     "The desktop client identity is unavailable.");
             var renderer = RendererView?.Renderer
                 ?? throw new InvalidOperationException(
-                    "The native browser renderer is unavailable.");
+                    "The browser renderer is unavailable.");
             var context = OperationContext.ForHuman(clientId);
             _ = RequireSuccess(await client.EnsureBrowserSessionAsync(
                 request,
@@ -580,7 +529,7 @@ public sealed class BrowserPresentationHost : ContentControl
             if (generation == _initializationGeneration)
             {
                 UnsubscribeRenderer();
-                SetFailureState("The native browser could not be initialized.");
+                SetFailureState("The browser could not be initialized.");
             }
 
             Trace.TraceError("Unable to attach the browser session: {0}", exception);

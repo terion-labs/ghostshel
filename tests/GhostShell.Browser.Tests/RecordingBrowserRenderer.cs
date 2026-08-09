@@ -118,7 +118,7 @@ internal sealed class RecordingBrowserRenderer : IBrowserRenderer
                 BrowserResult<BrowserSessionState>.Failure(
                     BrowserError.Create(
                         BrowserErrorCode.RendererUnavailable,
-                        "The native browser is already idle.",
+                        "The embedded browser is already idle.",
                         retryable: true)));
         }
 

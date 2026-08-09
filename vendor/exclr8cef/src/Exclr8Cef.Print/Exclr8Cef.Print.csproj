@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Exclr8Cef.Print</RootNamespace>
+    <AssemblyName>Exclr8Cef.Print</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Packaging">
+    <PackageId>Exclr8Cef.Print</PackageId>
+    <Version Condition="'$(Exclr8CefVersion)' != ''">$(Exclr8CefVersion)</Version>
+    <Version Condition="'$(Exclr8CefVersion)' == ''">0.8.0</Version>
+    <Authors>Exclr8</Authors>
+    <Description>Optional PrintToPDF extension for Exclr8Cef — exposes Chromium's full PdfPrintSettings (header/footer HTML templates, paper size, margins, scale, page ranges). Only required by hosts that need PDF customization beyond Cef.PrintToPdfAsync(browserId, path).</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/alexmehlhorn/exclr8cef</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alexmehlhorn/exclr8cef</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>chromium;cef;pdf;print;extension</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Exclr8Cef\Exclr8Cef.csproj" />
+  </ItemGroup>
+
+</Project>

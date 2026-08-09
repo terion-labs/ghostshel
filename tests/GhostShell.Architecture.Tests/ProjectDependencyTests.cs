@@ -68,25 +68,32 @@ public sealed class ProjectDependencyTests
             Assert.DoesNotContain("WebView2", source, StringComparison.Ordinal);
             Assert.DoesNotContain("WPEWebKit", source, StringComparison.Ordinal);
             Assert.DoesNotContain("WebKitGTK", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Exclr8Cef", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("CefBrowser", source, StringComparison.Ordinal);
         }
     }
 
     [Fact]
-    public void BrowserAdapterDependsOnlyOnApplicationAndReviewedNativeWebViewPackage()
+    public void BrowserAdapterDependsOnlyOnApplicationAndVendoredCefBinding()
     {
         var project = LoadProject("src/GhostShell.Browser/GhostShell.Browser.csproj");
-        var projectReference = Assert.Single(References(project, "ProjectReference"));
-        Assert.EndsWith(
-            "GhostShell.Application.csproj",
-            projectReference,
-            StringComparison.Ordinal);
+        var projectReferences = References(project, "ProjectReference")
+            .Select(reference => reference.Replace('\\', '/'))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
-        var packageReference = Assert.Single(
-            project.Descendants("PackageReference"));
-        Assert.Equal(
-            "Avalonia.Controls.WebView",
-            (string?)packageReference.Attribute("Include"));
-        Assert.Equal("12.0.1", (string?)packageReference.Attribute("Version"));
+        Assert.Equal(2, projectReferences.Length);
+        Assert.Contains(
+            projectReferences,
+            reference => reference.EndsWith(
+                "GhostShell.Application/GhostShell.Application.csproj",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            projectReferences,
+            reference => reference.EndsWith(
+                "vendor/exclr8cef/src/Exclr8Cef.WebView/Exclr8Cef.WebView.csproj",
+                StringComparison.Ordinal));
+        Assert.Empty(project.Descendants("PackageReference"));
     }
 
     [Fact]
@@ -270,10 +277,8 @@ public sealed class ProjectDependencyTests
                 "src/GhostShell.Desktop/GhostShell.Desktop.csproj",
             }
             .SelectMany(path => LoadProject(path).Descendants("PackageReference"))
-            .Where(element => IsAvaloniaFrameworkPackage((string?)element.Attribute("Include"))
-                && !IndependentlyReleasedAvaloniaPackages.Contains(
-                    (string?)element.Attribute("Include"),
-                    StringComparer.Ordinal))
+            .Where(element =>
+                IsAvaloniaFrameworkPackage((string?)element.Attribute("Include")))
             .Select(element => (string?)element.Attribute("Version"))
             .Where(version => version is not null)
             .Cast<string>()
@@ -282,19 +287,6 @@ public sealed class ProjectDependencyTests
 
         Assert.Single(lockstep);
     }
-
-    /// <summary>
-    /// Avalonia framework packages that do not ship on the framework's own
-    /// release train. The web view stopped at 12.0.1 while the framework went
-    /// on to 12.0.5, and it binds its Avalonia dependency as a floor rather
-    /// than an exact version, so it resolves against the newer framework
-    /// perfectly well. Holding the whole framework back to match it would cost
-    /// the drawn-decorations transparency fix for nothing.
-    /// </summary>
-    private static readonly string[] IndependentlyReleasedAvaloniaPackages =
-    [
-        "Avalonia.Controls.WebView",
-    ];
 
     /// <summary>
     /// The rule is about the Avalonia framework's own packages, which ship as

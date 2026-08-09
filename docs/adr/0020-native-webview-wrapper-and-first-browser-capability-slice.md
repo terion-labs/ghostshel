@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-23
+- Superseded by: [ADR 0041](0041-cef-off-screen-browser-runtime.md)
 
 ## Context
 

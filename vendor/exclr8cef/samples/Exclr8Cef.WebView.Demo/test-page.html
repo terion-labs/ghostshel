@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Exclr8Cef demo</title>
+<!-- Favicon is set programmatically below to a canvas-rendered PNG so the
+     host can decode it with the standard Avalonia Bitmap loader (which
+     doesn't grok SVG). -->
+<link rel="icon" type="image/png" id="favicon">
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --bg2: #181825;
+    --panel: #313244;
+    --line: #45475a;
+    --fg: #cdd6f4;
+    --muted: #a6adc8;
+    --accent: #89b4fa;
+    --ok: #a6e3a1;
+    --warn: #f9e2af;
+    --err: #f38ba8;
+    --pink: #f5c2e7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+  }
+  /* When the body is the fullscreen element, Chromium's UA stylesheet
+     applies `position: fixed; height: 100%` and the body stops propagating
+     overflow to the html scroll context — content below the viewport
+     becomes unreachable. Re-enable scrolling on the fullscreen element. */
+  :fullscreen { overflow-y: auto; }
+  /* Sidebar */
+  aside {
+    background: var(--bg2);
+    border-right: 1px solid var(--line);
+    padding: 20px 0;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  aside h1 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 16px 12px;
+    font-weight: 600;
+  }
+  aside nav a {
+    display: block;
+    padding: 8px 16px;
+    color: var(--fg);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    font-size: 13px;
+  }
+  aside nav a:hover { background: var(--panel); border-left-color: var(--accent); }
+  aside nav .group { margin-top: 16px; }
+  aside nav .group-title {
+    padding: 4px 16px;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  /* Main */
+  main { padding: 28px 32px; max-width: 980px; }
+  main > header { margin-bottom: 24px; }
+  main > header h1 { margin: 0; font-size: 22px; color: var(--accent); }
+  main > header p { margin: 6px 0 0; color: var(--muted); }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    scroll-margin-top: 16px;
+  }
+  section h2 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    color: var(--pink);
+  }
+  section .lede {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 14px;
+  }
+  /* Controls */
+  button {
+    background: var(--accent);
+    color: var(--bg);
+    border: 0;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.08); }
+  button.ghost {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--line);
+  }
+  input[type=text] {
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    padding: 7px 10px;
+    font-size: 13px;
+    border-radius: 5px;
+    min-width: 220px;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--accent); }
+  a { color: var(--accent); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row + .row { margin-top: 10px; }
+  output {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--ok);
+    margin-left: 8px;
+    font-size: 12px;
+  }
+  /* Drag-and-drop */
+  .dz {
+    flex: 1;
+    min-height: 80px;
+    background: var(--bg2);
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    padding: 8px;
+  }
+  .dz.over { border-color: var(--ok); background: rgba(166,227,161,0.08); }
+  .item {
+    background: var(--bg);
+    padding: 6px 10px;
+    margin: 3px 0;
+    border-radius: 4px;
+    cursor: grab;
+    user-select: none;
+  }
+  .item:active { cursor: grabbing; }
+  /* Scroll demo gradient */
+  .scroll {
+    height: 1200px;
+    background: linear-gradient(180deg, #bd93f9, #50fa7b, #ff79c6, #8be9fd);
+    color: var(--bg);
+    border-radius: 6px;
+    padding: 16px;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<aside>
+  <h1>Exclr8Cef demo</h1>
+  <nav>
+    <div class="group">
+      <div class="group-title">Working today</div>
+      <a href="#clicks">Clicks</a>
+      <a href="#type">Type / Tab</a>
+      <a href="#select">&lt;select&gt; popup</a>
+      <a href="#form">Form / Enter</a>
+      <a href="#dnd">Drag &amp; drop</a>
+      <a href="#scroll">Scroll</a>
+      <a href="#links">External links</a>
+    </div>
+    <div class="group">
+      <div class="group-title">Events</div>
+      <a href="#a11y">Accessibility tree</a>
+      <a href="#jsbridge">JS → host bridge</a>
+      <a href="#console">Console messages</a>
+      <a href="#load">Load events</a>
+      <a href="#display">Status / tooltip / favicon</a>
+      <a href="#fullscreen">Fullscreen</a>
+      <a href="#jsdialog">JS dialogs</a>
+      <a href="#download">Downloads</a>
+      <a href="#auth">Auth + Find</a>
+      <a href="#permissions">Permissions</a>
+      <a href="#popup">Popup intercept</a>
+      <a href="#cert">TLS cert errors</a>
+      <a href="#vision">Vision &amp; hit-test</a>
+      <a href="#crash">Renderer crash</a>
+      <a href="#config">Init settings</a>
+    </div>
+  </nav>
+</aside>
+
+<main>
+  <header>
+    <h1>Exclr8Cef.WebView demo</h1>
+    <p>Embedded Chromium (CEF 147) inside Avalonia via off-screen rendering. Host-side events appear in the panel below the browser.</p>
+  </header>
+
+  <section id="clicks">
+    <h2>Clicks</h2>
+    <p class="lede">Verifies pointer event forwarding and DOM event dispatch.</p>
+    <div class="row">
+      <button id="clickBtn">Click me</button>
+      <output id="clickOut">0</output>
+    </div>
+  </section>
+
+  <section id="type">
+    <h2>Type / Tab</h2>
+    <p class="lede">Verifies printable-key forwarding, Shift+letter, and Tab focus traversal.</p>
+    <div class="row">
+      <input type="text" placeholder="Type here, then Tab to the next field" />
+      <input type="text" placeholder="… and Shift+Tab back" />
+    </div>
+  </section>
+
+  <section id="select">
+    <h2>&lt;select&gt; popup</h2>
+    <p class="lede">Verifies OSR popup rendering — the dropdown that
+       appears when you click the select must paint into a separate
+       buffer at its own coords; the WebView control overlays it on
+       the main bitmap.</p>
+    <div class="row">
+      <select id="fruit">
+        <option value="">Choose a fruit…</option>
+        <option value="apple">🍎 Apple</option>
+        <option value="banana">🍌 Banana</option>
+        <option value="cherry">🍒 Cherry</option>
+        <option value="dragon">🐉 Dragonfruit</option>
+        <option value="elderberry">🫐 Elderberry</option>
+        <option value="fig">🌳 Fig</option>
+        <option value="grape">🍇 Grape</option>
+      </select>
+      <output id="fruitOut" style="margin-left:8px"></output>
+    </div>
+  </section>
+
+  <section id="form">
+    <h2>Form / Enter</h2>
+    <p class="lede">Verifies Enter triggers form submission and Space activates focused buttons.</p>
+    <form id="testForm">
+      <div class="row">
+        <input type="text" id="formInput" placeholder="Type something then press Enter" />
+        <button type="submit">Submit</button>
+        <output id="formOut"></output>
+      </div>
+    </form>
+  </section>
+
+  <section id="dnd">
+    <h2>Drag &amp; drop</h2>
+    <p class="lede">Two paths: internal page drag (between dzA and dzB) and OS drag-in
+       (drop files from Finder onto either zone).</p>
+    <div class="row">
+      <div class="dz" id="dzA">
+        <div class="item" draggable="true">Apple 🍎</div>
+        <div class="item" draggable="true">Banana 🍌</div>
+        <div class="item" draggable="true">Cherry 🍒</div>
+      </div>
+      <div class="dz" id="dzB"></div>
+    </div>
+    <p><small id="dndDropped">Drop a file here to see <code>e.dataTransfer.files</code> populate.</small></p>
+  </section>
+
+  <section id="scroll">
+    <h2>Scroll</h2>
+    <p class="lede">Verifies wheel events and vertical scrolling.</p>
+    <div class="scroll">Scroll down ↓</div>
+  </section>
+
+  <section id="links">
+    <h2>External links</h2>
+    <p class="lede">Navigation via address bar or these links.</p>
+    <div class="row">
+      <a href="https://www.exclr8.com">exclr8.com</a>
+      <a href="https://example.com">example.com</a>
+      <a href="https://duckduckgo.com">duckduckgo.com</a>
+    </div>
+  </section>
+
+  <section id="permissions">
+    <h2>Permissions</h2>
+    <p class="lede"><code>CefPermissionHandler</code> is wired
+       (<code>OnShowPermissionPrompt</code> + <code>OnRequestMediaAccessPermission</code>)
+       and will fire for any permission type Chromium routes through it.
+       Mic / Camera work via <code>--enable-media-stream</code> — Chromium
+       auto-grants and macOS provides the actual TCC prompt the first time
+       a real device is touched. Notifications and Geolocation aren't
+       supported in Alloy + OSR — the underlying Chromium subsystems aren't
+       initialized, so the request is denied upstream of the handler.</p>
+    <div class="row">
+      <button id="pMic" title="getUserMedia({audio:true}) → real mic. macOS TCC prompts on first use.">Microphone</button>
+      <button id="pCam" title="getUserMedia({video:true}) → real camera. macOS TCC prompts on first use.">Camera</button>
+      <button id="pNotify" title="Notification.requestPermission() — Alloy+OSR has no notification subsystem; always denies.">Notifications ⚠</button>
+      <button id="pGeo" title="navigator.geolocation.getCurrentPosition — needs Chrome runtime + API key.">Geolocation ⚠</button>
+    </div>
+    <p><small id="permOut">(no result yet)</small></p>
+    <p><small>⚠ marked types are denied by Chromium before reaching
+       <code>CefPermissionHandler</code> in Alloy + OSR. Other permission
+       types (clipboard / pointer-lock / fullscreen) do route through the
+       handler when the page triggers them.</small></p>
+  </section>
+
+  <section id="popup">
+    <h2>Popup intercept</h2>
+    <p class="lede">Each link tries to open a new browser window — the host
+       catches it via <code>CefLifeSpanHandler::OnBeforePopup</code>, cancels
+       the popup at the CEF layer, and routes the URL to the system's default
+       browser. The event console shows the disposition + URL.</p>
+    <div class="row">
+      <button id="popOpen">window.open(example.com)</button>
+      <a href="https://example.com" target="_blank">target=_blank link</a>
+    </div>
+  </section>
+
+  <section id="cert">
+    <h2>TLS cert errors</h2>
+    <p class="lede">Loads a self-signed-cert host. The host intercepts via
+       <code>OnCertificateError</code>, shows a confirm dialog with the
+       subject/issuer, and either proceeds (cert trusted for this load only)
+       or cancels (page sees the load failure).</p>
+    <div class="row">
+      <a href="https://self-signed.badssl.com/" target="_self">self-signed.badssl.com</a>
+      <a href="https://expired.badssl.com/" target="_self">expired.badssl.com</a>
+      <a href="https://wrong.host.badssl.com/" target="_self">wrong.host.badssl.com</a>
+    </div>
+  </section>
+
+  <section id="vision">
+    <h2>Vision &amp; hit-test (Phase 7)</h2>
+    <p class="lede">Phase 7 exposes the OSR paint buffer and a DOM hit-test
+       to in-process AI / automation hosts — no CDP screenshot round-trip,
+       no encoding hop. Two entry points:</p>
+    <ul>
+      <li><b>Capture PNG</b> toolbar button — saves the latest paint buffer
+          (BGRA8888, top-left, device-scaled physical pixels) as a PNG to
+          <code>/tmp/exclr8cef-snapshot-*.png</code>. The host calls
+          <code>browser.TryCaptureLastFrame(out bytes, out w, out h)</code>;
+          consumes the frame as a managed byte[]. Click below to trigger
+          a capture from the page via the JS bridge.</li>
+      <li><b>Hit-test mode</b> toolbar toggle — when on, clicks on the page
+          are intercepted by the host's Tunnel-phase handler, which calls
+          <code>browser.HitTestAtAsync(x, y)</code> (JS-bridged
+          <code>document.elementFromPoint</code>). The event console logs
+          tag / id / text / rect for the element under the cursor. Use the
+          probe targets below.</li>
+    </ul>
+    <div class="row">
+      <button id="vCapture">Capture (via JS bridge)</button>
+      <span id="vCapOut" style="font-family:monospace;color:var(--ok)"></span>
+    </div>
+    <p>Enable <b>Hit-test mode</b> in the toolbar, then click any of these
+       to confirm the DOM probe returns different element data per target:</p>
+    <div class="row" id="vHitTargets">
+      <button id="vHitBtn">button#vHitBtn</button>
+      <a id="vHitLink" href="#vision">a#vHitLink</a>
+      <span id="vHitSpan" style="background:var(--bg2);padding:6px 10px;border-radius:4px">span#vHitSpan with some text inside</span>
+      <div id="vHitBox" role="region" style="background:#1e1e2e;border:1px dashed var(--line);padding:14px 20px;border-radius:6px">role=region div</div>
+    </div>
+  </section>
+
+  <section id="crash">
+    <h2>Renderer crash recovery</h2>
+    <p class="lede"><code>chrome://crash</code> only works in CEF's Chrome
+       runtime, which conflicts with OSR — so there's no in-page trigger
+       here. Real renderer terminations (OOM, segfaults, killed Helper
+       processes) fire <code>CefBrowser.RenderProcessGone</code>. To test
+       it: <code>killall -9 "exclr8cef_demo Helper (Renderer)"</code> from
+       Terminal while the page is loaded. The demo logs the termination
+       cause to the event console then auto-reloads after 800 ms.</p>
+  </section>
+
+  <section id="config">
+    <h2>CEF init + request headers</h2>
+    <p class="lede">The demo passes a <code>CefSettings</code> to
+       <code>Cef.SetInitSettings</code> before init (cache, full UA,
+       persistent cookies). It also subscribes to
+       <code>CefBrowser.ResourceRequest</code> and injects an
+       <code>X-Exclr8Cef-Demo: hello</code> header on every outgoing
+       request. Click to round-trip through httpbin and verify both.</p>
+    <div class="row">
+      <button id="cfgUa">Show User-Agent (httpbin)</button>
+      <button id="cfgHeaders">Show all sent headers (httpbin)</button>
+      <span id="cfgOut" style="color:var(--muted); margin-left:8px; font-family:monospace; font-size:12px"></span>
+    </div>
+  </section>
+
+  <section id="display">
+    <h2>Status / tooltip / favicon</h2>
+    <p class="lede">Hover the link to surface its URL as a status message.
+       Hover the tooltip element to surface its <code>title=</code>.
+       Click the favicon button to swap the page favicon to a different colour.</p>
+    <div class="row">
+      <a href="https://example.com" id="statusLink">hover to surface link URL</a>
+      <span title="this is a tooltip set via the title attribute"
+            style="text-decoration:underline dotted">hover for tooltip</span>
+      <button id="swapFavicon">Swap favicon</button>
+    </div>
+  </section>
+
+  <section id="fullscreen">
+    <h2>Fullscreen</h2>
+    <p class="lede">Click to request HTML5 fullscreen on the page body —
+       <code>FullscreenModeChanged</code> fires on enter/exit. ESC or the
+       "Exit fullscreen" button (which calls the host's
+       <code>browser.ExitFullscreen()</code>) restores normal mode.</p>
+    <div class="row">
+      <button id="reqFullscreen">Enter fullscreen</button>
+      <button id="exitFullscreen" class="ghost">Exit (page-side)</button>
+    </div>
+  </section>
+
+  <section id="load">
+    <h2>Load events</h2>
+    <p class="lede">Trigger different load outcomes. Watch
+       <code>load-start</code> → <code>progress</code> → <code>load-end</code>
+       (or <code>load-err</code>) in the host event console.</p>
+    <div class="row">
+      <button onclick="location.href='https://httpstat.us/200'">200 OK</button>
+      <button onclick="location.href='https://httpstat.us/404'">404 Not Found</button>
+      <button onclick="location.href='https://httpstat.us/500'">500 Server Error</button>
+      <button onclick="location.href='https://does-not-resolve.invalid'">bad host</button>
+      <button onclick="location.href='unsafe://scheme'" class="ghost">unknown scheme</button>
+    </div>
+  </section>
+
+  <section id="jsdialog">
+    <h2>JS &amp; file dialogs</h2>
+    <p class="lede">Host-rendered modal dialogs for <code>alert</code>,
+       <code>confirm</code>, <code>prompt</code>, and file pickers
+       (single, multiple, save). Results are echoed below.</p>
+    <div class="row">
+      <button id="jsAlert">alert()</button>
+      <button id="jsConfirm">confirm()</button>
+      <button id="jsPrompt">prompt()</button>
+      <span id="jsDialogOut" style="color:var(--muted); margin-left:8px"></span>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <input type="file" id="filePick" />
+      <input type="file" id="fileMulti" multiple />
+      <span id="fileOut" style="color:var(--muted)"></span>
+    </div>
+  </section>
+
+  <section id="auth">
+    <h2>HTTP auth + Find-in-page</h2>
+    <p class="lede">Click to load a URL guarded by HTTP-Basic auth —
+       host pops the credentials dialog. The endpoint expects
+       <code>user / passwd</code>; correct values render a JSON success.
+       Cmd/Ctrl+F over the page opens the in-page find bar; ↑/↓ or
+       Enter / Shift-Enter cycles matches.</p>
+    <div class="row">
+      <a href="https://httpbin.org/basic-auth/user/passwd">
+        httpbin: requires user / passwd
+      </a>
+    </div>
+  </section>
+
+  <section id="download">
+    <h2>Downloads</h2>
+    <p class="lede">Click to download. Host pops a Save-As; progress is
+       logged in the event console (bucketed to every 10%). The button
+       generates a same-origin blob URL (guaranteed to trigger the
+       handler); the cross-origin link relies on the server's
+       <code>Content-Disposition</code> / mime type.</p>
+    <div class="row">
+      <button id="dlBlob">Generate &amp; download .txt</button>
+      <a href="https://httpbin.org/bytes/1048576" download="random-1mb.bin">
+        Cross-origin: random 1 MB
+      </a>
+    </div>
+  </section>
+
+  <section id="a11y">
+    <h2>Accessibility tree</h2>
+    <p class="lede">Enable Chromium's accessibility-tree stream via
+       <code>window.exclr8cef.invoke('a11y','on')</code>. The host
+       receives tree + location update JSON; each update is summarised
+       in the event console as <code>a11y tree update (NkB)</code>.
+       Real apps would translate the tree into their UI framework's
+       AutomationPeer hierarchy for screen-reader support.</p>
+    <div class="row">
+      <button id="a11yOn">Enable a11y tree</button>
+      <button id="a11yOff" class="ghost">Disable</button>
+    </div>
+  </section>
+
+  <section id="jsbridge">
+    <h2>JS → host bridge</h2>
+    <p class="lede">Every renderer V8 context gets a
+       <code>window.exclr8cef.invoke(method, argsJson)</code> function
+       wired up automatically. Calling it sends a CefProcessMessage to
+       the browser process, which fires <code>CefBrowser.JsInvoke</code>
+       on the host. Fire-and-forget for v1 — no return value to JS yet
+       (return-values + Promise interop are v2).</p>
+    <div class="row">
+      <button id="jsBridge">invoke("greet", {name:"world"})</button>
+      <button id="jsBridge2">invoke("ping", "now")</button>
+    </div>
+  </section>
+
+  <section id="console">
+    <h2>Console messages</h2>
+    <p class="lede">Each button calls a different <code>console.*</code> method.
+       The host-side event console below should show one row per click.</p>
+    <div class="row">
+      <button id="cLog">console.log</button>
+      <button id="cInfo">console.info</button>
+      <button id="cWarn">console.warn</button>
+      <button id="cError">console.error</button>
+      <button id="cDebug">console.debug</button>
+      <button id="cThrow" class="ghost">throw Error</button>
+    </div>
+  </section>
+</main>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+
+  // Clicks
+  let clicks = 0;
+  $('#clickBtn').addEventListener('click', () => {
+    clicks++;
+    $('#clickOut').textContent = clicks;
+  });
+
+  // Accessibility — routes through the JS bridge so the host's
+  // SetAccessibilityEnabled toggle happens via the standard request
+  // path (the host handles the "a11y" method specially).
+  $('#a11yOn')?.addEventListener('click', () => {
+    window.exclr8cef?.invoke?.('a11y', 'on');
+  });
+  $('#a11yOff')?.addEventListener('click', () => {
+    window.exclr8cef?.invoke?.('a11y', 'off');
+  });
+
+  // JS → host bridge — sends a process message to the browser side via
+  // the auto-installed window.exclr8cef.invoke function.
+  $('#jsBridge').addEventListener('click', () => {
+    if (window.exclr8cef && window.exclr8cef.invoke) {
+      window.exclr8cef.invoke('greet', JSON.stringify({name: 'world', ts: Date.now()}));
+    } else {
+      console.error('window.exclr8cef.invoke not available');
+    }
+  });
+  $('#jsBridge2').addEventListener('click', () => {
+    window.exclr8cef?.invoke?.('ping', 'now');
+  });
+
+  // <select> popup — echo the chosen value so we can confirm the popup
+  // actually fired its change event (in addition to rendering visually).
+  $('#fruit').addEventListener('change', (e) => {
+    $('#fruitOut').textContent = e.target.value ? '→ ' + e.target.value : '';
+  });
+
+  // Form / Enter
+  let submitCount = 0;
+  $('#testForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitCount++;
+    const v = $('#formInput').value;
+    $('#formOut').textContent = '#' + submitCount + ' "' + v + '"';
+  });
+
+  // Init settings — round-trip the user-agent through httpbin to verify
+  // the CefSettings.UserAgentProduct token was actually applied.
+  $('#cfgUa').addEventListener('click', async () => {
+    $('#cfgOut').textContent = 'fetching…';
+    try {
+      const r = await fetch('https://httpbin.org/user-agent');
+      const j = await r.json();
+      $('#cfgOut').textContent = j['user-agent'] || '(empty)';
+    } catch (err) {
+      $('#cfgOut').textContent = 'error: ' + err;
+    }
+  });
+  $('#cfgHeaders').addEventListener('click', async () => {
+    $('#cfgOut').textContent = 'fetching…';
+    try {
+      const r = await fetch('https://httpbin.org/headers');
+      const j = await r.json();
+      // Pretty-print so the X-Exclr8Cef-Demo header stands out.
+      $('#cfgOut').textContent = JSON.stringify(j.headers, null, 2);
+    } catch (err) {
+      $('#cfgOut').textContent = 'error: ' + err;
+    }
+  });
+
+  // Download — generate a same-origin blob URL with a 'download' attribute.
+  // Same-origin guarantees Chromium honours the attribute and routes the
+  // request through OnBeforeDownload (cross-origin links rely on the
+  // server setting Content-Disposition / a download-friendly mime type).
+  $('#dlBlob').addEventListener('click', () => {
+    const text = 'Hello from the demo page!\nGenerated at ' + new Date().toISOString() + '\n';
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'demo-page-file.txt';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  });
+
+  // JS dialogs — exercise each primitive. Result text echoes into the
+  // page so the user can confirm host→renderer round-trip.
+  $('#jsAlert').addEventListener('click', () => {
+    alert('Hello from the page!');
+    $('#jsDialogOut').textContent = 'alert dismissed';
+  });
+  $('#jsConfirm').addEventListener('click', () => {
+    const ok = confirm('Delete the universe?');
+    $('#jsDialogOut').textContent = 'confirm → ' + ok;
+  });
+  $('#jsPrompt').addEventListener('click', () => {
+    const v = prompt('Your favourite editor:', 'vim');
+    $('#jsDialogOut').textContent = 'prompt → ' + (v === null ? '(cancelled)' : '"' + v + '"');
+  });
+
+  // File pickers — show what the page sees back from the host.
+  function fileNames(files) {
+    return Array.from(files).map(f => f.name + ' (' + f.size + 'B)').join(', ');
+  }
+  $('#filePick').addEventListener('change', (e) => {
+    $('#fileOut').textContent = 'single → ' + (e.target.files.length === 0 ? '(none)' : fileNames(e.target.files));
+  });
+  $('#fileMulti').addEventListener('change', (e) => {
+    $('#fileOut').textContent = 'multiple → ' + (e.target.files.length === 0 ? '(none)' : fileNames(e.target.files));
+  });
+
+  // Favicon — render a coloured circle into a canvas, export to a PNG
+  // data URL, and assign as the favicon. Canvas-rendered PNGs avoid the
+  // SVG-decode limitation in Avalonia's host-side Bitmap loader.
+  const faviconColours = ['#f5c2e7','#a6e3a1','#89b4fa','#f9e2af','#f38ba8'];
+  function setFavicon(colour) {
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 32;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = colour;
+    ctx.beginPath(); ctx.arc(16, 16, 14, 0, 2*Math.PI); ctx.fill();
+    $('#favicon').href = c.toDataURL('image/png');
+  }
+  setFavicon(faviconColours[0]); // initial
+  let faviconIdx = 0;
+  $('#swapFavicon').addEventListener('click', () => {
+    faviconIdx = (faviconIdx + 1) % faviconColours.length;
+    setFavicon(faviconColours[faviconIdx]);
+  });
+
+  // Fullscreen — page-side request + page-side exit.
+  // Request fullscreen on <html> (documentElement) rather than <body>:
+  // when body becomes the :fullscreen element it's repositioned with
+  // position:fixed by Chromium's UA stylesheet, which kills the normal
+  // body→html scroll propagation. Targeting <html> keeps body's
+  // scrolling behaviour intact.
+  $('#reqFullscreen').addEventListener('click', () => {
+    document.documentElement.requestFullscreen?.().catch(err => console.error('fullscreen request failed:', err));
+  });
+  $('#exitFullscreen').addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+  });
+
+  // Console messages — exercise each severity. Counter included so repeated
+  // clicks are distinguishable in the host-side event console.
+  let cSeq = 0;
+  $('#cLog').addEventListener('click',   () => console.log('log #' + (++cSeq)));
+  $('#cInfo').addEventListener('click',  () => console.info('info #' + (++cSeq)));
+  $('#cWarn').addEventListener('click',  () => console.warn('warn #' + (++cSeq)));
+  $('#cError').addEventListener('click', () => console.error('error #' + (++cSeq)));
+  $('#cDebug').addEventListener('click', () => console.debug('debug #' + (++cSeq)));
+  $('#cThrow').addEventListener('click', () => {
+    // Uncaught errors surface as console.error to OnConsoleMessage.
+    setTimeout(() => { throw new Error('thrown error #' + (++cSeq)); }, 0);
+  });
+
+  // Drag & drop (internal between dzA / dzB)
+  let dragSeq = 0;
+  document.querySelectorAll('.item').forEach((el) => {
+    el.addEventListener('dragstart', (e) => {
+      const id = 'dnd_' + (++dragSeq);
+      e.target.id = id;
+      e.dataTransfer.setData('text/plain', id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
+  document.querySelectorAll('.dz').forEach((dz) => {
+    dz.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dz.classList.add('over');
+    });
+    dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+    dz.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dz.classList.remove('over');
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        const names = Array.from(files).map(f => f.name + ' (' + f.size + 'B)').join(', ');
+        document.getElementById('dndDropped').textContent = 'Dropped ' + files.length + ': ' + names;
+        return;
+      }
+      const id = e.dataTransfer.getData('text/plain');
+      const el = document.getElementById(id);
+      if (el) dz.appendChild(el);
+    });
+  });
+
+  // Permissions
+  const permOut = document.getElementById('permOut');
+  const setPermOut = (label, ok, detail) => {
+    permOut.textContent = label + ': ' + (ok ? 'granted' : 'denied') + (detail ? ' — ' + detail : '');
+  };
+  $('#pNotify').addEventListener('click', async () => {
+    const p = await Notification.requestPermission();
+    setPermOut('Notifications', p === 'granted', p);
+  });
+  $('#pGeo').addEventListener('click', () => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setPermOut('Geolocation', true, pos.coords.latitude.toFixed(3) + ', ' + pos.coords.longitude.toFixed(3)),
+      (err) => setPermOut('Geolocation', false, err.message));
+  });
+  $('#pMic').addEventListener('click', async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({audio: true});
+      s.getTracks().forEach(t => t.stop());
+      setPermOut('Microphone', true);
+    } catch (e) { setPermOut('Microphone', false, e.message); }
+  });
+  $('#pCam').addEventListener('click', async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({video: true});
+      s.getTracks().forEach(t => t.stop());
+      setPermOut('Camera', true);
+    } catch (e) { setPermOut('Camera', false, e.message); }
+  });
+
+  // Popup intercept
+  $('#popOpen').addEventListener('click', () => {
+    window.open('https://example.com', '_blank', 'width=400,height=300');
+  });
+
+  // Vision: page-driven capture trigger via the JS bridge. The host
+  // listens for method='capture' on JsInvoke and runs the same save-PNG
+  // path the toolbar button uses.
+  $('#vCapture').addEventListener('click', () => {
+    if (window.exclr8cef && window.exclr8cef.invoke) {
+      window.exclr8cef.invoke('capture', JSON.stringify({source: 'page-button'}));
+      document.getElementById('vCapOut').textContent = '→ requested at ' + new Date().toLocaleTimeString();
+    } else {
+      document.getElementById('vCapOut').textContent = 'JS bridge not installed';
+    }
+  });
+</script>
+</body>
+</html>

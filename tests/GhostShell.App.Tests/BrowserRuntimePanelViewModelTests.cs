@@ -57,49 +57,17 @@ public sealed class BrowserRuntimePanelViewModelTests
         Assert.DoesNotContain(surface, layer.Children);
     }
 
-    /// <summary>
-    /// Only the panel's end gives a surface up.
-    ///
-    /// A view that stops drawing a panel is not the panel ending, and the one
-    /// place that still confused the two undid everything the rest of this
-    /// arrangement is for: when a panel's views were exchanged — floating it,
-    /// docking it back — the departing view's binding unset after the arriving
-    /// one had taken the surface, so the surface it released was the one already
-    /// on screen. Taking a native view out of the tree destroys it, and the page
-    /// went with it: a blank document under a live session.
-    /// </summary>
     [Fact]
-    public void No_view_releases_a_surface_when_it_stops_drawing_a_panel()
+    public void Browser_visual_is_hosted_as_normal_content()
     {
-        var host = File.ReadAllText(Path.Combine(
-            RepositoryRoot(),
-            "src",
-            "GhostShell.App",
-            "Controls",
-            "BrowserPresentationHost.cs"));
+        var visual = new Border();
+        var rendererView = new BrowserRendererView(
+            visual,
+            new RecordingBrowserRenderer());
+        var host = new BrowserPresentationHost { RendererView = rendererView };
 
-        Assert.DoesNotContain("Release(", host, StringComparison.Ordinal);
-        Assert.Contains("Conceal(", host, StringComparison.Ordinal);
-
-        var view = File.ReadAllText(Path.Combine(
-            RepositoryRoot(),
-            "src",
-            "GhostShell.App",
-            "IBrowserRendererViewFactory.cs"));
-        Assert.Contains("Layer?.Release(View)", view, StringComparison.Ordinal);
-    }
-
-    private static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null
-            && !File.Exists(Path.Combine(directory.FullName, "GhostShell.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new InvalidOperationException("No repository root above the test binaries.");
+        Assert.Same(visual, host.Content);
+        Assert.Same(host, rendererView.PresentationHost);
     }
 
     /// <summary>
@@ -131,11 +99,54 @@ public sealed class BrowserRuntimePanelViewModelTests
     }
 
     /// <summary>
+    /// Dock may bind the arriving host before it unbinds the departing one. The
+    /// visual follows the panel to the new host, while its renderer lifetime
+    /// remains owned by the panel.
+    /// </summary>
+    [Fact]
+    public void Browser_visual_moves_between_hosts_without_disposing_its_renderer()
+    {
+        var lifetime = new RecordingLifetime();
+        var visual = new Border();
+        var rendererView = new BrowserRendererView(
+            visual,
+            new RecordingBrowserRenderer(),
+            lifetime);
+        var attachment = new BrowserRendererAttachment(
+            DispatchProxy.Create<ISessionHostClient, NoopSessionClient>(),
+            new ClientId("client"),
+            SessionId.New(),
+            AttachmentId.New());
+        rendererView.Attachment = attachment;
+        var departing = new BrowserPresentationHost { RendererView = rendererView };
+        var arriving = new BrowserPresentationHost { RendererView = rendererView };
+
+        Assert.Null(departing.Content);
+        Assert.Same(visual, arriving.Content);
+        Assert.Same(arriving, rendererView.PresentationHost);
+        Assert.Same(attachment, rendererView.Attachment);
+        Assert.Equal(0, lifetime.DisposeCount);
+
+        departing.RendererView = null;
+
+        Assert.Same(visual, arriving.Content);
+        Assert.Same(attachment, rendererView.Attachment);
+        Assert.Equal(0, lifetime.DisposeCount);
+
+        arriving.RendererView = null;
+
+        Assert.Null(arriving.Content);
+        Assert.Null(rendererView.PresentationHost);
+        Assert.Same(attachment, rendererView.Attachment);
+        Assert.Equal(0, lifetime.DisposeCount);
+    }
+
+    /// <summary>
     /// A native view is composited above everything the shell draws, so the only
     /// way to show something over it is for it to leave. Suspending is that, and
     /// it must be exactly reversible: the dock's placement targets are unreachable
-    /// under a webview, and a drag that ended with the page still gone would be a
-    /// worse bug than the one it fixed.
+    /// under an operating-system view, and a drag that ended with the surface
+    /// still gone would be a worse bug than the one it fixed.
     /// </summary>
     [Fact]
     public void Suspending_takes_every_surface_off_screen_and_ending_it_puts_them_back()
@@ -168,23 +179,26 @@ public sealed class BrowserRuntimePanelViewModelTests
     }
 
     /// <summary>
-    /// The panel owns the surface and the attachment, so ending the panel is what
-    /// ends both — not whichever control happened to be drawing it.
+    /// The panel owns the visual and attachment, so ending the panel is what ends
+    /// both — not whichever control happened to be drawing it.
     /// </summary>
     [Fact]
-    public void Disposing_the_renderer_view_releases_its_surface_from_the_layer()
+    public void Disposing_the_renderer_view_releases_it_from_the_presentation_host()
     {
-        var layer = new NativeSurfaceLayer();
+        var lifetime = new RecordingLifetime();
         var view = new Border();
-        var rendererView = new BrowserRendererView(view, new RecordingBrowserRenderer());
-
-        layer.Present(view, new Rect(0, 0, 100, 100));
-        rendererView.Layer = layer;
+        var rendererView = new BrowserRendererView(
+            view,
+            new RecordingBrowserRenderer(),
+            lifetime);
+        var host = new BrowserPresentationHost { RendererView = rendererView };
 
         rendererView.Dispose();
 
-        Assert.DoesNotContain(view, layer.Children);
+        Assert.Null(host.Content);
+        Assert.Null(rendererView.PresentationHost);
         Assert.Null(rendererView.Attachment);
+        Assert.Equal(1, lifetime.DisposeCount);
     }
 
     [Fact]

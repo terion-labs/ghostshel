@@ -1,0 +1,19 @@
+{
+  "runtimes": {
+    "osx-arm64": {
+      "Exclr8Cef": { "runtime.osx-arm64.Exclr8Cef": "0.7.2" }
+    },
+    "osx-x64": {
+      "Exclr8Cef": { "runtime.osx-x64.Exclr8Cef": "0.7.2" }
+    },
+    "win-x64": {
+      "Exclr8Cef": { "runtime.win-x64.Exclr8Cef": "0.7.2" }
+    },
+    "linux-x64": {
+      "Exclr8Cef": { "runtime.linux-x64.Exclr8Cef": "0.7.2" }
+    },
+    "linux-arm64": {
+      "Exclr8Cef": { "runtime.linux-arm64.Exclr8Cef": "0.7.2" }
+    }
+  }
+}

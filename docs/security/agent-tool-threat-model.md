@@ -203,8 +203,9 @@ The security objective is:
   actor/client. An `Agent` actor cannot use that API; the governed browser
   bridge requires broker authority and the exact interactive attachment owned
   by the approving client.
-- Browser control uses the existing native webview. No Node.js/CDP child
-  process or separate bundled browser controller is launched.
+- Browser control uses the existing CEF panel and its sandboxed Chromium
+  subprocesses. No Node.js controller, remote-debugging port, ambient JavaScript
+  bridge, or separately agent-owned browser is launched.
 - Governed File Viewer control uses the existing hosted `IFilePanelSession`.
   The model supplies only bounded structured path segments relative to a
   session-owned root. Governed mkdir and delete additionally require a
@@ -309,7 +310,8 @@ authorization, and only the session host can consume it.
 - user-entered provider, connection, browser, file-provider, and policy
   configuration;
 - durable definitions and runtime-recovery data loaded from SQLite;
-- native terminal, webview, connection-library, and OS-vault adapter failures.
+- native terminal, embedded-browser, connection-library, and OS-vault adapter
+  failures.
 
 ### Credible attackers
 
@@ -751,7 +753,7 @@ governed; the DELETE case protects the ordinary UI path.
 - Workspace, tab, and panel titles remain prompt-injection-capable even after
   secret redaction and bounds. Their explicit untrusted label prevents them
   from granting authority but cannot make their semantic content trustworthy.
-- Native terminal, webview, SSH, file-provider, and OS-vault libraries remain
+- Native terminal, embedded-browser, SSH, file-provider, and OS-vault libraries remain
   supply-chain and memory-safety dependencies and require update/license review.
 
 ## 12. Deferred boundaries

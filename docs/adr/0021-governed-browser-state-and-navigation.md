@@ -17,10 +17,13 @@
 
 ## Context
 
-ADR 0020 established an engine-neutral native-webview boundary and a small
+ADR 0020 established an engine-neutral embedded-browser boundary and a small
 human-operated browser capability set. The agent needs a first useful browser
-slice without gaining a vendor webview object, raw JavaScript, DOM authority, a
+slice without gaining a vendor browser object, raw JavaScript, DOM authority, a
 Chrome DevTools Protocol escape hatch, or an additional Node.js process.
+
+[ADR 0041](0041-cef-off-screen-browser-runtime.md) later replaces the native
+webview implementation with CEF OSR while preserving this governed contract.
 
 Browser state is page-controlled data, while navigation changes an
 authenticated browser context. Both therefore need the same exact target,
@@ -166,7 +169,7 @@ human-approved, exact-object reference consumer that ensures native
 checkbox/radio checkedness without a toggle retry hazard.
 
 No Node.js process, bundled Chromium controller, or CDP client is launched.
-Execution remains in the existing native-webview session through typed
+Execution remains in the existing embedded-browser session through typed
 application and session-host ports.
 
 ## Consequences
@@ -198,4 +201,4 @@ application and session-host ports.
 - Treating browser navigation as terminal input would grant irrelevant input
   lease authority and couple independent resources.
 - Launching a Node.js/CDP controller adds a second runtime and bypasses the
-  native-webview boundary selected by ADR 0020.
+  embedded-browser boundary preserved by ADR 0041.

@@ -29,7 +29,7 @@ public sealed class MarkdownPreviewer : IFilePreviewer
 }
 
 /// <summary>
-/// A web page, rendered by the system's webview by default and available as
+/// A web page, rendered by the embedded browser by default and available as
 /// its markup — which is often what one actually wants to see of a page found
 /// on a server.
 /// </summary>

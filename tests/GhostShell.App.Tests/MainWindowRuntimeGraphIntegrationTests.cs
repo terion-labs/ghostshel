@@ -2175,6 +2175,52 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Presentation_teardown_requires_ui_thread_access_before_releasing_panels()
+    {
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var dispatcher = new RecordingUiThreadDispatcher(hasAccess: false);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            dispatcher,
+            browserRendererFactory: browserFactory);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var error = Assert.Throws<InvalidOperationException>(
+            viewModel.TeardownPresentationForShutdown);
+
+        Assert.Contains("UI thread", error.Message, StringComparison.Ordinal);
+        Assert.Equal(1, dispatcher.VerifyCount);
+        Assert.Equal(0, browserFactory.DisposeCount);
+    }
+
+    [Fact]
+    public async Task Presentation_teardown_releases_every_open_workspace_once()
+    {
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var dispatcher = new RecordingUiThreadDispatcher(hasAccess: true);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            dispatcher,
+            browserRendererFactory: browserFactory);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
+        Assert.True(await viewModel.AddBrowserPanelAsync());
+        Assert.Equal(2, viewModel.OpenWorkspaces.Count);
+        Assert.Equal(2, browserFactory.CreateCount);
+        Assert.Equal(0, browserFactory.DisposeCount);
+
+        viewModel.TeardownPresentationForShutdown();
+        viewModel.TeardownPresentationForShutdown();
+
+        Assert.Equal(2, dispatcher.VerifyCount);
+        Assert.Equal(2, browserFactory.DisposeCount);
+    }
+
+    [Fact]
     public async Task Shutdown_quiescence_cancels_a_graph_item_waiting_for_ui_dispatch()
     {
         var (client, recorder) = CreateSessionClient();
@@ -5214,6 +5260,29 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             _ = cancellationToken;
             InvocationStarted.TrySetResult();
             return Task.FromCanceled(DispatcherStopped);
+        }
+    }
+
+    private sealed class RecordingUiThreadDispatcher(bool hasAccess) :
+        IUiThreadDispatcher
+    {
+        public int VerifyCount { get; private set; }
+
+        public void VerifyAccess()
+        {
+            VerifyCount++;
+            if (!hasAccess)
+            {
+                throw new InvalidOperationException(
+                    "Presentation teardown requires the UI thread.");
+            }
+        }
+
+        public Task InvokeAsync(Action action, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            action();
+            return Task.CompletedTask;
         }
     }
 }

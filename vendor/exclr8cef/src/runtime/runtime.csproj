@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Per-RID native runtime package builder. Invoked by CI per platform:
+
+      dotnet pack src/runtime/runtime.csproj \
+        -p:Exclr8CefRid=osx-arm64 \
+        -p:Exclr8CefStagingDir=/abs/path/to/staging \
+        -p:Exclr8CefVersion=0.8.0
+
+    Where Exclr8CefStagingDir contains a `runtimes/<rid>/native/` tree
+    populated by scripts/stage-native-files.sh with libexclr8cef.{dylib,dll,so}
+    + the CEF framework / DLLs / .so files for that RID.
+
+    Outputs:  runtime.<rid>.Exclr8Cef.<version>.nupkg
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <NoBuild>true</NoBuild>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>NU5128;NU5100</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Packaging">
+    <PackageId>runtime.$(Exclr8CefRid).Exclr8Cef</PackageId>
+    <Version Condition="'$(Exclr8CefVersion)' != ''">$(Exclr8CefVersion)</Version>
+    <Version Condition="'$(Exclr8CefVersion)' == ''">0.8.0</Version>
+    <Authors>Exclr8</Authors>
+    <Description>Exclr8CEF native runtime files for $(Exclr8CefRid). Auto-resolved at restore time via runtime.json in the Exclr8Cef package.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/alexmehlhorn/exclr8cef</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alexmehlhorn/exclr8cef</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>chromium;cef;native;runtime</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(Exclr8CefStagingDir)/runtimes/**/*"
+          Pack="true"
+          PackagePath="runtimes/" />
+  </ItemGroup>
+
+</Project>

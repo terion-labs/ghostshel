@@ -1,0 +1,13 @@
+{
+  "version": "150.0.9+g81b0088+chromium-150.0.7871.46",
+  "channel": "stable",
+  "platforms": [
+    "macosarm64",
+    "macosx64",
+    "windows64",
+    "windowsarm64",
+    "linux64",
+    "linuxarm64"
+  ],
+  "_comment": "Single source of truth for the pinned CEF version. Read by scripts/download-cef.sh, check-cef-upstream.sh, and CI workflows. Update via scripts/bump-cef.sh."
+}

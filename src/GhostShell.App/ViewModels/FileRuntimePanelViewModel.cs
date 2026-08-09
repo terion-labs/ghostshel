@@ -3134,20 +3134,20 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private const long MaximumImagePreviewBytes = 128L * 1024 * 1024;
 
     /// <summary>
-    /// The page a webview should show. A local file is shown from where it
-    /// lives; a remote one is carried to the webview as markup, so its bytes
-    /// never land on this machine. Null until a web page is being previewed.
+    /// The page the embedded browser should show. A local file is shown from
+    /// where it lives; a remote one is carried to the browser as markup, so its
+    /// bytes never land on this machine. Null until a web page is being previewed.
     /// </summary>
     public BrowserAddress? HtmlAddress => _htmlAddress;
 
     public bool HasHtmlPreview => _htmlAddress is not null;
 
     /// <summary>
-    /// Opens a previewed web page in the same webview the browser panel uses,
+    /// Opens a previewed web page in the same browser engine the browser panel uses,
     /// so it renders as the page its author wrote. A local file is opened by
     /// its own URL — relative subresources beside it keep working. A remote
     /// file has no URL this machine can open, so its markup is handed to the
-    /// webview as a string and no copy of it is ever written to disk.
+    /// browser as a string and no copy of it is ever written to disk.
     /// </summary>
     private async Task OpenHtmlPreviewAsync(FilePanelLocation location)
     {
@@ -3227,7 +3227,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     /// <summary>
     /// The ceiling on a previewed web page. Far below the image ceiling it
     /// used to share: the page becomes one string in memory and then a
-    /// webview's document, and hundreds of megabytes of markup serve nobody.
+    /// browser document, and hundreds of megabytes of markup serve nobody.
     /// </summary>
     private const long MaximumHtmlPreviewBytes = 16L * 1024 * 1024;
 

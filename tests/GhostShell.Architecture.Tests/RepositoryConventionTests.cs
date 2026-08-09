@@ -47,6 +47,58 @@ public sealed partial class RepositoryConventionTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Macos_packaging_keeps_vendored_project_versions_independent()
+    {
+        var packageScript = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "package-macos.sh"));
+        var buildProperties = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "Directory.Build.props"));
+
+        Assert.Contains(
+            "-p:GhostShellProductVersion=\"${version}\"",
+            packageScript,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("-p:Version=", packageScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("-p:AssemblyVersion=", packageScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("-p:FileVersion=", packageScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("-p:InformationalVersion=", packageScript, StringComparison.Ordinal);
+        Assert.Contains(
+            "StartsWith('GhostShell')",
+            buildProperties,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "<Version>$(GhostShellProductVersion)</Version>",
+            buildProperties,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Full_macos_packaging_stays_arm64_until_x64_evidence_exists()
+    {
+        var packageScript = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "package-macos.sh"));
+        var packagingGuide = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "docs", "macos-packaging.md"));
+
+        Assert.Contains(
+            "[--runtime-identifier osx-arm64]",
+            packageScript,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "osx-arm64|osx-x64",
+            packageScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "currently supports only osx-arm64",
+            packageScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Full Intel application packaging fails fast",
+            packagingGuide,
+            StringComparison.Ordinal);
+    }
+
     private static readonly string RepositoryRoot = FindRepositoryRoot();
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();

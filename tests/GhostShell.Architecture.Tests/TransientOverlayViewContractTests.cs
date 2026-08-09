@@ -292,7 +292,7 @@ public sealed class TransientOverlayViewContractTests
             choices,
             element => string.Equals(
                 AttributeValue(element, "AutomationProperties.Name"),
-                "Open a new native browser",
+                "Open a new browser",
                 StringComparison.Ordinal)
                 && string.Equals(
                     AttributeValue(element, "IsEnabled"),
@@ -411,7 +411,7 @@ public sealed class TransientOverlayViewContractTests
             choices,
             element => string.Equals(
                 AttributeValue(element, "AutomationProperties.Name"),
-                "Add native browser panel",
+                "Add browser panel",
                 StringComparison.Ordinal)
                 && string.Equals(
                     AttributeValue(element, "IsEnabled"),

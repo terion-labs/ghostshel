@@ -1,0 +1,312 @@
+using Avalonia.Controls;
+using GhostShell.Application;
+
+namespace GhostShell.Browser.Tests;
+
+internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
+{
+    private long? _activeNavigationGeneration;
+    private long _lastNavigationGeneration;
+
+    public Control View { get; } = new Border();
+
+    public bool CanGoBack { get; set; }
+
+    public bool CanGoForward { get; set; }
+
+    public bool IsDisposed { get; private set; }
+
+    public bool AcceptBack { get; set; }
+
+    public bool AcceptForward { get; set; }
+
+    public bool AcceptReload { get; set; }
+
+    public bool AcceptStop { get; set; }
+
+    public bool ThrowOnNavigate { get; set; }
+
+    public bool ThrowOnSnapshot { get; set; }
+
+    public bool ThrowOnClick { get; set; }
+
+    public bool ThrowOnFill { get; set; }
+
+    public bool ThrowOnCheck { get; set; }
+
+    public BrowserAddress? NavigatedAddress { get; private set; }
+
+    public int NavigateCount { get; private set; }
+
+    public int StopCount { get; private set; }
+
+    public int ReloadCount { get; private set; }
+
+    public int SnapshotCount { get; private set; }
+
+    public int ClickCount { get; private set; }
+
+    public int FillCount { get; private set; }
+
+    public int CheckCount { get; private set; }
+
+    public NativeBrowserElementHandle? LastClickHandle { get; private set; }
+
+    public NativeBrowserElementHandle? LastFillHandle { get; private set; }
+
+    public NativeBrowserElementHandle? LastCheckHandle { get; private set; }
+
+    public string? LastFillText { get; private set; }
+
+    public TaskCompletionSource<NativeBrowserSnapshotResult>?
+        PendingSnapshot
+    { get; set; }
+
+    public NativeBrowserSnapshotResult SnapshotResult { get; set; } =
+        NativeBrowserSnapshotResult.Success(
+            new NativeBrowserSnapshot(
+                [
+                    new NativeBrowserSnapshotNode(
+                        0,
+                        "document",
+                        "Example",
+                        BrowserSnapshotNodeState.None,
+                        Handle: null),
+                ],
+                IsTruncated: false));
+
+    public TaskCompletionSource<NativeBrowserClickResult>? PendingClick
+    { get; set; }
+
+    public NativeBrowserClickResult ClickResult { get; set; } =
+        NativeBrowserClickResult.Activated();
+
+    public TaskCompletionSource<NativeBrowserFillResult>? PendingFill
+    { get; set; }
+
+    public NativeBrowserFillResult FillResult { get; set; } =
+        NativeBrowserFillResult.Filled();
+
+    public TaskCompletionSource<NativeBrowserCheckResult>? PendingCheck
+    { get; set; }
+
+    public NativeBrowserCheckResult CheckResult { get; set; } =
+        NativeBrowserCheckResult.Checked();
+
+    public long LastNavigationGeneration => _lastNavigationGeneration;
+
+    public event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
+
+    public event EventHandler<NativeBrowserNavigationCompletedEventArgs>? NavigationCompleted;
+
+    public event EventHandler<NativeBrowserNavigationRejectedEventArgs>?
+        NavigationRejected;
+
+    public event EventHandler? RenderProcessFailed;
+
+    public void Dispose() => IsDisposed = true;
+
+    public void Navigate(BrowserAddress address)
+    {
+        if (ThrowOnNavigate)
+        {
+            throw new InvalidOperationException("vendor details must stay inside the engine");
+        }
+
+        NavigateCount++;
+        NavigatedAddress = address;
+        BeginNavigation();
+    }
+
+    public bool GoBack()
+    {
+        if (AcceptBack)
+        {
+            BeginNavigation();
+        }
+
+        return AcceptBack;
+    }
+
+    public bool GoForward()
+    {
+        if (AcceptForward)
+        {
+            BeginNavigation();
+        }
+
+        return AcceptForward;
+    }
+
+    public bool Reload()
+    {
+        ReloadCount++;
+        if (AcceptReload)
+        {
+            BeginNavigation();
+        }
+
+        return AcceptReload;
+    }
+
+    public bool Stop()
+    {
+        StopCount++;
+        return AcceptStop;
+    }
+
+    public Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync()
+    {
+        SnapshotCount++;
+        if (ThrowOnSnapshot)
+        {
+            throw new InvalidOperationException(
+                "vendor snapshot details must stay private");
+        }
+
+        return PendingSnapshot?.Task
+            ?? Task.FromResult(SnapshotResult);
+    }
+
+    public Task<NativeBrowserClickResult> ClickAsync(
+        NativeBrowserElementHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        ClickCount++;
+        LastClickHandle = handle;
+        if (ThrowOnClick)
+        {
+            throw new InvalidOperationException(
+                "vendor click details must stay private");
+        }
+
+        return PendingClick?.Task
+            ?? Task.FromResult(ClickResult);
+    }
+
+    public Task<NativeBrowserFillResult> FillAsync(
+        NativeBrowserElementHandle handle,
+        string text)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        ArgumentNullException.ThrowIfNull(text);
+        FillCount++;
+        LastFillHandle = handle;
+        LastFillText = text;
+        if (ThrowOnFill)
+        {
+            throw new InvalidOperationException(
+                "vendor fill details must stay private");
+        }
+
+        return PendingFill?.Task
+            ?? Task.FromResult(FillResult);
+    }
+
+    public Task<NativeBrowserCheckResult> CheckAsync(
+        NativeBrowserElementHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        CheckCount++;
+        LastCheckHandle = handle;
+        if (ThrowOnCheck)
+        {
+            throw new InvalidOperationException(
+                "vendor check details must stay private");
+        }
+
+        return PendingCheck?.Task
+            ?? Task.FromResult(CheckResult);
+    }
+
+    public bool RaiseNavigationStarted(
+        BrowserAddress address,
+        long? navigationGeneration = null)
+    {
+        var generation = navigationGeneration
+            ?? _activeNavigationGeneration
+            ?? BeginNavigation();
+        var args = new NativeBrowserNavigationEventArgs(
+            address,
+            generation);
+        NavigationStarted?.Invoke(this, args);
+        if (args.Cancel)
+        {
+            NavigationRejected?.Invoke(
+                this,
+                new NativeBrowserNavigationRejectedEventArgs(
+                    NativeBrowserNavigationRejectionReason.OriginPolicy,
+                    generation));
+        }
+
+        return args.Cancel;
+    }
+
+    public void RaiseNavigationCompleted(
+        BrowserAddress? address,
+        bool isSuccess,
+        long? navigationGeneration = null,
+        bool wasStopped = false)
+    {
+        var generation = navigationGeneration
+            ?? _activeNavigationGeneration
+            ?? throw new InvalidOperationException(
+                "No native navigation generation is active.");
+        if (_activeNavigationGeneration == generation)
+        {
+            _activeNavigationGeneration = null;
+        }
+
+        NavigationCompleted?.Invoke(
+            this,
+            new NativeBrowserNavigationCompletedEventArgs(
+                address,
+                isSuccess,
+                generation,
+                wasStopped));
+    }
+
+    public void RaiseNavigationRejected(
+        NativeBrowserNavigationRejectionReason reason =
+            NativeBrowserNavigationRejectionReason.UnsupportedAddress)
+    {
+        var generation = _activeNavigationGeneration
+            ?? BeginNavigation();
+        NavigationRejected?.Invoke(
+            this,
+            new NativeBrowserNavigationRejectedEventArgs(
+                reason,
+                generation));
+    }
+
+    public void RaiseRenderProcessFailed() =>
+        RenderProcessFailed?.Invoke(this, EventArgs.Empty);
+
+    public Action CaptureNavigationCompletedCallback(
+        BrowserAddress? address,
+        bool isSuccess,
+        long navigationGeneration)
+    {
+        var capturedHandlers = NavigationCompleted;
+        return () => capturedHandlers?.Invoke(
+            this,
+            new NativeBrowserNavigationCompletedEventArgs(
+                address,
+                isSuccess,
+                navigationGeneration));
+    }
+
+    private long BeginNavigation()
+    {
+        if (_activeNavigationGeneration is not null)
+        {
+            throw new InvalidOperationException(
+                "A native navigation generation is already active.");
+        }
+
+        _lastNavigationGeneration = checked(
+            _lastNavigationGeneration + 1);
+        _activeNavigationGeneration = _lastNavigationGeneration;
+        return _lastNavigationGeneration;
+    }
+}

@@ -1,0 +1,38 @@
+# Build artifacts
+build/
+out/
+[Bb]in/
+[Oo]bj/
+
+# Downloaded CEF binaries (large; not tracked)
+third_party/
+native/build/
+
+# NuGet packaging output
+artifacts/
+*.nupkg
+*.snupkg
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+*.user
+*.suo
+.vs/
+
+# Logs
+*.log
+debug.log
+
+# Environment
+.env
+.env.local
+
+# (ClangSharp-generated bindings under managed/Exclr8Cef/Generated/ ARE
+#  committed; running scripts/regenerate-bindings.sh updates them.)
+
+# Claude Code local config
+.claude/

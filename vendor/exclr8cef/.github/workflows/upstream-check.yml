@@ -1,0 +1,67 @@
+# Daily: check Spotify's CEF build CDN for a newer stable version. If
+# upstream has moved past our pinned version, open (or update) a PR that
+# bumps cef.json. The PR triggers ci.yml which validates the bump on the
+# full RID matrix.
+
+name: CEF upstream check
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # daily at 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Compare pinned vs upstream
+        id: check
+        run: |
+          chmod +x scripts/check-cef-upstream.sh scripts/bump-cef.sh
+          if scripts/check-cef-upstream.sh; then
+            echo "no bump needed"
+          else
+            echo "needs bump"
+          fi
+        # check returns 1 when newer, 0 when up-to-date — we want to
+        # continue in either case to read the outputs.
+        continue-on-error: true
+
+      - name: Bump cef.json
+        if: steps.check.outputs.needs_bump == 'true'
+        run: |
+          scripts/bump-cef.sh "${{ steps.check.outputs.upstream }}"
+          cat cef.json
+
+      - name: Open / update bump PR
+        if: steps.check.outputs.needs_bump == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(cef): bump to ${{ steps.check.outputs.upstream }}'
+          title: 'chore(cef): bump to ${{ steps.check.outputs.upstream }}'
+          body: |
+            Automated bump from `${{ steps.check.outputs.pinned }}` → `${{ steps.check.outputs.upstream }}`.
+
+            CI must be green before merging:
+            - native shim builds against the new headers (catches API breaks at compile time)
+            - ClangSharp regen produces a clean diff
+            - smoke tests pass on every RID
+
+            If anything goes red, the upstream release likely has API changes that need shim/binding fixes — investigate, push fixes to this branch.
+          branch: chore/cef-bump
+          base: main
+          delete-branch: true
+          add-paths: |
+            cef.json

@@ -258,7 +258,7 @@ public sealed class MainWindowKeybindingEditorTests
             item => item.Target == new LauncherSearchTarget.CreatePanel(PanelKind.Browser));
         Assert.False(browser.IsAvailable);
         Assert.Contains(
-            "native browser adapter is unavailable",
+            "embedded browser is unavailable",
             browser.DisplayDetail,
             StringComparison.OrdinalIgnoreCase);
 

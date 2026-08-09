@@ -12,6 +12,28 @@ public sealed class ConnectionCredentialBrokerTests
     private static readonly TimeSpan TestConnectTimeout = TimeSpan.FromMilliseconds(500);
 
     [Fact]
+    public void Private_helper_classifier_requires_the_credential_marker_first()
+    {
+        Assert.True(ConnectionCredentialProcessHost.IsPrivateHelperInvocation(
+            [ConnectionCredentialSessionInvocation.Marker, "metadata"],
+            hasAskpassPipe: false));
+        Assert.False(ConnectionCredentialProcessHost.IsPrivateHelperInvocation(
+            ["--type=renderer", ConnectionCredentialSessionInvocation.Marker],
+            hasAskpassPipe: false));
+    }
+
+    [Fact]
+    public void Private_helper_classifier_keeps_normal_cef_processes_in_cef_dispatch()
+    {
+        Assert.False(ConnectionCredentialProcessHost.IsPrivateHelperInvocation(
+            ["--type=gpu-process", "--lang=en-US"],
+            hasAskpassPipe: false));
+        Assert.True(ConnectionCredentialProcessHost.IsPrivateHelperInvocation(
+            ["Password:"],
+            hasAskpassPipe: true));
+    }
+
+    [Fact]
     public async Task Password_ticket_is_one_use_connection_bound_and_contains_no_credential_value()
     {
         const string credential = "password-canary-1942";

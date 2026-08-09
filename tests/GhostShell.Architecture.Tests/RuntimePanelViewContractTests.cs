@@ -340,7 +340,19 @@ public sealed class RuntimePanelViewContractTests
             "CloseRequested?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
+        if (string.Equals(
+                panelView,
+                "FileRuntimePanelView",
+                StringComparison.Ordinal))
+        {
+            // The file view creates and owns its transient HTML renderer visual,
+            // so detaching the visual must release that renderer lifetime.
+            Assert.Contains("ReleaseHtmlPreview();", codeBehind, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
+        }
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
     }
 
@@ -1033,7 +1045,12 @@ public sealed class RuntimePanelViewContractTests
             codeBehind,
             StringComparison.Ordinal);
         Assert.DoesNotContain("private async ", codeBehind, StringComparison.Ordinal);
-        Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
+        Assert.Contains(
+            "protected override void OnDetachedFromVisualTree(",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains("ReleaseHtmlPreview();", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("preview.Dispose();", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("ShowDialog", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("StorageProvider", codeBehind, StringComparison.Ordinal);

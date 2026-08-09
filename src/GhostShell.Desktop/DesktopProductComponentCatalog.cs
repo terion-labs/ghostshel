@@ -6,11 +6,16 @@ internal sealed class DesktopProductComponentCatalog : IProductComponentCatalog
 {
     public IReadOnlyList<ProductComponentViewModel> Components { get; } =
     [
-        new("Avalonia Desktop", "12.0.1", "Cross-platform desktop UI", "MIT"),
+        new("Avalonia Desktop", "12.0.5", "Cross-platform desktop UI", "MIT"),
         new(
-            "Avalonia WebView",
-            "12.0.1",
-            "Platform-native embedded browser",
+            "Chromium Embedded Framework",
+            "150.0.9",
+            "Bundled embedded Chromium runtime",
+            "BSD-3-Clause + bundled third-party notices"),
+        new(
+            "Exclr8CEF",
+            "0.8.0-ghostshell.1",
+            "Avalonia off-screen Chromium binding",
             "MIT"),
         new(
             "Ghostty",

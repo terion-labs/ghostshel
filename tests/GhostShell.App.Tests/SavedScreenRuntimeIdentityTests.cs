@@ -1367,6 +1367,7 @@ public sealed class SavedScreenRuntimeIdentityTests
         await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
         Assert.Equal(RecentSessionOutcome.Active, Assert.Single(store.Snapshot).Outcome);
 
+        viewModel.TeardownPresentationForShutdown();
         await viewModel.QuiesceForShutdownAsync(CancellationToken.None);
         await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
 
@@ -1392,6 +1393,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             (await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None)).IsSuccess);
         store.FailReadsUntilCleared = true;
 
+        viewModel.TeardownPresentationForShutdown();
         await viewModel.QuiesceForShutdownAsync(CancellationToken.None);
         var drain = await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
 
@@ -1418,6 +1420,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             (await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None)).IsSuccess);
         store.FailCompletionWrites = true;
 
+        viewModel.TeardownPresentationForShutdown();
         await viewModel.QuiesceForShutdownAsync(CancellationToken.None);
         var drain = await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
 

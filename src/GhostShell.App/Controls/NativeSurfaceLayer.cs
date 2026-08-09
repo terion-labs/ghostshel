@@ -6,23 +6,13 @@ using Avalonia.VisualTree;
 namespace GhostShell.App.Controls;
 
 /// <summary>
-/// Where the shell's operating-system views live.
+/// Where the shell's remaining operating-system views live.
 ///
-/// A webview is not an Avalonia visual: it is a native control the framework
-/// hosts, and the framework destroys that control the moment its host leaves the
-/// visual tree and builds a fresh one on the way back. So a panel that held its
-/// own webview lost the page whenever anything moved — adding a panel beside it,
-/// splitting it, switching tabs — because rearranging panels rebuilds the views
-/// that draw them. The session survived every time; the document did not.
-///
-/// The mistake was letting a panel's <em>view</em> own something whose life is
-/// the panel's. The visual tree is the wrong thing to hang any of this on in the
-/// first place: a workspace in the background and a headless run have no visual
-/// tree at all, and both have to behave exactly like a visible one.
-///
-/// So native surfaces live here instead, parented once for as long as the panel
-/// that owns them exists. A panel says where to show one and when to hide it;
-/// neither answer ever removes it. Layout becomes geometry and nothing else.
+/// Native controls cannot participate in Avalonia composition and may not
+/// survive destructive visual-tree or window changes. They stay parented here
+/// for the lifetime of their owning panel; a panel only changes their geometry
+/// and visibility. Browser content no longer uses this layer because its
+/// off-screen renderer is an ordinary Avalonia visual.
 /// </summary>
 internal sealed class NativeSurfaceLayer : Canvas
 {
@@ -57,10 +47,8 @@ internal sealed class NativeSurfaceLayer : Canvas
     ///
     /// There is no z-order to appeal to here. Avalonia draws its whole scene into
     /// one surface and the operating system composites native views above it, so
-    /// nothing the shell draws can be on top of a webview — which is why the
-    /// dock's placement targets never appeared while dragging a panel over one.
-    /// Being above everything is not negotiable; being there at all is. So for
-    /// the moment the shell needs its own pixels seen, the surfaces step aside.
+    /// native content steps aside while the shell needs its own drag targets or
+    /// overlays to be visible.
     ///
     /// This costs nothing now that a surface outlives being hidden: no reload, no
     /// re-attach, no navigation. The page is exactly where it was.

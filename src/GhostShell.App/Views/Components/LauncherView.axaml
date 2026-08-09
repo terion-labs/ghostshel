@@ -118,11 +118,11 @@
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Open the default local shell" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
-        <Button Classes="ChooserButton LauncherTile" AutomationProperties.Name="Open a new native browser" Click="OnNewBrowserClick" HorizontalContentAlignment="Stretch" IsEnabled="{Binding CanStartBrowserSession}">
+        <Button Classes="ChooserButton LauncherTile" AutomationProperties.Name="Open a new browser" Click="OnNewBrowserClick" HorizontalContentAlignment="Stretch" IsEnabled="{Binding CanStartBrowserSession}">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="19" /></Border>
             <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="New browser" TextTrimming="CharacterEllipsis" />
-            <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Operating-system webview panel" TextTrimming="CharacterEllipsis" />
+            <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Embedded Chromium browser panel" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
         <Button Classes="ChooserButton LauncherTile" Click="OnNewStatisticsClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open local host statistics">

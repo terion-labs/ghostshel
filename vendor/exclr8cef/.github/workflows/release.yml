@@ -1,0 +1,196 @@
+# On a v* tag: build native + managed across all RIDs and push every nupkg
+# directly to nuget.org from the job that produced it. No intermediate
+# upload-artifact / download-artifact hops — that route hits the GitHub
+# Actions artifact-storage quota with CEF binaries (~150 MB per RID).
+#
+# Required secrets:
+#   NUGET_API_KEY  — push key for nuget.org
+#
+# Trade-off: there is no manual approval gate before publish. Tagging v*
+# publishes immediately. Add review at the tag-creation level (e.g. a PR
+# that bumps the version + a tag from main) rather than in this workflow.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override version (defaults to tag, e.g. v0.7.2 → 0.7.2)'
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  publish-runtime:
+    name: Publish runtime (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            rid: osx-arm64
+            cef_platform: macosarm64
+            cmake_arch: ""
+          # osx-x64 is cross-compiled from the macos-14 (Apple Silicon) runner
+          # because the macos-13 (Intel) runner queue is heavily backlogged
+          # ahead of GitHub deprecating it. CMAKE_OSX_ARCHITECTURES=x86_64
+          # produces an x86-64 dylib that runs natively on Intel Macs.
+          - os: macos-14
+            rid: osx-x64
+            cef_platform: macosx64
+            cmake_arch: "-DCMAKE_OSX_ARCHITECTURES=x86_64"
+          - os: windows-latest
+            rid: win-x64
+            cef_platform: windows64
+            cmake_arch: ""
+          - os: ubuntu-22.04
+            rid: linux-x64
+            cef_platform: linux64
+            cmake_arch: ""
+          - os: ubuntu-22.04-arm
+            rid: linux-arm64
+            cef_platform: linuxarm64
+            cmake_arch: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup CMake / Ninja (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: |
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install cmake ninja
+          else
+            sudo apt-get update
+            sudo apt-get install -y cmake ninja-build build-essential libgtk-3-dev libnss3-dev
+          fi
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Version: ${VERSION}"
+
+      - name: Download CEF
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.cef_platform }}
+        run: ./scripts/download-cef.sh
+
+      - name: Build native shim
+        shell: bash
+        env:
+          EXCLR8CEF_PLATFORM: ${{ matrix.cef_platform }}
+        run: |
+          cmake -S native -B native/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_arch }}
+          cmake --build native/build --parallel
+
+      - name: Stage native files
+        shell: bash
+        run: |
+          mkdir -p artifacts/staging-${{ matrix.rid }}
+          ./scripts/stage-native-files.sh ${{ matrix.rid }} artifacts/staging-${{ matrix.rid }}
+
+      - name: Pack runtime NuGet
+        shell: bash
+        run: |
+          dotnet pack src/runtime/runtime.csproj \
+            -c Release \
+            -p:Exclr8CefRid=${{ matrix.rid }} \
+            -p:Exclr8CefStagingDir="$(pwd)/artifacts/staging-${{ matrix.rid }}" \
+            -p:Exclr8CefVersion=${{ steps.ver.outputs.version }} \
+            -o artifacts/nupkgs
+
+      - name: Push to nuget.org
+        # Tag-driven publishes only; workflow_dispatch builds + packs but doesn't push.
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          for pkg in artifacts/nupkgs/runtime.${{ matrix.rid }}.Exclr8Cef.*.nupkg; do
+            ls -lh "$pkg"
+            echo "Pushing $pkg"
+            dotnet nuget push "$pkg" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+
+  publish-managed:
+    name: Publish managed packages
+    runs-on: ubuntu-22.04
+    # Wait until every per-RID runtime package is on nuget.org before publishing
+    # the consumer-facing Exclr8Cef package (whose runtime.json references them).
+    needs: publish-runtime
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate runtime.json for Exclr8Cef
+        run: ./scripts/generate-runtime-json.sh ${{ steps.ver.outputs.version }}
+
+      - name: Pack managed NuGets
+        run: |
+          dotnet pack src/Exclr8Cef -c Release \
+            -p:Exclr8CefVersion=${{ steps.ver.outputs.version }} \
+            -o artifacts/nupkgs
+          dotnet pack src/Exclr8Cef.WebView -c Release \
+            -p:Exclr8CefVersion=${{ steps.ver.outputs.version }} \
+            -o artifacts/nupkgs
+          dotnet pack src/Exclr8Cef.Print -c Release \
+            -p:Exclr8CefVersion=${{ steps.ver.outputs.version }} \
+            -o artifacts/nupkgs
+
+      - name: Push to nuget.org
+        if: github.event_name == 'push'
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          for pkg in artifacts/nupkgs/*.nupkg; do
+            echo "Pushing $pkg"
+            dotnet nuget push "$pkg" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done

@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Exclr8Cef.WebView.Demo.JsDialogWindow"
+        Width="440" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#181825"
+        Title="">
+    <Border Padding="20">
+        <Grid RowDefinitions="Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Name="MessageText"
+                       Foreground="#CDD6F4" FontSize="13" TextWrapping="Wrap"
+                       Margin="0,0,0,14" />
+            <TextBox  Grid.Row="1" Name="PromptInput"
+                      IsVisible="False"
+                      Background="#11111B" Foreground="#CDD6F4"
+                      BorderBrush="#45475A"
+                      Padding="8,6" Margin="0,0,0,14" />
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                        Spacing="8">
+                <Button Name="CancelButton" Content="Cancel" Click="OnCancelClick"
+                        Padding="14,6" Background="#45475A" Foreground="#CDD6F4" />
+                <Button Name="OkButton" Content="OK" Click="OnOkClick"
+                        Padding="14,6" Background="#89B4FA" Foreground="#11111B" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

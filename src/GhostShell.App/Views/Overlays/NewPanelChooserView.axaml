@@ -31,13 +31,13 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Local PTY" />
           </StackPanel>
         </Button>
-        <Button Classes="ChooserButton PanelChooser" AutomationProperties.Name="Add native browser panel" Click="OnAddBrowserPanelClick" IsEnabled="{Binding CanCreateBrowserPanel}">
+        <Button Classes="ChooserButton PanelChooser" AutomationProperties.Name="Add browser panel" Click="OnAddBrowserPanelClick" IsEnabled="{Binding CanCreateBrowserPanel}">
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
             <Border Width="36" Height="36" Classes="ChooserIconTile">
               <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Globe" FontSize="18" />
             </Border>
             <TextBlock FontWeight="SemiBold" Text="Browser" />
-            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Native webview" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Embedded Chromium" />
           </StackPanel>
         </Button>
         <Button Classes="ChooserButton PanelChooser" Click="OnAddStatisticsPanelClick" AutomationProperties.Name="Add Statistics panel">

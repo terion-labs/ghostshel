@@ -61,7 +61,7 @@ internal sealed record NativeBrowserElementHandle
                     and not '_'))
         {
             throw new ArgumentException(
-                "A native browser element handle must contain one bounded "
+                "An embedded browser element handle must contain one bounded "
                 + "URL-safe ASCII identifier.",
                 parameterName);
         }

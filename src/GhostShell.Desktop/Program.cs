@@ -7,6 +7,7 @@ using GhostShell.App;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
+using GhostShell.Browser;
 using GhostShell.Infrastructure;
 using GhostShell.SessionHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,13 +20,42 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (ConnectionCredentialProcessHost.IsPrivateHelperInvocation(args))
+        {
+            Environment.ExitCode = ConnectionCredentialProcessHost
+                .TryRunAsync(args, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult()
+                ?? 1;
+            return;
+        }
+
+        try
+        {
+            var cefExitCode = BrowserEngineRuntime.ExecuteSubprocess();
+            if (cefExitCode >= 0)
+            {
+                Environment.ExitCode = cefExitCode;
+                return;
+            }
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(
+                "GhostSHELL could not start its embedded Chromium runtime: "
+                + error.Message);
+            Environment.ExitCode = 1;
+            return;
+        }
+
         // macOS will only host the UI on the process's first thread, and an
         // async Main leaves it at the first await that does real work —
         // resolving an encryption key from the keychain, say. So this thread
         // never awaits: it waits the asynchronous preparation out, starts
         // the lifetime exactly where the platform demands it, then waits the
-        // finalization out the same way. There is no dispatcher before or
-        // after the lifetime, so neither block can deadlock anything.
+        // finalization out the same way. Private credential helpers have
+        // already exited without loading CEF; normal runs and CEF --type
+        // subprocesses preserve CEF's required first-dispatch ordering.
         var prepared = PrepareAsync(args).GetAwaiter().GetResult();
         if (prepared is null)
         {
@@ -33,25 +63,77 @@ internal static class Program
         }
 
         var (services, instanceCoordinator) = prepared.Value;
+        var cefInitialized = false;
+        MainWindowViewModel? mainWindowViewModel = null;
         try
         {
             try
             {
                 instanceCoordinator.RegisterActivationHandler(RequestMainWindowActivation);
-                BuildAvaloniaApp(services).StartWithClassicDesktopLifetime(
-                    args,
-                    Avalonia.Controls.ShutdownMode.OnMainWindowClose);
-                instanceCoordinator.StopAcceptingActivations();
+                var lifetime = new ClassicDesktopStyleApplicationLifetime
+                {
+                    Args = args,
+                    ShutdownMode = Avalonia.Controls.ShutdownMode.OnMainWindowClose,
+                };
+                BrowserEngineRuntime.Configure(BuildAvaloniaApp(services))
+                    .SetupWithLifetime(lifetime);
+                mainWindowViewModel = services.GetRequiredService<MainWindowViewModel>();
+                lifetime.Exit += (_, _) =>
+                    TeardownPresentationOrReport(mainWindowViewModel);
+                BrowserEngineRuntime.Initialize(CreateBrowserEngineOptions());
+                cefInitialized = true;
+                Environment.ExitCode = lifetime.Start(args);
+                // Exit normally performs this while the dispatcher still pumps.
+                // The process's STA thread is a safe fallback if the lifetime
+                // returns without raising Exit.
+                TeardownPresentationOrReport(mainWindowViewModel);
                 FinalizeAsync(services).GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine(
+                    "GhostSHELL's embedded Chromium runtime failed: "
+                    + error.Message);
+                Environment.ExitCode = 1;
             }
             finally
             {
+                instanceCoordinator.StopAcceptingActivations();
+                // Startup and finalization failures also converge here before
+                // CEF closes browsers and stops its message pump.
+                TeardownPresentationOrReport(mainWindowViewModel);
+                if (cefInitialized && !BrowserEngineRuntime.Shutdown())
+                {
+                    Environment.ExitCode = 1;
+                }
+
                 services.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
         }
         finally
         {
             instanceCoordinator.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static void TeardownPresentationOrReport(
+        MainWindowViewModel? mainWindowViewModel)
+    {
+        if (mainWindowViewModel is null)
+        {
+            return;
+        }
+
+        try
+        {
+            mainWindowViewModel.TeardownPresentationForShutdown();
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(
+                "GhostSHELL could not release its presentation surfaces: "
+                + error.Message);
+            Environment.ExitCode = 1;
         }
     }
 
@@ -64,15 +146,6 @@ internal static class Program
         PrepareAsync(string[] args)
     {
         ConfigureDockDiagnostics();
-
-        var helperExitCode = await ConnectionCredentialProcessHost.TryRunAsync(
-            args,
-            CancellationToken.None);
-        if (helperExitCode is { } exitCode)
-        {
-            Environment.ExitCode = exitCode;
-            return null;
-        }
 
         var instanceStart = await SingleInstanceCoordinator.StartAsync(
             GhostShellDataPaths.CreateDefault().DataDirectory,
@@ -254,6 +327,17 @@ internal static class Program
                 fontManager.AddFontCollection(new GhostShellTerminalFontCollection()))
             .SetDragPreviewOpacity(0.9)
             .LogToTrace();
+
+    private static BrowserEngineRuntimeOptions CreateBrowserEngineOptions()
+    {
+        var dataDirectory = GhostShellDataPaths.CreateDefault().DataDirectory;
+        var artifacts = LocalArtifactPaths.CreateDefault();
+        var version = typeof(Program).Assembly.GetName().Version;
+        return new BrowserEngineRuntimeOptions(
+            Path.Combine(dataDirectory, "browser", "cef"),
+            Path.Combine(artifacts.ApplicationLogDirectory, "cef.log"),
+            version is null ? "0.0.0" : version.ToString(3));
+    }
 
     private static void ReportLifecycleFailure(
         string operation,

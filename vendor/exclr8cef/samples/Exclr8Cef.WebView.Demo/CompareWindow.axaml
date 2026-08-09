@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:cef="using:Exclr8Cef.WebView"
+        x:Class="Exclr8Cef.WebView.Demo.CompareWindow"
+        Width="1600" Height="900"
+        Title="COMPARE — OSR (Exclr8Cef.WebView.WebView) vs Embedded (Exclr8Cef.WebView.NativeWebView)"
+        Background="#11111B">
+    <!-- Two columns: OSR control on the left, embedded NativeWebView on the
+         right. Both load the same URL on startup and have an independent
+         URL bar so a user can navigate them separately and visually compare
+         rendering. Proves both controls coexist under a single CEF init
+         (the host called InitializeForOsr at startup; the OSR path uses
+         windowless rendering, the embedded path uses SetAsChild — same
+         Alloy runtime). -->
+    <Grid ColumnDefinitions="*,4,*" RowDefinitions="Auto,Auto,*">
+        <!-- Header row spanning both panes -->
+        <Border Grid.Row="0" Grid.ColumnSpan="3" Background="#1E1E2E" Padding="14,8">
+            <StackPanel Orientation="Vertical" Spacing="2">
+                <TextBlock Text="Side-by-side: WebView (OSR) ↔ NativeWebView (embedded)"
+                           Foreground="#CDD6F4" FontWeight="Bold" />
+                <TextBlock Text="Both controls drive the same shipped Exclr8Cef.WebView package, both browsers live in one process, one CEF init (InitializeForOsr)."
+                           Foreground="#7F849C" FontSize="11" />
+            </StackPanel>
+        </Border>
+
+        <!-- Column 0: OSR WebView -->
+        <Border Grid.Row="1" Grid.Column="0" Background="#181825" Padding="8,4">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*">
+                <Button Grid.Column="0" Content="◀" Click="OnOsrBack"    Padding="6,2" Margin="0,0,2,0" />
+                <Button Grid.Column="1" Content="▶" Click="OnOsrForward" Padding="6,2" Margin="0,0,2,0" />
+                <Button Grid.Column="2" Content="⟳" Click="OnOsrReload"  Padding="6,2" Margin="0,0,2,0" />
+                <TextBlock Grid.Column="3" Text="OSR" Foreground="#A6E3A1" FontSize="11" FontWeight="Bold"
+                           VerticalAlignment="Center" Margin="6,0,8,0" />
+                <TextBox Grid.Column="4" Name="OsrUrlBox" Text="https://example.com"
+                         Foreground="#CDD6F4" Background="Transparent" BorderThickness="0"
+                         VerticalAlignment="Center" KeyDown="OnOsrUrlKeyDown" />
+            </Grid>
+        </Border>
+        <cef:WebView Grid.Row="2" Grid.Column="0" Name="OsrBrowser" Url="https://example.com" />
+
+        <!-- Separator -->
+        <GridSplitter Grid.Row="1" Grid.RowSpan="2" Grid.Column="1" Width="4"
+                      Background="#313244" ResizeDirection="Columns" />
+
+        <!-- Column 2: Native embedded -->
+        <Border Grid.Row="1" Grid.Column="2" Background="#181825" Padding="8,4">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*">
+                <Button Grid.Column="0" Content="◀" Click="OnNativeBack"    Padding="6,2" Margin="0,0,2,0" />
+                <Button Grid.Column="1" Content="▶" Click="OnNativeForward" Padding="6,2" Margin="0,0,2,0" />
+                <Button Grid.Column="2" Content="⟳" Click="OnNativeReload"  Padding="6,2" Margin="0,0,2,0" />
+                <TextBlock Grid.Column="3" Text="EMBEDDED" Foreground="#F38BA8" FontSize="11" FontWeight="Bold"
+                           VerticalAlignment="Center" Margin="6,0,8,0" />
+                <TextBox Grid.Column="4" Name="NativeUrlBox" Text="https://example.com"
+                         Foreground="#CDD6F4" Background="Transparent" BorderThickness="0"
+                         VerticalAlignment="Center" KeyDown="OnNativeUrlKeyDown" />
+            </Grid>
+        </Border>
+        <cef:NativeWebView Grid.Row="2" Grid.Column="2" Name="NativeBrowser" Url="https://example.com" />
+    </Grid>
+</Window>

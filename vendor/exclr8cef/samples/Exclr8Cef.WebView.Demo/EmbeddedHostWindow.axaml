@@ -1,0 +1,96 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:demo="using:Exclr8Cef.WebView.Demo"
+        xmlns:local="clr-namespace:Exclr8Cef.WebView.Demo"
+        x:Class="Exclr8Cef.WebView.Demo.EmbeddedHostWindow"
+        x:DataType="demo:EmbeddedHostWindow"
+        Width="1280" Height="900"
+        Title="EMBEDDED MODE — Alloy + Avalonia native NSView"
+        Background="#11111B">
+    <Window.Resources>
+        <demo:CategoryToBrushConverter x:Key="CategoryBrush" />
+    </Window.Resources>
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,220">
+        <!-- Toolbar in lieu of Menu — Avalonia's Menu control on macOS
+             requires NSApplication ownership that conflicts with CEF's
+             external-pump mode. -->
+        <Border Grid.Row="0" Background="#1E1E2E" Padding="8,4">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="◀"    Click="OnNavBack"    Padding="8,3" ToolTip.Tip="Back" />
+                    <Button Content="▶"    Click="OnNavForward" Padding="8,3" ToolTip.Tip="Forward" />
+                    <Button Content="⟳"    Click="OnNavReload"  Padding="8,3" ToolTip.Tip="Reload" />
+                    <Button Content="✕"    Click="OnNavStop"    Padding="8,3" ToolTip.Tip="Stop" />
+                    <Border Width="1" Background="#313244" Margin="4,2" />
+                    <Button Content="−"    Click="OnZoomOut"    Padding="8,3" ToolTip.Tip="Zoom out" />
+                    <Button Content="100%" Click="OnZoomReset"  Padding="8,3" ToolTip.Tip="Reset zoom" />
+                    <Button Content="+"    Click="OnZoomIn"     Padding="8,3" ToolTip.Tip="Zoom in" />
+                    <Border Width="1" Background="#313244" Margin="4,2" />
+                    <Button Content="DevTools" Click="OnDevTools" Padding="8,3" />
+                    <Button Content="Run JS"   Click="OnRunJs"   Padding="8,3" />
+                    <Button Content="Save PDF" Click="OnSavePdf" Padding="8,3" />
+                    <Button Content="Hit-test mode" Click="OnHitTestMode" Name="HitTestMenuItem" Padding="8,3" />
+                    <Border Width="1" Background="#313244" Margin="4,2" />
+                    <Button Content="New window"             Click="OnNewWindow"        Padding="8,3"
+                            ToolTip.Tip="Open another Avalonia window in this process with a fresh embedded CEF browser." />
+                    <Button Content="Open exclr8.co.za"      Click="OnOpenExclr8"       Padding="8,3"
+                            ToolTip.Tip="Open https://www.exclr8.co.za in a new embedded browser window." />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <Border Grid.Row="1" Background="#1E1E2E" Padding="16,8">
+            <StackPanel Orientation="Vertical" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Foreground="#CDD6F4" FontWeight="Bold" Text="Exclr8CEF Embedded Demo" />
+                <TextBlock Foreground="#7F849C" FontSize="11"
+                           Text="Alloy runtime + native NSView hosted inside Avalonia (no OSR)" />
+            </StackPanel>
+        </Border>
+        <Border Grid.Row="2" Background="#181825" Padding="8,6">
+            <TextBox Name="UrlBox"
+                     Text="app://demo/test-page.html"
+                     Foreground="#CDD6F4" Background="Transparent"
+                     BorderThickness="0" VerticalAlignment="Center"
+                     KeyDown="OnUrlKeyDown" />
+        </Border>
+        <local:NativeCefView Grid.Row="3" Name="BrowserView" Url="app://demo/test-page.html" />
+        <GridSplitter Grid.Row="4" Name="ConsoleSplitter" Height="4" Background="#181825"
+                      HorizontalAlignment="Stretch" ResizeDirection="Rows" />
+        <Border Grid.Row="5" Name="EventConsolePane" Background="#11111B"
+                BorderBrush="#313244" BorderThickness="0,1,0,0">
+            <Grid RowDefinitions="Auto,*">
+                <Border Grid.Row="0" Background="#181825" Padding="10,4">
+                    <DockPanel LastChildFill="True">
+                        <Button DockPanel.Dock="Right" Content="Clear" Click="OnClearEventsClick"
+                                Padding="8,2" FontSize="11" Background="Transparent" Foreground="#A6ADC8" />
+                        <TextBlock Text="Events" Foreground="#CDD6F4" FontWeight="SemiBold"
+                                   FontSize="12" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
+                <ScrollViewer Grid.Row="1" Padding="0">
+                    <ItemsControl ItemsSource="{Binding Events}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="demo:EventEntry">
+                                <Grid ColumnDefinitions="80,90,*" Margin="10,2">
+                                    <TextBlock Grid.Column="0" Text="{Binding Time}"
+                                               Foreground="#6C7086"
+                                               FontFamily="ui-monospace,Menlo,Consolas,monospace"
+                                               FontSize="11" />
+                                    <Border Grid.Column="1" CornerRadius="3" Padding="4,1" Margin="0,0,8,0"
+                                            Background="{Binding Category, Converter={StaticResource CategoryBrush}}"
+                                            HorizontalAlignment="Left">
+                                        <TextBlock Text="{Binding Category}" FontSize="10"
+                                                   FontWeight="SemiBold" Foreground="#11111B" />
+                                    </Border>
+                                    <TextBlock Grid.Column="2" Text="{Binding Message}"
+                                               Foreground="#CDD6F4"
+                                               FontFamily="ui-monospace,Menlo,Consolas,monospace"
+                                               FontSize="11" TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

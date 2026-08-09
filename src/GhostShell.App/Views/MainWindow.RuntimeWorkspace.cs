@@ -2130,10 +2130,9 @@ public sealed partial class MainWindow
                     return;
                 }
 
-                // A panel that owns a native surface is worth waiting for:
-                // handing focus to a plain control makes the native view
-                // resign first responder on macOS, and the terminal stops
-                // accepting keystrokes while still drawing output.
+                // Render-backed panels are worth waiting for: their visual host
+                // is realized during layout, and handing focus elsewhere first
+                // can make a native terminal resign first responder on macOS.
                 if (attemptsRemaining > 0
                     && activePanel is TerminalRuntimePanelViewModel
                         or BrowserRuntimePanelViewModel)
