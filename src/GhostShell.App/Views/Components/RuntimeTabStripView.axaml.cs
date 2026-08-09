@@ -132,28 +132,52 @@ public sealed partial class RuntimeTabStripView : UserControl
             return;
         }
 
-        var fade = Math.Min(28, viewport / 4) / viewport;
+        // A soft, eased dissolve rather than a linear wipe: the ramp follows a
+        // smoothstep curve sampled into stops, so tabs melt away instead of
+        // hitting a visible gradient edge.
+        var fade = Math.Min(56, viewport / 3) / viewport;
+        var samples = new List<Avalonia.Media.GradientStop>();
+        const int sampleCount = 6;
+        for (var i = 0; i <= sampleCount; i++)
+        {
+            var t = (double)i / sampleCount;
+            var eased = t * t * (3 - (2 * t));
+            var alpha = (byte)Math.Round(eased * byte.MaxValue);
+            var colour = Avalonia.Media.Color.FromArgb(alpha, 0, 0, 0);
+            if (fadeStart)
+            {
+                samples.Add(new Avalonia.Media.GradientStop(colour, t * fade));
+            }
+
+            if (fadeEnd)
+            {
+                samples.Add(new Avalonia.Media.GradientStop(colour, 1 - (t * fade)));
+            }
+        }
+
+        if (!fadeStart)
+        {
+            samples.Add(new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, 0));
+        }
+
+        if (!fadeEnd)
+        {
+            samples.Add(new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, 1));
+        }
+
+        var stops = new Avalonia.Media.GradientStops();
+        foreach (var stop in samples.OrderBy(candidate => candidate.Offset))
+        {
+            stops.Add(stop);
+        }
+
         TabScrollViewer.OpacityMask = new Avalonia.Media.LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
             EndPoint = horizontal
                 ? new RelativePoint(1, 0, RelativeUnit.Relative)
                 : new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops =
-            {
-                new Avalonia.Media.GradientStop(
-                    fadeStart
-                        ? Avalonia.Media.Colors.Transparent
-                        : Avalonia.Media.Colors.Black,
-                    0),
-                new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, fadeStart ? fade : 0),
-                new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, fadeEnd ? 1 - fade : 1),
-                new Avalonia.Media.GradientStop(
-                    fadeEnd
-                        ? Avalonia.Media.Colors.Transparent
-                        : Avalonia.Media.Colors.Black,
-                    1),
-            },
+            GradientStops = stops,
         };
     }
 
