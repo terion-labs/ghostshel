@@ -1335,7 +1335,9 @@
        the separation. -->
   <Style Selector="Button.ListRow">
     <Setter Property="Padding" Value="0" />
-    <Setter Property="MinHeight" Value="0" />
+    <!-- The File Viewer's row height; at this height the corner radius reads
+         as a rounded row rather than a pill. -->
+    <Setter Property="MinHeight" Value="30" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Margin" Value="{controls:Inset Horizontal=Xs}" />
