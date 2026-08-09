@@ -77,6 +77,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public FileTransferClipboard FileTransferClipboard { get; } = new();
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
     private readonly IDatabasePanelClient? _databasePanelClient;
+    private readonly ISqlLanguageService? _sqlLanguageService;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
     private readonly IPdfPreviewRenderer? _pdfPreviewRenderer;
     private readonly IArchiveTableOfContents? _archiveTableOfContents;
@@ -130,7 +131,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private string _tabReorderStatus = string.Empty;
     private string _launcherSearchQuery = string.Empty;
     private string _historySearchQuery = string.Empty;
-    private bool _isAgentPanelVisible = true;
+    private bool _isAgentPanelVisible;
+    private bool _isAgentPanelDocked;
     private DefinitionKey? _editingDefinition;
     private long? _editingRevision;
     private string _editorName = string.Empty;
@@ -209,7 +211,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IMcpServerDiagnostics? mcpServerDiagnostics = null,
         IMcpCredentialSessionInvalidator?
             mcpCredentialSessionInvalidator = null,
-        SessionRestoreCoordinator? sessionRestoreCoordinator = null)
+        SessionRestoreCoordinator? sessionRestoreCoordinator = null,
+        ISqlLanguageService? sqlLanguageService = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         OpenWorkspaces = new(_openWorkspaces);
@@ -226,6 +229,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
         _browserRendererViewFactory = browserRendererViewFactory;
         _databasePanelClient = databasePanelClient;
+        _sqlLanguageService = sqlLanguageService;
         _imagePreviewDecoder = imagePreviewDecoder;
         _pdfPreviewRenderer = pdfPreviewRenderer;
         _archiveTableOfContents = archiveTableOfContents;
@@ -997,6 +1001,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 _runtimeHistorySource = value is null
                     ? null
                     : _runtimeSources.GetValueOrDefault(value.Id);
+                SyncAgentPanelPlacement(value);
                 StartTrackingRecovery(value);
                 StartTrackingAgentTerminalSelection(value);
                 _activation?.Mark("tracking");
@@ -1487,8 +1492,39 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool IsAgentPanelVisible
     {
         get => _isAgentPanelVisible;
-        set => SetProperty(ref _isAgentPanelVisible, value);
+        set
+        {
+            if (SetProperty(ref _isAgentPanelVisible, value))
+            {
+                OnPropertyChanged(nameof(IsAgentPanelDockedVisible));
+            }
+        }
     }
+
+    /// <summary>
+    /// Whether the agent panel holds a slot in the layout rather than floating
+    /// over the canvas. Per workspace: read from its definition when it comes
+    /// to the front, written back when the pin is toggled.
+    /// </summary>
+    public bool IsAgentPanelDocked
+    {
+        get => _isAgentPanelDocked;
+        private set
+        {
+            if (SetProperty(ref _isAgentPanelDocked, value))
+            {
+                OnPropertyChanged(nameof(IsAgentPanelDockedVisible));
+                OnPropertyChanged(nameof(AgentPanelPinTip));
+            }
+        }
+    }
+
+    /// <summary>The layout reserves the agent panel's width only while a pinned panel is on screen.</summary>
+    public bool IsAgentPanelDockedVisible => IsAgentPanelVisible && IsAgentPanelDocked;
+
+    public string AgentPanelPinTip => IsAgentPanelDocked
+        ? "Unpin — float over the workspace"
+        : "Pin to the workspace layout";
 
     public string LauncherSearchQuery
     {
@@ -2186,6 +2222,67 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public void ToggleAgentPanel() => IsAgentPanelVisible = !IsAgentPanelVisible;
+
+    /// <summary>
+    /// Reads the front workspace's saved pin. A pinned panel is part of the
+    /// layout and comes up with it; an unpinned one is a flyout, summoned when
+    /// asked for — so arriving anywhere starts it hidden.
+    /// </summary>
+    private void SyncAgentPanelPlacement(RuntimeWorkspaceViewModel? workspace)
+    {
+        var pinned = FrontWorkspaceDefinition(workspace)?.Value.AgentPanelPinned == true;
+        IsAgentPanelDocked = pinned;
+        IsAgentPanelVisible = pinned;
+    }
+
+    /// <summary>
+    /// Flips between the docked slot and the floating flyout, and writes the
+    /// choice onto the workspace it was made in. A workspace with no saved
+    /// definition behind it — a local browser, an ad-hoc database — keeps the
+    /// choice for as long as it is open, which is all it has.
+    /// </summary>
+    public async Task ToggleAgentPanelPinAsync(CancellationToken cancellationToken)
+    {
+        var docked = !IsAgentPanelDocked;
+        IsAgentPanelDocked = docked;
+        IsAgentPanelVisible = true;
+
+        if (FrontWorkspaceDefinition(RuntimeWorkspace) is not { } stored
+            || stored.Value.AgentPanelPinned == docked)
+        {
+            return;
+        }
+
+        var current = stored.Value;
+        var updated = new WorkspaceDefinition(
+            current.Id,
+            current.SchemaVersion,
+            current.Name,
+            current.Description,
+            current.Accent,
+            current.Entries,
+            current.AgentPolicyOverride,
+            current.Icon,
+            current.AutoSave,
+            current.Color,
+            docked);
+        var saved = await _catalog.SaveWorkspaceAsync(updated, stored.Revision, cancellationToken);
+        ApplyError(saved.Error);
+    }
+
+    private StoredDefinition<WorkspaceDefinition>? FrontWorkspaceDefinition(
+        RuntimeWorkspaceViewModel? workspace)
+    {
+        if (workspace is null
+            || !_runtimeSources.TryGetValue(workspace.Id, out var source)
+            || source.SourceDefinition.Kind != WorkspaceDefinition.Kind)
+        {
+            return null;
+        }
+
+        return _catalog.Snapshot.Workspaces
+            .FirstOrDefault(item => item.Value.Key == source.SourceDefinition);
+    }
 
     public async Task<bool> OpenWorkspaceAsync(
         WorkspaceId workspaceId,
@@ -4163,7 +4260,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 current.Accent,
                 current.Entries,
                 current.AgentPolicyOverride,
-                current.Icon);
+                current.Icon,
+                current.AutoSave,
+                current.Color,
+                current.AgentPanelPinned);
             var saved = await _catalog.SaveWorkspaceAsync(updated, revision, cancellationToken);
             ApplyError(saved.Error);
             if (saved.IsSuccess)
@@ -7071,7 +7171,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             entries,
             storedDefinition.AgentPolicyOverride,
             storedDefinition.Icon,
-            autoSave: true);
+            autoSave: true,
+            storedDefinition.Color,
+            storedDefinition.AgentPanelPinned);
         var unchanged = DefinitionPayloadEquals(definition, storedDefinition)
             && layouts.All(item =>
                 storedLayouts.TryGetValue(item.Definition.Id.Value, out var existing)
@@ -11483,35 +11585,70 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 tunnelConnection,
                 savedConnection,
                 ResolveDatabasePasswordAsync,
-                initialObject: initialObject);
+                initialObject: initialObject,
+                sqlLanguageService: _sqlLanguageService);
 
     /// <summary>
     /// A twin of a live database panel: same connection, tunnel and all,
-    /// opening straight onto one object. The twin binds the same saved
-    /// profile when there is one, so passwords resolve the same way.
+    /// opening straight onto one object — or, with no object, onto the whole
+    /// database. The twin binds the same saved profile when there is one, so
+    /// passwords resolve the same way.
     /// </summary>
     private RuntimePanelViewModel CreateDatabaseTwinPanel(
         DatabaseRuntimePanelViewModel source,
-        DatabaseTableDescriptor databaseObject)
+        DatabaseTableDescriptor? databaseObject)
     {
+        var title = databaseObject?.DisplayName ?? source.Title;
         if (source.SavedConnectionId is { } profileId
             && FindDatabaseConnection(profileId) is { } profile)
         {
             return CreateDatabasePanel(
                 PanelInstanceId.New(),
-                databaseObject.DisplayName,
+                title,
                 tunnelConnection: ResolveDatabaseTunnel(profile),
                 savedConnection: profile,
-                initialObject: databaseObject.Id);
+                initialObject: databaseObject?.Id);
         }
 
         return CreateDatabasePanel(
             PanelInstanceId.New(),
-            databaseObject.DisplayName,
+            title,
             source.SelectedDriver.Id,
             source.ConnectionString,
             source.TunnelConnection,
-            initialObject: databaseObject.Id);
+            initialObject: databaseObject?.Id);
+    }
+
+    /// <summary>
+    /// Opens the same database as a full viewer tab — the embedded preview's
+    /// way out into the real thing, without the preview's read-only leash.
+    /// </summary>
+    public async Task<bool> OpenDatabaseInTabAsync(
+        DatabaseRuntimePanelViewModel source,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ClearError();
+        var workspace = RuntimeWorkspace;
+        if (workspace is null)
+        {
+            SetError("Open a workspace before opening a database tab.");
+            return false;
+        }
+
+        return await AppendRuntimeTabAsync(
+            workspace,
+            _ =>
+            {
+                var tab = new RuntimeTabViewModel(
+                    TabInstanceId.New(),
+                    source.Title,
+                    "Database");
+                AddPanelOrDispose(tab, CreateDatabaseTwinPanel(source, databaseObject: null));
+                return tab;
+            },
+            "database viewer tab creation",
+            cancellationToken);
     }
 
     /// <summary>Opens an object from a live panel as its own tab, same connection.</summary>

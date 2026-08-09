@@ -107,6 +107,34 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
         ORDER BY name;
         """;
 
+    public string SqlCatalogDefaultsSql => "SELECT NULL, 'main';";
+
+    public string ListRoutinesSql => """
+        SELECT NULL, NULL, name,
+               CASE type WHEN 'a' THEN 'aggregate'
+                         WHEN 'w' THEN 'window'
+                         ELSE 'scalar' END,
+               name || '(' || CASE WHEN narg < 0 THEN '...'
+                                    ELSE CAST(narg AS TEXT) || ' args' END || ')',
+               NULL, NULL, NULL, NULL, NULL,
+               0, CASE WHEN narg < 0 THEN 1 ELSE 0 END,
+               CASE WHEN narg < 0 THEN 0 ELSE narg END,
+               CASE WHEN narg < 0 THEN NULL ELSE narg END
+        FROM pragma_function_list
+        ORDER BY name, narg;
+        """;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage => SqlCatalogCoverage.Complete;
+
+    public string ListIntrinsicSymbolsSql => """
+        SELECT name, 'keyword'
+        FROM pragma_function_list
+        WHERE builtin = 1
+        ORDER BY name;
+        """;
+
+    public SqlCatalogCoverage IntrinsicCatalogCoverage => SqlCatalogCoverage.Complete;
+
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
 
@@ -195,6 +223,72 @@ internal sealed class PostgresFamilyDriver(
         WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
         ORDER BY table_schema, table_name;
         """;
+
+    public string SqlCatalogDefaultsSql =>
+        "SELECT current_database(), current_schema();";
+
+    // Cockroach exposes the required pg_proc shape (with NULL pg_get_function_*
+    // compatibility results, handled by the format_type fallbacks below).
+    // Redshift's catalog is not PostgreSQL-compatible enough to claim this
+    // metadata; it intentionally falls back to Calcite's dialect library.
+    public string? ListRoutinesSql => id is "postgres" or "cockroach"
+        ? """
+          SELECT current_database(), n.nspname, p.proname,
+                 CASE p.prokind WHEN 'a' THEN 'aggregate'
+                                WHEN 'w' THEN 'window'
+                                WHEN 'p' THEN 'unknown'
+                                ELSE CASE WHEN p.proretset THEN 'table'
+                                          ELSE 'scalar' END END,
+                 p.proname || '(' || COALESCE(
+                     pg_get_function_identity_arguments(p.oid),
+                     array_to_string(ARRAY(
+                         SELECT format_type(input_type_oid, NULL)
+                         FROM unnest(p.proargtypes::oid[])
+                             AS input_type(input_type_oid)
+                     ), ', ')
+                 ) || ')',
+                 COALESCE(
+                     pg_get_function_result(p.oid),
+                     format_type(p.prorettype, NULL)),
+                 argument.ordinality,
+                 CASE WHEN p.proargnames IS NULL THEN NULL
+                      ELSE p.proargnames[argument.ordinality::integer] END,
+                 format_type(argument.type_oid, NULL),
+                 'in',
+                 argument.ordinality > p.pronargs - p.pronargdefaults
+                     - CASE WHEN p.provariadic <> 0 THEN 1 ELSE 0 END,
+                 p.provariadic <> 0 AND argument.ordinality = p.pronargs,
+                 GREATEST(
+                     0,
+                     p.pronargs - p.pronargdefaults
+                         - CASE WHEN p.provariadic <> 0 THEN 1 ELSE 0 END),
+                 CASE WHEN p.provariadic <> 0 THEN NULL ELSE p.pronargs END,
+                 p.oid::text
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          LEFT JOIN LATERAL
+              unnest(p.proargtypes::oid[]) WITH ORDINALITY
+              AS argument(type_oid, ordinality) ON TRUE
+          WHERE n.nspname <> 'information_schema'
+            AND n.nspname NOT LIKE 'pg_toast%'
+            AND p.prokind <> 'p'
+          ORDER BY CASE WHEN n.nspname = current_schema() THEN 0
+                        WHEN n.nspname = 'pg_catalog' THEN 1 ELSE 2 END,
+                   1, 2, 3, 5, 7;
+          """
+        : null;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage => id is "postgres" or "cockroach"
+        ? SqlCatalogCoverage.Complete
+        : SqlCatalogCoverage.None;
+
+    public string? ListIntrinsicSymbolsSql => id is "postgres" or "cockroach"
+        ? "SELECT word, 'keyword' FROM pg_get_keywords() ORDER BY word;"
+        : null;
+
+    public SqlCatalogCoverage IntrinsicCatalogCoverage => id is "postgres" or "cockroach"
+        ? SqlCatalogCoverage.Complete
+        : SqlCatalogCoverage.None;
 
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
@@ -323,6 +417,35 @@ internal sealed class MySqlFamilyDriver(
         ORDER BY table_name;
         """;
 
+    public string SqlCatalogDefaultsSql => "SELECT NULL, DATABASE();";
+
+    public string ListRoutinesSql => """
+        SELECT NULL, routine.routine_schema, routine.routine_name,
+               'scalar', routine.routine_name,
+               COALESCE(routine.dtd_identifier, routine.data_type),
+               parameter.ordinal_position, parameter.parameter_name,
+               COALESCE(parameter.dtd_identifier, parameter.data_type),
+               LOWER(parameter.parameter_mode),
+               0, 0, NULL, NULL
+        FROM information_schema.routines routine
+        LEFT JOIN information_schema.parameters parameter
+          ON parameter.specific_schema = routine.routine_schema
+         AND parameter.specific_name = routine.specific_name
+         AND parameter.ordinal_position > 0
+        WHERE routine.routine_schema = DATABASE()
+          AND routine.routine_type = 'FUNCTION'
+        ORDER BY 2, 3, 5, 7;
+        """;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage =>
+        SqlCatalogCoverage.UserDefinedOnly;
+
+    // HELP is privilege-safe for ordinary MySQL/MariaDB users and enumerates
+    // the server's installed help topics without selecting mysql.help_topic.
+    public string ListIntrinsicSymbolsSql => "HELP '%'";
+
+    public SqlCatalogCoverage IntrinsicCatalogCoverage => SqlCatalogCoverage.Complete;
+
     public string QuoteIdentifier(string identifier) =>
         $"`{identifier.Replace("`", "``")}`";
 
@@ -442,6 +565,35 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
         ORDER BY TABLE_SCHEMA, TABLE_NAME;
         """;
 
+    public string SqlCatalogDefaultsSql => "SELECT DB_NAME(), SCHEMA_NAME();";
+
+    public string ListRoutinesSql => """
+        SELECT DB_NAME(), schema_name(object.schema_id), object.name,
+               CASE WHEN object.type IN ('IF', 'TF', 'FT') THEN 'table'
+                    WHEN object.type = 'AF' THEN 'aggregate'
+                    ELSE 'scalar' END,
+               object.name,
+               CASE WHEN object.type IN ('IF', 'TF', 'FT') THEN 'table'
+                    ELSE type_name(return_value.user_type_id) END,
+               parameter.parameter_id, parameter.name,
+               type_name(parameter.user_type_id),
+               CASE WHEN parameter.is_output = 1 THEN 'out' ELSE 'in' END,
+               parameter.has_default_value, 0, NULL, NULL
+        FROM sys.objects object
+        LEFT JOIN sys.parameters return_value
+          ON return_value.object_id = object.object_id
+         AND return_value.parameter_id = 0
+        LEFT JOIN sys.parameters parameter
+          ON parameter.object_id = object.object_id
+         AND parameter.parameter_id > 0
+        WHERE object.type IN ('FN', 'IF', 'TF', 'FS', 'FT', 'AF')
+          AND object.is_ms_shipped = 0
+        ORDER BY 1, 2, 3, 5, 7;
+        """;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage =>
+        SqlCatalogCoverage.UserDefinedOnly;
+
     public string QuoteIdentifier(string identifier) =>
         $"[{identifier.Replace("]", "]]")}]";
 
@@ -526,6 +678,38 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
         WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
         ORDER BY table_schema, table_name;
         """;
+
+    public string SqlCatalogDefaultsSql =>
+        "SELECT current_database(), current_schema();";
+
+    public string ListRoutinesSql => """
+        SELECT database_name, schema_name, function_name,
+               CASE function_type WHEN 'aggregate' THEN 'aggregate'
+                                  WHEN 'table' THEN 'table'
+                                  ELSE 'scalar' END,
+               function_name || '(' || array_to_string(parameter_types, ', ') || ')',
+               return_type, NULL, NULL, NULL, NULL, 0,
+               CASE WHEN varargs IS NULL THEN 0 ELSE 1 END,
+               array_length(parameter_types),
+               CASE WHEN varargs IS NULL THEN array_length(parameter_types)
+                    ELSE NULL END
+        FROM duckdb_functions()
+        ORDER BY internal, 1, 2, 3, 5;
+        """;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage => SqlCatalogCoverage.Complete;
+
+    public string ListIntrinsicSymbolsSql => """
+        SELECT keyword_name, 'keyword'
+        FROM duckdb_keywords()
+        ORDER BY keyword_name;
+        """;
+
+    // duckdb_keywords() is authoritative for lexical keywords, but DuckDB does
+    // not publish context-sensitive bare values such as CURRENT_TIMESTAMP in
+    // either that catalog or duckdb_functions(). Keep the positive evidence,
+    // while making the missing intrinsic coverage visible to the editor.
+    public SqlCatalogCoverage IntrinsicCatalogCoverage => SqlCatalogCoverage.Partial;
 
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
@@ -641,6 +825,62 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
         SELECT NULL, USER, view_name, 'view' FROM user_views
         ORDER BY 3
         """;
+
+    public string SqlCatalogDefaultsSql =>
+        "SELECT NULL, SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL";
+
+    public string ListRoutinesSql => """
+        SELECT NULL, procedure.owner, procedure.object_name,
+               'scalar',
+               procedure.object_name || '(' || COALESCE((
+                   SELECT LISTAGG(signature_argument.data_type, ', ')
+                              WITHIN GROUP (ORDER BY signature_argument.position)
+                   FROM all_arguments signature_argument
+                   WHERE signature_argument.owner = procedure.owner
+                     AND signature_argument.object_name = procedure.object_name
+                     AND signature_argument.subprogram_id = procedure.subprogram_id
+                     AND signature_argument.position > 0
+                     AND signature_argument.data_level = 0
+               ), '') || ')',
+               return_value.data_type,
+               argument.position, argument.argument_name, argument.data_type,
+               CASE argument.in_out WHEN 'IN' THEN 'in'
+                                    WHEN 'OUT' THEN 'out'
+                                    WHEN 'IN/OUT' THEN 'inout'
+                                    ELSE 'unknown' END,
+               CASE argument.defaulted WHEN 'Y' THEN 1 ELSE 0 END,
+               0, NULL, NULL
+        FROM all_procedures procedure
+        LEFT JOIN all_arguments return_value
+          ON return_value.owner = procedure.owner
+         AND return_value.object_name = procedure.object_name
+         AND return_value.subprogram_id = procedure.subprogram_id
+         AND return_value.position = 0
+         AND return_value.data_level = 0
+        LEFT JOIN all_arguments argument
+          ON argument.owner = procedure.owner
+         AND argument.object_name = procedure.object_name
+         AND argument.subprogram_id = procedure.subprogram_id
+         AND argument.position > 0
+         AND argument.data_level = 0
+        WHERE procedure.owner = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+          AND procedure.object_type = 'FUNCTION'
+          AND procedure.procedure_name IS NULL
+        ORDER BY 2, 3, 5, 7
+        """;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage =>
+        SqlCatalogCoverage.UserDefinedOnly;
+
+    // V$SQLFN_METADATA positively proves callable SQL functions. Oracle's
+    // reserved-word catalog cannot prove expression validity (for example it
+    // lists CURRENT_TIME, which Oracle rejects as an identifier), so it must
+    // not be used as intrinsic evidence. Bare-value coverage therefore stays
+    // visibly partial instead of manufacturing false completions.
+    public string ListIntrinsicSymbolsSql =>
+        "SELECT name, 'keyword' FROM v$sqlfn_metadata ORDER BY name";
+
+    public SqlCatalogCoverage IntrinsicCatalogCoverage => SqlCatalogCoverage.Partial;
 
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
@@ -792,6 +1032,59 @@ internal sealed class FirebirdDatabaseDriver : IDatabaseDriver
         ORDER BY 3
         """;
 
+    public string ListRoutinesSql => """
+        SELECT NULL, NULL, TRIM(routine.rdb$function_name),
+               'scalar', TRIM(routine.rdb$function_name),
+               CAST(CASE return_value.rdb$field_type
+                        WHEN 7 THEN 'smallint' WHEN 8 THEN 'integer'
+                        WHEN 10 THEN 'float' WHEN 12 THEN 'date'
+                        WHEN 13 THEN 'time' WHEN 14 THEN 'char'
+                        WHEN 16 THEN 'bigint' WHEN 23 THEN 'boolean'
+                        WHEN 27 THEN 'double precision'
+                        WHEN 28 THEN 'time with time zone'
+                        WHEN 29 THEN 'timestamp with time zone'
+                        WHEN 35 THEN 'timestamp' WHEN 37 THEN 'varchar'
+                        WHEN 261 THEN 'blob' ELSE 'unknown' END AS VARCHAR(64)),
+               arg.rdb$argument_position,
+               TRIM(arg.rdb$argument_name),
+               CAST(CASE arg.rdb$field_type
+                        WHEN 7 THEN 'smallint' WHEN 8 THEN 'integer'
+                        WHEN 10 THEN 'float' WHEN 12 THEN 'date'
+                        WHEN 13 THEN 'time' WHEN 14 THEN 'char'
+                        WHEN 16 THEN 'bigint' WHEN 23 THEN 'boolean'
+                        WHEN 27 THEN 'double precision'
+                        WHEN 28 THEN 'time with time zone'
+                        WHEN 29 THEN 'timestamp with time zone'
+                        WHEN 35 THEN 'timestamp' WHEN 37 THEN 'varchar'
+                        WHEN 261 THEN 'blob' ELSE 'unknown' END AS VARCHAR(64)),
+               'in',
+               CASE WHEN arg.rdb$default_source IS NULL THEN 0 ELSE 1 END,
+               0, NULL, NULL
+        FROM rdb$functions routine
+        LEFT JOIN rdb$function_arguments return_value
+          ON return_value.rdb$function_name = routine.rdb$function_name
+         AND return_value.rdb$package_name IS NOT DISTINCT FROM routine.rdb$package_name
+         AND return_value.rdb$argument_position = routine.rdb$return_argument
+        LEFT JOIN rdb$function_arguments arg
+          ON arg.rdb$function_name = routine.rdb$function_name
+         AND arg.rdb$package_name IS NOT DISTINCT FROM routine.rdb$package_name
+         AND arg.rdb$argument_position <> routine.rdb$return_argument
+        WHERE COALESCE(routine.rdb$system_flag, 0) = 0
+          AND routine.rdb$package_name IS NULL
+        ORDER BY 3, 5, 7
+        """;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage =>
+        SqlCatalogCoverage.UserDefinedOnly;
+
+    public string ListIntrinsicSymbolsSql => """
+        SELECT TRIM(rdb$keyword_name), 'keyword'
+        FROM rdb$keywords
+        ORDER BY rdb$keyword_name
+        """;
+
+    public SqlCatalogCoverage IntrinsicCatalogCoverage => SqlCatalogCoverage.Complete;
+
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
 
@@ -892,6 +1185,28 @@ internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
         WHERE database = currentDatabase()
         ORDER BY name;
         """;
+
+    public string SqlCatalogDefaultsSql => "SELECT NULL, currentDatabase();";
+
+    public string ListRoutinesSql => """
+        SELECT NULL, NULL, name,
+               if(is_aggregate, 'aggregate', 'scalar'),
+               concat(name, '(...)'),
+               NULL, NULL, NULL, NULL, NULL,
+               0, 0, 0, NULL
+        FROM system.functions
+        ORDER BY name;
+        """;
+
+    public SqlCatalogCoverage RoutineCatalogCoverage => SqlCatalogCoverage.Complete;
+
+    public string ListIntrinsicSymbolsSql => """
+        SELECT name, 'keyword'
+        FROM system.functions
+        ORDER BY name;
+        """;
+
+    public SqlCatalogCoverage IntrinsicCatalogCoverage => SqlCatalogCoverage.Complete;
 
     public string QuoteIdentifier(string identifier) =>
         $"`{identifier.Replace("`", "``")}`";

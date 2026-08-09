@@ -43,14 +43,30 @@ public sealed class AgentWorkspaceViewContractTests
         Assert.Equal("Stretch", AttributeValue(root, "VerticalContentAlignment"));
         Assert.Null(AttributeValue(root, "DataContext"));
 
-        var panel = Assert.Single(
+        // The root is a wrapper hosting the surface and, over its bottom-left
+        // corner, the floating-mode resize grip.
+        var host = Assert.Single(
             root.Elements(),
+            element => element.Name.LocalName == "Panel");
+        var panel = Assert.Single(
+            host.Elements(),
             element => element.Name.LocalName == "Border"
                 && HasClass(element, "AgentPanel"));
         var layout = Assert.Single(
             panel.Elements(),
             element => element.Name.LocalName == "Grid");
         Assert.Equal("Auto,Auto,*,Auto,Auto", AttributeValue(layout, "RowDefinitions"));
+
+        // The grip resizes only a floating panel — docked, the layout owns the
+        // geometry — so it must drag through the code-behind and sit in the
+        // corner diagonally opposite the flyout's top-right anchor.
+        var resizeGrip = Assert.Single(
+            host.Elements(),
+            element => element.Name.LocalName == "Thumb");
+        Assert.Equal("FloatingResizeHandle", AttributeValue(resizeGrip, "Name"));
+        Assert.Equal("OnFloatingResizeDragDelta", AttributeValue(resizeGrip, "DragDelta"));
+        Assert.Equal("Left", AttributeValue(resizeGrip, "HorizontalAlignment"));
+        Assert.Equal("Bottom", AttributeValue(resizeGrip, "VerticalAlignment"));
 
         foreach (var controlName in NamedControls)
         {

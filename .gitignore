@@ -10,6 +10,7 @@ native/artifacts/
 /tmp/
 **/bin/
 **/obj/
+/native/sql-language-worker/target/
 .idea/
 .vscode/
 .claude/settings.local.json

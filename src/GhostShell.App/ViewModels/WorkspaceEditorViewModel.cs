@@ -708,7 +708,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _original.AgentPolicyOverride,
         Icon,
         AutoSave,
-        Color);
+        Color,
+        _original.AgentPanelPinned);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {

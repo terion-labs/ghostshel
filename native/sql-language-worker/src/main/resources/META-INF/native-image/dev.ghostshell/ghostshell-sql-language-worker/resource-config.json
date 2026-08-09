@@ -1,0 +1,16 @@
+{
+  "resources":{
+    "includes":[
+      {"pattern":"\\QMETA-INF/services/java.lang.System$LoggerFinder\\E"},
+      {"pattern":"\\QMETA-INF/services/java.util.spi.ResourceBundleControlProvider\\E"},
+      {"pattern":"\\Qorg/slf4j/impl/StaticLoggerBinder.class\\E"},
+      {"pattern":"\\Qsaffron.properties\\E"}
+    ]
+  },
+  "bundles":[
+    {
+      "name":"org.apache.calcite.runtime.CalciteResource",
+      "locales":[""]
+    }
+  ]
+}

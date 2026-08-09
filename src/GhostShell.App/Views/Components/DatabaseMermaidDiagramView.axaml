@@ -22,26 +22,17 @@
           StretchDirection="Both" />
     </Border>
 
-    <!-- The header's blurred backdrop: a mirror of the surface in the same
-         layout slot with the same alignment — identical geometry by
-         construction — clipped to the veil band by a rectangle rather than by
-         a differently-sized parent, and blurred. A real backdrop blur,
-         possible because the content behind the header is our own picture. -->
-    <Panel
+    <!-- The header's blurred backdrop: whatever the compositor has already
+         painted beneath the band, blurred live each frame. This replaced a
+         hand-kept mirror of the diagram that had to follow every pan and
+         zoom; the live surface follows them for free because it samples the
+         drawn result rather than the source picture. -->
+    <controls:BlurBehindSurface
         x:Name="HeaderBlurBand"
+        VerticalAlignment="Top"
+        BlurRadius="16"
         IsHitTestVisible="False"
-        IsVisible="False">
-      <svg:Svg
-          x:Name="DiagramSurfaceMirror"
-          HorizontalAlignment="Stretch"
-          VerticalAlignment="Stretch"
-          Stretch="Uniform"
-          StretchDirection="Both">
-        <svg:Svg.Effect>
-          <BlurEffect Radius="16" />
-        </svg:Svg.Effect>
-      </svg:Svg>
-    </Panel>
+        IsVisible="False" />
 
     <Border
         x:Name="Toolbar"

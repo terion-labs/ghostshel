@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -35,9 +36,13 @@ public static class PreviewText
         try
         {
             using var document = JsonDocument.Parse(content.ToArray());
-            return JsonSerializer.Serialize(
-                document.RootElement,
-                new JsonSerializerOptions { WriteIndented = true });
+            var buffer = new ArrayBufferWriter<byte>();
+            using var writer = new Utf8JsonWriter(
+                buffer,
+                new JsonWriterOptions { Indented = true });
+            document.RootElement.WriteTo(writer);
+            writer.Flush();
+            return Encoding.UTF8.GetString(buffer.WrittenSpan);
         }
         catch (JsonException)
         {

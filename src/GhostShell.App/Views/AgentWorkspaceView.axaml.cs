@@ -1,14 +1,95 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.VisualTree;
 
 namespace GhostShell.App.Views;
 
 public sealed partial class AgentWorkspaceView : UserControl
 {
+    /// <summary>Small enough to tuck away, large enough to keep a whole conversation column.</summary>
+    private const double MinimumFloatingWidth = 320;
+
+    private const double MinimumFloatingHeight = 360;
+
     public AgentWorkspaceView()
     {
         InitializeComponent();
+        // A resize while floating is a local value over the style's size, so
+        // docking clears it: the docked slot's geometry belongs to the layout
+        // spacer, and the next float starts back at the style's default.
+        Classes.CollectionChanged += (_, _) =>
+        {
+            if (!Classes.Contains("floating"))
+            {
+                ClearValue(WidthProperty);
+                ClearValue(HeightProperty);
+            }
+        };
+        FloatingResizeHandle.Cursor = DiagonalResizeCursor.Value;
+    }
+
+    /// <summary>
+    /// A north-east/south-west double arrow, drawn: macOS exposes no diagonal
+    /// resize cursor, so <c>StandardCursorType.BottomLeftCorner</c> falls back
+    /// to a crosshair there. White under black keeps it legible on any
+    /// surface. One per process — cursors are shared, not per-control.
+    /// </summary>
+    private static readonly Lazy<Cursor> DiagonalResizeCursor = new(() =>
+    {
+        const int size = 24;
+        var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(
+            new PixelSize(size, size),
+            new Vector(96, 96));
+        using (var context = bitmap.CreateDrawingContext())
+        {
+            var head = 5.0;
+            var southWest = new Point(5, 19);
+            var northEast = new Point(19, 5);
+            foreach (var pen in new[]
+            {
+                new Pen(Brushes.White, 4.5, lineCap: PenLineCap.Round),
+                new Pen(Brushes.Black, 2, lineCap: PenLineCap.Round),
+            })
+            {
+                context.DrawLine(pen, southWest, northEast);
+                context.DrawLine(pen, northEast, northEast + new Vector(-head, 0));
+                context.DrawLine(pen, northEast, northEast + new Vector(0, head));
+                context.DrawLine(pen, southWest, southWest + new Vector(head, 0));
+                context.DrawLine(pen, southWest, southWest + new Vector(0, -head));
+            }
+        }
+
+        return new Cursor(bitmap, new PixelPoint(size / 2, size / 2));
+    });
+
+    /// <summary>
+    /// The flyout sits in the content zone's top-right corner, so the
+    /// bottom-left grip grows it leftward and downward. Clamped to the
+    /// hosting overlay, less this panel's own margins.
+    /// </summary>
+    private void OnFloatingResizeDragDelta(object? sender, VectorEventArgs e)
+    {
+        _ = sender;
+        if (Parent is not Control host)
+        {
+            return;
+        }
+
+        var availableWidth = host.Bounds.Width - Margin.Left - Margin.Right;
+        var availableHeight = host.Bounds.Height - Margin.Top - Margin.Bottom;
+        Width = Math.Clamp(
+            Bounds.Width - e.Vector.X,
+            MinimumFloatingWidth,
+            Math.Max(MinimumFloatingWidth, availableWidth));
+        Height = Math.Clamp(
+            Bounds.Height + e.Vector.Y,
+            MinimumFloatingHeight,
+            Math.Max(MinimumFloatingHeight, availableHeight));
     }
 
     public event EventHandler<RoutedEventArgs>? ApproveAgentActionRequested;
@@ -42,6 +123,8 @@ public sealed partial class AgentWorkspaceView : UserControl
     public event EventHandler<RoutedEventArgs>? ShowAgentSettingsRequested;
 
     public event EventHandler<RoutedEventArgs>? SubmitAgentQuestionRequested;
+
+    public event EventHandler<RoutedEventArgs>? ToggleAgentPinRequested;
 
     private static void OnAgentChatTranscriptScrollChanged(
         object? sender,
@@ -111,4 +194,7 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnSubmitAgentQuestionClick(object? sender, RoutedEventArgs e) =>
         SubmitAgentQuestionRequested?.Invoke(sender, e);
+
+    private void OnToggleAgentPinClick(object? sender, RoutedEventArgs e) =>
+        ToggleAgentPinRequested?.Invoke(sender, e);
 }

@@ -145,6 +145,7 @@ public static class DesktopComposition
         services.AddSingleton<ISystemMonitorPanelSessionFactory, SystemMonitorPanelSessionFactory>();
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();
+        services.AddSingleton<ISqlLanguageService, CalciteSqlLanguageService>();
         services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();
         services.AddSingleton<IArchiveTableOfContents, ArchiveTableOfContents>();
         // PDFium ships native binaries for the desktop platforms only, and the

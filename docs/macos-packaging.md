@@ -10,12 +10,13 @@ full libghostty renderer.
 
 ## Prerequisites
 
-Install the workspace-local .NET SDK and build the pinned native terminal
-runtime:
+Install the workspace-local .NET SDK and build the pinned native terminal and
+SQL-language runtimes:
 
 ```sh
 GHOSTSHELL_SKIP_NATIVE=1 ./scripts/bootstrap.sh
 ./scripts/build-libghostty-vt.sh --rid osx-arm64
+./scripts/build-sql-language-worker.sh --local --rid osx-arm64
 ```
 
 The native build checks out Ghostty commit
@@ -47,6 +48,14 @@ checkout, patch or test failure, missing export, incompatible extension ABI,
 hash mismatch, linked resource, unexpected Mach-O install name, or incomplete
 output fails the native build before publication.
 
+The SQL-language build separately compiles Calcite with GraalVM Native Image,
+runs the linked executable's framed-protocol smoke test, and atomically publishes
+`ghostshell-sql-language`, its resolved dependency list, third-party notices,
+and `build-receipt.json`. The receipt binds the executable hash, `osx-arm64`
+RID, `darwin-arm64` ABI, protocol version, minimum macOS version, legal-closure
+format, dependency/document/review-required counts, and hashes of both legal
+files.
+
 ## Build a candidate
 
 Create the destination parent first, then supply explicit product and build
@@ -66,6 +75,15 @@ links and special entries, verifies that the apphost and libghostty-vt are
 arm64 Mach-O files, and requires the library install name
 `@rpath/libghostty-vt.dylib`. The dylib may depend only on macOS `libSystem` and
 may export only the Ghostty C ABI.
+
+The SQL-language worker is also mandatory. Packaging verifies its RID, ABI,
+artifact name, protocol version, file type, and SHA-256 against the build
+receipt. It then reads the Mach-O `LC_BUILD_VERSION` command, requires its
+minimum OS version to match the receipt, and rejects any minimum newer than
+macOS 13. The verified receipt must survive the self-contained publish and
+final bundle byte-for-byte. Packaging also re-hashes the dependency manifest
+and third-party notices before publish, after publish, and in the assembled
+bundle; all three copies must match the receipt.
 
 The temporary apphost's `LC_BUILD_VERSION` SDK field is updated to macOS 26.0
 before package fingerprinting and is ad-hoc signed so the candidate remains

@@ -79,6 +79,9 @@
       <panelViews:FileRuntimePanelView
           ActionRequested="OnFileActionRequested"
           CloseRequested="OnCloseRuntimePanelClick"
+          DatabaseObjectOpenInTabRequested="OnDatabaseObjectOpenInTabRequested"
+          DatabaseObjectOpenInPanelRequested="OnDatabaseObjectOpenInPanelRequested"
+          DatabaseOpenInViewerRequested="OnDatabaseOpenInViewerRequested"
           ConnectionSelected="OnPanelConnectionSelected"
           NewConnectionRequested="OnPanelNewConnectionRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
@@ -224,7 +227,8 @@
         ShowSettingsRequested="OnShowSettingsClick"
         SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick"
         TitleBarPointerPressedRequested="OnTitleBarPointerPressed"
-        ToggleAgentRequested="OnToggleAgentClick" />
+        ToggleAgentRequested="OnToggleAgentClick"
+        ToggleAgentPinRequested="OnToggleAgentPinClick" />
 
     <!-- Settings -->
     <views:SettingsView

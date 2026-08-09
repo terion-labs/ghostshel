@@ -1335,6 +1335,13 @@ public sealed class DatabaseRuntimePanelViewModelTests
         await panel.RunQueryAsync();
         panel.ShowDatabaseOverview();
         await panel.ShowDatabaseDiagramAsync();
+        Assert.Equal(1, client.SchemaGraphCallCount);
+
+        panel.ShowDatabaseOverview();
+        panel.QueryText = "CREATE TABLE added (id INTEGER)";
+        await panel.RunQueryAsync();
+        panel.ShowDatabaseOverview();
+        await panel.ShowDatabaseDiagramAsync();
         Assert.Equal(2, client.SchemaGraphCallCount);
     }
 

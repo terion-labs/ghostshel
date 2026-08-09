@@ -1,10 +1,13 @@
 using GhostShell.Application;
+using GhostShell.Infrastructure;
 using Xunit.Abstractions;
 
 namespace GhostShell.Databases.IntegrationTests;
 
 public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper output)
 {
+    private const string SqlLanguageAlias = "ghostshell_rows";
+
     public static IEnumerable<object[]> Providers =>
         DatabaseProviderSelection.SelectedProviderIds();
 
@@ -27,6 +30,17 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         await SeedAsync(client, environment, timeout.Token);
         var objects = await AssertDriverAndCatalogAsync(client, environment, timeout.Token);
         await AssertSchemaDiagramAsync(client, environment, objects, timeout.Token);
+        var sqlCatalog = await AssertSqlLanguageCatalogAsync(
+            client,
+            environment,
+            objects,
+            timeout.Token);
+        await AssertSqlLanguageWorkerAsync(
+            client,
+            environment,
+            sqlCatalog,
+            objects,
+            timeout.Token);
         await AssertTypedBrowsingAsync(client, environment, objects, timeout.Token);
         await AssertMutationsAsync(client, environment, objects, timeout.Token);
         await AssertViewModelJourneyAsync(client, environment, objects, timeout.Token);
@@ -37,6 +51,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             timeout.Token);
 
         await AssertQueryFailureRecoveryAsync(client, environment, timeout.Token);
+        await AssertLiveDefaultNamespaceAsync(client, environment, timeout.Token);
 
         output.WriteLine($"{provider.DisplayName}: complete conformance workflow passed.");
     }
@@ -86,6 +101,566 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         }
         Assert.EndsWith("```\n", mermaid, StringComparison.Ordinal);
     }
+
+    private static async Task<SqlCatalogSnapshot> AssertSqlLanguageCatalogAsync(
+        DatabasePanelClient client,
+        DatabaseTestEnvironment environment,
+        DatabaseObjects objects,
+        CancellationToken cancellationToken)
+    {
+        var driver = Assert.Single(
+            BuiltInDatabaseDrivers.All,
+            candidate => candidate.Descriptor.Id == environment.Provider.Id);
+        if (driver.ListRoutinesSql is { } routinesSql)
+        {
+            // Product metadata is deliberately fail-soft. Execute the provider
+            // query directly here so syntax/catalog regressions cannot masquerade
+            // as a valid empty optional routine catalog.
+            var routineRows = await client.QueryAsync(
+                environment.Provider.Id,
+                environment.ConnectionString,
+                tunnel: null,
+                routinesSql,
+                maxRows: 10,
+                cancellationToken);
+            Assert.InRange(routineRows.Columns.Count, 14, 15);
+            Assert.NotEmpty(routineRows.Rows);
+        }
+
+        if (driver.ListIntrinsicSymbolsSql is { } intrinsicSql)
+        {
+            var intrinsicRows = await client.QueryAsync(
+                environment.Provider.Id,
+                environment.ConnectionString,
+                tunnel: null,
+                intrinsicSql,
+                maxRows: 10,
+                cancellationToken);
+            Assert.NotEmpty(intrinsicRows.Columns);
+            Assert.NotEmpty(intrinsicRows.Rows);
+        }
+
+        var catalog = await client.GetSqlCatalogAsync(
+            environment.Provider.Id,
+            environment.ConnectionString,
+            tunnel: null,
+            cancellationToken);
+
+        Assert.Equal(environment.Provider.Id, catalog.DriverId);
+        var rows = Assert.Single(catalog.Objects, item =>
+            item.Id.Name == objects.Rows.Name && item.Kind == DatabaseTableKind.Table);
+        Assert.Equal(DatabaseTableKind.Table, rows.Kind);
+        Assert.Contains(rows.Columns, column =>
+            column.Name == "id"
+            && column.ValueKind is DatabaseValueKind.SignedInteger
+                or DatabaseValueKind.UnsignedInteger
+                or DatabaseValueKind.Decimal);
+        Assert.Contains(rows.Columns, column => column.Name == "title");
+
+        var view = Assert.Single(catalog.Objects, item =>
+            item.Id.Name == objects.View.Name && item.Kind == DatabaseTableKind.View);
+        Assert.Equal(DatabaseTableKind.View, view.Kind);
+        Assert.Contains(view.Columns, column => column.Name == "title");
+        Assert.All(catalog.Objects, item =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(item.Id.Name));
+            Assert.NotEmpty(item.Columns);
+            Assert.All(item.Columns, column =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(column.Name));
+                Assert.False(string.IsNullOrWhiteSpace(column.DataTypeName));
+            });
+        });
+
+        if (driver.ListRoutinesSql is null)
+        {
+            Assert.Empty(catalog.Routines);
+        }
+        else
+        {
+            Assert.NotEmpty(catalog.Routines);
+            Assert.All(catalog.Routines, routine =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(routine.Id.Name));
+                Assert.False(string.IsNullOrWhiteSpace(routine.Signature));
+                Assert.InRange(routine.MinimumArgumentCount, 0, 1024);
+                if (routine.MaximumArgumentCount is { } maximum)
+                {
+                    Assert.InRange(maximum, routine.MinimumArgumentCount, 1024);
+                }
+
+                Assert.InRange(routine.Parameters.Count, 0, 1024);
+                Assert.All(routine.Parameters, parameter =>
+                    Assert.False(string.IsNullOrWhiteSpace(parameter.DataTypeName)));
+            });
+        }
+
+        AssertSeededRoutineMetadata(environment.Provider.Id, catalog);
+        AssertCatalogCoverage(environment.Provider.Id, catalog, driver);
+
+        return catalog;
+    }
+
+    private static void AssertCatalogCoverage(
+        string providerId,
+        SqlCatalogSnapshot catalog,
+        IDatabaseDriver driver)
+    {
+        Assert.Equal(driver.RoutineCatalogCoverage, catalog.RoutineCoverage);
+        Assert.Equal(driver.IntrinsicCatalogCoverage, catalog.IntrinsicCoverage);
+        if (driver.ListIntrinsicSymbolsSql is null)
+        {
+            Assert.Empty(catalog.IntrinsicSymbols);
+        }
+        else
+        {
+            Assert.NotEmpty(catalog.IntrinsicSymbols);
+            Assert.All(catalog.IntrinsicSymbols, symbol =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(symbol.Name));
+                Assert.Equal(SqlCatalogIntrinsicKind.Keyword, symbol.Kind);
+            });
+        }
+
+        if (providerId is "sqlite" or "postgres" or "cockroach" or "clickhouse")
+        {
+            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
+                symbol.Name.Equals(
+                    "current_timestamp",
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        else if (providerId == "firebird")
+        {
+            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
+                symbol.Name == "CURRENT_TIMESTAMP");
+            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
+                symbol.Name == "DATEADD");
+        }
+        else if (providerId is "mysql" or "mariadb")
+        {
+            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
+                symbol.Name.Equals("ABS", StringComparison.OrdinalIgnoreCase));
+        }
+        else if (providerId == "oracle")
+        {
+            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
+                symbol.Name.Equals(
+                    "concat",
+                    StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static void AssertSeededRoutineMetadata(
+        string providerId,
+        SqlCatalogSnapshot catalog)
+    {
+        if (providerId == "postgres")
+        {
+            Assert.False(catalog.IsPartial, catalog.Limitation);
+            var dateAddOverloads = catalog.Routines.Where(routine =>
+                    routine.Id.Schema == "pg_catalog"
+                    && routine.Id.Name == "date_add")
+                .ToArray();
+            Assert.Equal(2, dateAddOverloads.Length);
+            Assert.All(dateAddOverloads, dateAdd =>
+            {
+                Assert.Equal(SqlCatalogRoutineKind.Scalar, dateAdd.Kind);
+                Assert.Contains(
+                    "interval",
+                    dateAdd.Signature,
+                    StringComparison.OrdinalIgnoreCase);
+            });
+            Assert.Contains(dateAddOverloads, dateAdd =>
+                dateAdd.MinimumArgumentCount == 2
+                && dateAdd.MaximumArgumentCount == 2
+                && dateAdd.Parameters.Count == 2);
+            Assert.Contains(dateAddOverloads, dateAdd =>
+                dateAdd.MinimumArgumentCount == 3
+                && dateAdd.MaximumArgumentCount == 3
+                && dateAdd.Parameters.Count == 3);
+            Assert.Contains(catalog.Routines, routine =>
+                routine.Id.Schema == "pg_catalog"
+                && routine.Id.Name == "to_timestamp");
+            var logicalSlotChanges = Assert.Single(catalog.Routines, routine =>
+                routine.Id.Schema == "pg_catalog"
+                && routine.Id.Name == "pg_logical_slot_get_binary_changes");
+            Assert.Equal(2, logicalSlotChanges.MinimumArgumentCount);
+            Assert.Null(logicalSlotChanges.MaximumArgumentCount);
+            Assert.True(Assert.Single(logicalSlotChanges.Parameters, parameter =>
+                parameter.Name == "upto_nchanges").IsOptional);
+            Assert.True(Assert.Single(logicalSlotChanges.Parameters, parameter =>
+                parameter.Name == "options").IsVariadic);
+            var extraSchemaIdentity = Assert.Single(catalog.Routines, routine =>
+                routine.Id.Schema == "ghostshell_extra"
+                && routine.Id.Name == "viewer_identity");
+            Assert.Equal((1, 1),
+                (extraSchemaIdentity.MinimumArgumentCount,
+                    extraSchemaIdentity.MaximumArgumentCount));
+            return;
+        }
+
+        if (providerId == "cockroach")
+        {
+            Assert.False(catalog.IsPartial, catalog.Limitation);
+            Assert.Contains(catalog.Routines, routine =>
+                routine.Id.Schema == "pg_catalog"
+                && routine.Id.Name == "unique_rowid"
+                && routine.MinimumArgumentCount == 0
+                && routine.MaximumArgumentCount == 0);
+            return;
+        }
+
+        if (providerId is "mysql" or "mariadb" or "sqlserver" or "oracle" or "firebird")
+        {
+            var identity = Assert.Single(catalog.Routines, routine =>
+                string.Equals(
+                    routine.Id.Name,
+                    "viewer_identity",
+                    StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(SqlCatalogRoutineKind.Scalar, identity.Kind);
+            Assert.Equal((1, 1),
+                (identity.MinimumArgumentCount, identity.MaximumArgumentCount));
+            Assert.Single(identity.Parameters);
+        }
+    }
+
+    private static async Task AssertSqlLanguageWorkerAsync(
+        DatabasePanelClient client,
+        DatabaseTestEnvironment environment,
+        SqlCatalogSnapshot catalog,
+        DatabaseObjects objects,
+        CancellationToken cancellationToken)
+    {
+        ISqlLanguageService service = new CalciteSqlLanguageService();
+        if (!service.IsAvailable)
+        {
+            Assert.False(
+                string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        "GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE"),
+                    "1",
+                    StringComparison.Ordinal),
+                "Native SQL language coverage was required, but the worker executable "
+                    + "could not be resolved from GHOSTSHELL_SQL_LANGUAGE_WORKER.");
+            return;
+        }
+
+        await using var session = await service.OpenSessionAsync(catalog, cancellationToken);
+        Assert.True(
+            session.IsAvailable,
+            $"The native SQL language worker did not initialize for '{catalog.DriverId}': "
+                + session.UnavailableReason);
+
+        var table = Assert.Single(catalog.Objects, item =>
+            item.Id.Name == objects.Rows.Name && item.Kind == DatabaseTableKind.Table);
+        var objectName = QuoteSqlLanguageObject(catalog.DriverId, table.Id);
+        var quote = BuiltInDatabaseDrivers.All
+            .Single(driver => driver.Descriptor.Id == catalog.DriverId)
+            .QuoteIdentifier;
+        await AssertSqlAliasIntelligenceAsync(
+            session,
+            catalog.DriverId,
+            objectName,
+            quote,
+            cancellationToken);
+        // A null default pair means metadata could not prove an unqualified
+        // resolution path. Do not make the test (or editor) invent one.
+        if (catalog.DefaultCatalog is not null || catalog.DefaultSchema is not null)
+        {
+            await AssertSqlAliasIntelligenceAsync(
+                session,
+                catalog.DriverId,
+                quote(table.Id.Name),
+                quote,
+                cancellationToken);
+        }
+
+        var productionPreview = client.BuildTablePreviewQuery(
+            catalog.DriverId,
+            objects.Rows.Id,
+            limit: 200);
+        var productionDiagnostics = await session.DiagnoseAsync(
+            productionPreview,
+            cancellationToken);
+        Assert.DoesNotContain(productionDiagnostics, diagnostic =>
+            diagnostic.Severity == SqlDiagnosticSeverity.Error);
+
+        const string missingColumn = "ghostshell_column_that_does_not_exist";
+        var invalidSql = $"SELECT {SqlLanguageAlias}.{quote(missingColumn)} "
+            + $"FROM {objectName} {SqlLanguageAlias}";
+        var invalid = await session.DiagnoseAsync(invalidSql, cancellationToken);
+        Assert.Contains(invalid, diagnostic =>
+            diagnostic.Severity == SqlDiagnosticSeverity.Error
+            && diagnostic.Message.Contains(missingColumn, StringComparison.OrdinalIgnoreCase));
+
+        await AssertProviderExtensionIntelligenceAsync(
+            session,
+            catalog.DriverId,
+            objectName,
+            quote,
+            cancellationToken);
+        await AssertServerRoutineIntelligenceAsync(
+            client,
+            environment,
+            session,
+            catalog,
+            table,
+            objectName,
+            quote,
+            cancellationToken);
+    }
+
+    private static async Task AssertServerRoutineIntelligenceAsync(
+        DatabasePanelClient client,
+        DatabaseTestEnvironment environment,
+        ISqlLanguageSession session,
+        SqlCatalogSnapshot catalog,
+        SqlCatalogObject table,
+        string objectName,
+        Func<string, string> quote,
+        CancellationToken cancellationToken)
+    {
+        if (catalog.DriverId == "sqlite")
+        {
+            Assert.Contains(catalog.Routines, routine =>
+                routine.Id.Schema == "main"
+                && routine.Id.Name == "json_array_length");
+            await AssertRoutineCompletionAsync(
+                session,
+                $"SELECT json_array_l FROM {objectName}",
+                "json_array_l",
+                "json_array_length",
+                "json_array_length(",
+                cancellationToken);
+            var sqliteResult = await client.QueryAsync(
+                environment.Provider.Id,
+                environment.ConnectionString,
+                tunnel: null,
+                $"SELECT json_array_length('[]') FROM {objectName}",
+                maxRows: 1,
+                cancellationToken);
+            Assert.Single(sqliteResult.Rows);
+            return;
+        }
+
+        if (catalog.DriverId == "sqlserver")
+        {
+            await AssertRoutineCompletionAsync(
+                session,
+                $"SELECT viewer_i FROM {objectName}",
+                "viewer_i",
+                "viewer_identity",
+                "dbo.viewer_identity(",
+                cancellationToken);
+            return;
+        }
+
+        if (catalog.DriverId == "cockroach")
+        {
+            await AssertRoutineCompletionAsync(
+                session,
+                $"SELECT unique_r FROM {objectName}",
+                "unique_r",
+                "unique_rowid",
+                "unique_rowid(",
+                cancellationToken);
+            return;
+        }
+
+        if (catalog.DriverId != "postgres")
+        {
+            return;
+        }
+
+        await AssertRoutineCompletionAsync(
+            session,
+            $"SELECT viewer_i FROM {objectName}",
+            "viewer_i",
+            "viewer_identity",
+            "ghostshell_extra.viewer_identity(",
+            cancellationToken);
+
+        var timestamp = Assert.Single(table.Columns, column =>
+            column.Name == "created_at");
+        var expressionPrefix = $"SELECT * FROM {objectName} WHERE "
+            + $"{quote(timestamp.Name)} < ";
+        await AssertRoutineCompletionAsync(
+            session,
+            $"{expressionPrefix}date_",
+            "date_",
+            "date_add",
+            "date_add(",
+            cancellationToken);
+        await AssertRoutineCompletionAsync(
+            session,
+            $"{expressionPrefix}date_add(CURRENT_TIMESTAMP, '1 day'::int",
+            "int",
+            "INTERVAL",
+            "INTERVAL",
+            cancellationToken,
+            SqlCompletionItemKind.DataType);
+
+        var userExpression = $"{expressionPrefix}"
+            + "date_add(CURRENT_TIMESTAMP, '1 day'::INTERVAL)";
+        var diagnostics = await session.DiagnoseAsync(
+            userExpression,
+            cancellationToken);
+        Assert.DoesNotContain(diagnostics, diagnostic =>
+            diagnostic.Severity == SqlDiagnosticSeverity.Error);
+        var result = await client.QueryAsync(
+            environment.Provider.Id,
+            environment.ConnectionString,
+            tunnel: null,
+            userExpression,
+            maxRows: 1,
+            cancellationToken);
+        Assert.Single(result.Rows);
+    }
+
+    private static async Task AssertRoutineCompletionAsync(
+        ISqlLanguageSession session,
+        string sql,
+        string typedPrefix,
+        string expectedLabel,
+        string expectedInsertText,
+        CancellationToken cancellationToken,
+        SqlCompletionItemKind expectedKind = SqlCompletionItemKind.Function)
+    {
+        var prefixStart = sql.LastIndexOf(typedPrefix, StringComparison.Ordinal);
+        Assert.True(prefixStart >= 0, $"'{typedPrefix}' is not present in '{sql}'.");
+        var cursorOffset = prefixStart + typedPrefix.Length;
+        var completion = await session.CompleteAsync(
+            sql,
+            cursorOffset,
+            cancellationToken);
+        Assert.Equal(cursorOffset - typedPrefix.Length, completion.ReplacementStart);
+        Assert.Equal(typedPrefix.Length, completion.ReplacementLength);
+        _ = Assert.Single(completion.Items, candidate =>
+            candidate.Label == expectedLabel
+            && candidate.Kind == expectedKind
+            && candidate.InsertText == expectedInsertText);
+    }
+
+    private static async Task AssertSqlAliasIntelligenceAsync(
+        ISqlLanguageSession session,
+        string driverId,
+        string objectName,
+        Func<string, string> quote,
+        CancellationToken cancellationToken)
+    {
+        var completionSql =
+            $"SELECT {SqlLanguageAlias}. FROM {objectName} {SqlLanguageAlias}";
+        var completion = await session.CompleteAsync(
+            completionSql,
+            completionSql.IndexOf(
+                $"{SqlLanguageAlias}.",
+                StringComparison.Ordinal) + SqlLanguageAlias.Length + 1,
+            cancellationToken);
+        Assert.True(
+            completion.Items.Any(item =>
+                item.Kind == SqlCompletionItemKind.Column && item.Label == "id"),
+            $"{driverId} did not complete 'id' through {objectName}.");
+        Assert.True(
+            completion.Items.Any(item =>
+                item.Kind == SqlCompletionItemKind.Column && item.Label == "title"),
+            $"{driverId} did not complete 'title' through {objectName}.");
+
+        var validSql = $"SELECT {SqlLanguageAlias}.{quote("id")}, "
+            + $"{SqlLanguageAlias}.{quote("title")} "
+            + $"FROM {objectName} {SqlLanguageAlias}";
+        var valid = await session.DiagnoseAsync(validSql, cancellationToken);
+        Assert.True(
+            valid.Count == 0,
+            $"{driverId} valid SQL through {objectName} produced diagnostics: "
+                + string.Join(" | ", valid.Select(item => item.Message)));
+    }
+
+    private static async Task AssertProviderExtensionIntelligenceAsync(
+        ISqlLanguageSession session,
+        string driverId,
+        string objectName,
+        Func<string, string> quote,
+        CancellationToken cancellationToken)
+    {
+        var completionSql = ProviderExtensionQuery(
+            driverId,
+            $"{SqlLanguageAlias}.",
+            objectName);
+        if (completionSql is null)
+        {
+            return;
+        }
+
+        var cursorOffset = completionSql.IndexOf(
+            $"{SqlLanguageAlias}.",
+            StringComparison.Ordinal) + SqlLanguageAlias.Length + 1;
+        var completion = await session.CompleteAsync(
+            completionSql,
+            cursorOffset,
+            cancellationToken);
+        Assert.True(
+            completion.Items.Any(item =>
+                item.Kind == SqlCompletionItemKind.Column && item.Label == "id"),
+            $"{driverId} provider extension discarded alias completion for 'id'.");
+        Assert.True(
+            completion.Items.Any(item =>
+                item.Kind == SqlCompletionItemKind.Column && item.Label == "title"),
+            $"{driverId} provider extension discarded alias completion for 'title'.");
+
+        var validSql = ProviderExtensionQuery(
+            driverId,
+            $"{SqlLanguageAlias}.{quote("id")}",
+            objectName)!;
+        var valid = await session.DiagnoseAsync(validSql, cancellationToken);
+        Assert.DoesNotContain(valid, diagnostic =>
+            diagnostic.Severity == SqlDiagnosticSeverity.Error);
+
+        const string missingColumn = "ghostshell_extension_column_that_does_not_exist";
+        var invalidSql = ProviderExtensionQuery(
+            driverId,
+            $"{SqlLanguageAlias}.{quote(missingColumn)}",
+            objectName)!;
+        var invalid = await session.DiagnoseAsync(invalidSql, cancellationToken);
+        Assert.Contains(invalid, diagnostic =>
+            diagnostic.Severity == SqlDiagnosticSeverity.Error
+            && diagnostic.Message.Contains(missingColumn, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? ProviderExtensionQuery(
+        string driverId,
+        string projection,
+        string objectName) => driverId switch
+        {
+            "sqlserver" => $"SELECT TOP (10) {projection} "
+                + $"FROM {objectName} {SqlLanguageAlias}",
+            "firebird" => $"SELECT FIRST 10 {projection} "
+                + $"FROM {objectName} {SqlLanguageAlias}",
+            "clickhouse" => $"SELECT {projection} "
+                + $"FROM {objectName} {SqlLanguageAlias} SETTINGS max_threads = 1",
+            _ => null,
+        };
+
+    private static string QuoteSqlLanguageObject(string driverId, DatabaseObjectId objectId)
+    {
+        var quote = BuiltInDatabaseDrivers.All
+            .Single(driver => driver.Descriptor.Id == driverId)
+            .QuoteIdentifier;
+        var components = driverId switch
+        {
+            "sqlserver" or "duckdb" =>
+                Present(objectId.Catalog, objectId.Schema, objectId.Name),
+            "sqlite" => Present(objectId.Schema ?? "main", objectId.Name),
+            "postgres" or "cockroach" or "redshift" or "mysql" or "mariadb"
+                or "oracle" or "clickhouse" => Present(objectId.Schema, objectId.Name),
+            _ => Present(objectId.Name),
+        };
+        return string.Join('.', components.Select(quote));
+    }
+
+    private static IReadOnlyList<string> Present(params string?[] values) => values
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!)
+        .ToArray();
 
     private static async Task WaitUntilReadyAsync(
         DatabasePanelClient client,
@@ -385,6 +960,70 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             maxRows: 1,
             cancellationToken);
         Assert.Single(recovered.ValueRows);
+    }
+
+    private static async Task AssertLiveDefaultNamespaceAsync(
+        DatabasePanelClient client,
+        DatabaseTestEnvironment environment,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(environment.Provider.Id, "postgres", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _ = await client.QueryAsync(
+            environment.Provider.Id,
+            environment.ConnectionString,
+            tunnel: null,
+            """
+            CREATE SCHEMA ghostshell_tenant;
+            CREATE TABLE public.ghostshell_namespace_probe (public_value INTEGER);
+            CREATE TABLE ghostshell_tenant.ghostshell_namespace_probe (tenant_value INTEGER);
+            """,
+            maxRows: 1,
+            cancellationToken);
+        var tenantConnectionString = environment.ConnectionString
+            + ";Search Path=ghostshell_tenant,public";
+        var catalog = await client.GetSqlCatalogAsync(
+            environment.Provider.Id,
+            tenantConnectionString,
+            tunnel: null,
+            cancellationToken);
+
+        Assert.Equal("ghostshell", catalog.DefaultCatalog);
+        Assert.Equal("ghostshell_tenant", catalog.DefaultSchema);
+        Assert.Equal(
+            2,
+            catalog.Objects.Count(item => item.Id.Name == "ghostshell_namespace_probe"));
+
+        ISqlLanguageService service = new CalciteSqlLanguageService();
+        if (!service.IsAvailable)
+        {
+            return;
+        }
+
+        await using var session = await service.OpenSessionAsync(catalog, cancellationToken);
+        Assert.True(session.IsAvailable, session.UnavailableReason);
+        const string completionSql =
+            "SELECT p. FROM ghostshell_namespace_probe p";
+        var completion = await session.CompleteAsync(
+            completionSql,
+            completionSql.IndexOf('.', StringComparison.Ordinal) + 1,
+            cancellationToken);
+        Assert.Contains(completion.Items, item => item.Label == "tenant_value");
+        Assert.DoesNotContain(completion.Items, item => item.Label == "public_value");
+
+        var valid = await session.DiagnoseAsync(
+            "SELECT p.tenant_value FROM ghostshell_namespace_probe p",
+            cancellationToken);
+        Assert.DoesNotContain(valid, item => item.Severity == SqlDiagnosticSeverity.Error);
+        var wrongSchema = await session.DiagnoseAsync(
+            "SELECT p.public_value FROM ghostshell_namespace_probe p",
+            cancellationToken);
+        Assert.Contains(wrongSchema, item =>
+            item.Severity == SqlDiagnosticSeverity.Error
+            && item.Message.Contains("public_value", StringComparison.OrdinalIgnoreCase));
     }
 
     private static DatabaseTableDescriptor FindObject(

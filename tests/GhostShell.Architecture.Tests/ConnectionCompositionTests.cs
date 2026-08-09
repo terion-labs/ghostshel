@@ -13,12 +13,16 @@ public sealed class ConnectionCompositionTests
 
         var runtime = services.GetRequiredService<IConnectionRuntime>();
         var securityRuntime = services.GetRequiredService<IConnectionSecurityRuntime>();
+        var sqlLanguage = services.GetRequiredService<ISqlLanguageService>();
         var adapters = services.GetServices<IConnectionRuntimeAdapter>().ToArray();
 
         Assert.Same(runtime, services.GetRequiredService<IConnectionRuntime>());
         Assert.Same(
             securityRuntime,
             services.GetRequiredService<IConnectionSecurityRuntime>());
+        Assert.Same(
+            sqlLanguage,
+            services.GetRequiredService<ISqlLanguageService>());
         Assert.Equal(4, adapters.Length);
         Assert.Equal(
             [

@@ -1,0 +1,2 @@
+# coordinate<TAB>unresolved legal review reason
+org.apache.commons:commons-math3:3.6.1	The embedded LICENSE states that the original BesselJ Fortran source carried no license or copyright statement; release counsel must confirm the redistribution basis.

@@ -47,6 +47,8 @@
     <Project Path="tools/GhostShell.Packaging/GhostShell.Packaging.csproj" />
     <Project Path="tools/GhostShell.SecurityKeyProbe/GhostShell.SecurityKeyProbe.csproj" />
     <Project Path="tools/GhostShell.SingleInstanceTestHost/GhostShell.SingleInstanceTestHost.csproj" />
+    <Project Path="tools/GhostShell.SqlLanguageAotProbe/GhostShell.SqlLanguageAotProbe.csproj" />
+    <Project Path="tools/GhostShell.SqlLanguageTestWorker/GhostShell.SqlLanguageTestWorker.csproj" />
     <Project Path="tools/GhostShell.TerminalAcceptance/GhostShell.TerminalAcceptance.csproj" />
   </Folder>
 </Solution>

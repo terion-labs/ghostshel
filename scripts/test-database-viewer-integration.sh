@@ -19,12 +19,55 @@ Examples:
   ./scripts/test-database-viewer-integration.sh
   ./scripts/test-database-viewer-integration.sh sqlite,duckdb
   ./scripts/test-database-viewer-integration.sh postgres --logger "console;verbosity=detailed"
+  GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE=1 \
+    GHOSTSHELL_SQL_LANGUAGE_WORKER="$PWD/native/artifacts/osx-arm64/ghostshell-sql-language" \
+    ./scripts/test-database-viewer-integration.sh sqlite
 
 If no provider argument is supplied, the script uses
 GHOSTSHELL_DATABASE_INTEGRATION_PROVIDERS, then falls back to all.
+
+Set GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE=1 to make the real Calcite worker a
+required part of the database and rendered-editor journeys. The worker path
+must name an executable built for the host operating system and architecture.
 USAGE
     exit 0
 fi
+
+native_required="${GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE:-0}"
+case "${native_required}" in
+    0)
+        ;;
+    1)
+        worker_path="${GHOSTSHELL_SQL_LANGUAGE_WORKER:-}"
+        if [[ -z "${worker_path}" ]]; then
+            echo "GHOSTSHELL_SQL_LANGUAGE_WORKER is required when GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE=1." >&2
+            echo "Build the host worker with ./scripts/build-sql-language-worker.sh, then pass its artifact path." >&2
+            exit 1
+        fi
+
+        if [[ "${worker_path}" != /* ]]; then
+            worker_path="${repository_dir}/${worker_path}"
+        fi
+
+        if [[ ! -f "${worker_path}" ]]; then
+            echo "The required SQL language worker does not exist: ${worker_path}" >&2
+            exit 1
+        fi
+
+        if [[ ! -x "${worker_path}" ]]; then
+            echo "The required SQL language worker is not executable: ${worker_path}" >&2
+            exit 1
+        fi
+
+        worker_directory="$(cd "$(dirname "${worker_path}")" && pwd -P)"
+        export GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE=1
+        export GHOSTSHELL_SQL_LANGUAGE_WORKER="${worker_directory}/$(basename "${worker_path}")"
+        ;;
+    *)
+        echo "GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE must be 0 or 1; received: ${native_required}" >&2
+        exit 2
+        ;;
+esac
 
 providers="${GHOSTSHELL_DATABASE_INTEGRATION_PROVIDERS:-all}"
 if [[ $# -gt 0 && "${1}" != -* ]]; then

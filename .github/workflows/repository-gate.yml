@@ -62,19 +62,66 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rid: [linux-x64, linux-arm64, win-x64, win-arm64]
+        # These are the release RIDs whose complete native payloads can be
+        # produced and executed from this Linux gate. win-x64 requires a
+        # target-host GraalVM lane; win-arm64 has no supported Native Image
+        # toolchain and must never be emitted as a feature-incomplete package.
+        rid: [linux-x64, linux-arm64]
     steps:
       - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Expose the SDK at the repository-local path
+        shell: bash
+        run: |
+          mkdir -p .dotnet
+          ln -s "$(command -v dotnet)" .dotnet/dotnet
+      - name: Build required native payloads
+        run: |
+          ./scripts/build-libghostty-vt.sh --rid ${{ matrix.rid }}
+          ./scripts/build-sql-language-worker.sh --docker --rid ${{ matrix.rid }}
       - name: Publish portable desktop
         run: >-
           dotnet publish src/GhostShell.Desktop/GhostShell.Desktop.csproj
           --configuration Release
           --runtime ${{ matrix.rid }}
           --self-contained true
+          -p:GhostShellSqlLanguageRequired=true
           --output artifacts/${{ matrix.rid }}
+      - name: Verify SQL intelligence payload in candidate
+        run: |
+          native_dir=artifacts/${{ matrix.rid }}/runtimes/${{ matrix.rid }}/native
+          worker="$native_dir/ghostshell-sql-language"
+          receipt="$native_dir/build-receipt.json"
+          test -x "$worker"
+          test -s "$native_dir/THIRD-PARTY-NOTICES.md"
+          test -s "$native_dir/runtime-dependencies.txt"
+          test -s "$receipt"
+          case "${{ matrix.rid }}" in
+            linux-x64) expected_abi=linux-gnu-x64 ;;
+            linux-arm64) expected_abi=linux-gnu-arm64 ;;
+            *) exit 1 ;;
+          esac
+          test "$(jq -r '.protocolVersion' "$receipt")" = "1"
+          test "$(jq -r '.rid' "$receipt")" = "${{ matrix.rid }}"
+          test "$(jq -r '.artifact' "$receipt")" = "ghostshell-sql-language"
+          test "$(jq -r '.abi' "$receipt")" = "$expected_abi"
+          jq -e '.minimumGlibcVersion | type == "string" and test("^[0-9]+\\.[0-9]+$")' "$receipt" >/dev/null
+          jq -e \
+            '[.legalClosureFormatVersion, .legalDocumentCount, .runtimeDependencyCount] | all(type == "number" and . >= 1 and floor == .)' \
+            "$receipt" >/dev/null
+          jq -e \
+            '.legalReviewRequiredCount | type == "number" and . >= 0 and floor == .' \
+            "$receipt" >/dev/null
+          test "$(jq -r '.sha256' "$receipt")" = "$(sha256sum "$worker" | awk '{print $1}')"
+          test "$(jq -r '.runtimeDependenciesSha256' "$receipt")" = \
+            "$(sha256sum "$native_dir/runtime-dependencies.txt" | awk '{print $1}')"
+          test "$(jq -r '.thirdPartyNoticesSha256' "$receipt")" = \
+            "$(sha256sum "$native_dir/THIRD-PARTY-NOTICES.md" | awk '{print $1}')"
       - name: Upload package candidate
         uses: actions/upload-artifact@v7
         with:

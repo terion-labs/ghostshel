@@ -141,6 +141,63 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
     }
 
     [Fact]
+    public async Task Reads_language_catalog_with_tables_views_and_exact_column_types()
+    {
+        await using var client = new DatabasePanelClient();
+
+        var catalog = await client.GetSqlCatalogAsync(
+            "sqlite",
+            ConnectionString,
+            tunnel: null,
+            CancellationToken.None);
+
+        Assert.Equal("sqlite", catalog.DriverId);
+        Assert.Null(catalog.DefaultCatalog);
+        Assert.Equal("main", catalog.DefaultSchema);
+        var table = Assert.Single(catalog.Objects, item =>
+            item.Id.Name == TableName);
+        Assert.Equal(DatabaseTableKind.Table, table.Kind);
+        Assert.Equal(
+            ["id", "name", "note", "name_upper"],
+            table.Columns.Select(column => column.Name));
+        Assert.Equal(DatabaseValueKind.SignedInteger, table.Columns[0].ValueKind);
+        Assert.Equal(DatabaseValueKind.Text, table.Columns[1].ValueKind);
+        Assert.False(table.Columns[1].IsNullable);
+
+        var view = Assert.Single(catalog.Objects, item =>
+            item.Id.Name == "odd.view");
+        Assert.Equal(DatabaseTableKind.View, view.Kind);
+        Assert.Equal(["id", "name"], view.Columns.Select(column => column.Name));
+    }
+
+    [Fact]
+    public async Task Language_catalog_caps_large_schemas_without_partial_objects()
+    {
+        using (var connection = new SqliteConnection(ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = string.Join(
+                Environment.NewLine,
+                Enumerable.Range(0, 1005).Select(index =>
+                    $"CREATE TABLE catalog_limit_{index:D4} (id INTEGER);"));
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using var client = new DatabasePanelClient();
+        var catalog = await client.GetSqlCatalogAsync(
+            "sqlite",
+            ConnectionString,
+            tunnel: null,
+            CancellationToken.None);
+
+        Assert.True(catalog.IsPartial);
+        Assert.Equal(1000, catalog.Objects.Count);
+        Assert.Contains("first 1000", catalog.Limitation, StringComparison.OrdinalIgnoreCase);
+        Assert.All(catalog.Objects, item => Assert.NotEmpty(item.Columns));
+    }
+
+    [Fact]
     public async Task Lists_qualified_objects_and_reads_columns_keys_defaults_generated_values_and_indexes()
     {
         await using var client = new DatabasePanelClient();

@@ -8,6 +8,26 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <UserControl.Styles>
+    <!-- The row-action strip adapts to its width: labels on a roomy panel,
+         glyphs on a narrow one. Both live in every button; the class on the
+         view decides which shows. -->
+    <Style Selector="local|DatabaseWorkspaceView icons|SymbolIcon.rowActionGlyph">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="local|DatabaseWorkspaceView.narrowData icons|SymbolIcon.rowActionGlyph">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="local|DatabaseWorkspaceView.narrowData TextBlock.rowActionLabel">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <!-- Explanatory prose is the first thing a narrow panel can no longer
+         afford; the disabled buttons still say what it said. Opacity rather
+         than IsVisible, because the hint's visibility is already bound. -->
+    <Style Selector="local|DatabaseWorkspaceView.narrowData TextBlock.adaptiveHint">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="MaxWidth" Value="0" />
+    </Style>
+
     <!-- The SQL editor is a flat writing surface; the surrounding toolbar owns
          its border and focus geometry. -->
     <Style Selector="TextBox.QueryEditor">
@@ -185,10 +205,81 @@
           Background="{DynamicResource ShellBorderBrush}"
           IsHitTestVisible="False" />
 
-      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,*">
+      <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,Auto,*">
+        <!-- Embedded in another panel — the file viewer's database preview —
+             there is no panel header to carry the perspectives, so they get a
+             row of their own here, with the way out to a full viewer tab. -->
+        <Border
+            BorderBrush="{DynamicResource ShellBorderBrush}"
+            BorderThickness="0,0,0,1"
+            IsVisible="{Binding IsEmbedded, RelativeSource={RelativeSource AncestorType=local:DatabaseWorkspaceView}}">
+          <Grid
+              Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+              ColumnDefinitions="Auto,Auto,*,Auto"
+              ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <Border
+                VerticalAlignment="Center"
+                Classes="Segmented PerspectiveToggle"
+                IsVisible="{Binding !IsDatabaseOverview}">
+              <UniformGrid Columns="3">
+                <ToggleButton
+                    x:Name="EmbeddedDataModeButton"
+                    Classes="Segment"
+                    Click="OnEmbeddedDataModeClick"
+                    Content="Data"
+                    AutomationProperties.Name="Show table data" />
+                <ToggleButton
+                    x:Name="EmbeddedStructureModeButton"
+                    Classes="Segment"
+                    Click="OnEmbeddedStructureModeClick"
+                    Content="Structure"
+                    AutomationProperties.Name="Show table structure" />
+                <ToggleButton
+                    x:Name="EmbeddedIndexesModeButton"
+                    Classes="Segment"
+                    Click="OnEmbeddedIndexesModeClick"
+                    Content="Indexes"
+                    AutomationProperties.Name="Show table indexes" />
+              </UniformGrid>
+            </Border>
+            <Border
+                VerticalAlignment="Center"
+                Classes="Segmented PerspectiveToggle"
+                IsVisible="{Binding IsDatabaseOverview}">
+              <UniformGrid Columns="2">
+                <ToggleButton
+                    x:Name="EmbeddedObjectsOverviewButton"
+                    Classes="Segment"
+                    Click="OnEmbeddedObjectsOverviewClick"
+                    Content="Objects"
+                    AutomationProperties.Name="Show database objects" />
+                <ToggleButton
+                    x:Name="EmbeddedDiagramOverviewButton"
+                    Classes="Segment"
+                    Click="OnEmbeddedDiagramOverviewClick"
+                    Content="ER Diagram"
+                    AutomationProperties.Name="Show database Mermaid ER diagram" />
+              </UniformGrid>
+            </Border>
+            <Button
+                Grid.Column="3"
+                VerticalAlignment="Center"
+                Classes="TextButton Dense"
+                Click="OnOpenInViewerClick"
+                ToolTip.Tip="Open this database in a full viewer tab"
+                AutomationProperties.Name="Open this database in the database viewer">
+              <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                <icons:SymbolIcon Symbol="Open" FontSize="11" />
+                <TextBlock Text="Open in viewer" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </Border>
+
         <!-- Only the folded objects list surfaces here; the perspectives moved
              up into the panel header beside the connection controls. -->
         <Border
+            Grid.Row="1"
             BorderBrush="{DynamicResource ShellBorderBrush}"
             BorderThickness="0,0,0,1"
             IsVisible="{Binding #ObjectsPicker.IsVisible}">
@@ -282,7 +373,7 @@
         </Border>
 
         <Border
-            Grid.Row="1"
+            Grid.Row="2"
             BorderBrush="{DynamicResource ShellBorderBrush}"
             BorderThickness="0,0,0,1"
             IsVisible="{Binding ShowQueryEditor}">
@@ -295,6 +386,9 @@
                 MinHeight="58"
                 MaxHeight="132"
                 GrammarExtension=".sql"
+                SqlCompletionContext="{Binding SqlLanguageCompletionContext}"
+                SqlLanguageSession="{Binding SqlLanguageSession}"
+                SqlLanguageStatus="{Binding SqlLanguageStatus}"
                 Text="{Binding QueryText, Mode=TwoWay}"
                 Watermark="SELECT …"
                 EditorKeyDown="OnQueryEditorKeyDown"
@@ -317,7 +411,7 @@
         </Border>
 
         <controls:SurfaceCard
-            Grid.Row="2"
+            Grid.Row="3"
             Tone="Notice"
             Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
             Padding="{controls:Inset Sm}"
@@ -332,7 +426,7 @@
               TextWrapping="Wrap" />
         </controls:SurfaceCard>
 
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="4">
           <!-- DATA -->
           <Grid RowDefinitions="Auto,*" IsVisible="{Binding ShowDataSurface}">
             <Border
@@ -351,11 +445,21 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
-                        <!-- A fixed rail per part keeps stacked rows in
-                             columns; the value takes whatever is left. -->
-                        <Grid
-                            ColumnDefinitions="Auto,116,116,*,Auto,Auto,Auto"
-                            ColumnSpacing="{DynamicResource ShellSpaceXs}">
+                        <!-- Proportional rails with clamps, not fixed ones:
+                             stacked rows still line up in columns because
+                             every row stretches to the same width, and a
+                             narrow panel squeezes the pickers before it
+                             overlaps the actions. -->
+                        <Grid ColumnSpacing="{DynamicResource ShellSpaceXs}">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="2*" MinWidth="76" MaxWidth="150" />
+                            <ColumnDefinition Width="2*" MinWidth="76" MaxWidth="150" />
+                            <ColumnDefinition Width="3*" MinWidth="80" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
                           <CheckBox
                               VerticalAlignment="Center"
                               IsChecked="{Binding IsIncluded, Mode=TwoWay}"
@@ -401,8 +505,13 @@
                               Classes="SecondaryButton Dense"
                               VerticalAlignment="Center"
                               Click="OnApplyFilterClick"
-                              Content="Apply"
-                              AutomationProperties.Name="Apply the table filter" />
+                              ToolTip.Tip="Apply the table filter"
+                              AutomationProperties.Name="Apply the table filter">
+                            <Panel>
+                              <TextBlock Classes="rowActionLabel" Text="Apply" />
+                              <icons:SymbolIcon Classes="rowActionGlyph" Symbol="Checkmark" FontSize="12" />
+                            </Panel>
+                          </Button>
                           <Button
                               Grid.Column="5"
                               Classes="IconButton"
@@ -430,55 +539,71 @@
                       VerticalAlignment="Center"
                       Classes="TextButton Dense"
                       Click="OnClearFilterClick"
-                      Content="Clear"
-                      AutomationProperties.Name="Clear the table filter" />
+                      ToolTip.Tip="Clear the table filter"
+                      AutomationProperties.Name="Clear the table filter">
+                    <Panel>
+                      <TextBlock Classes="rowActionLabel" Text="Clear" />
+                      <icons:SymbolIcon Classes="rowActionGlyph" Symbol="FilterDismiss" FontSize="12" />
+                    </Panel>
+                  </Button>
                 </Grid>
 
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                     <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                      <!-- NULL and DEFAULT are cell verbs, so they live on the
+                           cell's own context menu rather than in a strip that
+                           mostly acts on rows. Each remaining action carries a
+                           label and a glyph; which one shows follows the
+                           panel's width. -->
                       <Button
                           Classes="SecondaryButton Dense"
                           Click="OnAddRowClick"
-                          Content="Add row"
                           IsEnabled="{Binding CanMutateRows}"
-                          AutomationProperties.Name="Add a database row" />
+                          ToolTip.Tip="Add a database row"
+                          AutomationProperties.Name="Add a database row">
+                        <Panel>
+                          <TextBlock Classes="rowActionLabel" Text="Add row" />
+                          <icons:SymbolIcon Classes="rowActionGlyph" Symbol="Add" FontSize="12" />
+                        </Panel>
+                      </Button>
                       <Button
                           Classes="TextButton Dense"
                           Click="OnDeleteRowClick"
-                          Content="Delete"
                           Foreground="{DynamicResource ShellDangerBrush}"
                           IsEnabled="{Binding CanDeleteSelectedRow}"
-                          AutomationProperties.Name="Delete the selected database row" />
-                      <Button
-                          Classes="TextButton Dense"
-                          Click="OnSetNullClick"
-                          Content="NULL"
-                          IsEnabled="{Binding CanSetSelectedCellNull}"
-                          ToolTip.Tip="Set the active cell to NULL"
-                          AutomationProperties.Name="Set the active cell to NULL" />
-                      <Button
-                          Classes="TextButton Dense"
-                          Click="OnSetDefaultClick"
-                          Content="DEFAULT"
-                          IsEnabled="{Binding CanSetSelectedCellDefault}"
-                          ToolTip.Tip="Use the column default for this new row"
-                          AutomationProperties.Name="Set the active cell to DEFAULT" />
+                          ToolTip.Tip="Delete the selected row"
+                          AutomationProperties.Name="Delete the selected database row">
+                        <Panel>
+                          <TextBlock Classes="rowActionLabel" Text="Delete" />
+                          <icons:SymbolIcon Classes="rowActionGlyph" Symbol="Delete" FontSize="12" />
+                        </Panel>
+                      </Button>
                       <Button
                           Classes="TextButton Dense"
                           Click="OnRevertChangesClick"
-                          Content="Revert"
                           IsEnabled="{Binding CanRevertChanges}"
-                          AutomationProperties.Name="Revert unsaved database changes" />
+                          ToolTip.Tip="Revert unsaved changes"
+                          AutomationProperties.Name="Revert unsaved database changes">
+                        <Panel>
+                          <TextBlock Classes="rowActionLabel" Text="Revert" />
+                          <icons:SymbolIcon Classes="rowActionGlyph" Symbol="ArrowUndo" FontSize="12" />
+                        </Panel>
+                      </Button>
                       <Button
                           Classes="PrimaryButton Dense"
                           Click="OnSaveChangesClick"
-                          Content="Save"
                           IsEnabled="{Binding CanSaveChanges}"
-                          AutomationProperties.Name="Save database changes" />
+                          ToolTip.Tip="Save changes"
+                          AutomationProperties.Name="Save database changes">
+                        <Panel>
+                          <TextBlock Classes="rowActionLabel" Text="Save" />
+                          <icons:SymbolIcon Classes="rowActionGlyph" Symbol="Save" FontSize="12" />
+                        </Panel>
+                      </Button>
                       <TextBlock
                           VerticalAlignment="Center"
-                          Classes="Muted"
+                          Classes="Muted adaptiveHint"
                           FontSize="{DynamicResource ShellFontSize9}"
                           Text="{Binding ReadOnlyReason}"
                           IsVisible="{Binding HasReadOnlyReason}"

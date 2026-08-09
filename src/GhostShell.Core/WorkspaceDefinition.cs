@@ -38,7 +38,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         AgentPolicy? agentPolicyOverride = null,
         string? icon = null,
         bool autoSave = false,
-        string? color = null)
+        string? color = null,
+        bool agentPanelPinned = false)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -50,6 +51,7 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         Icon = string.IsNullOrWhiteSpace(icon) ? DefaultIcon : icon.Trim();
         AutoSave = autoSave;
         Color = string.IsNullOrWhiteSpace(color) ? null : color.Trim();
+        AgentPanelPinned = agentPanelPinned;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -98,6 +100,13 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     /// </summary>
     public bool AutoSave { get; }
 
+    /// <summary>
+    /// Whether the AI agent panel holds a docked slot in this workspace's
+    /// layout. Unpinned — the default — it floats over the canvas when
+    /// summoned and is gone when dismissed.
+    /// </summary>
+    public bool AgentPanelPinned { get; }
+
     public WorkspaceDefinition MoveEntry(WorkspaceEntryId entryId, int destinationIndex)
     {
         if (destinationIndex < 0 || destinationIndex >= Entries.Count)
@@ -129,7 +138,9 @@ public sealed record WorkspaceDefinition : IDurableDefinition
             reordered,
             AgentPolicyOverride,
             Icon,
-            AutoSave);
+            AutoSave,
+            Color,
+            AgentPanelPinned);
     }
 
     public static bool IsValidIcon(string? icon)

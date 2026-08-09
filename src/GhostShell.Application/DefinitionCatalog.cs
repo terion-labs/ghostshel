@@ -1324,7 +1324,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                     workspace.AgentPolicyOverride,
                     workspace.Icon,
                     workspace.AutoSave,
-                    workspace.Color),
+                    workspace.Color,
+                    workspace.AgentPanelPinned),
                 stored.Revision,
                 cancellationToken)
             .ConfigureAwait(false);

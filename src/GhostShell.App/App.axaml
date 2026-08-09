@@ -65,6 +65,7 @@
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#111111" />
           <SolidColorBrush x:Key="ShellSidebarBrush" Color="#181818" />
+          <SolidColorBrush x:Key="ShellSidebarOverlayBrush" Color="#CC181818" />
           <SolidColorBrush x:Key="ShellSidebarBorderBrush" Color="#383838" />
           <SolidColorBrush x:Key="ShellSidebarSelectionBrush" Color="#0DFFFFFF" />
           <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#18181B" />
@@ -95,6 +96,7 @@
         <ResourceDictionary x:Key="Light">
           <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F2F3F0" />
           <SolidColorBrush x:Key="ShellSidebarBrush" Color="#E7E8E5" />
+          <SolidColorBrush x:Key="ShellSidebarOverlayBrush" Color="#CCE7E8E5" />
           <SolidColorBrush x:Key="ShellSidebarBorderBrush" Color="#B8BAB6" />
           <SolidColorBrush x:Key="ShellSidebarSelectionBrush" Color="#10000000" />
           <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#E7E8E5" />
@@ -177,6 +179,14 @@
       <Thickness x:Key="ShellTabStripTopClearance">0,1,0,0</Thickness>
       <Thickness x:Key="ShellToolbarSeparatorMargin">0,7</Thickness>
       <BoxShadows x:Key="ShellOverlayShadow">0 18 54 0 #A0000000</BoxShadows>
+      <!-- A ring, not a drop: the flyout hangs over surfaces that are already
+           near-black, where an offset shadow only ever peeks out at the
+           corners. Soft spread on every edge plus a faint contact line — dense
+           enough to register there, light enough not to read as a border —
+           and an accent inner glow lighting the glass from its rim. The
+           composition pipeline republishes this with the live accent; this is
+           the before-first-publish fallback. -->
+      <BoxShadows x:Key="ShellFlyoutShadow">0 8 48 0 #8C000000, 0 2 14 0 #59000000, inset 0 0 40 0 #38FF8400</BoxShadows>
       <BoxShadows x:Key="ShellFocusRingShadow">0 0 0 3 #59FF8400</BoxShadows>
       <!-- The clearance between a hairline-framed control and its content: the
            switch knob's travel inset and the colour well's frame. Deliberately
@@ -193,6 +203,10 @@
            because that is what it replaces. Not the top: the chrome band above
            carries that side's clearance in its own height. -->
       <Thickness x:Key="ShellWindowEdgeInset">1,0,1,1</Thickness>
+      <!-- Where the floating agent panel stands: its right edge on the
+           canvas panels' content edge, plus a hairline off the top and right
+           so the glass and its glow never touch the chrome's own edges. -->
+      <Thickness x:Key="ShellFlyoutMargin">0,1,9,0</Thickness>
       <Thickness x:Key="ShellPreviewTileInset">3</Thickness>
       <!-- Placement zones are pointer targets before they are icons: the plate has
            to be big enough to land on mid-drag, so the size is set here rather

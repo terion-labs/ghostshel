@@ -39,6 +39,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private const int MaximumFilterListCharacters = 64 * 1024;
 
     private readonly IDatabasePanelClient _client;
+    private readonly ISqlLanguageService? _sqlLanguageService;
     private readonly Func<SecretRef, CancellationToken, Task<string?>>? _passwordResolver;
     private readonly string? _forcedReadOnlyReason;
     private readonly CancellationTokenSource _lifetime = new();
@@ -87,6 +88,10 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private readonly List<DatabaseResultRowViewModel> _deletedRows = [];
     private CancellationTokenSource? _tableLoadCancellation;
     private long _tableLoadGeneration;
+    private CancellationTokenSource? _sqlLanguageLoadCancellation;
+    private ISqlLanguageSession? _sqlLanguageSession;
+    private long _sqlLanguageLoadGeneration;
+    private string _sqlLanguageStatus = "SQL intelligence is unavailable in this build.";
 
     private static readonly IReadOnlyList<DatabaseFilterOperatorViewModel> AllFilterOperators =
     [
@@ -116,7 +121,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         DatabaseConnectionProfile? savedConnection = null,
         Func<SecretRef, CancellationToken, Task<string?>>? passwordResolver = null,
         string? forcedReadOnlyReason = null,
-        DatabaseObjectId? initialObject = null)
+        DatabaseObjectId? initialObject = null,
+        ISqlLanguageService? sqlLanguageService = null)
         : base(id, PanelKind.DatabaseViewer, title, "Database")
     {
         _pendingInitialObject = initialObject;
@@ -124,6 +130,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             ? tunnelConnection
             : null;
         _client = client ?? throw new ArgumentNullException(nameof(client));
+        _sqlLanguageService = sqlLanguageService;
         _passwordResolver = passwordResolver;
         _forcedReadOnlyReason = string.IsNullOrWhiteSpace(forcedReadOnlyReason)
             ? null
@@ -341,6 +348,41 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     public bool HasMermaidDiagram => !string.IsNullOrWhiteSpace(MermaidDiagramText);
+
+    /// <summary>
+    /// The optional, credential-free Calcite session consumed directly by the
+    /// AvaloniaEdit surface. It appears only after the detached catalog loads;
+    /// database browsing remains usable when the native worker is absent.
+    /// </summary>
+    public ISqlLanguageSession? SqlLanguageSession
+    {
+        get => _sqlLanguageSession;
+        private set
+        {
+            if (SetProperty(ref _sqlLanguageSession, value))
+            {
+                OnPropertyChanged(nameof(HasSqlLanguageSession));
+            }
+        }
+    }
+
+    public bool HasSqlLanguageSession => SqlLanguageSession?.IsAvailable == true;
+
+    public string SqlLanguageStatus
+    {
+        get => _sqlLanguageStatus;
+        private set => SetProperty(ref _sqlLanguageStatus, value);
+    }
+
+    /// <summary>
+    /// Request-scoped completion preference from the sidebar. The selected
+    /// object never changes SQL validation or the worker catalog's defaults.
+    /// </summary>
+    public SqlCompletionContext SqlLanguageCompletionContext =>
+        new(SelectedObject?.Descriptor.Id);
+
+    /// <summary>Observable by tests and diagnostics; never blocks connecting.</summary>
+    public Task SqlLanguageInitialization { get; private set; } = Task.CompletedTask;
 
     public DatabaseTableItemViewModel? SelectedObject => _selectedObject;
 
@@ -598,7 +640,13 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 : "Run a table preview to edit rows."
             : _selectedObjectDetails.ReadOnlyReason);
 
-    public bool HasReadOnlyReason => !CanEditRows && ReadOnlyReason is not null;
+    // A forced reason is a mode of the whole panel, not news about the
+    // selected object: the embedded preview is read-only by construction, and
+    // saying so beside disabled buttons was noise. Object-specific reasons
+    // still show — they explain something the person could change.
+    public bool HasReadOnlyReason => !CanEditRows
+        && ReadOnlyReason is not null
+        && _forcedReadOnlyReason is null;
 
     public bool HasPreviousPage => _tableQuery.Offset > 0;
 
@@ -1105,6 +1153,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(IsDatabaseDiagramOverview));
         OnPropertyChanged(nameof(ShowQueryEditor));
         OnPropertyChanged(nameof(ShowDataSurface));
+        OnPropertyChanged(nameof(SqlLanguageCompletionContext));
     }
 
     /// <summary>The name the sidebar's database header wears.</summary>
@@ -1315,6 +1364,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
         if (IsConnected)
         {
+            BeginSqlLanguageInitialization();
+
             // A panel born pointing at one object opens straight onto it —
             // "open in new tab/panel" means that object, not the overview.
             if (_pendingInitialObject is { } target)
@@ -2004,11 +2055,152 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             _disposed = true;
             _tableLoadCancellation?.Cancel();
             _tableLoadCancellation?.Dispose();
+            ResetSqlLanguageSession();
             _lifetime.Cancel();
             _lifetime.Dispose();
         }
 
         base.Dispose();
+    }
+
+    private void BeginSqlLanguageInitialization()
+    {
+        ResetSqlLanguageSession();
+        if (_sqlLanguageService?.IsAvailable != true || !IsConnected)
+        {
+            SqlLanguageStatus = "SQL intelligence worker is not installed.";
+            return;
+        }
+
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _sqlLanguageLoadCancellation = cancellation;
+        var generation = _sqlLanguageLoadGeneration;
+        SqlLanguageStatus = "Loading the database catalog for SQL intelligence…";
+        SqlLanguageInitialization = InitializeSqlLanguageAsync(
+            generation,
+            cancellation.Token);
+        OnPropertyChanged(nameof(SqlLanguageInitialization));
+    }
+
+    private async Task InitializeSqlLanguageAsync(
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        ISqlLanguageSession? opened = null;
+        try
+        {
+            var catalog = await _client.GetSqlCatalogAsync(
+                SelectedDriver.Id,
+                await ResolveEffectiveConnectionStringAsync(cancellationToken),
+                _tunnelConnection,
+                cancellationToken);
+
+            opened = await _sqlLanguageService!.OpenSessionAsync(
+                catalog,
+                cancellationToken);
+            if (generation != _sqlLanguageLoadGeneration
+                || cancellationToken.IsCancellationRequested
+                || !IsConnected)
+            {
+                var stale = opened;
+                opened = null;
+                await stale.DisposeAsync();
+                return;
+            }
+
+            SqlLanguageSession = opened;
+            opened = null;
+            var routineCount = catalog.Routines.Count == 1
+                ? "1 server routine"
+                : $"{catalog.Routines.Count} server routines";
+            var objectCount = catalog.Objects.Count == 1
+                ? "1 database object"
+                : $"{catalog.Objects.Count} database objects";
+            var catalogFacts = $"{objectCount} and {routineCount}";
+            var coverageStatus = SqlLanguageCoverageStatus(catalog);
+            SqlLanguageStatus = HasSqlLanguageSession
+                ? catalog.IsPartial
+                    ? $"SQL completion and validation know {catalogFacts} from a limited catalog. {catalog.Limitation} {coverageStatus}".TrimEnd()
+                    : $"SQL completion and validation know {catalogFacts}. {coverageStatus}".TrimEnd()
+                : SqlLanguageSession?.UnavailableReason
+                    ?? "SQL intelligence worker is unavailable.";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A reconnect, disconnect, or closing panel superseded this catalog.
+        }
+        catch (Exception exception)
+        {
+            if (generation == _sqlLanguageLoadGeneration
+                && !cancellationToken.IsCancellationRequested
+                && IsConnected)
+            {
+                SqlLanguageStatus = $"SQL intelligence is unavailable: {exception.Message}";
+            }
+        }
+        finally
+        {
+            if (opened is not null)
+            {
+                await opened.DisposeAsync();
+            }
+        }
+    }
+
+    private static string SqlLanguageCoverageStatus(SqlCatalogSnapshot catalog)
+    {
+        if (catalog.RoutineCoverage == SqlCatalogCoverage.None
+            && catalog.IntrinsicCoverage == SqlCatalogCoverage.None)
+        {
+            return "Server function metadata is unavailable; unverified built-ins are omitted.";
+        }
+
+        if (catalog.RoutineCoverage == SqlCatalogCoverage.UserDefinedOnly
+            && catalog.IntrinsicCoverage == SqlCatalogCoverage.None)
+        {
+            return "Server metadata covers user-defined routines only; unverified built-ins are omitted.";
+        }
+
+        if (catalog.RoutineCoverage == SqlCatalogCoverage.Partial
+            || catalog.IntrinsicCoverage == SqlCatalogCoverage.Partial)
+        {
+            return "Server function metadata is incomplete; unverified built-ins are omitted.";
+        }
+
+        if (catalog.IntrinsicCoverage == SqlCatalogCoverage.None)
+        {
+            return "Intrinsic-operator metadata is unavailable; unverified bare built-ins are omitted.";
+        }
+
+        return string.Empty;
+    }
+
+    private void ResetSqlLanguageSession()
+    {
+        _sqlLanguageLoadGeneration++;
+        _sqlLanguageLoadCancellation?.Cancel();
+        _sqlLanguageLoadCancellation?.Dispose();
+        _sqlLanguageLoadCancellation = null;
+        if (SqlLanguageSession is { } session)
+        {
+            SqlLanguageSession = null;
+            _ = DisposeSqlLanguageSessionAsync(session);
+        }
+
+        SqlLanguageStatus = "Connect a database to enable SQL completion and validation.";
+    }
+
+    private static async Task DisposeSqlLanguageSessionAsync(ISqlLanguageSession session)
+    {
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch
+        {
+            // The optional worker may already have exited. Panel teardown must
+            // remain reliable and the process service owns final cleanup.
+        }
     }
 
     private async Task ExecuteQueryAsync(string sql) =>
@@ -2059,10 +2251,16 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 sql,
                 query,
                 canBrowse);
-            // Raw SQL can alter schema in provider-specific ways that are not
-            // safely recognizable from statement text alone. Any successful
-            // execution invalidates the lazy database diagram cache.
-            ResetDatabaseDiagram();
+            // Re-reading every table after ordinary DML makes editor
+            // intelligence disappear precisely while the user is iterating.
+            // Invalidate schema-derived features for explicit DDL/catalog
+            // statements; unusual provider-specific mutations can still be
+            // picked up by reconnecting.
+            if (MayChangeDatabaseSchema(sql))
+            {
+                ResetDatabaseDiagram();
+                BeginSqlLanguageInitialization();
+            }
         });
 
     private async Task LoadResultQueryAsync(
@@ -3343,6 +3541,84 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         || token.Equals("PRAGMA", StringComparison.OrdinalIgnoreCase)
         || token.Equals("VACUUM", StringComparison.OrdinalIgnoreCase);
 
+    private static bool MayChangeDatabaseSchema(string sql)
+    {
+        var statement = sql.AsSpan();
+        var index = 0;
+        while (index < statement.Length)
+        {
+            if (char.IsWhiteSpace(statement[index]))
+            {
+                index++;
+                continue;
+            }
+
+            if (statement[index] is '\'' or '"' or '`' or '[')
+            {
+                if (!SkipQuotedSql(statement, ref index, statement[index]))
+                {
+                    return false;
+                }
+
+                index++;
+                continue;
+            }
+
+            if (IsDashCommentStart(statement, index))
+            {
+                index += 2;
+                while (index < statement.Length && statement[index] is not ('\r' or '\n'))
+                {
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (statement[index] == '/'
+                && index + 1 < statement.Length
+                && statement[index + 1] == '*')
+            {
+                var end = statement[(index + 2)..].IndexOf("*/", StringComparison.Ordinal);
+                if (end < 0)
+                {
+                    return false;
+                }
+
+                index += end + 4;
+                continue;
+            }
+
+            if (!char.IsLetter(statement[index]) && statement[index] != '_')
+            {
+                index++;
+                continue;
+            }
+
+            var start = index++;
+            while (index < statement.Length
+                   && (char.IsLetterOrDigit(statement[index]) || statement[index] == '_'))
+            {
+                index++;
+            }
+
+            var keyword = statement[start..index];
+            if (keyword.Equals("CREATE", StringComparison.OrdinalIgnoreCase)
+                || keyword.Equals("ALTER", StringComparison.OrdinalIgnoreCase)
+                || keyword.Equals("DROP", StringComparison.OrdinalIgnoreCase)
+                || keyword.Equals("TRUNCATE", StringComparison.OrdinalIgnoreCase)
+                || keyword.Equals("RENAME", StringComparison.OrdinalIgnoreCase)
+                || keyword.Equals("ATTACH", StringComparison.OrdinalIgnoreCase)
+                || keyword.Equals("DETACH", StringComparison.OrdinalIgnoreCase)
+                || keyword.Equals("PRAGMA", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsDashCommentStart(ReadOnlySpan<char> sql, int index) =>
         index + 1 < sql.Length
         && sql[index] == '-'
@@ -3403,6 +3679,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         _isConnected = value;
         if (!value)
         {
+            ResetSqlLanguageSession();
             ResetDatabaseDiagram();
         }
         OnPropertyChanged(nameof(IsConnected));

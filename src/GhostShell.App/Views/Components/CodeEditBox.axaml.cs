@@ -38,9 +38,15 @@ public sealed partial class CodeEditBox : UserControl
     public CodeEditBox()
     {
         InitializeComponent();
-        ActualThemeVariantChanged += (_, _) => ApplyTheme();
+        InitializeSqlIntelligence();
+        ActualThemeVariantChanged += (_, _) =>
+        {
+            ApplyTheme();
+            ApplySqlDiagnosticTheme();
+        };
         Editor.Document.TextChanged += (_, _) =>
         {
+            OnSqlDocumentChanged();
             if (_syncingText)
             {
                 return;
@@ -62,7 +68,7 @@ public sealed partial class CodeEditBox : UserControl
         // consumers listen to the tunnel-stage relay instead of KeyDown.
         Editor.AddHandler(
             KeyDownEvent,
-            (_, e) => EditorKeyDown?.Invoke(this, e),
+            OnEditorTunnelKeyDown,
             RoutingStrategies.Tunnel);
     }
 
@@ -106,6 +112,7 @@ public sealed partial class CodeEditBox : UserControl
         base.OnAttachedToVisualTree(e);
         SyncDocument();
         RequestHighlighting();
+        AttachSqlIntelligence();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -114,6 +121,7 @@ public sealed partial class CodeEditBox : UserControl
         _textMate?.Dispose();
         _textMate = null;
         _registryOptions = null;
+        DetachSqlIntelligence();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -131,6 +139,18 @@ public sealed partial class CodeEditBox : UserControl
         {
             WatermarkText.Text = Watermark;
             SyncWatermark();
+        }
+        else if (change.Property == SqlLanguageSessionProperty)
+        {
+            RestartSqlIntelligence();
+        }
+        else if (change.Property == SqlLanguageStatusProperty)
+        {
+            ApplySqlLanguageStatus();
+        }
+        else if (change.Property == SqlCompletionContextProperty)
+        {
+            RestartSqlCompletionContext();
         }
     }
 

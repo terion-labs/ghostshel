@@ -1309,6 +1309,19 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
+    /// The embedded database preview asking to become a real viewer tab, on
+    /// the same connection.
+    /// </summary>
+    private async void OnDatabaseOpenInViewerRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control { DataContext: DatabaseRuntimePanelViewModel panel })
+        {
+            await ViewModel.OpenDatabaseInTabAsync(panel, _lifetime.Token);
+        }
+    }
+
+    /// <summary>
     /// The panel's gear: its saved connection opens in the editor, and the
     /// saved changes reconnect the panel through the updated profile.
     /// </summary>

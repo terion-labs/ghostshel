@@ -27,8 +27,13 @@ public sealed class WorkspaceGutterContractTests
             element => element.Name.LocalName == "Grid"
                 && (string?)element.Attribute("IsVisible")
                     == "{Binding IsWorkspaceCanvasVisible}");
+        // The agent panel is not a canvas panel: it floats over the canvas or
+        // holds a slot beside it, and its docked/floating margins live in state
+        // styles precisely so an inline value cannot silence either state.
         var panelMargins = root.Descendants()
-            .Where(element => element.Name.LocalName == "Style")
+            .Where(element => element.Name.LocalName == "Style"
+                && ((string?)element.Attribute("Selector"))
+                    ?.StartsWith("views|AgentWorkspaceView", StringComparison.Ordinal) != true)
             .SelectMany(element => element.Descendants())
             .Where(element => element.Name.LocalName == "Setter"
                 && (string?)element.Attribute("Property") == "Margin")

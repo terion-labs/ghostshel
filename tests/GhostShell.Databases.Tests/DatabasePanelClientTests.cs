@@ -45,6 +45,86 @@ public sealed class DatabasePanelClientTests : IDisposable
     }
 
     [Fact]
+    public void Built_in_drivers_probe_live_sql_catalog_defaults_when_available()
+    {
+        var probes = BuiltInDatabaseDrivers.All.ToDictionary(
+            driver => driver.Descriptor.Id,
+            driver => driver.SqlCatalogDefaultsSql,
+            StringComparer.Ordinal);
+
+        Assert.Null(probes["firebird"]);
+        Assert.All(
+            probes.Where(item => item.Key != "firebird"),
+            item => Assert.False(
+                string.IsNullOrWhiteSpace(item.Value),
+                $"{item.Key} must report its live catalog/schema defaults."));
+        Assert.Contains("current_schema", probes["postgres"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SCHEMA_NAME", probes["sqlserver"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CURRENT_SCHEMA", probes["oracle"], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Built_in_routine_catalogs_are_provider_owned_and_fail_closed()
+    {
+        var queries = BuiltInDatabaseDrivers.All.ToDictionary(
+            driver => driver.Descriptor.Id,
+            driver => driver.ListRoutinesSql,
+            StringComparer.Ordinal);
+
+        Assert.Null(queries["redshift"]);
+        Assert.All(
+            queries.Where(item => item.Key != "redshift"),
+            item => Assert.False(
+                string.IsNullOrWhiteSpace(item.Value),
+                $"{item.Key} must own its routine-catalog query."));
+
+        Assert.Contains("pg_catalog", queries["postgres"], StringComparison.Ordinal);
+        Assert.Contains("current_schema()", queries["postgres"], StringComparison.Ordinal);
+        Assert.Equal(queries["postgres"], queries["cockroach"]);
+        Assert.Contains("narg < 0", queries["sqlite"], StringComparison.Ordinal);
+        Assert.Contains("ORDER BY internal", queries["duckdb"], StringComparison.Ordinal);
+        Assert.Contains("LISTAGG(signature_argument.data_type", queries["oracle"], StringComparison.Ordinal);
+        Assert.DoesNotContain("rdb$functions function", queries["firebird"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("rdb$functions routine", queries["firebird"], StringComparison.OrdinalIgnoreCase);
+
+        var coverage = BuiltInDatabaseDrivers.All.ToDictionary(
+            driver => driver.Descriptor.Id,
+            driver => (driver.RoutineCatalogCoverage, driver.IntrinsicCatalogCoverage),
+            StringComparer.Ordinal);
+        Assert.Equal(
+            (SqlCatalogCoverage.Complete, SqlCatalogCoverage.Complete),
+            coverage["postgres"]);
+        Assert.Equal(coverage["postgres"], coverage["sqlite"]);
+        Assert.Equal(coverage["postgres"], coverage["cockroach"]);
+        Assert.Equal(coverage["postgres"], coverage["clickhouse"]);
+        Assert.Equal(
+            (SqlCatalogCoverage.UserDefinedOnly, SqlCatalogCoverage.None),
+            coverage["sqlserver"]);
+        Assert.Equal(
+            (SqlCatalogCoverage.None, SqlCatalogCoverage.None),
+            coverage["redshift"]);
+        Assert.Equal(
+            (SqlCatalogCoverage.Complete, SqlCatalogCoverage.Partial),
+            coverage["duckdb"]);
+        Assert.Equal(
+            (SqlCatalogCoverage.UserDefinedOnly, SqlCatalogCoverage.Partial),
+            coverage["oracle"]);
+
+        var intrinsicQueries = BuiltInDatabaseDrivers.All.ToDictionary(
+            driver => driver.Descriptor.Id,
+            driver => driver.ListIntrinsicSymbolsSql,
+            StringComparer.Ordinal);
+        Assert.Contains("pg_get_keywords", intrinsicQueries["postgres"], StringComparison.Ordinal);
+        Assert.Contains("builtin = 1", intrinsicQueries["sqlite"], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("HELP '%'", intrinsicQueries["mysql"]);
+        Assert.Equal(intrinsicQueries["mysql"], intrinsicQueries["mariadb"]);
+        Assert.Contains("v$sqlfn_metadata", intrinsicQueries["oracle"], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("v$reserved_words", intrinsicQueries["oracle"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("rdb$keywords", intrinsicQueries["firebird"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("system.functions", intrinsicQueries["clickhouse"], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Lists_tables_and_views_and_pages_query_results()
     {
         var client = new DatabasePanelClient();

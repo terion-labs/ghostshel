@@ -313,4 +313,17 @@ public sealed partial class MainWindow
         _ = e;
         ToggleAgentPanel();
     }
+
+    private async void OnToggleAgentPinClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            await ViewModel.ToggleAgentPanelPinAsync(_lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
 }

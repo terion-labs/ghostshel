@@ -558,9 +558,15 @@
                   IsVisible="{Binding HasMarkdownPreview}"
                   Text="{Binding PreviewText}" />
               <!-- A database file previews as the database viewer itself,
-                   sharing the docked panel's workspace component. -->
+                   sharing the docked panel's workspace component. Embedded,
+                   it carries its own perspectives row and forwards the same
+                   open-object requests a docked database panel would. -->
               <components:DatabaseWorkspaceView
                   DataContext="{Binding DatabasePreview}"
+                  IsEmbedded="True"
+                  OpenObjectInTabRequested="OnDatabaseObjectOpenInTab"
+                  OpenObjectInPanelRequested="OnDatabaseObjectOpenInPanel"
+                  OpenInViewerRequested="OnDatabaseOpenInViewer"
                   IsVisible="{Binding $parent[UserControl].DataContext.HasDatabasePreview}" />
               <!-- Fitted to start with, then zoomed, panned and turned: a
                    preview opens showing the whole picture, and detail is

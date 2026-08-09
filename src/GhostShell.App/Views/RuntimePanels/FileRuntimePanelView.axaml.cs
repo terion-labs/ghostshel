@@ -91,6 +91,30 @@ public sealed partial class FileRuntimePanelView : UserControl
 
     public event EventHandler<RoutedEventArgs>? RefreshRequested;
 
+    // The embedded database preview's requests, forwarded with the original
+    // sender: its DataContext is the preview's database view model, which is
+    // exactly what the shell's database handlers pattern-match on.
+    public event EventHandler<GhostShell.Application.DatabaseTableDescriptor>?
+        DatabaseObjectOpenInTabRequested;
+
+    public event EventHandler<GhostShell.Application.DatabaseTableDescriptor>?
+        DatabaseObjectOpenInPanelRequested;
+
+    public event EventHandler<RoutedEventArgs>? DatabaseOpenInViewerRequested;
+
+    private void OnDatabaseObjectOpenInTab(
+        object? sender,
+        GhostShell.Application.DatabaseTableDescriptor e) =>
+        DatabaseObjectOpenInTabRequested?.Invoke(sender, e);
+
+    private void OnDatabaseObjectOpenInPanel(
+        object? sender,
+        GhostShell.Application.DatabaseTableDescriptor e) =>
+        DatabaseObjectOpenInPanelRequested?.Invoke(sender, e);
+
+    private void OnDatabaseOpenInViewer(object? sender, RoutedEventArgs e) =>
+        DatabaseOpenInViewerRequested?.Invoke(sender, e);
+
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(sender, e);
 

@@ -25,6 +25,27 @@
         </Animation>
       </Style.Animations>
     </Style>
+    <!-- All of the panel's geometry lives here, not on the element: an inline
+         value would silence whichever of these the state asks for, and the
+         resize handle needs local values it can set and clear. Docked is the
+         spacer's exact slot; floating sits flush into the content zone's
+         top-right corner with its own height. -->
+    <Style Selector="views|AgentWorkspaceView">
+      <Setter Property="Width" Value="352" />
+      <Setter Property="Margin" Value="{controls:Inset Right=Sm, Bottom=Sm}" />
+    </Style>
+    <Style Selector="views|AgentWorkspaceView.floating">
+      <Setter Property="Margin" Value="{DynamicResource ShellFlyoutMargin}" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Height" Value="620" />
+    </Style>
+    <!-- Unpinned, the agent panel hovers over the canvas: the sidebar's own
+         swatch as glass over a blurred snapshot of what it covers, ringed by
+         a shadow dense enough to register on near-black. -->
+    <Style Selector="views|AgentWorkspaceView.floating Border.AgentPanel">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShellFlyoutShadow}" />
+      <Setter Property="Background" Value="{DynamicResource ShellSidebarOverlayBrush}" />
+    </Style>
   </UserControl.Styles>
   <Grid RowDefinitions="Auto,*,Auto">
     <Border
@@ -137,13 +158,14 @@
             VerticalAlignment="Center"
             Spacing="{DynamicResource ShellSpaceXs}"
             WindowDecorationProperties.ElementRole="User">
+          <Button x:Name="AgentToggleButton" Classes="IconButton" Click="OnToggleAgentClick" ToolTip.Tip="Toggle agent panel" AutomationProperties.Name="Toggle AI agent panel"><icons:SymbolIcon Symbol="Bot" FontSize="15" /></Button>
           <!--
             Where before what. The plus asks which edge the panel goes against, and
             the panel itself then asks what to open — rather than a modal asking
             what to open and the layout deciding where it lands.
           -->
           <Button Classes="IconButton" ToolTip.Tip="Add panel" AutomationProperties.Name="Add panel">
-            <icons:SymbolIcon Symbol="Add" FontSize="15" />
+            <icons:SymbolIcon Symbol="LayoutColumnTwoSplitRight" FontSize="15" />
             <Button.Flyout>
               <MenuFlyout Placement="Bottom">
                 <MenuItem Click="OnAddPanelLeftClick" Header="Add to the left" />
@@ -189,7 +211,6 @@
                shows — so search keeps its place here rather than losing its
                only visible affordance with it. -->
           <Button Classes="IconButton" Click="OnShowCommandPaletteClick" ToolTip.Tip="{Binding CommandPaletteAction}" AutomationProperties.Name="Search commands, connections, screens, workspaces, and session history"><icons:SymbolIcon Symbol="Search" FontSize="15" /></Button>
-          <Button Classes="IconButton" Click="OnToggleAgentClick" ToolTip.Tip="Toggle agent panel" AutomationProperties.Name="Toggle AI agent panel"><icons:SymbolIcon Symbol="Bot" FontSize="15" /></Button>
           <Button Classes="IconButton" Click="OnShowSettingsClick" ToolTip.Tip="Settings" AutomationProperties.Name="Open settings"><icons:SymbolIcon Symbol="Settings" FontSize="15" /></Button>
           <Button Classes="IconButton" Click="OnLockShellClick" ToolTip.Tip="Lock GhostSHELL" AutomationProperties.Name="Lock GhostSHELL" IsVisible="{Binding ApplicationSecurityEditor.IsProtectionEnabled}"><icons:SymbolIcon Symbol="LockClosed" FontSize="15" /></Button>
         </StackPanel>
@@ -223,6 +244,7 @@
     </Border>
 
     <DockPanel
+        x:Name="WorkspaceBody"
         Grid.Row="1"
         Margin="{DynamicResource ShellWindowEdgeInset}"
         LastChildFill="True">
@@ -322,28 +344,15 @@
             ReorderPointerReleased="OnRuntimeTabDragPointerReleased" />
       </Border>
 
-      <views:AgentWorkspaceView
-          x:Name="AgentWorkspaceSurface"
+      <!-- Not the agent panel — the space for it. The panel itself is one
+           overlay further down that never changes parent, so pinning cannot
+           lose chat state; docking it is this spacer opening up so the canvas
+           moves aside instead of being covered. -->
+      <Border
           DockPanel.Dock="Right"
           Width="352"
-          Margin="{controls:Inset Right=Sm, Bottom=Sm}"
-          AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
-          ApproveAgentActionRequested="OnApproveAgentActionClick"
-          CancelAgentActionRequested="OnCancelAgentActionClick"
-          CancelAgentChatRequested="OnCancelAgentChatClick"
-          ClearAgentChatRequested="OnClearAgentChatClick"
-          DeclineAgentQuestionRequested="OnDeclineAgentQuestionClick"
-          DenyAgentActionRequested="OnDenyAgentActionClick"
-          DisableAgentYoloRequested="OnDisableAgentYoloClick"
-          EnableAgentCapabilityAskRequested="OnEnableAgentCapabilityAskClick"
-          EnableAgentYoloRequested="OnEnableAgentYoloClick"
-          IsVisible="{Binding IsAgentPanelVisible}"
-          KeepAgentCapabilityOffRequested="OnKeepAgentCapabilityOffClick"
-          LoadOlderAgentAuditRequested="OnLoadOlderAgentAuditClick"
-          RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
-          SendAgentChatRequested="OnSendAgentChatClick"
-          ShowAgentSettingsRequested="OnShowAgentSettingsClick"
-          SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick" />
+          Margin="{controls:Inset Right=Sm}"
+          IsVisible="{Binding IsAgentPanelDockedVisible}" />
 
       <!-- The canvas gutter matches the splitter step, so a panel's distance to
            the rail, to the agent panel, and to its neighbour panel all read as
@@ -456,6 +465,46 @@
             AutomationProperties.Name="{Binding TabReorderStatus, StringFormat={}Tab order status · {0}}" />
       </Grid>
     </DockPanel>
+
+    <!-- The agent panel, floating by default and docked by its pin. It is an
+         in-window overlay in both states — when docked, the spacer above
+         reserves this exact slot so it reads as part of the layout — because
+         moving it between parents would rebuild the conversation view
+         mid-thought. A backgroundless Panel is not hit-testable, so the
+         canvas stays live everywhere the agent panel is not. -->
+    <!-- The clip chain is opened explicitly, as the rail's is: the flyout's
+         shadow lives outside the panel's bounds, and one clipping ancestor
+         silently deletes it. -->
+    <Panel
+        x:Name="AgentOverlay"
+        Grid.Row="1"
+        ZIndex="90"
+        ClipToBounds="False"
+        Margin="{DynamicResource ShellWindowEdgeInset}"
+        IsVisible="{Binding IsAgentPanelVisible}">
+      <views:AgentWorkspaceView
+          x:Name="AgentWorkspaceSurface"
+          ClipToBounds="False"
+          HorizontalAlignment="Right"
+          Classes.floating="{Binding !IsAgentPanelDocked}"
+          AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
+          ApproveAgentActionRequested="OnApproveAgentActionClick"
+          CancelAgentActionRequested="OnCancelAgentActionClick"
+          CancelAgentChatRequested="OnCancelAgentChatClick"
+          ClearAgentChatRequested="OnClearAgentChatClick"
+          DeclineAgentQuestionRequested="OnDeclineAgentQuestionClick"
+          DenyAgentActionRequested="OnDenyAgentActionClick"
+          DisableAgentYoloRequested="OnDisableAgentYoloClick"
+          EnableAgentCapabilityAskRequested="OnEnableAgentCapabilityAskClick"
+          EnableAgentYoloRequested="OnEnableAgentYoloClick"
+          KeepAgentCapabilityOffRequested="OnKeepAgentCapabilityOffClick"
+          LoadOlderAgentAuditRequested="OnLoadOlderAgentAuditClick"
+          RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
+          SendAgentChatRequested="OnSendAgentChatClick"
+          ShowAgentSettingsRequested="OnShowAgentSettingsClick"
+          SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick"
+          ToggleAgentPinRequested="OnToggleAgentPinClick" />
+    </Panel>
 
     <!-- This is deliberately an in-window overlay, not a Flyout. Platform
          popups own a separate surface and can extend beyond custom window

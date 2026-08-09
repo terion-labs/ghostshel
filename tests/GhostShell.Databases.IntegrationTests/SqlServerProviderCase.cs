@@ -49,6 +49,14 @@ internal static class SqlServerProviderCase
     private static DatabaseSeed CreateSeed() => new(
         [
             """
+            CREATE FUNCTION [dbo].[viewer_identity](@value BIGINT)
+            RETURNS BIGINT
+            AS
+            BEGIN
+                RETURN @value
+            END
+            """,
+            """
             CREATE TABLE [viewer_rows] (
                 [id] BIGINT IDENTITY(1, 1) NOT NULL
                     CONSTRAINT [pk_viewer_rows] PRIMARY KEY,

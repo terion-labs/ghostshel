@@ -8,11 +8,13 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using AvaloniaEdit.CodeCompletion;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Components;
 using GhostShell.App.Views.RuntimePanels;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Infrastructure;
 
 namespace GhostShell.Databases.IntegrationTests;
 
@@ -24,13 +26,27 @@ public sealed partial class DatabaseViewerConformanceTests
         DatabaseObjects objects,
         CancellationToken cancellationToken)
     {
+        ISqlLanguageService sqlLanguageService = new CalciteSqlLanguageService();
+        var nativeWorkerRequired = string.Equals(
+            Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE"),
+            "1",
+            StringComparison.Ordinal);
+        Assert.True(
+            !nativeWorkerRequired || sqlLanguageService.IsAvailable,
+            "Rendered native SQL coverage was required, but "
+                + "GHOSTSHELL_SQL_LANGUAGE_WORKER could not be resolved.");
         using var panel = new DatabaseRuntimePanelViewModel(
             PanelInstanceId.New(),
             $"{environment.Provider.DisplayName} headless view conformance",
             client,
             driverId: environment.Provider.Id,
-            connectionString: environment.ConnectionString);
+            connectionString: environment.ConnectionString,
+            sqlLanguageService: sqlLanguageService);
         await AwaitPanelOperationAsync(panel, panel.Initialization, cancellationToken);
+        await AwaitPanelOperationAsync(
+            panel,
+            panel.SqlLanguageInitialization,
+            cancellationToken);
 
         await RunHeadlessFixtureSessionAsync(
             panel,
@@ -40,6 +56,16 @@ public sealed partial class DatabaseViewerConformanceTests
                 Assert.True(panel.IsDatabaseObjectsOverview);
                 Assert.True(fixture.ObjectsOverviewButton.IsEffectivelyVisible);
                 Assert.True(fixture.ObjectsOverviewButton.IsChecked);
+                if (sqlLanguageService.IsAvailable)
+                {
+                    await AssertRenderedSqlIntelligenceAsync(
+                        client,
+                        environment,
+                        objects,
+                        panel,
+                        fixture,
+                        cancellationToken);
+                }
                 fixture.OpenObject(environment.Provider.Seed.RowsTable);
                 await WaitOnDispatcherAsync(
                     () => !panel.IsBusy
@@ -164,6 +190,783 @@ public sealed partial class DatabaseViewerConformanceTests
             environment.Provider.Seed.RowsTable,
             fixture => AssertHeadlessDatabaseDiagramAsync(panel, fixture, cancellationToken),
             cancellationToken);
+    }
+
+    private static async Task AssertRenderedSqlIntelligenceAsync(
+        DatabasePanelClient client,
+        DatabaseTestEnvironment environment,
+        DatabaseObjects objects,
+        DatabaseRuntimePanelViewModel panel,
+        HeadlessViewFixture fixture,
+        CancellationToken cancellationToken)
+    {
+        var editor = fixture.QueryEditor;
+        Assert.True(panel.HasSqlLanguageSession, panel.SqlLanguageStatus);
+        Assert.Same(panel.SqlLanguageSession, editor.SqlLanguageSession);
+        Assert.Equal(TimeSpan.FromMilliseconds(20), editor.CompletionDebounceForTesting);
+        editor.DiagnosticDebounceForTesting = TimeSpan.Zero;
+        await AssertRenderedKeywordInsertionAsync(
+            fixture,
+            editor,
+            cancellationToken);
+
+        var quote = BuiltInDatabaseDrivers.All
+            .Single(driver => driver.Descriptor.Id == environment.Provider.Id)
+            .QuoteIdentifier;
+        var catalog = await client.GetSqlCatalogAsync(
+            environment.Provider.Id,
+            environment.ConnectionString,
+            tunnel: null,
+            cancellationToken);
+        var table = Assert.Single(catalog.Objects, item =>
+            item.Id.Name == objects.Rows.Name && item.Kind == DatabaseTableKind.Table);
+        var keylessTable = Assert.Single(catalog.Objects, item =>
+            item.Id.Name == objects.Keyless.Name
+                && item.Kind == objects.Keyless.Kind);
+        await AssertRenderedSelectedObjectSqlContextAsync(
+            environment,
+            panel,
+            fixture,
+            editor,
+            catalog,
+            table,
+            keylessTable,
+            quote,
+            cancellationToken);
+
+        var objectName = catalog.DefaultCatalog is not null || catalog.DefaultSchema is not null
+            ? quote(table.Id.Name)
+            : QuoteSqlLanguageObject(catalog.DriverId, table.Id);
+        const string alias = SqlLanguageAlias;
+        var completionSql = $"SELECT {alias} FROM {objectName} {alias}";
+        editor.Text = completionSql;
+        editor.FocusEditor();
+        editor.EditorForTesting.CaretOffset =
+            completionSql.IndexOf(alias, StringComparison.Ordinal) + alias.Length;
+        fixture.Window.KeyTextInput(".");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        var completionWindow = Assert.IsType<CompletionWindow>(
+            editor.ActiveCompletionWindowForTesting);
+        var completionItems = completionWindow.CompletionList.CompletionData
+            .Cast<SqlCompletionData>()
+            .ToArray();
+        Assert.Contains(completionItems, item => item.Label == "id");
+        Assert.Contains(completionItems, item => item.Label == "title");
+        completionWindow.Hide();
+
+        var clauseSql = $"SELECT * FROM {objectName} ";
+        editor.Text = clauseSql;
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput("W");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        var clauseCompletion = Assert.IsType<CompletionWindow>(
+            editor.ActiveCompletionWindowForTesting);
+        Assert.Contains(
+            clauseCompletion.CompletionList.CompletionData.Cast<SqlCompletionData>(),
+            item => item.Kind == SqlCompletionItemKind.Keyword && item.Label == "WHERE");
+        clauseCompletion.Hide();
+
+        var expressionSql = $"SELECT * FROM {objectName} WHERE ";
+        editor.Text = expressionSql;
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput("t");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        var expressionCompletion = Assert.IsType<CompletionWindow>(
+            editor.ActiveCompletionWindowForTesting);
+        Assert.Contains(
+            expressionCompletion.CompletionList.CompletionData.Cast<SqlCompletionData>(),
+            item => item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+        Assert.DoesNotContain(
+            expressionCompletion.CompletionList.CompletionData.Cast<SqlCompletionData>(),
+            item => item.Kind is SqlCompletionItemKind.Catalog
+                or SqlCompletionItemKind.Schema
+                or SqlCompletionItemKind.Table
+                or SqlCompletionItemKind.View);
+        expressionCompletion.Hide();
+
+        await AssertRenderedValueAndFunctionInsertionAsync(
+            panel,
+            fixture,
+            editor,
+            catalog,
+            table,
+            objectName,
+            quote,
+            cancellationToken);
+        if (catalog.DriverId == "postgres")
+        {
+            await AssertRenderedPostgresRoutineInsertionAsync(
+                panel,
+                fixture,
+                editor,
+                table,
+                objectName,
+                quote,
+                cancellationToken);
+        }
+
+        const string missingColumn = "ghostshell_rendered_column_that_does_not_exist";
+        var invalidSql = $"SELECT {alias}.{quote(missingColumn)} "
+            + $"FROM {objectName} {alias}";
+        editor.Text = invalidSql;
+        await editor.PendingDiagnosticsForTesting.WaitAsync(cancellationToken);
+
+        var diagnostic = Assert.Single(editor.Diagnostics, item =>
+            item.Severity == SqlDiagnosticSeverity.Error
+            && item.Message.Contains(missingColumn, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("1 error", editor.DiagnosticStatus);
+        Assert.True(editor.IsDiagnosticRendererAttachedForTesting);
+        var renderedSegment = SqlDiagnosticBackgroundRenderer.CreateVisibleSegment(
+            diagnostic,
+            editor.Text!.Length);
+        Assert.NotNull(renderedSegment);
+        Assert.Equal(diagnostic.Start, renderedSegment!.StartOffset);
+        Assert.Equal(diagnostic.Length, renderedSegment.Length);
+
+        var runnableSql = client.BuildTablePreviewQuery(
+            environment.Provider.Id,
+            objects.Rows.Id,
+            limit: 1);
+        editor.Text = runnableSql;
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyPress(
+            Key.Enter,
+            RawInputModifiers.Control,
+            PhysicalKey.Enter,
+            keySymbol: null);
+        await WaitOnDispatcherAsync(
+            () => !panel.IsBusy && panel.ResultRows.Count == 1,
+            cancellationToken);
+        Assert.Equal(runnableSql, panel.QueryText);
+        Assert.False(panel.HasError, panel.ErrorMessage);
+    }
+
+    private static async Task AssertRenderedKeywordInsertionAsync(
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        CancellationToken cancellationToken)
+    {
+        editor.Text = string.Empty;
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput("s");
+        fixture.Window.KeyTextInput("e");
+        fixture.Window.KeyTextInput("l");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        AcceptRenderedCompletion(
+            fixture,
+            editor,
+            replacementStart: 0,
+            replacementLength: 3,
+            "SELECT",
+            SqlCompletionItemKind.Keyword,
+            "select");
+        Assert.Equal("select", editor.Text);
+        Assert.Null(editor.ActiveCompletionWindowForTesting);
+
+        editor.Text = "SELECT * ";
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput("f");
+        fixture.Window.KeyTextInput("r");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        AcceptRenderedCompletion(
+            fixture,
+            editor,
+            replacementStart: "SELECT * ".Length,
+            replacementLength: 2,
+            "FROM",
+            SqlCompletionItemKind.Keyword,
+            "from");
+        Assert.Equal("SELECT * from", editor.Text);
+        Assert.Null(editor.ActiveCompletionWindowForTesting);
+    }
+
+    private static async Task AssertRenderedValueAndFunctionInsertionAsync(
+        DatabaseRuntimePanelViewModel panel,
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        SqlCatalogSnapshot catalog,
+        SqlCatalogObject table,
+        string objectName,
+        Func<string, string> quote,
+        CancellationToken cancellationToken)
+    {
+        var timestampColumn = Assert.Single(
+            table.Columns,
+            column => column.Name == "created_at");
+        Assert.True(
+            timestampColumn.ValueKind is DatabaseValueKind.Timestamp
+                or DatabaseValueKind.TimestampWithZone,
+            $"Expected created_at to be a timestamp, got {timestampColumn.ValueKind} "
+                + $"({timestampColumn.DataTypeName}).");
+        var expressionPrefix =
+            $"SELECT * FROM {objectName} WHERE {quote(timestampColumn.Name)} < ";
+
+        editor.Text = $"{expressionPrefix}cu";
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput("r");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+        var valueCompletionWindow = editor.ActiveCompletionWindowForTesting;
+        var valueItems = valueCompletionWindow?.CompletionList.CompletionData
+            .Cast<SqlCompletionData>()
+            .Where(item => item.Label is
+                "CURRENT_DATE" or "CURRENT_TIME" or "CURRENT_TIMESTAMP")
+            .ToArray() ?? [];
+        Assert.All(valueItems, item =>
+        {
+            Assert.Equal(SqlCompletionItemKind.Keyword, item.Kind);
+            Assert.Equal(item.Label, item.InsertText);
+            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
+                symbol.Name.Equals(item.Label, StringComparison.OrdinalIgnoreCase));
+        });
+        var hasCurrentTimestampEvidence = catalog.IntrinsicSymbols.Any(symbol =>
+            symbol.Name.Equals(
+                "CURRENT_TIMESTAMP",
+                StringComparison.OrdinalIgnoreCase));
+        if (!hasCurrentTimestampEvidence)
+        {
+            Assert.DoesNotContain(
+                valueItems,
+                item => item.Label == "CURRENT_TIMESTAMP");
+            valueCompletionWindow?.Hide();
+        }
+        else
+        {
+            Assert.Contains(valueItems, item => item.Label == "CURRENT_TIMESTAMP");
+            AcceptRenderedCompletion(
+                fixture,
+                editor,
+                expressionPrefix.Length,
+                replacementLength: 3,
+                "CURRENT_TIMESTAMP",
+                SqlCompletionItemKind.Keyword,
+                "CURRENT_TIMESTAMP");
+            var currentTimestampSql = $"{expressionPrefix}CURRENT_TIMESTAMP";
+            Assert.Equal(currentTimestampSql, editor.Text);
+            Assert.Equal(editor.Text.Length, editor.EditorForTesting.CaretOffset);
+            await AssertRenderedQueryRunsAsync(
+                panel,
+                fixture,
+                editor,
+                currentTimestampSql,
+                cancellationToken);
+        }
+
+        foreach (var valueItem in valueItems.Where(item =>
+                     item.Label != "CURRENT_TIMESTAMP"))
+        {
+            await AssertRenderedQueryRunsAsync(
+                panel,
+                fixture,
+                editor,
+                $"SELECT {valueItem.InsertText} FROM {objectName}",
+                cancellationToken);
+        }
+
+        var hasCallableFunctionEvidence = catalog.DriverId is not ("sqlserver" or "redshift");
+        if (hasCallableFunctionEvidence)
+        {
+            await AssertRenderedFunctionInsertionAsync(
+                fixture,
+                editor,
+                expressionPrefix,
+                "co",
+                "COALESCE",
+                "COALESCE(",
+                cancellationToken);
+            await AssertRenderedFunctionInsertionAsync(
+                fixture,
+                editor,
+                "SELECT ",
+                "cou",
+                "COUNT",
+                "COUNT(",
+                cancellationToken);
+        }
+        else
+        {
+            await AssertRenderedFunctionAvailabilityAsync(
+                fixture,
+                editor,
+                $"{expressionPrefix}co",
+                "COALESCE",
+                expected: false,
+                cancellationToken);
+            await AssertRenderedFunctionAvailabilityAsync(
+                fixture,
+                editor,
+                "SELECT cou",
+                "COUNT",
+                expected: false,
+                cancellationToken);
+        }
+
+        await AssertRenderedFunctionAvailabilityAsync(
+            fixture,
+            editor,
+            $"SELECT {quote(timestampColumn.Name)} FROM {objectName} "
+                + $"GROUP BY {quote(timestampColumn.Name)} HAVING cou",
+            "COUNT",
+            expected: hasCallableFunctionEvidence,
+            cancellationToken);
+        await AssertRenderedFunctionAvailabilityAsync(
+            fixture,
+            editor,
+            $"SELECT * FROM {objectName} ORDER BY cou",
+            "COUNT",
+            expected: hasCallableFunctionEvidence,
+            cancellationToken);
+        await AssertRenderedFunctionAvailabilityAsync(
+            fixture,
+            editor,
+            $"SELECT * FROM {objectName} WHERE cou",
+            "COUNT",
+            expected: false,
+            cancellationToken);
+        await AssertRenderedFunctionAvailabilityAsync(
+            fixture,
+            editor,
+            $"SELECT * FROM {objectName} {SqlLanguageAlias} "
+                + $"JOIN {objectName} joined ON cou",
+            "COUNT",
+            expected: false,
+            cancellationToken);
+        await AssertRenderedFunctionAvailabilityAsync(
+            fixture,
+            editor,
+            $"SELECT {quote(timestampColumn.Name)} FROM {objectName} GROUP BY cou",
+            "COUNT",
+            expected: false,
+            cancellationToken);
+
+        await AssertNoRenderedValueOrFunctionCompletionAsync(
+            fixture,
+            editor,
+            "SELECT * FROM fu",
+            cancellationToken);
+        await AssertNoRenderedValueOrFunctionCompletionAsync(
+            fixture,
+            editor,
+            $"SELECT * FROM {objectName} {SqlLanguageAlias} "
+                + "WHERE missing.fu",
+            cancellationToken);
+    }
+
+    private static async Task AssertRenderedPostgresRoutineInsertionAsync(
+        DatabaseRuntimePanelViewModel panel,
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        SqlCatalogObject table,
+        string objectName,
+        Func<string, string> quote,
+        CancellationToken cancellationToken)
+    {
+        var timestampColumn = Assert.Single(table.Columns, column =>
+            column.Name == "created_at");
+        var expressionPrefix = $"SELECT * FROM {objectName} WHERE "
+            + $"{quote(timestampColumn.Name)} < ";
+
+        editor.Text = $"{expressionPrefix}date";
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput("_");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+        AcceptRenderedCompletion(
+            fixture,
+            editor,
+            expressionPrefix.Length,
+            replacementLength: 5,
+            "date_add",
+            SqlCompletionItemKind.Function,
+            "date_add(");
+        Assert.Equal($"{expressionPrefix}date_add(", editor.Text);
+
+        var typePrefix = $"{expressionPrefix}"
+            + "date_add(CURRENT_TIMESTAMP, '1 day'::in";
+        editor.Text = typePrefix;
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput("t");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+        AcceptRenderedCompletion(
+            fixture,
+            editor,
+            typePrefix.Length - 2,
+            replacementLength: 3,
+            "INTERVAL",
+            SqlCompletionItemKind.DataType,
+            "INTERVAL");
+
+        var completedSql = $"{editor.Text})";
+        editor.Text = completedSql;
+        await editor.PendingDiagnosticsForTesting.WaitAsync(cancellationToken);
+        Assert.DoesNotContain(editor.Diagnostics, diagnostic =>
+            diagnostic.Severity == SqlDiagnosticSeverity.Error);
+        Assert.Equal(
+            $"{expressionPrefix}date_add(CURRENT_TIMESTAMP, '1 day'::INTERVAL)",
+            completedSql);
+        await AssertRenderedQueryRunsAsync(
+            panel,
+            fixture,
+            editor,
+            completedSql,
+            cancellationToken);
+    }
+
+    private static async Task AssertRenderedQueryRunsAsync(
+        DatabaseRuntimePanelViewModel panel,
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        editor.Text = sql;
+        editor.FocusEditor(caretToEnd: true);
+        var completed = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var observedBusy = false;
+        void ObserveBusy(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+        {
+            _ = sender;
+            if (args.PropertyName != nameof(panel.IsBusy))
+            {
+                return;
+            }
+
+            if (panel.IsBusy)
+            {
+                observedBusy = true;
+            }
+            else if (observedBusy)
+            {
+                completed.TrySetResult();
+            }
+        }
+
+        panel.PropertyChanged += ObserveBusy;
+        try
+        {
+            fixture.Window.KeyPress(
+                Key.Enter,
+                RawInputModifiers.Control,
+                PhysicalKey.Enter,
+                keySymbol: null);
+            await completed.Task.WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            panel.PropertyChanged -= ObserveBusy;
+        }
+
+        Assert.Equal(sql, panel.QueryText);
+        Assert.False(panel.HasError, panel.ErrorMessage);
+    }
+
+    private static async Task AssertRenderedFunctionInsertionAsync(
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        string expressionPrefix,
+        string typedPrefix,
+        string label,
+        string insertText,
+        CancellationToken cancellationToken)
+    {
+        editor.Text = $"{expressionPrefix}{typedPrefix[..^1]}";
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput(typedPrefix[^1].ToString());
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+        AcceptRenderedCompletion(
+            fixture,
+            editor,
+            expressionPrefix.Length,
+            typedPrefix.Length,
+            label,
+            SqlCompletionItemKind.Function,
+            insertText);
+        Assert.Equal($"{expressionPrefix}{insertText}", editor.Text);
+        Assert.Equal(editor.Text.Length, editor.EditorForTesting.CaretOffset);
+    }
+
+    private static async Task AssertRenderedFunctionAvailabilityAsync(
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        string sql,
+        string expectedLabel,
+        bool expected,
+        CancellationToken cancellationToken)
+    {
+        editor.Text = sql[..^1];
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput(sql[^1].ToString());
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        var completionWindow = editor.ActiveCompletionWindowForTesting;
+        var items = completionWindow?.CompletionList.CompletionData
+            .Cast<SqlCompletionData>()
+            .ToArray() ?? [];
+        if (expected)
+        {
+            Assert.Contains(items, item => item.Label == expectedLabel
+                && item.Kind == SqlCompletionItemKind.Function
+                && item.InsertText == $"{expectedLabel}(");
+        }
+        else
+        {
+            Assert.DoesNotContain(items, item => item.Label == expectedLabel);
+        }
+
+        completionWindow?.Hide();
+    }
+
+    private static async Task AssertNoRenderedValueOrFunctionCompletionAsync(
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        editor.Text = sql[..^1];
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput(sql[^1].ToString());
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        if (editor.ActiveCompletionWindowForTesting is not { } completionWindow)
+        {
+            return;
+        }
+
+        var items = completionWindow.CompletionList.CompletionData
+            .Cast<SqlCompletionData>()
+            .ToArray();
+        Assert.DoesNotContain(items, item => item.Kind == SqlCompletionItemKind.Function);
+        Assert.DoesNotContain(items, item => item.Kind == SqlCompletionItemKind.Keyword
+            && item.Label.StartsWith("CURRENT_", StringComparison.Ordinal));
+        completionWindow.Hide();
+    }
+
+    private static void AcceptRenderedCompletion(
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        int replacementStart,
+        int replacementLength,
+        string label,
+        SqlCompletionItemKind kind,
+        string insertText)
+    {
+        var completionWindow = Assert.IsType<CompletionWindow>(
+            editor.ActiveCompletionWindowForTesting);
+        Assert.Equal(replacementStart, completionWindow.StartOffset);
+        Assert.Equal(replacementStart + replacementLength, completionWindow.EndOffset);
+        var item = Assert.Single(
+            completionWindow.CompletionList.CompletionData.Cast<SqlCompletionData>(),
+            candidate => candidate.Kind == kind
+                && candidate.Label == label
+                && candidate.InsertText == insertText);
+        completionWindow.CompletionList.SelectedItem = item;
+        fixture.Window.KeyPress(
+            Key.Enter,
+            RawInputModifiers.None,
+            PhysicalKey.Enter,
+            keySymbol: null);
+        Assert.Null(editor.ActiveCompletionWindowForTesting);
+    }
+
+    private static async Task AssertRenderedSelectedObjectSqlContextAsync(
+        DatabaseTestEnvironment environment,
+        DatabaseRuntimePanelViewModel panel,
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        SqlCatalogSnapshot catalog,
+        SqlCatalogObject rowsTable,
+        SqlCatalogObject keylessTable,
+        Func<string, string> quote,
+        CancellationToken cancellationToken)
+    {
+        Assert.Null(panel.SqlLanguageCompletionContext.PreferredObject);
+        Assert.Equal(panel.SqlLanguageCompletionContext, editor.SqlCompletionContext);
+
+        fixture.OpenObject(environment.Provider.Seed.RowsTable);
+        await WaitForSelectedObjectAsync(
+            panel,
+            environment.Provider.Seed.RowsTable,
+            cancellationToken);
+        Assert.Equal(
+            panel.SelectedObject?.Descriptor.Id,
+            panel.SqlLanguageCompletionContext.PreferredObject);
+        Assert.Equal(panel.SqlLanguageCompletionContext, editor.SqlCompletionContext);
+
+        var selectedPrefix = rowsTable.Id.Name;
+        editor.Text = $"SELECT {selectedPrefix[..^1]}";
+        editor.FocusEditor(caretToEnd: true);
+        fixture.Window.KeyTextInput(selectedPrefix[^1].ToString());
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+        var selectedPrefixWindow = Assert.IsType<CompletionWindow>(
+            editor.ActiveCompletionWindowForTesting);
+        var selectedPrefixCompletion = selectedPrefixWindow.CompletionList.CompletionData
+            .Cast<SqlCompletionData>()
+            .ToArray();
+        Assert.Contains(selectedPrefixCompletion, item =>
+            IsSelectedObjectColumnCompletion(
+                item,
+                catalog.DriverId,
+                selectedPrefix,
+                "id",
+                quote));
+        Assert.Contains(selectedPrefixCompletion, item =>
+            IsSelectedObjectColumnCompletion(
+                item,
+                catalog.DriverId,
+                selectedPrefix,
+                "title",
+                quote));
+        selectedPrefixWindow.Hide();
+
+        var rowsMemberQualifier = catalog.DriverId is "oracle" or "firebird"
+            ? quote(rowsTable.Id.Name)
+            : rowsTable.Id.Name;
+        var rowsCompletion = await CompleteRenderedMemberAsync(
+            fixture,
+            editor,
+            $"SELECT {rowsMemberQualifier}",
+            cancellationToken);
+        Assert.Contains(rowsCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "id");
+        Assert.Contains(rowsCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+
+        fixture.OpenObject(environment.Provider.Seed.KeylessTable);
+        await WaitForSelectedObjectAsync(
+            panel,
+            environment.Provider.Seed.KeylessTable,
+            cancellationToken);
+        Assert.Equal(
+            panel.SelectedObject?.Descriptor.Id,
+            panel.SqlLanguageCompletionContext.PreferredObject);
+        Assert.Equal(panel.SqlLanguageCompletionContext, editor.SqlCompletionContext);
+
+        var keylessMemberQualifier = catalog.DriverId is "oracle" or "firebird"
+            ? quote(keylessTable.Id.Name)
+            : keylessTable.Id.Name;
+        var keylessCompletion = await CompleteRenderedMemberAsync(
+            fixture,
+            editor,
+            $"SELECT {keylessMemberQualifier}",
+            cancellationToken);
+        Assert.Contains(keylessCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "position");
+        Assert.Contains(keylessCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "label");
+        Assert.DoesNotContain(keylessCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+
+        var rowsObjectName = catalog.DefaultCatalog is not null
+            || catalog.DefaultSchema is not null
+                ? quote(rowsTable.Id.Name)
+                : QuoteSqlLanguageObject(catalog.DriverId, rowsTable.Id);
+        const string explicitAlias = "gsother";
+        var explicitSql = $"SELECT {explicitAlias} FROM {rowsObjectName} {explicitAlias}";
+        var explicitCompletion = await CompleteRenderedMemberAsync(
+            fixture,
+            editor,
+            explicitSql,
+            explicitSql.IndexOf(explicitAlias, StringComparison.Ordinal) + explicitAlias.Length,
+            cancellationToken);
+        Assert.Contains(explicitCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "id");
+        Assert.Contains(explicitCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+        Assert.DoesNotContain(explicitCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column && item.Label == "position");
+
+        const string unresolvedAlias = "gsmissing";
+        var unresolvedSql = $"SELECT {unresolvedAlias} "
+            + $"FROM ghostshell_relation_that_does_not_exist {unresolvedAlias}";
+        var unresolvedCompletion = await CompleteRenderedMemberAsync(
+            fixture,
+            editor,
+            unresolvedSql,
+            unresolvedSql.IndexOf(unresolvedAlias, StringComparison.Ordinal)
+                + unresolvedAlias.Length,
+            cancellationToken);
+        Assert.DoesNotContain(unresolvedCompletion, item =>
+            item.Kind == SqlCompletionItemKind.Column
+                && item.Label is "position" or "label");
+
+        var keylessObjectName = catalog.DefaultCatalog is not null
+            || catalog.DefaultSchema is not null
+                ? quote(keylessTable.Id.Name)
+                : QuoteSqlLanguageObject(catalog.DriverId, keylessTable.Id);
+        var invalidPredicateSql = $"SELECT * FROM {keylessObjectName} "
+            + $"WHERE {keylessTable.Id.Name}";
+        editor.Text = invalidPredicateSql;
+        await editor.PendingDiagnosticsForTesting.WaitAsync(cancellationToken);
+        Assert.Contains(editor.Diagnostics, item =>
+            item.Severity == SqlDiagnosticSeverity.Error
+                && item.Message.Contains(
+                    keylessTable.Id.Name,
+                    StringComparison.OrdinalIgnoreCase));
+
+        fixture.Click(fixture.DatabaseOverviewButton);
+        await WaitOnDispatcherAsync(
+            () => panel.IsDatabaseObjectsOverview,
+            cancellationToken);
+        Assert.Null(panel.SqlLanguageCompletionContext.PreferredObject);
+        Assert.Equal(panel.SqlLanguageCompletionContext, editor.SqlCompletionContext);
+    }
+
+    private static Task<IReadOnlyList<SqlCompletionData>> CompleteRenderedMemberAsync(
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        string sql,
+        CancellationToken cancellationToken) =>
+        CompleteRenderedMemberAsync(
+            fixture,
+            editor,
+            sql,
+            sql.Length,
+            cancellationToken);
+
+    private static async Task<IReadOnlyList<SqlCompletionData>> CompleteRenderedMemberAsync(
+        HeadlessViewFixture fixture,
+        CodeEditBox editor,
+        string sql,
+        int cursorOffset,
+        CancellationToken cancellationToken)
+    {
+        editor.Text = sql;
+        editor.FocusEditor();
+        editor.EditorForTesting.CaretOffset = cursorOffset;
+        fixture.Window.KeyTextInput(".");
+        await editor.PendingCompletionForTesting.WaitAsync(cancellationToken);
+
+        if (editor.ActiveCompletionWindowForTesting is not { } completionWindow)
+        {
+            return [];
+        }
+
+        var items = completionWindow.CompletionList.CompletionData
+            .Cast<SqlCompletionData>()
+            .ToArray();
+        completionWindow.Hide();
+        return items;
+    }
+
+    private static bool IsSelectedObjectColumnCompletion(
+        SqlCompletionData item,
+        string driverId,
+        string objectName,
+        string columnName,
+        Func<string, string> quote)
+    {
+        var unquoted = $"{objectName}.{columnName}";
+        var quoted = $"{quote(objectName)}.{quote(columnName)}";
+        var expectedInsertText = driverId is "oracle" or "firebird"
+            ? quoted
+            : unquoted;
+        return item.Kind == SqlCompletionItemKind.Column
+            && item.Label == unquoted
+            && item.InsertText == expectedInsertText;
     }
 
     private static async Task AssertHeadlessDatabaseDiagramAsync(
@@ -1122,8 +1925,6 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.False(fixture.SaveButton.IsEffectivelyEnabled);
         Assert.False(fixture.AddRowButton.IsEffectivelyEnabled);
         Assert.False(fixture.DeleteRowButton.IsEffectivelyEnabled);
-        Assert.False(fixture.SetNullButton.IsEffectivelyEnabled);
-        Assert.False(fixture.SetDefaultButton.IsEffectivelyEnabled);
         Assert.False(fixture.RevertButton.IsEffectivelyEnabled);
         Assert.True(fixture.ObjectsList.IsEffectivelyEnabled);
         Assert.True(fixture.ConnectButton.IsEffectivelyEnabled);
@@ -1246,7 +2047,7 @@ public sealed partial class DatabaseViewerConformanceTests
             RowsTableName = rowsTableName;
         }
 
-        private Window Window { get; }
+        internal Window Window { get; }
 
         private DatabaseRuntimePanelViewModel Panel { get; }
 
@@ -1280,12 +2081,6 @@ public sealed partial class DatabaseViewerConformanceTests
 
         public Button DeleteRowButton =>
             NamedControl<Button>("Delete the selected database row");
-
-        public Button SetNullButton =>
-            NamedControl<Button>("Set the active cell to NULL");
-
-        public Button SetDefaultButton =>
-            NamedControl<Button>("Set the active cell to DEFAULT");
 
         public Button RevertButton =>
             NamedControl<Button>("Revert unsaved database changes");
@@ -1383,8 +2178,6 @@ public sealed partial class DatabaseViewerConformanceTests
             Assert.False(SaveButton.IsEffectivelyEnabled);
             Assert.False(AddRowButton.IsEffectivelyEnabled);
             Assert.False(DeleteRowButton.IsEffectivelyEnabled);
-            Assert.False(SetNullButton.IsEffectivelyEnabled);
-            Assert.False(SetDefaultButton.IsEffectivelyEnabled);
             Assert.False(RevertButton.IsEffectivelyEnabled);
             Assert.False(string.IsNullOrWhiteSpace(Panel.ReadOnlyReason));
             var reason = NamedControl<TextBlock>("Database read-only reason");
@@ -1404,14 +2197,10 @@ public sealed partial class DatabaseViewerConformanceTests
 
             Assert.True(AddRowButton.IsEffectivelyVisible);
             Assert.True(DeleteRowButton.IsEffectivelyVisible);
-            Assert.True(SetNullButton.IsEffectivelyVisible);
-            Assert.True(SetDefaultButton.IsEffectivelyVisible);
             Assert.True(RevertButton.IsEffectivelyVisible);
             Assert.True(SaveButton.IsEffectivelyVisible);
             Assert.False(AddRowButton.IsEffectivelyEnabled);
             Assert.False(DeleteRowButton.IsEffectivelyEnabled);
-            Assert.False(SetNullButton.IsEffectivelyEnabled);
-            Assert.False(SetDefaultButton.IsEffectivelyEnabled);
             Assert.False(RevertButton.IsEffectivelyEnabled);
             Assert.False(SaveButton.IsEffectivelyEnabled);
 
@@ -1739,6 +2528,20 @@ public sealed partial class DatabaseViewerConformanceTests
                     || selectedCell.CanSetBinary);
             var setValue = ContextMenuItem("Set the active database cell value");
             Assert.Equal(canSetValue, setValue.IsVisible && setValue.IsEnabled);
+            var setNull = ContextMenuItem(
+                "Set the active database cell to NULL from the context menu");
+            Assert.Equal(selectedCell?.CanSetNull == true, setNull.IsVisible);
+            Assert.Equal(
+                canEdit && selectedCell?.CanSetNull == true,
+                setNull.IsEnabled);
+            var setDefault = ContextMenuItem(
+                "Set the active database cell to DEFAULT from the context menu");
+            Assert.Equal(selectedCell?.CanSetDefault == true, setDefault.IsVisible);
+            Assert.Equal(
+                canEdit
+                    && Panel.SelectedRow?.IsNew == true
+                    && selectedCell?.CanSetDefault == true,
+                setDefault.IsEnabled);
 
             if (canEdit)
             {

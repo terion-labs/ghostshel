@@ -5,8 +5,40 @@
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:views="using:GhostShell.App.Views"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
+  <UserControl.Styles>
+    <!-- The grip exists only while the panel floats: docked, the layout owns
+         its size and a handle would offer a resize it cannot honour. Both
+         values are style-owned because an inline IsVisible would win over
+         whichever state applies. -->
+    <Style Selector="views|AgentWorkspaceView Thumb#FloatingResizeHandle">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="views|AgentWorkspaceView.floating Thumb#FloatingResizeHandle">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <!-- The live blur exists only while the panel floats: docked, the panel
+         sits beside the canvas rather than over it, and there is nothing
+         beneath to blur. -->
+    <Style Selector="views|AgentWorkspaceView controls|BlurBehindSurface#FlyoutBackdrop">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="views|AgentWorkspaceView.floating controls|BlurBehindSurface#FlyoutBackdrop">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </UserControl.Styles>
+  <Panel ClipToBounds="False">
+  <!-- The floating panel's backdrop: whatever the window has already painted
+       beneath it, blurred live on every frame by the compositor itself.
+       Nothing is captured ahead of time, so scrolling or streaming content
+       under the flyout stays current and can never mis-align. -->
+  <controls:BlurBehindSurface
+      x:Name="FlyoutBackdrop"
+      IsHitTestVisible="False"
+      BaseBrush="{DynamicResource ShellBackgroundBrush}"
+      CornerRadius="{DynamicResource ShellCardCornerRadius}" />
   <Border Classes="AgentPanel">
     <!--
       Five bands, and each one owns a different kind of thing: who the panel is and
@@ -17,7 +49,7 @@
       the footer now, beside the run status they describe.
     -->
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-      <Grid MinHeight="44" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <Grid MinHeight="44" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <icons:SymbolIcon
             VerticalAlignment="Center"
             Symbol="Bot"
@@ -36,6 +68,21 @@
             Content="{Binding AgentChat.ConnectionStatus}"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="{Binding AgentChat.ConnectionStatus, StringFormat={}AI agent state · {0}}" />
+        <!-- One button, two facts: pinned holds the panel in the layout,
+             unpinned lets it float over the canvas. The workspace remembers
+             which. -->
+        <Button
+            Grid.Column="3"
+            VerticalAlignment="Center"
+            Classes="IconButton"
+            Click="OnToggleAgentPinClick"
+            ToolTip.Tip="{Binding AgentPanelPinTip}"
+            AutomationProperties.Name="Pin or unpin the AI agent panel">
+          <Panel>
+            <icons:SymbolIcon Symbol="Pin" FontSize="12" IsVisible="{Binding !IsAgentPanelDocked}" />
+            <icons:SymbolIcon Symbol="PinOff" FontSize="12" IsVisible="{Binding IsAgentPanelDocked}" />
+          </Panel>
+        </Button>
       </Grid>
 
       <!--
@@ -758,4 +805,36 @@
       </Grid>
     </Grid>
   </Border>
+  <!-- The floating panel is anchored to the toolbar at its top-right, so the
+       corner that resizes is the one diagonally opposite the anchor. -->
+  <Thumb
+      x:Name="FloatingResizeHandle"
+      Width="22"
+      Height="22"
+      HorizontalAlignment="Left"
+      VerticalAlignment="Bottom"
+      DragDelta="OnFloatingResizeDragDelta"
+      ToolTip.Tip="Resize"
+      AutomationProperties.Name="Resize the floating agent panel">
+    <Thumb.Template>
+      <ControlTemplate>
+        <Panel Background="Transparent">
+          <!-- The classic corner grip, mirrored for a bottom-left corner: two
+               chords wrapping the corner, each running from the left edge to
+               the bottom edge. Drawn, not an icon font glyph: the Fluent set
+               has no resize grip. -->
+          <Path
+              Width="15"
+              Height="15"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Stroke="{DynamicResource ShellMutedBrush}"
+              StrokeThickness="2"
+              StrokeLineCap="Round"
+              Data="M 1.5,4.5 L 10.5,13.5 M 1.5,9.5 L 5.5,13.5" />
+        </Panel>
+      </ControlTemplate>
+    </Thumb.Template>
+  </Thumb>
+  </Panel>
 </UserControl>

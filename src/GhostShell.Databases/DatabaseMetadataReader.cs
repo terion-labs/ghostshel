@@ -10,6 +10,22 @@ namespace GhostShell.Databases;
 /// </summary>
 internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
 {
+    /// <summary>
+    /// Reads only the column facts needed by language tooling. Keeping this
+    /// separate from <see cref="ReadAsync"/> avoids index and storage-engine
+    /// probes while a database-wide completion catalog is assembled.
+    /// </summary>
+    public async Task<IReadOnlyList<DatabaseColumnSchema>> ReadColumnsOnlyAsync(
+        DbConnection connection,
+        DatabaseObjectId objectId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(objectId);
+        return await ReadColumnsAsync(connection, objectId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<DatabaseSchemaTable> ReadSchemaTableAsync(
         DbConnection connection,
         DatabaseTableDescriptor descriptor,

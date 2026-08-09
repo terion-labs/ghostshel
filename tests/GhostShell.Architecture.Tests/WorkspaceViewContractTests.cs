@@ -193,23 +193,74 @@ public sealed class WorkspaceViewContractTests
             "{Binding ShowWorkspacesPanel}",
             AttributeValue(rail, "IsVisible"));
 
+        // The agent panel is an in-window overlay in both of its states: the
+        // view itself never docks, so pinning cannot move it between parents
+        // and lose the conversation. Docked is a spacer in the layout opening
+        // up the exact slot the overlay already occupies.
         var agentWorkspace = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "AgentWorkspaceView");
         Assert.Equal("AgentWorkspaceSurface", AttributeValue(agentWorkspace, "Name"));
-        Assert.Equal("Right", AttributeValue(agentWorkspace, "DockPanel.Dock"));
-        Assert.Equal("352", AttributeValue(agentWorkspace, "Width"));
-        // No top. The chrome band above is twice the window buttons' axis and
-        // centres what it holds on it, so it already ends a full gap below the
-        // tab strip — not the half this once assumed. Everything in the body
-        // therefore leaves its top edge to the band, or the space over the
-        // panels comes out half again wider than the space beside them.
+        Assert.Null(AttributeValue(agentWorkspace, "DockPanel.Dock"));
+        Assert.Equal("Right", AttributeValue(agentWorkspace, "HorizontalAlignment"));
+        var agentDockSpacer = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "IsVisible"),
+                "{Binding IsAgentPanelDockedVisible}",
+                StringComparison.Ordinal));
+        Assert.Equal("Border", agentDockSpacer.Name.LocalName);
+        Assert.Equal("Right", AttributeValue(agentDockSpacer, "DockPanel.Dock"));
+        // No inline geometry: docked and floating each get width and margin
+        // from a state style — an inline value would silently override both,
+        // and the floating resize handle needs local values it can set and
+        // later clear back to the style's defaults.
+        Assert.Null(AttributeValue(agentWorkspace, "Margin"));
+        Assert.Null(AttributeValue(agentWorkspace, "Width"));
         Assert.Equal(
-            "{controls:Inset Right=Sm, Bottom=Sm}",
-            AttributeValue(agentWorkspace, "Margin"));
+            "{Binding !IsAgentPanelDocked}",
+            AttributeValue(agentWorkspace, "Classes.floating"));
+        var agentStates = root.Descendants()
+            .Where(element => element.Name.LocalName == "Style")
+            .ToDictionary(
+                element => AttributeValue(element, "Selector") ?? string.Empty,
+                element => element);
+        // Docked geometry is the spacer's slot: the base style carries the
+        // exact width the spacer reserves.
+        var agentBase = agentStates["views|AgentWorkspaceView"];
+        Assert.Contains(
+            agentBase.Descendants(),
+            setter => AttributeValue(setter, "Property") == "Width"
+                && AttributeValue(setter, "Value")
+                    == AttributeValue(agentDockSpacer, "Width"));
+        Assert.True(agentStates.ContainsKey("views|AgentWorkspaceView.floating"));
+        // Floating wears the sidebar's own swatch as glass over the blurred
+        // snapshot of what it covers, ringed by the flyout shadow — spread on
+        // every edge, because an offset shadow on near-black only ever peeks
+        // out at the corners.
+        var floatingSurface = agentStates["views|AgentWorkspaceView.floating Border.AgentPanel"];
+        Assert.Contains(
+            floatingSurface.Descendants(),
+            setter => AttributeValue(setter, "Property") == "Background"
+                && AttributeValue(setter, "Value") == "{DynamicResource ShellSidebarOverlayBrush}");
+        Assert.Contains(
+            floatingSurface.Descendants(),
+            setter => AttributeValue(setter, "Property") == "BoxShadow"
+                && AttributeValue(setter, "Value") == "{DynamicResource ShellFlyoutShadow}");
+        var agentOverlay = agentWorkspace.Parent!;
+        Assert.Equal("Panel", agentOverlay.Name.LocalName);
         Assert.Equal(
             "{Binding IsAgentPanelVisible}",
-            AttributeValue(agentWorkspace, "IsVisible"));
+            AttributeValue(agentOverlay, "IsVisible"));
+        // A backgroundless Panel is not hit-testable, so the canvas beneath
+        // stays live everywhere the agent panel is not; anything giving the
+        // overlay a background would silently swallow the whole workspace.
+        Assert.Null(AttributeValue(agentOverlay, "Background"));
+        // The flyout's shadow lives outside the panel's bounds. One clipping
+        // ancestor deletes it wholesale — which is exactly what happened — so
+        // the chain states its openness explicitly, the way the rail does.
+        Assert.Equal("False", AttributeValue(agentOverlay, "ClipToBounds"));
+        Assert.Equal("False", AttributeValue(agentWorkspace, "ClipToBounds"));
         foreach (var interaction in AgentInteractionNames)
         {
             Assert.Equal(

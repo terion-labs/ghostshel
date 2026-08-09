@@ -19,6 +19,17 @@ namespace GhostShell.Databases;
 public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
 {
     private const int MaximumTablePageSize = 5000;
+    private const int MaximumSqlCatalogObjects = 1000;
+    private const int MaximumSqlCatalogColumns = 50_000;
+    private const int MaximumSqlCatalogRoutines = 5000;
+    private const int MaximumSqlCatalogRoutineParameters = 20_000;
+    private const int MaximumSqlCatalogParametersPerRoutine = 1024;
+    private const int MaximumSqlCatalogIntrinsicSymbols = 5000;
+    private const int MaximumSqlCatalogMetadataUtf8Bytes = 6 * 1024 * 1024;
+    private const int MaximumRoutineSignatureCharacters = 2048;
+    private const int MaximumRoutineTypeNameCharacters = 512;
+    private const int MaximumRoutineParameterNameCharacters = 256;
+    private static readonly TimeSpan SqlCatalogExtractionTimeout = TimeSpan.FromSeconds(15);
 
     private readonly IReadOnlyDictionary<string, IDatabaseDriver> _drivers;
     private readonly IDatabaseTunnelFactory? _tunnelFactory;
@@ -95,6 +106,829 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                 return new DatabaseSchemaGraph(tables);
             },
             cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<SqlCatalogSnapshot> GetSqlCatalogAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken)
+    {
+        var driver = Resolve(driverId);
+        var dialect = DatabaseSqlDialect.For(driverId);
+        return await ExecuteThroughTunnelAsync(
+            driver,
+            driver.NormalizeConnectionString(connectionString),
+            tunnel,
+            async (effectiveConnectionString, token) =>
+            {
+                await using var connection = driver.CreateConnection(effectiveConnectionString);
+                await connection.OpenAsync(token).ConfigureAwait(false);
+                var descriptors = await ReadTablesAsync(connection, driver, token)
+                    .ConfigureAwait(false);
+                var defaults = await ReadSqlCatalogDefaultsAsync(
+                        connection,
+                        driver,
+                        token)
+                    .ConfigureAwait(false);
+                var metadata = new DatabaseMetadataReader(dialect);
+                var objects = new List<SqlCatalogObject>(Math.Min(
+                    descriptors.Count,
+                    MaximumSqlCatalogObjects));
+                var totalColumns = 0;
+                var estimatedUtf8Bytes = 0;
+                var isPartial = descriptors.Count > MaximumSqlCatalogObjects;
+                string? limitation = isPartial
+                    ? $"Only the first {MaximumSqlCatalogObjects} of {descriptors.Count} objects were loaded."
+                    : null;
+                using var extractionTimeout = CancellationTokenSource
+                    .CreateLinkedTokenSource(token);
+                extractionTimeout.CancelAfter(SqlCatalogExtractionTimeout);
+                foreach (var descriptor in descriptors)
+                {
+                    if (objects.Count >= MaximumSqlCatalogObjects)
+                    {
+                        break;
+                    }
+
+                    IReadOnlyList<DatabaseColumnSchema> columns;
+                    try
+                    {
+                        columns = await metadata
+                            .ReadColumnsOnlyAsync(
+                                connection,
+                                descriptor.Id,
+                                extractionTimeout.Token)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (
+                        !token.IsCancellationRequested
+                        && extractionTimeout.IsCancellationRequested)
+                    {
+                        isPartial = true;
+                        limitation = $"Catalog extraction stopped after {SqlCatalogExtractionTimeout.TotalSeconds:0} seconds.";
+                        break;
+                    }
+
+                    var detachedColumns = columns
+                        .OrderBy(column => column.Ordinal)
+                        .Select(column => new SqlCatalogColumn(
+                            column.Name,
+                            column.DataTypeName,
+                            column.ValueKind,
+                            column.IsNullable))
+                        .ToArray();
+                    var objectBytes = EstimateSqlCatalogObjectUtf8Bytes(
+                        descriptor.Id,
+                        detachedColumns);
+                    if (totalColumns + detachedColumns.Length > MaximumSqlCatalogColumns
+                        || estimatedUtf8Bytes + objectBytes > MaximumSqlCatalogMetadataUtf8Bytes)
+                    {
+                        isPartial = true;
+                        limitation = "The catalog reached its safe metadata size limit.";
+                        break;
+                    }
+
+                    totalColumns += detachedColumns.Length;
+                    estimatedUtf8Bytes += objectBytes;
+                    objects.Add(new SqlCatalogObject(
+                        CatalogObjectId(driverId, descriptor.Id),
+                        descriptor.Kind,
+                        detachedColumns));
+                }
+
+                IReadOnlyList<SqlCatalogRoutine> routines = [];
+                var routineCoverage = driver.ListRoutinesSql is null
+                    ? SqlCatalogCoverage.None
+                    : driver.RoutineCatalogCoverage;
+                if (!extractionTimeout.IsCancellationRequested
+                    && driver.ListRoutinesSql is { } routinesSql)
+                {
+                    try
+                    {
+                        var routineCatalog = await ReadSqlCatalogRoutinesAsync(
+                                connection,
+                                driverId,
+                                routinesSql,
+                                MaximumSqlCatalogMetadataUtf8Bytes - estimatedUtf8Bytes,
+                                extractionTimeout.Token)
+                            .ConfigureAwait(false);
+                        routines = routineCatalog.Routines;
+                        estimatedUtf8Bytes += routineCatalog.EstimatedUtf8Bytes;
+                        if (routineCatalog.IsPartial)
+                        {
+                            routineCoverage = SqlCatalogCoverage.Partial;
+                            isPartial = true;
+                            limitation = AppendCatalogLimitation(
+                                limitation,
+                                routineCatalog.Limitation
+                                    ?? "The routine catalog reached its safe metadata limit.");
+                        }
+                    }
+                    catch (OperationCanceledException) when (
+                        !token.IsCancellationRequested
+                        && extractionTimeout.IsCancellationRequested)
+                    {
+                        routineCoverage = SqlCatalogCoverage.Partial;
+                        isPartial = true;
+                        limitation = AppendCatalogLimitation(
+                            limitation,
+                            $"Routine extraction stopped after "
+                                + $"{SqlCatalogExtractionTimeout.TotalSeconds:0} seconds.");
+                    }
+                    catch (DbException)
+                    {
+                        // Routine discovery is additive. Compatibility servers
+                        // may reject a family query, so tables still initialize
+                        // the language worker with an empty routine catalog;
+                        // mark that loss so editor status does not imply that
+                        // zero routines is complete server metadata.
+                        routineCoverage = SqlCatalogCoverage.Partial;
+                        isPartial = true;
+                        limitation = AppendCatalogLimitation(
+                            limitation,
+                            "Routine metadata was unavailable for this connection.");
+                    }
+                }
+
+                IReadOnlyList<SqlCatalogIntrinsicSymbol> intrinsicSymbols = [];
+                var intrinsicCoverage = driver.ListIntrinsicSymbolsSql is null
+                    ? SqlCatalogCoverage.None
+                    : driver.IntrinsicCatalogCoverage;
+                if (!extractionTimeout.IsCancellationRequested
+                    && driver.ListIntrinsicSymbolsSql is { } intrinsicSql)
+                {
+                    try
+                    {
+                        var intrinsicCatalog = await ReadSqlCatalogIntrinsicSymbolsAsync(
+                                connection,
+                                intrinsicSql,
+                                MaximumSqlCatalogMetadataUtf8Bytes - estimatedUtf8Bytes,
+                                extractionTimeout.Token)
+                            .ConfigureAwait(false);
+                        intrinsicSymbols = intrinsicCatalog.Symbols;
+                        estimatedUtf8Bytes += intrinsicCatalog.EstimatedUtf8Bytes;
+                        if (intrinsicCatalog.IsPartial)
+                        {
+                            intrinsicCoverage = SqlCatalogCoverage.Partial;
+                            isPartial = true;
+                            limitation = AppendCatalogLimitation(
+                                limitation,
+                                "The intrinsic-symbol catalog reached its safe metadata limit.");
+                        }
+                    }
+                    catch (OperationCanceledException) when (
+                        !token.IsCancellationRequested
+                        && extractionTimeout.IsCancellationRequested)
+                    {
+                        intrinsicCoverage = SqlCatalogCoverage.Partial;
+                        isPartial = true;
+                        limitation = AppendCatalogLimitation(
+                            limitation,
+                            $"Intrinsic-symbol extraction stopped after "
+                                + $"{SqlCatalogExtractionTimeout.TotalSeconds:0} seconds.");
+                    }
+                    catch (DbException)
+                    {
+                        intrinsicCoverage = SqlCatalogCoverage.Partial;
+                        isPartial = true;
+                        limitation = AppendCatalogLimitation(
+                            limitation,
+                            "Intrinsic SQL metadata was unavailable for this connection.");
+                    }
+                }
+
+                if (extractionTimeout.IsCancellationRequested)
+                {
+                    routineCoverage = DowngradeCatalogCoverage(routineCoverage);
+                    intrinsicCoverage = DowngradeCatalogCoverage(intrinsicCoverage);
+                }
+
+                // PostgreSQL-family authority is useful only as a pair: pg_proc
+                // covers calls while pg_get_keywords proves special bare values.
+                if (driver.RoutineCatalogCoverage == SqlCatalogCoverage.Complete
+                    && driver.IntrinsicCatalogCoverage == SqlCatalogCoverage.Complete
+                    && (routineCoverage != SqlCatalogCoverage.Complete
+                        || intrinsicCoverage != SqlCatalogCoverage.Complete))
+                {
+                    routineCoverage = DowngradeCatalogCoverage(routineCoverage);
+                    intrinsicCoverage = DowngradeCatalogCoverage(intrinsicCoverage);
+                }
+
+                return new SqlCatalogSnapshot(
+                    driverId,
+                    defaults.Catalog,
+                    defaults.Schema,
+                    objects,
+                    isPartial,
+                    limitation)
+                {
+                    Routines = routines,
+                    RoutineCoverage = routineCoverage,
+                    IntrinsicSymbols = intrinsicSymbols,
+                    IntrinsicCoverage = intrinsicCoverage,
+                };
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<(string? Catalog, string? Schema)>
+        ReadSqlCatalogDefaultsAsync(
+            DbConnection connection,
+            IDatabaseDriver driver,
+            CancellationToken cancellationToken)
+    {
+        if (driver.SqlCatalogDefaultsSql is not { } sql)
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            await using var reader = await command
+                .ExecuteReaderAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return (null, null);
+            }
+
+            return (
+                ReadNullableString(reader, 0),
+                ReadNullableString(reader, 1));
+        }
+        catch (DbException)
+        {
+            // Namespace discovery is advisory. A compatibility server may
+            // reject its wire-family probe; returning no default makes the
+            // worker resolve only unambiguous names instead of guessing.
+            return (null, null);
+        }
+    }
+
+    private static string? ReadNullableString(DbDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal)
+            ? null
+            : Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
+
+    private static DatabaseObjectId CatalogObjectId(
+        string driverId,
+        DatabaseObjectId objectId) =>
+        string.Equals(driverId, "sqlite", StringComparison.Ordinal)
+            ? objectId with { Schema = objectId.Schema ?? "main" }
+            : objectId;
+
+    private static int EstimateSqlCatalogObjectUtf8Bytes(
+        DatabaseObjectId id,
+        IReadOnlyList<SqlCatalogColumn> columns)
+    {
+        const int JsonOverheadPerObject = 96;
+        const int JsonOverheadPerColumn = 80;
+        var bytes = JsonOverheadPerObject
+            + Utf8Length(id.Catalog)
+            + Utf8Length(id.Schema)
+            + Utf8Length(id.Name);
+        foreach (var column in columns)
+        {
+            bytes = checked(bytes
+                + JsonOverheadPerColumn
+                + Utf8Length(column.Name)
+                + Utf8Length(column.DataTypeName));
+        }
+
+        return bytes;
+    }
+
+    private static int Utf8Length(string? value) =>
+        value is null ? 0 : System.Text.Encoding.UTF8.GetByteCount(value);
+
+    private static async Task<RoutineCatalogReadResult> ReadSqlCatalogRoutinesAsync(
+        DbConnection connection,
+        string driverId,
+        string sql,
+        int remainingUtf8Bytes,
+        CancellationToken cancellationToken)
+    {
+        if (remainingUtf8Bytes <= 0)
+        {
+            return new RoutineCatalogReadResult(
+                [],
+                IsPartial: true,
+                0,
+                "The routine catalog had no remaining metadata budget.");
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await using var reader = await command
+            .ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var builders = new Dictionary<RoutineKey, RoutineBuilder>();
+        var totalParameters = 0;
+        var isPartial = false;
+        string? partialReason = null;
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var name = ReadRoutineText(reader, 2, MaximumRoutineParameterNameCharacters);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            var id = CatalogObjectId(
+                driverId,
+                new DatabaseObjectId(
+                    ReadRoutineText(reader, 0, MaximumRoutineParameterNameCharacters),
+                    ReadRoutineText(reader, 1, MaximumRoutineParameterNameCharacters),
+                    name));
+            var signature = ReadRoutineText(
+                    reader,
+                    4,
+                    MaximumRoutineSignatureCharacters)
+                ?? name;
+            var returnTypeName = ReadRoutineText(
+                reader,
+                5,
+                MaximumRoutineTypeNameCharacters);
+            var key = new RoutineKey(
+                id,
+                ParseRoutineKind(ReadRoutineText(reader, 3, 32)),
+                signature,
+                returnTypeName,
+                reader.FieldCount > 13 && !reader.IsDBNull(12),
+                ReadRoutineNullableInteger(reader, 12),
+                ReadRoutineNullableInteger(reader, 13),
+                ReadRoutineText(reader, 14, MaximumRoutineParameterNameCharacters));
+            if (!builders.TryGetValue(key, out var builder))
+            {
+                if (builders.Count >= MaximumSqlCatalogRoutines)
+                {
+                    isPartial = true;
+                    partialReason = "The routine catalog reached its safe routine-count limit.";
+                    break;
+                }
+
+                builder = new RoutineBuilder(key);
+                builders.Add(key, builder);
+            }
+
+            var parameterType = ReadRoutineText(
+                reader,
+                8,
+                MaximumRoutineTypeNameCharacters);
+            if (parameterType is null)
+            {
+                continue;
+            }
+
+            if (totalParameters >= MaximumSqlCatalogRoutineParameters)
+            {
+                isPartial = true;
+                partialReason = "The routine catalog reached its safe parameter-count limit.";
+                break;
+            }
+
+            totalParameters++;
+            builder.Parameters.Add(new RoutineParameterRow(
+                ReadRoutineOrdinal(reader, 6),
+                new SqlCatalogRoutineParameter(
+                    ReadRoutineText(
+                        reader,
+                        7,
+                        MaximumRoutineParameterNameCharacters),
+                    parameterType,
+                    RoutineValueKind(parameterType),
+                    ParseRoutineParameterMode(ReadRoutineText(reader, 9, 32)),
+                    ReadRoutineBoolean(reader, 10),
+                    ReadRoutineBoolean(reader, 11))));
+        }
+
+        var routines = new List<SqlCatalogRoutine>(builders.Count);
+        var materializedRoutines = new HashSet<SqlCatalogRoutine>(
+            SqlCatalogRoutineSemanticComparer.Instance);
+        var estimatedUtf8Bytes = 0;
+        foreach (var builder in builders.Values
+                     .OrderBy(item => item.Key.Id.Catalog, StringComparer.Ordinal)
+                     .ThenBy(item => item.Key.Id.Schema, StringComparer.Ordinal)
+                     .ThenBy(item => item.Key.Id.Name, StringComparer.Ordinal)
+                     .ThenBy(item => item.Key.Signature, StringComparer.Ordinal))
+        {
+            var parameters = builder.Parameters
+                .OrderBy(item => item.Ordinal)
+                .Select(item => item.Parameter)
+                .ToArray();
+            var signature = string.Equals(
+                builder.Key.Signature,
+                builder.Key.Id.Name,
+                StringComparison.Ordinal)
+                ? BuildRoutineSignature(builder.Key.Id.Name, parameters)
+                : builder.Key.Signature;
+            var callableParameters = parameters.Where(parameter =>
+                    parameter.Mode is SqlCatalogRoutineParameterMode.In
+                        or SqlCatalogRoutineParameterMode.InOut
+                        or SqlCatalogRoutineParameterMode.Unknown)
+                .ToArray();
+            if (parameters.Length > MaximumSqlCatalogParametersPerRoutine
+                || callableParameters.Length > MaximumSqlCatalogParametersPerRoutine
+                || !HasValidRoutineParameterShape(callableParameters))
+            {
+                isPartial = true;
+                partialReason ??= $"The routine catalog omitted '{builder.Key.Id.DisplayName}' "
+                    + "because its parameter metadata is inconsistent.";
+                continue;
+            }
+
+            var derivedMinimumArgumentCount = callableParameters.Count(parameter =>
+                !parameter.IsOptional && !parameter.IsVariadic);
+            int? derivedMaximumArgumentCount = callableParameters.Any(parameter =>
+                parameter.IsVariadic)
+                ? null
+                : callableParameters.Length;
+            if (builder.Key.HasExplicitArity
+                && builder.Key.MinimumArgumentCount is not (>= 0))
+            {
+                isPartial = true;
+                partialReason ??= $"The routine catalog omitted '{builder.Key.Id.DisplayName}' "
+                    + "because its argument-count metadata is invalid.";
+                continue;
+            }
+
+            var minimumArgumentCount = builder.Key.HasExplicitArity
+                ? builder.Key.MinimumArgumentCount!.Value
+                : derivedMinimumArgumentCount;
+            var maximumArgumentCount = builder.Key.HasExplicitArity
+                ? builder.Key.MaximumArgumentCount
+                : derivedMaximumArgumentCount;
+            if (builder.Key.HasExplicitArity
+                && parameters.Length > 0
+                && (minimumArgumentCount != derivedMinimumArgumentCount
+                    || maximumArgumentCount != derivedMaximumArgumentCount))
+            {
+                isPartial = true;
+                partialReason ??= $"The routine catalog omitted '{builder.Key.Id.DisplayName}' "
+                    + "because its argument counts contradict its parameters.";
+                continue;
+            }
+
+            if (minimumArgumentCount > MaximumSqlCatalogParametersPerRoutine
+                || maximumArgumentCount is { } maximum
+                    && (maximum < 0
+                        || maximum < minimumArgumentCount
+                        || maximum > MaximumSqlCatalogParametersPerRoutine))
+            {
+                isPartial = true;
+                partialReason ??= $"The routine catalog omitted '{builder.Key.Id.DisplayName}' "
+                    + "because its argument count exceeds the safety bound.";
+                continue;
+            }
+
+            var routine = new SqlCatalogRoutine(
+                builder.Key.Id,
+                builder.Key.Kind,
+                signature,
+                parameters,
+                builder.Key.ReturnTypeName,
+                RoutineValueKind(builder.Key.ReturnTypeName),
+                minimumArgumentCount,
+                maximumArgumentCount);
+            if (!materializedRoutines.Add(routine))
+            {
+                continue;
+            }
+
+            var routineBytes = EstimateSqlCatalogRoutineUtf8Bytes(routine);
+            if (estimatedUtf8Bytes + routineBytes > remainingUtf8Bytes)
+            {
+                isPartial = true;
+                partialReason ??= "The routine catalog reached its safe metadata size limit.";
+                break;
+            }
+
+            estimatedUtf8Bytes += routineBytes;
+            routines.Add(routine);
+        }
+
+        return new RoutineCatalogReadResult(
+            routines,
+            isPartial,
+            estimatedUtf8Bytes,
+            partialReason);
+    }
+
+    private static bool HasValidRoutineParameterShape(
+        IReadOnlyList<SqlCatalogRoutineParameter> callableParameters)
+    {
+        var optionalSeen = false;
+        var variadicSeen = false;
+        foreach (var parameter in callableParameters)
+        {
+            if (variadicSeen)
+            {
+                return false;
+            }
+
+            if (parameter.IsVariadic)
+            {
+                variadicSeen = true;
+                continue;
+            }
+
+            if (optionalSeen && !parameter.IsOptional)
+            {
+                return false;
+            }
+
+            optionalSeen |= parameter.IsOptional;
+        }
+
+        return true;
+    }
+
+    private static async Task<IntrinsicCatalogReadResult>
+        ReadSqlCatalogIntrinsicSymbolsAsync(
+            DbConnection connection,
+            string sql,
+            int remainingUtf8Bytes,
+            CancellationToken cancellationToken)
+    {
+        if (remainingUtf8Bytes <= 0)
+        {
+            return new IntrinsicCatalogReadResult([], IsPartial: true, 0);
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await using var reader = await command
+            .ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var symbols = new Dictionary<
+            (string Name, SqlCatalogIntrinsicKind Kind),
+            SqlCatalogIntrinsicSymbol>(
+            IntrinsicSymbolKeyComparer.Instance);
+        var estimatedUtf8Bytes = 0;
+        var isPartial = false;
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var name = ReadRoutineText(
+                reader,
+                0,
+                MaximumRoutineParameterNameCharacters);
+            var kind = ParseIntrinsicKind(reader.FieldCount > 1
+                ? ReadRoutineText(reader, 1, 32)
+                : null) ?? SqlCatalogIntrinsicKind.Keyword;
+            if (name is null)
+            {
+                continue;
+            }
+
+            var key = (name, kind);
+            if (symbols.ContainsKey(key))
+            {
+                continue;
+            }
+
+            if (symbols.Count >= MaximumSqlCatalogIntrinsicSymbols)
+            {
+                isPartial = true;
+                break;
+            }
+
+            var symbolBytes = 64 + Utf8Length(name);
+            if (estimatedUtf8Bytes + symbolBytes > remainingUtf8Bytes)
+            {
+                isPartial = true;
+                break;
+            }
+
+            estimatedUtf8Bytes += symbolBytes;
+            symbols.Add(key, new SqlCatalogIntrinsicSymbol(name, kind));
+        }
+
+        return new IntrinsicCatalogReadResult(
+            symbols.Values
+                .OrderBy(symbol => symbol.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(symbol => symbol.Kind)
+                .ToArray(),
+            isPartial || symbols.Count == 0,
+            estimatedUtf8Bytes);
+    }
+
+    private static string BuildRoutineSignature(
+        string name,
+        IReadOnlyList<SqlCatalogRoutineParameter> parameters) =>
+        $"{name}({string.Join(", ", parameters.Select(parameter =>
+            string.IsNullOrWhiteSpace(parameter.Name)
+                ? parameter.DataTypeName
+                : $"{parameter.Name} {parameter.DataTypeName}"))})";
+
+    private static string? ReadRoutineText(
+        DbDataReader reader,
+        int ordinal,
+        int maximumCharacters)
+    {
+        if (ordinal >= reader.FieldCount || reader.IsDBNull(ordinal))
+        {
+            return null;
+        }
+
+        var value = Convert.ToString(
+                reader.GetValue(ordinal),
+                CultureInfo.InvariantCulture)
+            ?.TrimEnd();
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        return value.Length <= maximumCharacters
+            ? value
+            : value[..maximumCharacters];
+    }
+
+    private static int ReadRoutineOrdinal(DbDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal)
+            ? int.MaxValue
+            : Convert.ToInt32(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
+
+    private static int? ReadRoutineNullableInteger(DbDataReader reader, int ordinal) =>
+        ordinal >= reader.FieldCount || reader.IsDBNull(ordinal)
+            ? null
+            : Convert.ToInt32(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
+
+    private static bool ReadRoutineBoolean(DbDataReader reader, int ordinal)
+    {
+        if (ordinal >= reader.FieldCount || reader.IsDBNull(ordinal))
+        {
+            return false;
+        }
+
+        var value = reader.GetValue(ordinal);
+        return value is bool flag
+            ? flag
+            : Convert.ToInt32(value, CultureInfo.InvariantCulture) != 0;
+    }
+
+    private static SqlCatalogRoutineKind ParseRoutineKind(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "scalar" => SqlCatalogRoutineKind.Scalar,
+            "aggregate" => SqlCatalogRoutineKind.Aggregate,
+            "window" => SqlCatalogRoutineKind.Window,
+            "table" => SqlCatalogRoutineKind.Table,
+            _ => SqlCatalogRoutineKind.Unknown,
+        };
+
+    private static SqlCatalogRoutineParameterMode ParseRoutineParameterMode(
+        string? value) => value?.Trim().ToLowerInvariant() switch
+        {
+            "in" => SqlCatalogRoutineParameterMode.In,
+            "out" => SqlCatalogRoutineParameterMode.Out,
+            "inout" or "in/out" => SqlCatalogRoutineParameterMode.InOut,
+            _ => SqlCatalogRoutineParameterMode.Unknown,
+        };
+
+    private static SqlCatalogIntrinsicKind? ParseIntrinsicKind(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "keyword" => SqlCatalogIntrinsicKind.Keyword,
+            _ => null,
+        };
+
+    private static SqlCatalogCoverage DowngradeCatalogCoverage(
+        SqlCatalogCoverage coverage) => coverage == SqlCatalogCoverage.None
+            ? SqlCatalogCoverage.None
+            : SqlCatalogCoverage.Partial;
+
+    private static DatabaseValueKind? RoutineValueKind(string? dataTypeName)
+    {
+        if (dataTypeName is null)
+        {
+            return null;
+        }
+
+        var kind = DatabaseValueClassifier.Classify(null, dataTypeName);
+        return kind == DatabaseValueKind.Other ? null : kind;
+    }
+
+    private static int EstimateSqlCatalogRoutineUtf8Bytes(SqlCatalogRoutine routine)
+    {
+        const int JsonOverheadPerRoutine = 160;
+        const int JsonOverheadPerParameter = 96;
+        var bytes = JsonOverheadPerRoutine
+            + Utf8Length(routine.Id.Catalog)
+            + Utf8Length(routine.Id.Schema)
+            + Utf8Length(routine.Id.Name)
+            + Utf8Length(routine.Signature)
+            + Utf8Length(routine.ReturnTypeName);
+        foreach (var parameter in routine.Parameters)
+        {
+            bytes = checked(bytes
+                + JsonOverheadPerParameter
+                + Utf8Length(parameter.Name)
+                + Utf8Length(parameter.DataTypeName));
+        }
+
+        return bytes;
+    }
+
+    private static string AppendCatalogLimitation(string? current, string addition) =>
+        string.IsNullOrWhiteSpace(current) ? addition : $"{current} {addition}";
+
+    private sealed record RoutineKey(
+        DatabaseObjectId Id,
+        SqlCatalogRoutineKind Kind,
+        string Signature,
+        string? ReturnTypeName,
+        bool HasExplicitArity,
+        int? MinimumArgumentCount,
+        int? MaximumArgumentCount,
+        string? SourceIdentity);
+
+    private sealed record RoutineParameterRow(
+        int Ordinal,
+        SqlCatalogRoutineParameter Parameter);
+
+    private sealed class RoutineBuilder(RoutineKey key)
+    {
+        internal RoutineKey Key { get; } = key;
+
+        internal List<RoutineParameterRow> Parameters { get; } = [];
+    }
+
+    private sealed record RoutineCatalogReadResult(
+        IReadOnlyList<SqlCatalogRoutine> Routines,
+        bool IsPartial,
+        int EstimatedUtf8Bytes,
+        string? Limitation);
+
+    private sealed class SqlCatalogRoutineSemanticComparer :
+        IEqualityComparer<SqlCatalogRoutine>
+    {
+        internal static SqlCatalogRoutineSemanticComparer Instance { get; } = new();
+
+        public bool Equals(SqlCatalogRoutine? left, SqlCatalogRoutine? right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return true;
+            }
+
+            return left is not null
+                && right is not null
+                && left.Id == right.Id
+                && left.Kind == right.Kind
+                && string.Equals(left.Signature, right.Signature, StringComparison.Ordinal)
+                && string.Equals(
+                    left.ReturnTypeName,
+                    right.ReturnTypeName,
+                    StringComparison.Ordinal)
+                && left.ReturnValueKind == right.ReturnValueKind
+                && left.MinimumArgumentCount == right.MinimumArgumentCount
+                && left.MaximumArgumentCount == right.MaximumArgumentCount
+                && left.Parameters.SequenceEqual(right.Parameters);
+        }
+
+        public int GetHashCode(SqlCatalogRoutine routine)
+        {
+            var hash = new HashCode();
+            hash.Add(routine.Id);
+            hash.Add(routine.Kind);
+            hash.Add(routine.Signature, StringComparer.Ordinal);
+            hash.Add(routine.ReturnTypeName, StringComparer.Ordinal);
+            hash.Add(routine.ReturnValueKind);
+            hash.Add(routine.MinimumArgumentCount);
+            hash.Add(routine.MaximumArgumentCount);
+            foreach (var parameter in routine.Parameters)
+            {
+                hash.Add(parameter);
+            }
+
+            return hash.ToHashCode();
+        }
+    }
+
+    private sealed record IntrinsicCatalogReadResult(
+        IReadOnlyList<SqlCatalogIntrinsicSymbol> Symbols,
+        bool IsPartial,
+        int EstimatedUtf8Bytes);
+
+    private sealed class IntrinsicSymbolKeyComparer :
+        IEqualityComparer<(string Name, SqlCatalogIntrinsicKind Kind)>
+    {
+        internal static IntrinsicSymbolKeyComparer Instance { get; } = new();
+
+        public bool Equals(
+            (string Name, SqlCatalogIntrinsicKind Kind) left,
+            (string Name, SqlCatalogIntrinsicKind Kind) right) =>
+            left.Kind == right.Kind
+            && string.Equals(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string Name, SqlCatalogIntrinsicKind Kind) value) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(value.Name),
+                value.Kind);
     }
 
     private static async Task<IReadOnlyList<DatabaseTableDescriptor>> ReadTablesAsync(

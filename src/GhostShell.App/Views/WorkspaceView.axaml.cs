@@ -164,6 +164,8 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ToggleAgentRequested;
 
+    public event EventHandler<RoutedEventArgs>? ToggleAgentPinRequested;
+
 
     private void OnActivateTabClick(object? sender, RoutedEventArgs e) =>
         ActivateTabRequested?.Invoke(sender, e);
@@ -343,4 +345,7 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnToggleAgentClick(object? sender, RoutedEventArgs e) =>
         ToggleAgentRequested?.Invoke(sender, e);
+
+    private void OnToggleAgentPinClick(object? sender, RoutedEventArgs e) =>
+        ToggleAgentPinRequested?.Invoke(sender, e);
 }

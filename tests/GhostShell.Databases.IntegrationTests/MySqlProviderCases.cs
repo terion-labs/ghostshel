@@ -60,7 +60,7 @@ internal static class MySqlProviderCases
             image,
             3306,
             environment,
-            [],
+            ["--log-bin-trust-function-creators=1"],
             static (host, port) =>
                 $"Server={host};Port={port};Database=ghostshell;User ID=ghostshell;Password={Password};SslMode=None;AllowPublicKeyRetrieval=True;ConnectionTimeout=15;DefaultCommandTimeout=30",
             "SELECT 1",
@@ -80,6 +80,11 @@ internal static class MySqlProviderCases
 
     private static DatabaseSeed CreateSeed() => new(
         [
+            """
+            CREATE FUNCTION `viewer_identity`(`value` BIGINT)
+            RETURNS BIGINT DETERMINISTIC
+            RETURN `value`
+            """,
             """
             CREATE TABLE `viewer_rows` (
                 `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,

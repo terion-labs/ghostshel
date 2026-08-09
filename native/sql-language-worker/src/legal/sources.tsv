@@ -1,0 +1,12 @@
+# Relative path<TAB>SHA-256<TAB>immutable upstream source
+licenses/apache-2.0.txt	0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594	maven:org.apache.calcite:calcite-core:1.42.0!/META-INF/LICENSE
+licenses/asm-9.7.1-bsd-3-clause.txt	293b6af371eee28b0ff16f0334ea19e20a3d5522143faa4b95b346855507879a	https://gitlab.ow2.org/asm/asm/-/raw/ASM_9_7_1/LICENSE.txt
+licenses/fast-double-parser-07d9189-bsl-1.0.txt	c343ed99bee51b85f012a1d71dea81569540f8a457e12cbd21bfedee38dc62bc	https://raw.githubusercontent.com/lemire/fast_double_parser/07d9189a8fb815fe800cb15ca022e7a07093236e/LICENSE.BSL
+licenses/fastdoubleparser-522be16-mit.txt	5f7260e2124be5a560d2c5ec1824475f76bb02dcb352b7f4848a1d702948007c	https://raw.githubusercontent.com/wrandelshofer/FastDoubleParser/522be16e145f43308c43b23094e31d5efcaa580e/LICENSE
+licenses/jakarta-transaction-1.3.3-epl-2.0.txt	6e1f002892b81cbe0647019b150c8a056efc1add565671a4f8af629b6cd2cc7b	https://raw.githubusercontent.com/eclipse-ee4j/jta-api/1.3.3/LICENSE.md
+licenses/jakarta-transaction-1.3.3-notice.txt	4a6e9bab2092f9df1d6fc0eca9b24a74f32b24ef8391da6564c20a3486392e69	https://raw.githubusercontent.com/eclipse-ee4j/jta-api/1.3.3/NOTICE.md
+licenses/janino-3.1.12-bsd-3-clause.txt	2886f3edb0a7e2069a90af5d8fa8a6720754415970cd48aaae0bc5ff3fcca1a1	https://raw.githubusercontent.com/janino-compiler/janino/v3.1.12/LICENSE
+licenses/jts-1.19.0-edl-1.0.txt	e67a91b5489cd78292d2654f1b587fe68296e28df7c766b9b675614fbdce4fd1	https://raw.githubusercontent.com/locationtech/jts/1.19.0/LICENSE_EDLv1.txt
+licenses/protobuf-3.25.8-bsd-3-clause.txt	6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d	https://raw.githubusercontent.com/protocolbuffers/protobuf/v3.25.8/LICENSE
+licenses/slf4j-1.7.25-mit.txt	899cb2e2f92e74ec969e477503c6442fb50bec5d523bc87dc40bad3419113c3b	https://raw.githubusercontent.com/qos-ch/slf4j/v_1.7.25/LICENSE.txt
+licenses/slf4j-1.7.36-mit.txt	6fbe2eaf44b193b8a40eed9208f52848572224ad8d7672dd09418aa174847e73	https://raw.githubusercontent.com/qos-ch/slf4j/v_1.7.36/LICENSE.txt

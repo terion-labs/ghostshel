@@ -4,11 +4,16 @@ on:
   pull_request:
     paths:
       - ".github/workflows/database-viewer-integration.yml"
+      - "native/sql-language-worker/**"
+      - "scripts/build-sql-language-worker.sh"
       - "scripts/test-database-viewer-integration.sh"
       - "src/GhostShell.App/**"
       - "src/GhostShell.Application/**"
       - "src/GhostShell.Databases/**"
+      - "src/GhostShell.Infrastructure/**"
       - "tests/GhostShell.Databases.IntegrationTests/**"
+      - "tests/GhostShell.Infrastructure.Tests/CalciteSqlLanguageNativeIntegrationTests.cs"
+      - "tools/GhostShell.SqlLanguageAotProbe/**"
   workflow_dispatch:
   schedule:
     - cron: "17 4 * * 0"
@@ -25,10 +30,61 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
+  sql-language-worker:
+    name: Native Calcite worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Build and smoke-test the linked worker
+        run: ./scripts/build-sql-language-worker.sh --docker --rid linux-x64
+
+      - name: Publish the production client as Native AOT
+        run: |
+          dotnet restore \
+            tools/GhostShell.SqlLanguageAotProbe/GhostShell.SqlLanguageAotProbe.csproj \
+            --runtime linux-x64 \
+            -p:PublishAot=true
+          dotnet publish \
+            tools/GhostShell.SqlLanguageAotProbe/GhostShell.SqlLanguageAotProbe.csproj \
+            --configuration Release \
+            --runtime linux-x64 \
+            --self-contained true \
+            -p:PublishAot=true \
+            --no-restore \
+            --output artifacts/sql-language-aot-probe
+
+      - name: Run Native-AOT client without the optional worker
+        run: >-
+          env -u GHOSTSHELL_SQL_LANGUAGE_WORKER
+          ./artifacts/sql-language-aot-probe/GhostShell.SqlLanguageAotProbe
+
+      - name: Run Native-AOT client through the real worker
+        env:
+          GHOSTSHELL_SQL_LANGUAGE_WORKER: ${{ github.workspace }}/native/artifacts/linux-x64/ghostshell-sql-language
+        run: ./artifacts/sql-language-aot-probe/GhostShell.SqlLanguageAotProbe
+
+      - name: Upload the tested worker
+        uses: actions/upload-artifact@v7
+        with:
+          name: sql-language-worker-linux-x64
+          path: native/artifacts/linux-x64
+          if-no-files-found: error
+          retention-days: 7
+
   provider-conformance:
     name: ${{ matrix.provider }} conformance
+    needs: sql-language-worker
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE: "1"
+      GHOSTSHELL_SQL_LANGUAGE_WORKER: ${{ github.workspace }}/native/artifacts/linux-x64/ghostshell-sql-language
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +103,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Download the tested SQL language worker
+        uses: actions/download-artifact@v8
+        with:
+          name: sql-language-worker-linux-x64
+          path: native/artifacts/linux-x64
+
+      - name: Restore the worker executable bit
+        run: |
+          chmod +x native/artifacts/linux-x64/ghostshell-sql-language
+          test -x native/artifacts/linux-x64/ghostshell-sql-language
+
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -56,6 +123,14 @@ jobs:
         run: |
           mkdir -p .dotnet
           ln -s "$(command -v dotnet)" .dotnet/dotnet
+
+      - name: Run the real native client lifecycle
+        run: >-
+          ./.dotnet/dotnet test
+          tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj
+          --configuration Release
+          --filter "FullyQualifiedName~CalciteSqlLanguageNativeIntegrationTests"
+          --logger "trx;LogFileName=sql-language-native-${{ matrix.provider }}.trx"
 
       - name: Run database viewer conformance
         run: >-
@@ -68,5 +143,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: database-viewer-${{ matrix.provider }}-results
-          path: tests/GhostShell.Databases.IntegrationTests/TestResults/*.trx
+          path: |
+            tests/GhostShell.Databases.IntegrationTests/TestResults/*.trx
+            tests/GhostShell.Infrastructure.Tests/TestResults/*.trx
           if-no-files-found: warn

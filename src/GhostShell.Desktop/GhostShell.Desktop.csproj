@@ -53,11 +53,34 @@
     <GhostShellNativeTerminalRequired Condition="'$(GhostShellNativeTerminalLibrary)' != ''">true</GhostShellNativeTerminalRequired>
     <GhostShellNativeTerminalArtifactDirectory>$(MSBuildThisFileDirectory)../../native/artifacts/$(GhostShellEffectiveRuntimeIdentifier)</GhostShellNativeTerminalArtifactDirectory>
     <GhostShellNativeTerminalShellIntegrationDirectory>$(GhostShellNativeTerminalArtifactDirectory)/ghostty/shell-integration</GhostShellNativeTerminalShellIntegrationDirectory>
+    <GhostShellSqlLanguageSupported Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-x64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-arm64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-x64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-arm64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'win-x64'">true</GhostShellSqlLanguageSupported>
+    <GhostShellSqlLanguageRequired Condition="'$(GhostShellSqlLanguageRequired)' == ''">false</GhostShellSqlLanguageRequired>
+    <GhostShellSqlLanguageWorkerName Condition="'$(GhostShellSqlLanguageSupported)' == 'true' and '$(GhostShellEffectiveRuntimeIdentifier)' == 'win-x64'">ghostshell-sql-language.exe</GhostShellSqlLanguageWorkerName>
+    <GhostShellSqlLanguageWorkerName Condition="'$(GhostShellSqlLanguageSupported)' == 'true' and '$(GhostShellSqlLanguageWorkerName)' == ''">ghostshell-sql-language</GhostShellSqlLanguageWorkerName>
+    <GhostShellSqlLanguageArtifactDirectory>$(MSBuildThisFileDirectory)../../native/artifacts/$(GhostShellEffectiveRuntimeIdentifier)</GhostShellSqlLanguageArtifactDirectory>
+    <GhostShellSqlLanguageWorkerPath>$(GhostShellSqlLanguageArtifactDirectory)/$(GhostShellSqlLanguageWorkerName)</GhostShellSqlLanguageWorkerPath>
+    <GhostShellSqlLanguagePayloadAvailable Condition="'$(GhostShellSqlLanguageSupported)' == 'true' and Exists('$(GhostShellSqlLanguageWorkerPath)') and Exists('$(GhostShellSqlLanguageArtifactDirectory)/THIRD-PARTY-NOTICES.md') and Exists('$(GhostShellSqlLanguageArtifactDirectory)/runtime-dependencies.txt') and Exists('$(GhostShellSqlLanguageArtifactDirectory)/build-receipt.json')">true</GhostShellSqlLanguagePayloadAvailable>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(GhostShellRuntimePackDirectory)/LICENSE.TXT') and Exists('$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT')">
     <Content Include="$(GhostShellRuntimePackDirectory)/LICENSE.TXT" Link="DOTNET-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT" Link="DOTNET-THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The Calcite payload is optional for developer builds and required by release
+       packaging. Preserve the RID layout expected by CalciteSqlLanguageService. -->
+  <ItemGroup Condition="'$(GhostShellSqlLanguagePayloadAvailable)' == 'true'">
+    <Content Include="$(GhostShellSqlLanguageWorkerPath)" Link="runtimes/$(GhostShellEffectiveRuntimeIdentifier)/native/$(GhostShellSqlLanguageWorkerName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellSqlLanguageArtifactDirectory)/THIRD-PARTY-NOTICES.md" Link="runtimes/$(GhostShellEffectiveRuntimeIdentifier)/native/THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellSqlLanguageArtifactDirectory)/runtime-dependencies.txt" Link="runtimes/$(GhostShellEffectiveRuntimeIdentifier)/native/runtime-dependencies.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(GhostShellSqlLanguageArtifactDirectory)/build-receipt.json" Link="runtimes/$(GhostShellEffectiveRuntimeIdentifier)/native/build-receipt.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GhostShellSqlLanguageRequired)' == 'true' and '$(GhostShellSqlLanguageSupported)' == 'true'">
+    <GhostShellSqlLanguageRequiredFile Include="$(GhostShellSqlLanguageWorkerPath)" />
+    <GhostShellSqlLanguageRequiredFile Include="$(GhostShellSqlLanguageArtifactDirectory)/THIRD-PARTY-NOTICES.md" />
+    <GhostShellSqlLanguageRequiredFile Include="$(GhostShellSqlLanguageArtifactDirectory)/runtime-dependencies.txt" />
+    <GhostShellSqlLanguageRequiredFile Include="$(GhostShellSqlLanguageArtifactDirectory)/build-receipt.json" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(GhostShellNativeTerminalRequired)' == 'true'">
@@ -95,6 +118,18 @@
     <Error
         Condition="!Exists('%(GhostShellNativeTerminalRequiredFile.Identity)')"
         Text="The required libghostty-vt payload for $(GhostShellEffectiveRuntimeIdentifier) is incomplete; missing %(GhostShellNativeTerminalRequiredFile.Identity). Run ./scripts/build-libghostty-vt.sh --rid $(GhostShellEffectiveRuntimeIdentifier)." />
+  </Target>
+
+  <Target
+      Name="ValidateSqlLanguagePayload"
+      BeforeTargets="PrepareForBuild;Publish"
+      Condition="'$(GhostShellSqlLanguageRequired)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error
+        Condition="'$(GhostShellSqlLanguageSupported)' != 'true'"
+        Text="The SQL language worker is not supported for $(GhostShellEffectiveRuntimeIdentifier). Supported release RIDs are linux-x64, linux-arm64, osx-x64, osx-arm64, and win-x64; win-arm64 is unsupported by GraalVM Native Image." />
+    <Error
+        Condition="'$(GhostShellSqlLanguageSupported)' == 'true' and !Exists('%(GhostShellSqlLanguageRequiredFile.Identity)')"
+        Text="The required SQL language payload for $(GhostShellEffectiveRuntimeIdentifier) is incomplete; missing %(GhostShellSqlLanguageRequiredFile.Identity). Run ./scripts/build-sql-language-worker.sh --rid $(GhostShellEffectiveRuntimeIdentifier)." />
   </Target>
 
   <!--

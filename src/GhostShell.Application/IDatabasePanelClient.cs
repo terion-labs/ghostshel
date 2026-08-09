@@ -254,6 +254,43 @@ public interface IDatabasePanelClient
         Task.FromException<DatabaseSchemaGraph>(new NotSupportedException(
             "This database client does not expose a database schema graph."));
 
+    /// <summary>
+    /// Reads the detached object and column catalog used by SQL completion and
+    /// validation. Implementations must not expose credentials or live provider
+    /// values through this boundary. The default keeps lightweight clients
+    /// compatible by projecting their physical-table schema graph; production
+    /// clients should include views and reuse one open connection.
+    /// </summary>
+    async Task<SqlCatalogSnapshot> GetSqlCatalogAsync(
+        string driverId,
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken)
+    {
+        var graph = await GetDatabaseSchemaGraphAsync(
+            driverId,
+            connectionString,
+            tunnel,
+            cancellationToken).ConfigureAwait(false);
+        return new SqlCatalogSnapshot(
+            driverId,
+            DefaultCatalog: null,
+            DefaultSchema: null,
+            graph.Tables
+                .Select(table => new SqlCatalogObject(
+                    table.Object.Id,
+                    table.Object.Kind,
+                    table.Columns
+                        .OrderBy(column => column.Ordinal)
+                        .Select(column => new SqlCatalogColumn(
+                            column.Name,
+                            column.DataTypeName,
+                            column.ValueKind,
+                            column.IsNullable))
+                        .ToArray()))
+                .ToArray());
+    }
+
     Task<DatabaseTablePage> ReadTableAsync(
         string driverId,
         string connectionString,

@@ -1,0 +1,62 @@
+# GhostShell SQL language worker
+
+This process gives the Native-AOT GhostShell UI schema-aware SQL completion and diagnostics without shipping a JVM or IKVM. Apache Calcite Core and Babel 1.42.0 are compiled into a per-platform executable by GraalVM Native Image. The worker receives only detached schema metadata, contains no database driver, is never given connection details, and does not initiate network access. It is not an OS network sandbox.
+
+## Protocol v1
+
+Standard input and output contain frames. Each frame is a four-byte big-endian unsigned JSON byte length followed by that many UTF-8 bytes. A frame is limited to 8 MiB. Standard output is never used for logs.
+
+Requests use this envelope:
+
+```json
+{"version":1,"id":1,"method":"complete","params":{}}
+```
+
+Responses are either `{"version":1,"id":1,"result":...}` or `{"version":1,"id":1,"error":{"code":"...","message":"..."}}`. Invalid frames that do not expose an id use id `0`. An oversized or truncated frame terminates the process after one error response because the next frame boundary cannot be trusted.
+
+The methods are:
+
+- `initialize` and `updateCatalog`: `{ "catalog": { "driverId", "defaultCatalog?", "defaultSchema?", "objects": [...], "routines"?: [...], "routineCoverage"?: "none"|"userDefinedOnly"|"complete"|"partial", "intrinsicCoverage"?: "none"|"complete"|"partial", "intrinsicSymbols"?: [...] } }`. Each object is `{ "id": { "catalog?", "schema?", "name" }, "kind", "columns": [...] }`; each column is `{ "name", "dataTypeName", "valueKind", "isNullable?" }`. Each expression-callable routine is `{ "id": { "catalog?", "schema?", "name" }, "kind": "unknown"|"scalar"|"aggregate"|"window"|"table", "signature", "parameters": [{ "name"?, "dataTypeName", "valueKind"?, "mode": "unknown"|"in"|"out"|"inout", "isOptional"?, "isVariadic"? }], "returnTypeName"?, "returnValueKind"?, "minimumArgumentCount"?, "maximumArgumentCount"? }`. Each intrinsic symbol is `{ "name", "kind": "keyword" }` and is only positive evidence for an existing Calcite operator; it can never create an arbitrary callable. Missing arrays are empty and missing coverage is `none`. Explicit argument counts are authoritative; a missing maximum with a minimum means unbounded, while missing counts and parameter rows mean unknown/permissive arity. Counts and per-routine parameter arrays are capped at 1,024.
+- `complete`: `{ "sql": "...", "cursorOffset": 0, "preferredObject"?: { "catalog"?: string, "schema"?: string, "name": string } }`, returning `{ "replacementStart", "replacementLength", "items": [{ "label", "kind", "detail?", "insertText" }] }`. `preferredObject` is request-scoped editor context, not mutable session state: its columns supplement expression completion only when the SQL has no explicit `FROM`/`JOIN` relation reference. Resolved and unresolved SQL relations always win, a matching `preferredObject.` qualifier can request members, and diagnostics never consume this context.
+- `diagnose`: `{ "sql": "..." }`, returning `{ "items": [{ "start", "length", "severity", "message", "code?" }] }`.
+- `shutdown`: acknowledges the request and exits cleanly.
+
+All text offsets are UTF-16 code-unit offsets, matching .NET strings and AvaloniaEdit. A process owns one catalog; `updateCatalog` builds a replacement first, so a rejected update leaves the previous catalog usable.
+
+## Build
+
+Sources target Java 21 bytecode. Docker builds pin Maven 3.9.11, Eclipse Temurin 21, and `container-registry.oracle.com/graalvm/native-image:25.0.4`; local builds require the same Native Image 25.0.4 tool version. The macOS ARM64 artifact was validated with GraalVM CE 25.2.4+7.1 on JDK 25.0.4. Put `native-image` on `PATH` or expose it through `GRAALVM_HOME`/`JAVA_HOME`:
+
+```sh
+GRAALVM_HOME=/path/to/graalvm-25.0.4 \
+  ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
+```
+
+Build a Linux artifact in Docker (including an emulated architecture on Docker Desktop):
+
+```sh
+./scripts/build-sql-language-worker.sh --docker --rid linux-arm64
+./scripts/build-sql-language-worker.sh --docker --rid linux-x64
+```
+
+The output is `native/artifacts/<rid>/ghostshell-sql-language[.exe]`, plus a SHA-256 build receipt, the resolved runtime dependency list, and third-party notices. Every build validates the linked binary's ABI floor and runs a framed initialize/completion/diagnostic/shutdown smoke before writing its receipt. Native Image does not generally cross-compile, so macOS and Windows RIDs must be built on their corresponding CI hosts.
+
+The legal closure is a build invariant, not a handwritten summary. Maven copies every resolved compile/runtime JAR before shading; `generate-third-party-notices.sh` normalizes the coordinate list, requires an exact reviewed row in `src/legal/runtime-license-map.tsv`, hashes every JAR, and extracts every top-level `META-INF` resource whose name contains `LICENSE`, `NOTICE`, `COPYING`, or `DEPENDENCIES` (including prefixed resources such as Jackson's `FastDoubleParser-NOTICE`). When an upstream binary omits or incompletely bundles its license, the policy supplies hash-pinned exact upstream text from `src/legal/licenses`. The generator rejects dependency drift, stale policy/source rows, missing or changed legal text, unexpected JARs, and dependencies without license evidence. Known unresolved provenance questions are explicit and coordinate-scoped in `src/legal/legal-review.tsv`; their count is recorded in both the aggregate and receipt so a release gate or counsel can fail closed. The deterministic aggregate is packaged as `THIRD-PARTY-NOTICES.md`; the receipt also records the closure format, dependency/document counts, and SHA-256 hashes of both packaged legal files. This deliberately uses the individual pre-shade JARs because generic legal-resource paths collide in the shaded JAR.
+
+`LegalClosurePolicyTest` verifies the reviewed policy and vendored-source hashes during ordinary Maven tests. The build invokes it again against the generated manifest, aggregate, and closure metadata before Native Image linking. Legal validation remains mandatory even with `--skip-tests`.
+
+macOS builds pin `MACOSX_DEPLOYMENT_TARGET=13.0` and must produce a Mach-O load command with exactly that minimum version. Linux GNU builds are capped at glibc 2.34; the pinned builder currently produces a 2.34 floor, and the build rejects any binary importing a newer `GLIBC_*` symbol version. Receipts record `abi` plus `minimumOsVersion` on macOS or `minimumGlibcVersion` on Linux. The current glibc floor supports distributions such as Ubuntu 22.04 and Debian 12, but not Ubuntu 20.04.
+
+Supported RIDs are `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, and `win-x64`. The pinned GraalVM 25 toolchains do not publish Windows ARM64 Native Image, so SQL intelligence is unavailable on `win-arm64` until an upstream toolchain exists.
+
+## Deliberate limits
+
+- Calcite Babel provides broad SQL parsing, not exact grammar parity for every provider extension. Inline diagnostics therefore fail open on parser differences and report only catalog-safe unknown or ambiguous columns in parsed queries with a `FROM` relation. The connected database remains authoritative when a statement is run.
+- Bind variables are shadowed with same-length Calcite placeholders outside strings, quoted identifiers, comments, and PostgreSQL dollar quotes, preserving UTF-16 diagnostic offsets.
+- DML and DDL diagnostics are intentionally suppressed in protocol v1 because the detached catalog does not yet carry enough generated-column, default-expression, and constraint metadata to validate them without false positives.
+- Unknown provider functions absent from both Calcite's selected dialect library and the detached routine snapshot, type coercions, pseudo-columns, and unresolved objects are not painted red. Ordinary unknown and ambiguous columns against resolved relations are still errors.
+- Qualified CTE completion supplements Calcite for direct projected identifiers and explicit aliases. Star expansion, recursive lineage, and arbitrary expression inference are not yet exposed.
+- The full Calcite `STANDARD` plus mapped provider library (`POSTGRESQL`, `REDSHIFT`, `MYSQL`, `MSSQL`, `ORACLE`, or `CLICKHOUSE`) remains available to parsing and validation, but completion is provenance-gated. Detached callable routines and positively corroborated server intrinsic symbols are always eligible. A callable from the selected Calcite dialect library is a fallback only while both routine and intrinsic coverage remain non-authoritative; `complete` absence from either source suppresses that fallback. Uncorroborated `STANDARD` operators are deliberately omitted because Calcite's standard table and `SqlDialect.supportsFunction` are not provider capability catalogs. `FUNCTION_ID`/bare value constructs require direct server intrinsic corroboration even when the provider library contains them. Callable operators insert `(`, corroborated Calcite `FUNCTION_ID` values remain bare, aggregates are limited to select-list/HAVING/ORDER BY contexts, and window-only operators are withheld until an explicit window-completion contract exists. Routine qualification is provider-aware and fails closed when two identities cannot be expressed unambiguously. SQL Server and Redshift currently lack a complete intrinsic catalog, so ordinary standard functions that are neither detached routines nor explicit dialect-library operators can be absent from completion rather than advertised without proof.
+- Completion results are capped at 2,000 items to keep protocol frames bounded on very large catalogs.
+- GhostShell bounds the detached catalog extraction to 1,000 whole objects, 50,000 columns, an estimated 6 MiB of metadata, and 15 seconds. The editor identifies a limited catalog explicitly instead of hanging or sending incomplete table schemas.
+- Procedures/table routines that cannot be used as scalar expressions, user-defined types, and temporary objects remain outside protocol-v1 completion. Server and extension functions are available only when GhostShell includes them in the detached routine snapshot. Providers whose catalogs cannot enumerate built-ins may therefore omit ordinary functions rather than advertise an unverified or invalid spelling.

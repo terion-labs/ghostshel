@@ -264,6 +264,18 @@ internal sealed class QaApplication : Avalonia.Application
         new("workspace-agent", vm =>
         {
             vm.ShowWorkspace();
+            // Floating is the default, so the panel is summoned the way a
+            // person summons it — this capture reviews the flyout state.
+            vm.ToggleAgentPanel();
+            AgentProfiles.PublishSampleProfile();
+            AgentRuntime.PublishSampleConversation();
+        }),
+        // The same panel pinned: the layout holds a slot for it and the canvas
+        // moves aside instead of being covered.
+        new("workspace-agent-docked", vm =>
+        {
+            vm.ShowWorkspace();
+            _ = vm.ToggleAgentPanelPinAsync(CancellationToken.None);
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleConversation();
         }),
@@ -272,6 +284,7 @@ internal sealed class QaApplication : Avalonia.Application
         new("workspace-agent-capability", vm =>
         {
             vm.ShowWorkspace();
+            vm.ToggleAgentPanel();
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleCapabilityRequest();
         }),

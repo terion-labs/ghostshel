@@ -606,6 +606,18 @@ public sealed partial class App : Avalonia.Application
                 resources.Background.G,
                 resources.Background.B)));
         Publish("ShellSidebarBrush", Translucent(resources.SidebarSurface));
+        // The same swatch as glass, for the one sidebar-coloured surface that
+        // floats over the app's own content. It stands on a blurred snapshot
+        // of what it covers — live backdrop blur is not available inside the
+        // window — so it can afford to be genuinely translucent: the blur
+        // beneath is what keeps the conversation legible.
+        Publish(
+            "ShellSidebarOverlayBrush",
+            new SolidColorBrush(Color.FromArgb(
+                0xCC,
+                resources.SidebarSurface.R,
+                resources.SidebarSurface.G,
+                resources.SidebarSurface.B)));
         Publish("ShellSidebarBorderBrush", Brush(resources.SidebarBorder));
         Publish("ShellSidebarSelectionBrush", Brush(resources.SidebarSelectionSurface));
         Publish("ShellSurfaceBrush", Translucent(resources.Surface));
@@ -647,6 +659,14 @@ public sealed partial class App : Avalonia.Application
         Publish("ShellTextBrush", Brush(resources.Text));
         Publish("ShellMutedBrush", Brush(resources.MutedText));
         Publish("ShellAccentBrush", Brush(resources.Accent));
+        // The flyout's shadow carries the accent in its inner glow, so it is
+        // composed here where the live accent is known — a workspace retint
+        // re-runs this and the glow follows.
+        Publish(
+            "ShellFlyoutShadow",
+            BoxShadows.Parse(
+                "0 8 48 0 #8C000000, 0 2 14 0 #59000000, inset 0 0 40 0 "
+                + $"#38{resources.Accent.R:X2}{resources.Accent.G:X2}{resources.Accent.B:X2}"));
         Publish("ShellAccentForegroundBrush", Brush(resources.AccentForeground));
         Publish("ShellAccentSoftBrush", Brush(resources.AccentSoft));
         Publish("ShellDangerBrush", Brush(resources.Danger));

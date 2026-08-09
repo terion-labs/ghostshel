@@ -116,6 +116,74 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Agent_panel_floats_hidden_by_default_and_the_pin_docks_and_persists()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var stored = snapshot.Workspaces.Single(item => item.Value.Id == WorkspaceId);
+        var (client, _) = CreateSessionClient();
+        var catalog = DispatchProxy.Create<IDefinitionCatalog, RecordingAutoSaveCatalogProxy>();
+        var proxy = (RecordingAutoSaveCatalogProxy)(object)catalog;
+        proxy.Snapshot = snapshot;
+        using var viewModel = CreateViewModel(client, catalog);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        // Unpinned is the default: nothing on screen until asked for, and then
+        // a flyout rather than a slot in the layout.
+        Assert.False(viewModel.IsAgentPanelVisible);
+        Assert.False(viewModel.IsAgentPanelDocked);
+        Assert.False(viewModel.IsAgentPanelDockedVisible);
+
+        viewModel.ToggleAgentPanel();
+        Assert.True(viewModel.IsAgentPanelVisible);
+        Assert.False(viewModel.IsAgentPanelDockedVisible);
+
+        await viewModel.ToggleAgentPanelPinAsync(CancellationToken.None);
+
+        Assert.True(viewModel.IsAgentPanelDocked);
+        Assert.True(viewModel.IsAgentPanelDockedVisible);
+        var saved = Assert.IsType<WorkspaceDefinition>(proxy.SavedWorkspace);
+        Assert.True(saved.AgentPanelPinned);
+        Assert.Equal(stored.Revision, proxy.SavedWorkspaceRevision);
+        // The pin write must carry the rest of the definition, not reset it.
+        Assert.Equal(stored.Value.Name, saved.Name);
+        Assert.Equal(stored.Value.Entries.Count, saved.Entries.Count);
+    }
+
+    [Fact]
+    public async Task Opening_a_workspace_with_a_pinned_agent_panel_shows_it_docked()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var stored = snapshot.Workspaces.Single(item => item.Value.Id == WorkspaceId);
+        var pinnedWorkspace = new WorkspaceDefinition(
+            stored.Value.Id,
+            stored.Value.SchemaVersion,
+            stored.Value.Name,
+            stored.Value.Description,
+            stored.Value.Accent,
+            stored.Value.Entries,
+            stored.Value.AgentPolicyOverride,
+            stored.Value.Icon,
+            stored.Value.AutoSave,
+            stored.Value.Color,
+            agentPanelPinned: true);
+        snapshot = snapshot with
+        {
+            Workspaces = snapshot.Workspaces
+                .Select(item => item.Value.Id == WorkspaceId ? Store(pinnedWorkspace) : item)
+                .ToArray(),
+        };
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, snapshot);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        Assert.True(viewModel.IsAgentPanelVisible);
+        Assert.True(viewModel.IsAgentPanelDocked);
+        Assert.True(viewModel.IsAgentPanelDockedVisible);
+    }
+
+    [Fact]
     public async Task Database_tab_appends_a_single_panel_tab()
     {
         var (client, _) = CreateSessionClient();

@@ -23,9 +23,9 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
             string.Empty);
 
     /// <summary>
-    /// Height of the host's header veil. While positive, the top band of the
-    /// diagram renders again beneath the veil, blurred — the header's
-    /// backdrop. Zero turns the mirror off entirely.
+    /// Height of the host's header veil. While positive, a live blur band of
+    /// the same height stands under the veil as its backdrop; zero turns the
+    /// band off entirely.
     /// </summary>
     public static readonly StyledProperty<double> HeaderVeilHeightProperty =
         AvaloniaProperty.Register<DatabaseMermaidDiagramView, double>(
@@ -53,8 +53,6 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         Viewport.PointerMoved += OnPointerMoved;
         Viewport.PointerReleased += OnPointerReleased;
         Viewport.DoubleTapped += (_, _) => FitDiagram();
-        // The clip is in view coordinates, so it follows the viewport's size.
-        Viewport.SizeChanged += (_, _) => SyncMirrorBand();
     }
 
     public double HeaderVeilHeight
@@ -64,18 +62,15 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
     }
 
     /// <summary>
-    /// The mirror fills the same slot with the same alignment as the real
-    /// surface, so their geometry cannot diverge; only this clip makes it a
-    /// band. The clip lives on the untransformed panel, so it stays in view
-    /// space while the surface inside pans and zooms.
+    /// The band is simply sized to the veil: the blur surface samples what is
+    /// already painted beneath it, so pan, zoom, and the diagram itself need
+    /// no mirroring at all.
     /// </summary>
-    private void SyncMirrorBand()
+    private void SyncHeaderBand()
     {
         var height = Math.Max(0, HeaderVeilHeight);
+        HeaderBlurBand.Height = height;
         HeaderBlurBand.IsVisible = height > 0 && _svgSource is not null;
-        HeaderBlurBand.Clip = height > 0 && Viewport.Bounds.Width > 0
-            ? new RectangleGeometry(new Rect(0, 0, Viewport.Bounds.Width, height))
-            : null;
     }
 
     public string MermaidSource
@@ -100,7 +95,7 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         }
         else if (change.Property == HeaderVeilHeightProperty)
         {
-            SyncMirrorBand();
+            SyncHeaderBand();
         }
     }
 
@@ -215,8 +210,7 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         var previous = _svgSource;
         _svgSource = source;
         DiagramSurface.SvgSource = source;
-        DiagramSurfaceMirror.SvgSource = source;
-        SyncMirrorBand();
+        SyncHeaderBand();
         previous?.Dispose();
     }
 
@@ -312,11 +306,8 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
     /// real edges. The control's internal pan clipped at its fitted rectangle,
     /// which is what kept guillotining tables in the middle of the panel.
     /// </summary>
-    private void ApplyDiagramTransform()
-    {
+    private void ApplyDiagramTransform() =>
         DiagramSurface.RenderTransform = BuildDiagramTransform();
-        DiagramSurfaceMirror.RenderTransform = BuildDiagramTransform();
-    }
 
     private TransformGroup BuildDiagramTransform()
     {
