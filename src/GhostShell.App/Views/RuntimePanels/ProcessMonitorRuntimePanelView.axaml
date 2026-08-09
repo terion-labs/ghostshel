@@ -97,8 +97,10 @@
             AutomationProperties.Name="Bounded process list">
           <ListBox.ItemTemplate>
             <DataTemplate>
+              <!-- The File Viewer's row height: every list in the shell stands
+                   at the same 30. -->
               <DockPanel
-                  MinHeight="34"
+                  MinHeight="30"
                   Margin="{controls:Inset Horizontal=Sm}"
                   LastChildFill="True"
                   AutomationProperties.Name="{Binding AccessibleSummary}">
