@@ -46,50 +46,76 @@
       <Border Grid.Row="0" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
         <Grid
             Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-            ColumnDefinitions="Auto,*,Auto,Auto,Auto"
-            ColumnSpacing="{DynamicResource ShellSpaceSm}"
-            IsEnabled="{Binding CanChangeConnection}">
-          <ComboBox
-              MinWidth="150"
-              VerticalAlignment="Center"
-              IsVisible="{Binding HasDatabaseChoices}"
-              ItemsSource="{Binding Databases}"
-              SelectedItem="{Binding SelectedDatabase, Mode=TwoWay}"
-              AutomationProperties.Name="Current database" />
-          <TextBlock
-              Grid.Column="1"
-              VerticalAlignment="Center"
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize10}"
-              IsVisible="{Binding !HasConnectionTarget}"
-              Text="No connection — choose one from the connection menu."
-              TextTrimming="CharacterEllipsis" />
-          <Button
-              Grid.Column="2"
-              VerticalAlignment="Center"
-              Classes="IconButton"
-              Click="OnEditConnectionClick"
-              IsVisible="{Binding IsSavedConnection}"
-              ToolTip.Tip="Edit connection"
-              AutomationProperties.Name="Edit this database connection">
-            <icons:SymbolIcon Symbol="Options" FontSize="13" />
-          </Button>
-          <Button
-              Grid.Column="3"
-              MinWidth="86"
-              VerticalAlignment="Center"
-              Classes="SecondaryButton"
-              Command="{Binding ConnectCommand}"
-              Content="{Binding ConnectButtonLabel}"
-              AutomationProperties.Name="Connect to the database" />
-          <Button
-              Grid.Column="4"
-              VerticalAlignment="Center"
-              Classes="SecondaryButton"
-              Command="{Binding DisconnectCommand}"
-              Content="Disconnect"
-              IsVisible="{Binding IsConnected}"
-              AutomationProperties.Name="Disconnect from the database" />
+            ColumnDefinitions="*,Auto"
+            ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <!-- What to connect to and whether we are: one group, one place. -->
+          <StackPanel
+              Orientation="Horizontal"
+              Spacing="{DynamicResource ShellSpaceSm}"
+              IsEnabled="{Binding CanChangeConnection}">
+            <ComboBox
+                MinWidth="150"
+                VerticalAlignment="Center"
+                IsVisible="{Binding HasDatabaseChoices}"
+                ItemsSource="{Binding Databases}"
+                SelectedItem="{Binding SelectedDatabase, Mode=TwoWay}"
+                AutomationProperties.Name="Current database" />
+            <Button
+                VerticalAlignment="Center"
+                Classes="IconButton"
+                Click="OnEditConnectionClick"
+                IsVisible="{Binding IsSavedConnection}"
+                ToolTip.Tip="Edit connection"
+                AutomationProperties.Name="Edit this database connection">
+              <icons:SymbolIcon Symbol="Options" FontSize="13" />
+            </Button>
+            <Button
+                MinWidth="86"
+                VerticalAlignment="Center"
+                Classes="SecondaryButton"
+                Command="{Binding ConnectCommand}"
+                Content="{Binding ConnectButtonLabel}"
+                AutomationProperties.Name="Connect to the database" />
+            <Button
+                VerticalAlignment="Center"
+                Classes="SecondaryButton"
+                Command="{Binding DisconnectCommand}"
+                Content="Disconnect"
+                IsVisible="{Binding IsConnected}"
+                AutomationProperties.Name="Disconnect from the database" />
+            <TextBlock
+                VerticalAlignment="Center"
+                Classes="Muted"
+                FontSize="{DynamicResource ShellFontSize10}"
+                IsVisible="{Binding !HasConnectionTarget}"
+                Text="No connection — choose one from the connection menu."
+                TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+
+          <!-- The three perspectives on the selected object, out of the
+               connection group: switching views is not a connection change. -->
+          <Border Grid.Column="1" VerticalAlignment="Center" Classes="Segmented">
+            <UniformGrid Columns="3">
+              <ToggleButton
+                  x:Name="DataModeButton"
+                  Classes="Segment"
+                  Click="OnDataModeClick"
+                  Content="Data"
+                  AutomationProperties.Name="Show table data" />
+              <ToggleButton
+                  x:Name="StructureModeButton"
+                  Classes="Segment"
+                  Click="OnStructureModeClick"
+                  Content="Structure"
+                  AutomationProperties.Name="Show table structure" />
+              <ToggleButton
+                  x:Name="IndexesModeButton"
+                  Classes="Segment"
+                  Click="OnIndexesModeClick"
+                  Content="Indexes"
+                  AutomationProperties.Name="Show table indexes" />
+            </UniformGrid>
+          </Border>
         </Grid>
       </Border>
 

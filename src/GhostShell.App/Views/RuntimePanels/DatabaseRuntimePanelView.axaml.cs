@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using GhostShell.App.ViewModels;
@@ -20,13 +21,56 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         if (_observedPanel is not null)
         {
             _observedPanel.PasswordRequested -= OnPasswordRequested;
+            _observedPanel.PropertyChanged -= OnPanelPropertyChanged;
         }
 
         _observedPanel = Panel;
         if (_observedPanel is not null)
         {
             _observedPanel.PasswordRequested += OnPasswordRequested;
+            _observedPanel.PropertyChanged += OnPanelPropertyChanged;
         }
+
+        SyncModeButtons();
+    }
+
+    private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        if (e.PropertyName is null
+            or nameof(DatabaseRuntimePanelViewModel.SelectedMode)
+            or nameof(DatabaseRuntimePanelViewModel.SelectedObject))
+        {
+            SyncModeButtons();
+        }
+    }
+
+    private void SyncModeButtons()
+    {
+        var panel = _observedPanel;
+        DataModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Data;
+        StructureModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Structure;
+        IndexesModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Indexes;
+        var hasObject = panel?.SelectedObject is not null;
+        StructureModeButton.IsEnabled = hasObject;
+        IndexesModeButton.IsEnabled = hasObject;
+    }
+
+    private void OnDataModeClick(object? sender, RoutedEventArgs e) =>
+        SetMode(DatabaseWorkspaceMode.Data);
+
+    private void OnStructureModeClick(object? sender, RoutedEventArgs e) =>
+        SetMode(DatabaseWorkspaceMode.Structure);
+
+    private void OnIndexesModeClick(object? sender, RoutedEventArgs e) =>
+        SetMode(DatabaseWorkspaceMode.Indexes);
+
+    private void SetMode(DatabaseWorkspaceMode mode)
+    {
+        Panel?.SetMode(mode);
+        // Clicking an already-selected ToggleButton tries to uncheck it. The
+        // workspace mode is exclusive, so restore all three from source state.
+        SyncModeButtons();
     }
 
     private async void OnPasswordRequested(object? sender, EventArgs e)

@@ -797,7 +797,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.True(fixture.SaveButton.IsEffectivelyEnabled);
         Assert.False(fixture.ObjectsList.IsEffectivelyEnabled);
         Assert.False(fixture.RowsObjectButton.IsEffectivelyEnabled);
-        Assert.False(fixture.ConnectionStringBox.IsEffectivelyEnabled);
+        Assert.False(fixture.ConnectButton.IsEffectivelyEnabled);
 
         await ClickSaveAsync(
             panel,
@@ -808,7 +808,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.False(fixture.SaveButton.IsEffectivelyEnabled);
         Assert.True(fixture.ObjectsList.IsEffectivelyEnabled);
         Assert.True(fixture.RowsObjectButton.IsEffectivelyEnabled);
-        Assert.True(fixture.ConnectionStringBox.IsEffectivelyEnabled);
+        Assert.True(fixture.ConnectButton.IsEffectivelyEnabled);
 
         var saved = await LoadSingleRowAsync(
             client,
@@ -1068,7 +1068,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.False(fixture.SetDefaultButton.IsEffectivelyEnabled);
         Assert.False(fixture.RevertButton.IsEffectivelyEnabled);
         Assert.True(fixture.ObjectsList.IsEffectivelyEnabled);
-        Assert.True(fixture.ConnectionStringBox.IsEffectivelyEnabled);
+        Assert.True(fixture.ConnectButton.IsEffectivelyEnabled);
         Assert.False(fixture.CanBeginTextCellEdit("alpha", "title"));
         Assert.False(panel.HasPendingChanges);
 
@@ -1245,8 +1245,8 @@ public sealed partial class DatabaseViewerConformanceTests
         public ItemsControl ObjectsList =>
             RowsObjectButton.GetVisualAncestors().OfType<ItemsControl>().First();
 
-        public TextBox ConnectionStringBox =>
-            NamedControl<TextBox>("Database connection string");
+        public Button ConnectButton =>
+            NamedControl<Button>("Connect to the database");
 
         public static HeadlessViewFixture Create(
             DatabaseRuntimePanelViewModel panel,

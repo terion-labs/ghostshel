@@ -59,7 +59,6 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         }
 
         RebuildResultColumns();
-        SyncModeButtons();
         SyncSelectedRow();
     }
 
@@ -82,13 +81,6 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         if (e.PropertyName is null or nameof(DatabaseRuntimePanelViewModel.CanSortTable))
         {
             SyncResultColumnSorting();
-        }
-
-        if (e.PropertyName is null
-            or nameof(DatabaseRuntimePanelViewModel.SelectedMode)
-            or nameof(DatabaseRuntimePanelViewModel.SelectedObject))
-        {
-            SyncModeButtons();
         }
 
         if (e.PropertyName is null or nameof(DatabaseRuntimePanelViewModel.SelectedRow))
@@ -141,17 +133,6 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         {
             column.CanUserSort = canSort;
         }
-    }
-
-    private void SyncModeButtons()
-    {
-        var panel = _observedPanel;
-        DataModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Data;
-        StructureModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Structure;
-        IndexesModeButton.IsChecked = panel?.SelectedMode == DatabaseWorkspaceMode.Indexes;
-        var hasObject = panel?.SelectedObject is not null;
-        StructureModeButton.IsEnabled = hasObject;
-        IndexesModeButton.IsEnabled = hasObject;
     }
 
     private void SyncSelectedRow()
@@ -221,22 +202,6 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         ObjectsPicker.IsVisible = folded;
     }
 
-    private void OnDataModeClick(object? sender, RoutedEventArgs e) =>
-        SetMode(DatabaseWorkspaceMode.Data);
-
-    private void OnStructureModeClick(object? sender, RoutedEventArgs e) =>
-        SetMode(DatabaseWorkspaceMode.Structure);
-
-    private void OnIndexesModeClick(object? sender, RoutedEventArgs e) =>
-        SetMode(DatabaseWorkspaceMode.Indexes);
-
-    private void SetMode(DatabaseWorkspaceMode mode)
-    {
-        Panel?.SetMode(mode);
-        // Clicking an already-selected ToggleButton tries to uncheck it. The
-        // workspace mode is exclusive, so restore all three from source state.
-        SyncModeButtons();
-    }
 
     private void OnPickedTableClick(object? sender, RoutedEventArgs e)
     {

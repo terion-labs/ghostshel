@@ -28,20 +28,22 @@
 
     <ScrollViewer Grid.Row="1">
       <StackPanel Margin="{controls:Inset Horizontal=Lg, Top=Sm, Bottom=Xl}" Spacing="{DynamicResource ShellSpaceMd}">
+        <!-- One aligned label rail for the whole form: the eye lands on the
+             fields, not on per-field prose. -->
         <controls:SurfaceCard Padding="0">
-          <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,240" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceMd}">
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" Text="Name" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Shown in launchers, tabs, and agent scope." />
-            </StackPanel>
-            <TextBox Grid.Column="1" Text="{Binding Name}" PlaceholderText="Production shell" />
-            <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" Text="Connection type" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Terminals, file transfer, and databases share this editor." />
-            </StackPanel>
+          <Grid
+              Margin="{controls:Inset Lg}"
+              ColumnDefinitions="96,*"
+              ColumnSpacing="{DynamicResource ShellSpaceMd}"
+              RowDefinitions="Auto,Auto"
+              RowSpacing="{DynamicResource ShellSpaceSm}">
+            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" Text="Name" />
+            <TextBox Grid.Column="1" Text="{Binding Name}" PlaceholderText="Production database" AutomationProperties.Name="Connection name" />
+            <TextBlock Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" Text="Type" />
             <ComboBox
                 Grid.Row="1"
                 Grid.Column="1"
+                HorizontalAlignment="Stretch"
                 ItemsSource="{Binding TypeOptions}"
                 SelectedItem="{Binding SelectedType}">
               <ComboBox.ItemTemplate>
@@ -281,12 +283,18 @@
           </StackPanel>
         </StackPanel>
 
-        <!-- Database family -->
+        <!-- Database family: one flat, label-railed form. Everything about the
+             connection reads as rows of the same table. -->
         <StackPanel IsVisible="{Binding IsDatabase}" Spacing="{DynamicResource ShellSpaceMd}">
           <StackPanel DataContext="{Binding Database}" Spacing="{DynamicResource ShellSpaceMd}">
             <controls:SurfaceCard Padding="0">
-              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+              <Grid
+                  Margin="{controls:Inset Lg}"
+                  ColumnDefinitions="96,*"
+                  ColumnSpacing="{DynamicResource ShellSpaceMd}"
+                  RowDefinitions="Auto,Auto,Auto"
+                  RowSpacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceLg}">
                   <RadioButton
                       GroupName="DatabaseInputMode"
                       IsChecked="{Binding UseFields, Mode=OneWay}"
@@ -300,80 +308,119 @@
                 </StackPanel>
 
                 <!-- One pasted string: engine URL or keyword form -->
-                <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding UseConnectionString}">
-                  <TextBox
-                      Text="{Binding ConnectionStringInput}"
-                      PlaceholderText="{Binding ConnectionStringHint}"
-                      AutomationProperties.Name="Database connection string or URL" />
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Engine URLs (postgresql://…, mysql://…) and keyword form both work. A password inside is moved to the keychain when stored, never kept in the saved string." TextWrapping="Wrap" />
-                </StackPanel>
+                <TextBlock
+                    Grid.Row="1"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Right"
+                    Classes="Muted"
+                    IsVisible="{Binding UseConnectionString}"
+                    Text="URL" />
+                <TextBox
+                    Grid.Row="1"
+                    Grid.Column="1"
+                    IsVisible="{Binding UseConnectionString}"
+                    Text="{Binding ConnectionStringInput}"
+                    PlaceholderText="{Binding ConnectionStringHint}"
+                    AutomationProperties.Name="Database connection string or URL" />
+                <TextBlock
+                    Grid.Row="2"
+                    Grid.Column="1"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    IsVisible="{Binding UseConnectionString}"
+                    Text="Engine URLs (postgresql://…, mysql://…) and keyword form both work. A password inside moves to the keychain when stored — never into the saved string."
+                    TextWrapping="Wrap" />
 
                 <!-- Structured fields -->
-                <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding UseFields}">
-                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding IsFileBased}">
-                    <TextBlock FontWeight="SemiBold" Text="Database file" />
-                    <TextBox Text="{Binding FilePath}" PlaceholderText="/path/to/database.db" AutomationProperties.Name="Database file path" />
-                  </StackPanel>
-                  <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding IsServerBased}">
-                    <Grid ColumnDefinitions="*,110" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                      <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding Host}" PlaceholderText="localhost" AutomationProperties.Name="Database host" /></StackPanel>
-                      <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Port" /><TextBox Text="{Binding Port}" PlaceholderText="{Binding PortPlaceholder}" AutomationProperties.Name="Database port" /></StackPanel>
-                    </Grid>
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                      <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="User" /><TextBox Text="{Binding Username}" PlaceholderText="user name" AutomationProperties.Name="Database user" /></StackPanel>
-                      <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Password" /><TextBox Text="{Binding Password}" PasswordChar="•" PlaceholderText="password" AutomationProperties.Name="Database password" /></StackPanel>
-                    </Grid>
-                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="{Binding DatabaseLabel}" /><TextBox Text="{Binding DatabaseName}" PlaceholderText="database name" AutomationProperties.Name="Database name" /></StackPanel>
-                  </StackPanel>
-                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Options" /><TextBox Text="{Binding Options}" PlaceholderText="Key=Value;…" AutomationProperties.Name="Additional connection options" /></StackPanel>
-                </StackPanel>
-              </StackPanel>
+                <Grid
+                    Grid.Row="1"
+                    Grid.ColumnSpan="2"
+                    ColumnDefinitions="96,*"
+                    ColumnSpacing="{DynamicResource ShellSpaceMd}"
+                    RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                    RowSpacing="{DynamicResource ShellSpaceSm}"
+                    IsVisible="{Binding UseFields}">
+                  <TextBlock VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsFileBased}" Text="File" />
+                  <TextBox Grid.Column="1" IsVisible="{Binding IsFileBased}" Text="{Binding FilePath}" PlaceholderText="/path/to/database.db" AutomationProperties.Name="Database file path" />
+
+                  <TextBlock Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsServerBased}" Text="Host" />
+                  <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="*,Auto,84" ColumnSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding IsServerBased}">
+                    <TextBox Text="{Binding Host}" PlaceholderText="localhost" AutomationProperties.Name="Database host" />
+                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" Text="Port" />
+                    <TextBox Grid.Column="2" Text="{Binding Port}" PlaceholderText="{Binding PortPlaceholder}" AutomationProperties.Name="Database port" />
+                  </Grid>
+
+                  <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsServerBased}" Text="User" />
+                  <TextBox Grid.Row="2" Grid.Column="1" IsVisible="{Binding IsServerBased}" Text="{Binding Username}" PlaceholderText="user name" AutomationProperties.Name="Database user" />
+
+                  <TextBlock Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsServerBased}" Text="Password" />
+                  <Grid Grid.Row="3" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding IsServerBased}">
+                    <TextBox Text="{Binding Password}" PasswordChar="•" PlaceholderText="password" AutomationProperties.Name="Database password" />
+                    <CheckBox
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        IsChecked="{Binding StorePassword}"
+                        Content="Keychain"
+                        ToolTip.Tip="Store the password in the OS keychain. The saved connection string never contains it; without the keychain it is asked for on connect."
+                        AutomationProperties.Name="Store the password in the OS keychain" />
+                  </Grid>
+
+                  <TextBlock Grid.Row="4" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsServerBased}" Text="{Binding DatabaseLabel}" />
+                  <TextBox Grid.Row="4" Grid.Column="1" IsVisible="{Binding IsServerBased}" Text="{Binding DatabaseName}" PlaceholderText="database name" AutomationProperties.Name="Database name" />
+                </Grid>
+
+                <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding UseFields}" Text="Options" />
+                <TextBox Grid.Row="2" Grid.Column="1" IsVisible="{Binding UseFields}" Text="{Binding Options}" PlaceholderText="Key=Value;…" AutomationProperties.Name="Additional connection options" />
+              </Grid>
             </controls:SurfaceCard>
 
             <controls:SurfaceCard Padding="0" IsVisible="{Binding ShowsTunnel}">
-              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock Classes="SectionHeading" Text="SSH tunnel" />
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Reuse a saved SSH connection, or define one that lives only inside this database connection." TextWrapping="Wrap" />
-                  <ComboBox ItemsSource="{Binding TunnelOptions}" SelectedItem="{Binding SelectedTunnel}" AutomationProperties.Name="SSH tunnel connection"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-                </StackPanel>
-                <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding IsInlineTunnel}">
-                  <Grid ColumnDefinitions="*,110,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Host" /><TextBox Text="{Binding TunnelHost}" PlaceholderText="bastion.example.com" AutomationProperties.Name="Tunnel host" /></StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Port" /><TextBox Text="{Binding TunnelPort}" PlaceholderText="22" AutomationProperties.Name="Tunnel port" /></StackPanel>
-                    <StackPanel Grid.Column="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Username" /><TextBox Text="{Binding TunnelUsername}" PlaceholderText="Current local user" AutomationProperties.Name="Tunnel username" /></StackPanel>
-                  </Grid>
-                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                    <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Authentication" /><ComboBox ItemsSource="{Binding TunnelAuthenticationChoices}" SelectedItem="{Binding TunnelAuthentication}" AutomationProperties.Name="Tunnel authentication" /></StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding TunnelUsesPassword}"><TextBlock FontWeight="SemiBold" Text="Password" /><TextBox Text="{Binding TunnelPassword}" PasswordChar="•" PlaceholderText="password" AutomationProperties.Name="Tunnel password" /></StackPanel>
-                  </Grid>
-                  <TextBlock
-                      Classes="Muted"
-                      FontSize="{DynamicResource ShellFontSize9}"
-                      IsVisible="{Binding HasStoredTunnelPassword}"
-                      Text="A tunnel password is stored in the OS keychain. Leaving the field empty keeps it; storing a new one replaces it."
-                      TextWrapping="Wrap" />
-                </StackPanel>
-              </StackPanel>
+              <Grid
+                  Margin="{controls:Inset Lg}"
+                  ColumnDefinitions="96,*"
+                  ColumnSpacing="{DynamicResource ShellSpaceMd}"
+                  RowDefinitions="Auto,Auto,Auto,Auto"
+                  RowSpacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" Text="SSH tunnel" />
+                <ComboBox
+                    Grid.Column="1"
+                    HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding TunnelOptions}"
+                    SelectedItem="{Binding SelectedTunnel}"
+                    AutomationProperties.Name="SSH tunnel connection">
+                  <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsInlineTunnel}" Text="Host" />
+                <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="*,Auto,84" ColumnSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding IsInlineTunnel}">
+                  <TextBox Text="{Binding TunnelHost}" PlaceholderText="bastion.example.com" AutomationProperties.Name="Tunnel host" />
+                  <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" Text="Port" />
+                  <TextBox Grid.Column="2" Text="{Binding TunnelPort}" PlaceholderText="22" AutomationProperties.Name="Tunnel port" />
+                </Grid>
+
+                <TextBlock Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsInlineTunnel}" Text="User" />
+                <TextBox Grid.Row="2" Grid.Column="1" IsVisible="{Binding IsInlineTunnel}" Text="{Binding TunnelUsername}" PlaceholderText="Current local user" AutomationProperties.Name="Tunnel username" />
+
+                <TextBlock Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Right" Classes="Muted" IsVisible="{Binding IsInlineTunnel}" Text="Auth" />
+                <Grid Grid.Row="3" Grid.Column="1" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding IsInlineTunnel}">
+                  <ComboBox MinWidth="170" ItemsSource="{Binding TunnelAuthenticationChoices}" SelectedItem="{Binding TunnelAuthentication}" AutomationProperties.Name="Tunnel authentication" />
+                  <TextBox Grid.Column="1" IsVisible="{Binding TunnelUsesPassword}" Text="{Binding TunnelPassword}" PasswordChar="•" PlaceholderText="password" AutomationProperties.Name="Tunnel password" />
+                </Grid>
+              </Grid>
             </controls:SurfaceCard>
 
-            <controls:SurfaceCard Padding="0">
-              <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
-                <CheckBox IsVisible="{Binding IsServerBased}" IsChecked="{Binding StorePassword}" Content="Store password in the OS keychain" AutomationProperties.Name="Store the password in the OS keychain" />
-                <TextBlock
-                    Classes="Muted"
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    IsVisible="{Binding HasStoredPassword}"
-                    Text="A password is stored in the OS keychain. Leaving the field empty keeps it; storing a new one replaces it."
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Classes="Muted"
-                    FontSize="{DynamicResource ShellFontSize9}"
-                    IsVisible="{Binding IsServerBased}"
-                    Text="The saved connection string never contains the password. Without the keychain, it is asked for on connect."
-                    TextWrapping="Wrap" />
-              </StackPanel>
-            </controls:SurfaceCard>
+            <TextBlock
+                Classes="Muted"
+                FontSize="{DynamicResource ShellFontSize9}"
+                IsVisible="{Binding HasStoredPassword}"
+                Text="A password is stored in the OS keychain. Leaving the field empty keeps it; storing a new one replaces it."
+                TextWrapping="Wrap" />
+            <TextBlock
+                Classes="Muted"
+                FontSize="{DynamicResource ShellFontSize9}"
+                IsVisible="{Binding HasStoredTunnelPassword}"
+                Text="A tunnel password is stored in the OS keychain. Leaving the field empty keeps it; storing a new one replaces it."
+                TextWrapping="Wrap" />
 
             <controls:SurfaceCard Tone="Notice" Padding="0">
               <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="{Binding TestStatus}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TestDetail}" TextWrapping="Wrap" /></StackPanel>

@@ -126,12 +126,15 @@
           AutomationProperties.Name="Resize the database objects list" />
 
       <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,*">
-        <!-- The selected object and its three stable perspectives remain in one
-             place while the query and data controls beneath them change. -->
-        <Border BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+        <!-- Only the folded objects list surfaces here; the perspectives moved
+             up into the panel header beside the connection controls. -->
+        <Border
+            BorderBrush="{DynamicResource ShellBorderBrush}"
+            BorderThickness="0,0,0,1"
+            IsVisible="{Binding #ObjectsPicker.IsVisible}">
           <Grid
               Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-              ColumnDefinitions="Auto,*,Auto"
+              ColumnDefinitions="Auto,*"
               ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <Button
                 x:Name="ObjectsPicker"
@@ -214,40 +217,6 @@
               </Button.Flyout>
             </Button>
 
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock
-                  FontSize="{DynamicResource ShellFontSize11}"
-                  FontWeight="SemiBold"
-                  Text="{Binding SelectedObjectName}"
-                  TextTrimming="CharacterEllipsis" />
-              <TextBlock
-                  Classes="Muted"
-                  FontSize="{DynamicResource ShellFontSize9}"
-                  Text="Database workspace" />
-            </StackPanel>
-
-            <Border Grid.Column="2" Classes="Segmented">
-              <UniformGrid Columns="3">
-                <ToggleButton
-                    x:Name="DataModeButton"
-                    Classes="Segment"
-                    Click="OnDataModeClick"
-                    Content="Data"
-                    AutomationProperties.Name="Show table data" />
-                <ToggleButton
-                    x:Name="StructureModeButton"
-                    Classes="Segment"
-                    Click="OnStructureModeClick"
-                    Content="Structure"
-                    AutomationProperties.Name="Show table structure" />
-                <ToggleButton
-                    x:Name="IndexesModeButton"
-                    Classes="Segment"
-                    Click="OnIndexesModeClick"
-                    Content="Indexes"
-                    AutomationProperties.Name="Show table indexes" />
-              </UniformGrid>
-            </Border>
           </Grid>
         </Border>
 
@@ -256,10 +225,10 @@
             BorderBrush="{DynamicResource ShellBorderBrush}"
             BorderThickness="0,0,0,1"
             IsVisible="{Binding ShowData}">
-          <Grid
-              Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-              ColumnDefinitions="*,Auto"
-              ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <!-- The run affordance floats over the editor's corner rather than
+               claiming a column: the statement is the surface, the trigger is
+               an icon, and Cmd+Enter is the real interface. -->
+          <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}">
             <TextBox
                 Classes="QueryEditor"
                 MinHeight="58"
@@ -272,14 +241,19 @@
                 KeyDown="OnQueryKeyDown"
                 AutomationProperties.Name="SQL statement" />
             <Button
-                Grid.Column="1"
-                MinWidth="70"
-                VerticalAlignment="Bottom"
-                Classes="PrimaryButton"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="{controls:Inset Xs}"
+                Padding="{controls:Inset Xs}"
+                Classes="IconButton"
                 Command="{Binding RunQueryCommand}"
-                Content="Run"
-                ToolTip.Tip="Run the statement (Cmd+Enter)"
-                AutomationProperties.Name="Run the SQL statement" />
+                ToolTip.Tip="Run the statement (⌘⏎)"
+                AutomationProperties.Name="Run the SQL statement">
+              <icons:SymbolIcon
+                  Symbol="Play"
+                  FontSize="14"
+                  Foreground="{DynamicResource ShellAccentBrush}" />
+            </Button>
           </Grid>
         </Border>
 
