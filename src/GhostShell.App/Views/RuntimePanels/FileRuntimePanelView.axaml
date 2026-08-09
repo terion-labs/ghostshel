@@ -289,15 +289,6 @@
                 DoubleTapped="OnEntryDoubleTapped"
                 IsVisible="{Binding IsDetailsView}"
                 AutomationProperties.Name="Files and folders">
-              <ListBox.Styles>
-                <Style Selector="ListBoxItem">
-                  <Setter Property="Margin" Value="0" />
-                  <Setter Property="CornerRadius" Value="0" />
-                </Style>
-                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                  <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
-                </Style>
-              </ListBox.Styles>
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Grid MinHeight="30" Margin="{controls:Inset Horizontal=Md}">
@@ -335,15 +326,6 @@
                 DoubleTapped="OnEntryDoubleTapped"
                 IsVisible="{Binding IsListView}"
                 AutomationProperties.Name="Files and folders, compact list">
-              <ListBox.Styles>
-                <Style Selector="ListBoxItem">
-                  <Setter Property="Margin" Value="0" />
-                  <Setter Property="CornerRadius" Value="0" />
-                </Style>
-                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                  <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
-                </Style>
-              </ListBox.Styles>
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Grid MinHeight="30" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
