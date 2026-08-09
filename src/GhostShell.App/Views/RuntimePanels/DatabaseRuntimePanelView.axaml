@@ -53,8 +53,11 @@
               Orientation="Horizontal"
               Spacing="{DynamicResource ShellSpaceSm}"
               IsEnabled="{Binding CanChangeConnection}">
+            <!-- Everything in this row wears the connection pill's 26px height
+                 so the header reads as one line of controls. -->
             <ComboBox
                 MinWidth="150"
+                Height="26"
                 VerticalAlignment="Center"
                 IsVisible="{Binding HasDatabaseChoices}"
                 ItemsSource="{Binding Databases}"
@@ -71,13 +74,19 @@
             </Button>
             <Button
                 MinWidth="86"
+                Height="26"
+                Padding="{controls:Inset Horizontal=Md}"
                 VerticalAlignment="Center"
+                VerticalContentAlignment="Center"
                 Classes="SecondaryButton"
                 Command="{Binding ConnectCommand}"
                 Content="{Binding ConnectButtonLabel}"
                 AutomationProperties.Name="Connect to the database" />
             <Button
+                Height="26"
+                Padding="{controls:Inset Horizontal=Md}"
                 VerticalAlignment="Center"
+                VerticalContentAlignment="Center"
                 Classes="SecondaryButton"
                 Command="{Binding DisconnectCommand}"
                 Content="Disconnect"
@@ -119,7 +128,16 @@
         </Grid>
       </Border>
 
-      <components:DatabaseWorkspaceView Grid.Row="1" />
+      <Grid Grid.Row="1">
+        <components:DatabaseWorkspaceView />
+        <!-- The same working stripe the File Viewer runs under its header. -->
+        <ProgressBar
+            Height="2"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Top"
+            IsIndeterminate="True"
+            IsVisible="{Binding IsBusy}" />
+      </Grid>
     </Grid>
   </controls:PanelChrome>
 </UserControl>
