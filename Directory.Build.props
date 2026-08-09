@@ -8,4 +8,17 @@
     <GhostShellRepositoryRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)'))</GhostShellRepositoryRoot>
     <PathMap>$(GhostShellRepositoryRoot)=/_/</PathMap>
   </PropertyGroup>
+
+  <!--
+    Release packaging must not pass the standard Version properties as global
+    MSBuild properties: global values flow through ProjectReference edges and
+    would overwrite the independently versioned vendored Exclr8CEF projects.
+    Map the product-specific input only for first-party GhostShell assemblies.
+  -->
+  <PropertyGroup Condition="'$(GhostShellProductVersion)' != '' and $([System.String]::Copy('$(MSBuildProjectName)').StartsWith('GhostShell'))">
+    <Version>$(GhostShellProductVersion)</Version>
+    <AssemblyVersion>$(GhostShellProductVersion)</AssemblyVersion>
+    <FileVersion>$(GhostShellProductVersion)</FileVersion>
+    <InformationalVersion>$(GhostShellProductVersion)</InformationalVersion>
+  </PropertyGroup>
 </Project>

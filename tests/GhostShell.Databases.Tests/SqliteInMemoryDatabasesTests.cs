@@ -18,7 +18,8 @@ public sealed class SqliteInMemoryDatabasesTests
             $"ghostshell-dbimage-{Guid.NewGuid():n}.db");
         try
         {
-            using (var build = new SqliteConnection($"Data Source={path}"))
+            using (var build = new SqliteConnection(
+                $"Data Source={path};Pooling=False"))
             {
                 build.Open();
                 using var create = build.CreateCommand();
@@ -28,7 +29,6 @@ public sealed class SqliteInMemoryDatabasesTests
                 create.ExecuteNonQuery();
             }
 
-            SqliteConnection.ClearAllPools();
             return File.ReadAllBytes(path);
         }
         finally

@@ -175,6 +175,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private string _agentTerminalSelectionStatus =
         $"Choose between 1 and {AgentTarget.SelectedPanels.MaximumPanelCount} live terminals from this workspace.";
     private volatile bool _shutdownStarted;
+    private bool _presentationTeardownCompleted;
     private bool _disposed;
 
     public MainWindowViewModel(
@@ -453,7 +454,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasNoSecrets => Secrets.Count == 0;
 
     /// <summary>
-    /// The webview factory, for surfaces that host a page of their own — the
+    /// The browser-view factory, for surfaces that host a page of their own — the
     /// file preview of an HTML document uses the same engine the browser panel
     /// does rather than a second one.
     /// </summary>
@@ -2761,7 +2762,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ClearError();
         if (_browserRendererViewFactory is null)
         {
-            SetError("The native browser adapter is unavailable in this build.");
+            SetError("The embedded browser is unavailable in this build.");
             return false;
         }
 
@@ -2784,7 +2785,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 BrowserAddress.Blank);
             if (panel is not BrowserRuntimePanelViewModel)
             {
-                SetError("The native browser adapter could not be initialized.");
+                SetError("The embedded browser could not be initialized.");
                 panel.Dispose();
                 return false;
             }
@@ -5402,7 +5403,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (_browserRendererViewFactory is null)
         {
-            SetError("The native browser adapter is unavailable in this build.");
+            SetError("The embedded browser is unavailable in this build.");
             return false;
         }
 
@@ -5414,7 +5415,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             BrowserAddress.Blank);
         if (panel is not BrowserRuntimePanelViewModel)
         {
-            SetError("The native browser adapter could not be initialized.");
+            SetError("The embedded browser could not be initialized.");
             panel.Dispose();
             return false;
         }
@@ -5951,7 +5952,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (kind == PanelKind.Browser && _browserRendererViewFactory is null)
         {
-            SetError("The native browser adapter is unavailable in this build.");
+            SetError("The embedded browser is unavailable in this build.");
             return Task.FromResult(false);
         }
 
@@ -6002,7 +6003,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             if (kind == PanelKind.Browser
                 && panel is not BrowserRuntimePanelViewModel)
             {
-                SetError("The native browser adapter could not be initialized.");
+                SetError("The embedded browser could not be initialized.");
                 panel.Dispose();
                 return null;
             }
@@ -10460,12 +10461,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 Symbol.Globe,
                 "Create · browser",
                 "New browser",
-                "Open a native browser panel.",
+                "Open an embedded Chromium browser panel.",
                 canStartBrowser ? "Open" : "Unavailable",
                 canStartBrowser,
                 canStartBrowser
                     ? null
-                    : "The native browser adapter is unavailable in this build.",
+                    : "The embedded browser is unavailable in this build.",
                 ["create", "new", "browser", "web", "panel"]),
             new LauncherSearchResultViewModel(
                 new LauncherSearchTarget.CreatePanel(PanelKind.FileViewer),
@@ -11486,7 +11487,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelKind.Browser,
                 title,
                 "Browser",
-                "The native browser adapter is unavailable in this build.");
+                "The embedded browser is unavailable in this build.");
         }
 
         BrowserRendererView rendererView;
@@ -11501,7 +11502,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelKind.Browser,
                 title,
                 "Browser",
-                "The operating-system browser engine could not be initialized.");
+                "The embedded browser could not be initialized.");
         }
 
         return new BrowserRuntimePanelViewModel(
@@ -12375,6 +12376,42 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         return shutdown.WaitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Releases presentation-owned runtimes while Avalonia still owns its UI
+    /// thread. The desktop lifetime calls this before its asynchronous shutdown
+    /// finalizer; repeated calls are safe so the main thread can provide a
+    /// fallback after the lifetime returns.
+    /// </summary>
+    public void TeardownPresentationForShutdown()
+    {
+        _uiThreadDispatcher.VerifyAccess();
+        if (_presentationTeardownCompleted)
+        {
+            return;
+        }
+
+        _shutdownStarted = true;
+        StopTrackingAgentTerminalSelection(_runtimeWorkspace);
+        StopTrackingRecovery(_runtimeWorkspace);
+        QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
+
+        var openWorkspaces = _openWorkspaces.ToArray();
+        foreach (var workspace in openWorkspaces)
+        {
+            workspace.DisposePanels();
+        }
+
+        // The active workspace normally belongs to OpenWorkspaces. Retain a
+        // defensive path for a partially completed open/restore operation.
+        if (_runtimeWorkspace is { } activeWorkspace
+            && !openWorkspaces.Contains(activeWorkspace))
+        {
+            activeWorkspace.DisposePanels();
+        }
+
+        _presentationTeardownCompleted = true;
+    }
+
     private async Task QuiesceForShutdownCoreAsync()
     {
         if (AgentChat is not null)
@@ -12398,9 +12435,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _runtimeRecoveryWriter.WriteFailed -= OnRuntimeRecoveryWriteFailed;
         }
 
-        StopTrackingAgentTerminalSelection(_runtimeWorkspace);
-        StopTrackingRecovery(_runtimeWorkspace);
-        QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
         lock (_historyGate)
         {
             _historyOperationsSealed = true;
@@ -12416,7 +12450,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         await Task.WhenAll(graphWatches).ConfigureAwait(false);
-        _runtimeWorkspace?.DisposePanels();
     }
 
     public void Dispose()

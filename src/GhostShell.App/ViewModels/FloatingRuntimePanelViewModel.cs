@@ -8,12 +8,10 @@ namespace GhostShell.App.ViewModels;
 /// belongs to.
 ///
 /// It floats <em>inside</em> the shell's window rather than in a window of its
-/// own, and that is the whole point. A panel can hold an operating-system view —
-/// a webview — and such a view cannot change window: the framework destroys it
-/// and builds an empty one, so a floated browser arrived showing a blank
-/// rectangle with a live session behind it. Staying in the same window means
-/// there is nothing to destroy. Floating becomes a question of where the panel
-/// is drawn, which is the only thing it should ever have been.
+/// own. Keeping the document itself intact means a browser visual can be
+/// reparented without rebuilding its renderer or session, while any remaining
+/// operating-system views avoid a destructive cross-window move. Floating is a
+/// question of where the panel is drawn, not how its content is rebuilt.
 ///
 /// The document travels with it, unattached, so the panel keeps its identity and
 /// the layout can put it back exactly where it was.

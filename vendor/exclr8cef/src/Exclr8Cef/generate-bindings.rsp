@@ -1,0 +1,48 @@
+# ClangSharpPInvokeGenerator response file — options only.
+# Absolute paths (--file, --include-directory, --output) are added by
+# scripts/regenerate-bindings.sh at runtime so this file is portable
+# across machines.
+
+--language
+c
+
+# Pass through to clang.
+--additional
+-Wno-pragma-once-outside-header
+--additional
+-fparse-all-comments
+
+# Codegen options (latest .NET, idiomatic C#).
+--config
+latest-codegen
+--config
+generate-file-scoped-namespaces
+--config
+generate-helper-types
+--config
+generate-disable-runtime-marshalling
+--config
+generate-aggressive-inlining
+--config
+exclude-funcs-with-body
+--config
+multi-file
+--config
+log-exclusions
+
+# Hide the generated raw types — public surface is in Cef / CefVersions.
+--with-access-specifier
+*=Internal
+
+# DllImport target — matches the shim's library output name across platforms
+# (libexclr8cef.dylib on macOS, libexclr8cef.so on Linux, exclr8cef.dll on Windows).
+--libraryPath
+exclr8cef
+
+# Static class containing the [DllImport] declarations.
+--methodClassName
+Excef
+
+# Namespace for the generated types.
+--namespace
+Exclr8Cef.Native

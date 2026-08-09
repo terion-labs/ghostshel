@@ -134,9 +134,9 @@ public sealed partial class FileRuntimePanelView : UserControl
         EntryDoubleTapped?.Invoke(sender, e);
 
     /// <summary>
-    /// The webview showing the previewed page, created on first use and reused
-    /// for later pages: a webview is an expensive native surface, and creating
-    /// one per selection would be visible.
+    /// The browser showing the previewed page, created on first use and reused
+    /// for later pages: an embedded Chromium renderer is expensive enough that
+    /// creating one per selection would be visible.
     /// </summary>
     private BrowserRendererView? _htmlPreview;
 
@@ -148,6 +148,8 @@ public sealed partial class FileRuntimePanelView : UserControl
             previous.ActionRequested -= OnPanelActionRequested;
         }
 
+        ReleaseHtmlPreview();
+
         _boundPanel = DataContext as FileRuntimePanelViewModel;
         if (_boundPanel is { } panel)
         {
@@ -156,6 +158,23 @@ public sealed partial class FileRuntimePanelView : UserControl
         }
 
         RefreshOverflowMenu();
+    }
+
+    protected override void OnAttachedToVisualTree(
+        VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (_boundPanel?.HtmlAddress is not null)
+        {
+            ShowHtmlPreview();
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(
+        VisualTreeAttachmentEventArgs e)
+    {
+        ReleaseHtmlPreview();
+        base.OnDetachedFromVisualTree(e);
     }
 
     /// <summary>
@@ -195,7 +214,7 @@ public sealed partial class FileRuntimePanelView : UserControl
                 ?.BrowserRendererViewFactory;
             if (factory is null)
             {
-                // Said rather than shown as an empty panel: without a webview
+                // Said rather than shown as an empty panel: without a browser
                 // there is nothing to render, and silence reads as a bug.
                 HtmlPreviewHost.Content = new TextBlock
                 {
@@ -212,6 +231,23 @@ public sealed partial class FileRuntimePanelView : UserControl
         }
 
         _ = _htmlPreview.Renderer.NavigateAsync(address, CancellationToken.None);
+    }
+
+    private void ReleaseHtmlPreview()
+    {
+        var preview = _htmlPreview;
+        _htmlPreview = null;
+        if (preview is null)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(HtmlPreviewHost.Content, preview.View))
+        {
+            HtmlPreviewHost.Content = null;
+        }
+
+        preview.Dispose();
     }
 
     private void OnPdfPageBackClick(object? sender, RoutedEventArgs e)

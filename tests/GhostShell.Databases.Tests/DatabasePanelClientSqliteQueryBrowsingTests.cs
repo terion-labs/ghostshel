@@ -40,11 +40,10 @@ public sealed class DatabasePanelClientSqliteQueryBrowsingTests : IDisposable
         command.ExecuteNonQuery();
     }
 
-    private string ConnectionString => $"Data Source={_databasePath}";
+    private string ConnectionString => $"Data Source={_databasePath};Pooling=False";
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
         if (File.Exists(_databasePath))
         {
             File.Delete(_databasePath);

@@ -1,7 +1,10 @@
 # macOS release-candidate packaging
 
-GhostSHELL can produce a self-contained macOS application bundle for local
-release validation. The current candidate is arm64-only and unsigned. Its
+GhostSHELL can currently produce a self-contained macOS arm64 application
+bundle for local release validation. Candidates are unsigned by default; the
+same pipeline can apply nested Developer ID signatures and submit
+the finished application for notarization when release credentials are
+provided. Its
 terminal runtime is the same managed-presentation pipeline used on Windows and
 Linux: Porta.Pty transports raw process bytes, libghostty-vt owns canonical
 terminal state and protocol encoding, and an ordinary Avalonia control renders
@@ -17,6 +20,7 @@ SQL-language runtimes:
 GHOSTSHELL_SKIP_NATIVE=1 ./scripts/bootstrap.sh
 ./scripts/build-libghostty-vt.sh --rid osx-arm64
 ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
+./scripts/build-cef-runtime.sh --rid osx-arm64
 ```
 
 The native build checks out Ghostty commit
@@ -39,6 +43,15 @@ JetBrains Mono 2.304 regular, bold, italic, and bold-italic faces under
 package hash declared by the pinned Ghostty source. A separate reviewed
 catalog, sorted manifest, OFL, and build receipt bind every font byte; Ghostty's
 larger test-font resources are not packaged.
+
+The CEF build consumes the exact release and Exclr8CEF source commit in
+`licenses/cef-runtime-components.json`, verifies the already-patched vendored
+source against the full-source and patch-set manifests, and uses disposable
+build and staging trees to produce an explicit runtime root. The root
+contains the CEF framework, Exclr8CEF shim, all five `GhostSHELL Helper` app
+variants, CEF license and Chromium credits, binding license, and a sorted
+file-level SHA-256 receipt. The packager validates that receipt before running
+the more expensive desktop publish.
 
 The build receipt binds the component catalog, target RID, source commit,
 toolchain archive, target/build options, passing patched-test result, patch-set
@@ -66,13 +79,16 @@ mkdir -p artifacts/macos-arm64-rc
 ./scripts/package-macos.sh \
   --version 0.1.0 \
   --build-version 1 \
+  --runtime-identifier osx-arm64 \
   --output artifacts/macos-arm64-rc/GhostShell.app
 ```
 
 The destination must be named `GhostShell.app` and must not already exist. The
 script publishes an `osx-arm64` self-contained application, rejects symbolic
 links and special entries, verifies that the apphost and libghostty-vt are
-arm64 Mach-O files, and requires the library install name
+arm64 Mach-O files, verifies the CEF shim, framework libraries,
+and five helper executables against that same architecture, and requires the
+terminal library install name
 `@rpath/libghostty-vt.dylib`. The dylib may depend only on macOS `libSystem` and
 may export only the Ghostty C ABI.
 
@@ -96,6 +112,35 @@ validates the complete candidate, then publishes with a no-overwrite directory
 move. A failure removes the staging directory and leaves the requested
 destination absent.
 
+The default CEF root is `native/artifacts/<rid>/cef`. A separately staged,
+verified root can be supplied with `--cef-runtime-root`; it must still match
+the checked-in catalog and its own receipt.
+
+Standalone CEF runtime build, receipt, and catalog validation continue to
+support `osx-x64`. Full Intel application packaging fails fast in this pass:
+it requires a separate exact managed-component catalog and a verified x64
+libghostty-vt payload/receipt before the app packager may claim that RID.
+
+For a release candidate, use a Developer ID Application identity. The signing
+script signs all managed-runtime leaf Mach-O files, CEF leaf libraries, the
+framework, shared shims, five helper apps, and the outer app in nested-code
+order without `codesign --deep` mutation:
+
+```sh
+./scripts/package-macos.sh \
+  --version 0.1.0 \
+  --build-version 1 \
+  --runtime-identifier osx-arm64 \
+  --output artifacts/macos-arm64-rc/GhostShell.app \
+  --sign-identity "Developer ID Application: Example Corp (TEAMID)"
+```
+
+Add `--notary-profile ghostshell-release` to ZIP the candidate temporarily,
+submit it with `notarytool --wait`, staple the accepted ticket, and validate it
+with both `stapler` and Gatekeeper. The profile must already exist in the
+login keychain; credentials are never accepted on the command line or written
+to package evidence.
+
 ## Validated payload
 
 The packager fails closed unless the self-contained publish contains:
@@ -113,6 +158,11 @@ The packager fails closed unless the self-contained publish contains:
   receipt, and retained OFL text;
 - the reviewed managed-component catalog, NuGet archive evidence, .NET license,
   and third-party notices.
+- the exact CEF 150 framework/resource/locale closure and Exclr8CEF shim;
+- `GhostSHELL Helper.app` plus the Alerts, GPU, Plugin, and Renderer variants,
+  each with matching executable and bundle identity;
+- the CEF BSD license, Chromium `CREDITS.html`, Exclr8CEF MIT license, reviewed
+  CEF catalog, file-level build receipt, and a deterministic CEF SPDX document.
 
 Native provenance validation requires a passing patched-test receipt and the
 exact extension ABI, then compares the packaged dylib, reviewed export
@@ -142,6 +192,10 @@ The bundle declares:
   catalog/receipt copies under `Contents/Resources/Licenses/Native`;
 - deterministic managed dependency and third-party evidence under
   `Contents/Resources/Licenses`.
+- `Contents/Frameworks/Chromium Embedded Framework.framework` and the five
+  CEF subprocess helper app bundles;
+- `libexclr8cef.dylib` in both `Contents/MacOS` for the managed host and
+  `Contents/Frameworks` for helper-process `@rpath` resolution.
 
 The shell-integration runtime assets and their manifest remain under
 `Contents/MacOS/ghostty/shell-integration`, beside the managed application that
@@ -172,11 +226,12 @@ and executable digests but does not launch the candidate.
 
 ## Outstanding release work
 
-This is not a distributable release. Developer ID signing, hardened-runtime
-entitlements, notarization, stapling, icon production, DMG or PKG creation, and
-update-feed policy remain separate release work. They require product decisions
-or external Apple credentials and must not be represented by an ad-hoc local
-signature.
+The pipeline supports Developer ID signing, Chromium JIT hardened-runtime
+entitlements, notarization, and stapling, but possession of credentials does
+not itself make a distributable release. Independent license review, icon
+production, DMG or PKG creation, update-feed policy, and release-identity
+operations remain separate gates. An unsigned or ad-hoc local candidate must
+not be represented as notarized.
 
 The native component catalog deliberately reports `BLOCKED`: the exact linked
 libghostty-vt and staged shell-integration source/license closure has not

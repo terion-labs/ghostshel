@@ -617,8 +617,8 @@
                 </StackPanel>
               </Border>
 
-              <!-- HTML renders in the operating system's webview, the same
-                   engine the browser panel uses. -->
+              <!-- HTML renders in the same embedded Chromium engine used by
+                   browser panels. -->
               <ContentControl
                   x:Name="HtmlPreviewHost"
                   IsVisible="{Binding HasHtmlPreview}" />

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Exclr8Cef.SmokeTest</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Exclr8Cef\Exclr8Cef.csproj" />
+  </ItemGroup>
+
+  <!-- Copy the shim native library next to the exe so DllImport("exclr8cef")
+       finds it at runtime. The native build is produced by cmake. -->
+  <Target Name="CopyExclr8CefShim" AfterTargets="Build">
+    <ItemGroup>
+      <_ShimDylib Include="$(MSBuildThisFileDirectory)..\..\native\build\shim\libexclr8cef.dylib"
+                  Condition="Exists('$(MSBuildThisFileDirectory)..\..\native\build\shim\libexclr8cef.dylib')" />
+      <_ShimSo    Include="$(MSBuildThisFileDirectory)..\..\native\build\shim\libexclr8cef.so"
+                  Condition="Exists('$(MSBuildThisFileDirectory)..\..\native\build\shim\libexclr8cef.so')" />
+      <_ShimDll   Include="$(MSBuildThisFileDirectory)..\..\native\build\shim\Release\exclr8cef.dll"
+                  Condition="Exists('$(MSBuildThisFileDirectory)..\..\native\build\shim\Release\exclr8cef.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ShimDylib);@(_ShimSo);@(_ShimDll)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

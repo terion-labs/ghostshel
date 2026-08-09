@@ -2,10 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GhostShell.Application\GhostShell.Application.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.1" />
+    <ProjectReference Include="..\..\vendor\exclr8cef\src\Exclr8Cef.WebView\Exclr8Cef.WebView.csproj" />
   </ItemGroup>
 
   <ItemGroup>

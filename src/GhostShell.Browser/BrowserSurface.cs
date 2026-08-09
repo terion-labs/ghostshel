@@ -14,7 +14,8 @@ namespace GhostShell.Browser;
 public sealed class BrowserSurface :
     ContentControl,
     IBrowserRenderer,
-    IBrowserElementReferenceRegistry
+    IBrowserElementReferenceRegistry,
+    IDisposable
 {
     private static readonly TimeSpan ElementReferenceLifetime =
         TimeSpan.FromMinutes(2);
@@ -26,9 +27,9 @@ public sealed class BrowserSurface :
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
 
-    private INativeBrowserView _nativeView;
+    private IEmbeddedBrowserView _nativeView;
     private readonly IBrowserUiDispatcher _dispatcher;
-    private readonly Func<INativeBrowserView>? _nativeViewReplacementFactory;
+    private readonly Func<IEmbeddedBrowserView>? _nativeViewReplacementFactory;
     private readonly Action<Control>? _nativeViewReplacementPresenter;
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _nativeSnapshotDeadline;
@@ -43,6 +44,7 @@ public sealed class BrowserSurface :
     private DrainingNativeNavigation? _drainingNativeNavigation;
     private long _lastTerminalNavigationGeneration;
     private volatile bool _interactionRecoveryFailed;
+    private bool _disposed;
 
     public BrowserSurface()
         : this(BrowserCapabilityProfile.Production)
@@ -51,18 +53,18 @@ public sealed class BrowserSurface :
 
     public BrowserSurface(BrowserCapabilityProfile capabilityProfile)
         : this(
-            new AvaloniaNativeBrowserView(),
+            new CefBrowserView(),
             AvaloniaBrowserUiDispatcher.Instance,
-            static () => new AvaloniaNativeBrowserView(),
+            static () => new CefBrowserView(),
             timeProvider: TimeProvider.System,
             capabilityProfile: capabilityProfile)
     {
     }
 
     internal BrowserSurface(
-        INativeBrowserView nativeView,
+        IEmbeddedBrowserView nativeView,
         IBrowserUiDispatcher? dispatcher = null,
-        Func<INativeBrowserView>? nativeViewReplacementFactory = null,
+        Func<IEmbeddedBrowserView>? nativeViewReplacementFactory = null,
         Action<Control>? nativeViewReplacementPresenter = null,
         TimeProvider? timeProvider = null,
         TimeSpan? nativeSnapshotDeadline = null,
@@ -89,6 +91,7 @@ public sealed class BrowserSurface :
         _nativeView.NavigationStarted += OnNavigationStarted;
         _nativeView.NavigationCompleted += OnNavigationCompleted;
         _nativeView.NavigationRejected += OnNavigationRejected;
+        _nativeView.RenderProcessFailed += OnRenderProcessFailed;
 
         Focusable = true;
         HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
@@ -96,7 +99,7 @@ public sealed class BrowserSurface :
         AutomationProperties.SetName(this, "Web browser");
         AutomationProperties.SetHelpText(
             this,
-            "Native web content for the active browser panel.");
+            "Embedded Chromium content for the active browser panel.");
 
         State = BrowserSessionState.Initial(BrowserAddress.Blank);
         Content = _nativeView.View;
@@ -109,6 +112,33 @@ public sealed class BrowserSurface :
     public CapabilitySet Capabilities => CapabilityProfile.Capabilities;
 
     public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        if (_pendingGovernedNavigation is { } pending
+            && RetireGovernedNavigation(pending))
+        {
+            CompleteRetiredGovernedNavigation(
+                pending,
+                RendererUnavailable(
+                    "The embedded browser surface was disposed before navigation completed."));
+        }
+
+        _drainingNativeNavigation = null;
+        var nativeView = _nativeView;
+        nativeView.NavigationStarted -= OnNavigationStarted;
+        nativeView.NavigationCompleted -= OnNavigationCompleted;
+        nativeView.NavigationRejected -= OnNavigationRejected;
+        nativeView.RenderProcessFailed -= OnRenderProcessFailed;
+        Content = null;
+        nativeView.Dispose();
+    }
 
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
@@ -2524,6 +2554,22 @@ public sealed class BrowserSurface :
         }
 
         RecordTerminalNavigation(args.NavigationGeneration);
+        if (args.WasStopped)
+        {
+            // StopAsync has already restored Ready in the usual asynchronous
+            // path. Keep this callback correct if CEF reports the terminal
+            // abort synchronously: stopping neither commits a document nor
+            // turns the current document into a navigation failure.
+            Publish(new BrowserSessionState(
+                State.Address,
+                State.Title,
+                BrowserLoadState.Ready,
+                _nativeView.CanGoBack,
+                _nativeView.CanGoForward,
+                State.DocumentRevision));
+            return;
+        }
+
         var address = args.Address ?? State.Address;
         if (!args.IsSuccess)
         {
@@ -2806,12 +2852,12 @@ public sealed class BrowserSurface :
             return false;
         }
 
-        INativeBrowserView replacement;
+        IEmbeddedBrowserView replacement;
         try
         {
             replacement = _nativeViewReplacementFactory()
                 ?? throw new InvalidOperationException(
-                    "The native browser replacement factory returned null.");
+                    "The embedded browser replacement factory returned null.");
             if (ReferenceEquals(replacement, _nativeView))
             {
                 return false;
@@ -2826,6 +2872,7 @@ public sealed class BrowserSurface :
         quarantined.NavigationStarted -= OnNavigationStarted;
         quarantined.NavigationCompleted -= OnNavigationCompleted;
         quarantined.NavigationRejected -= OnNavigationRejected;
+        quarantined.RenderProcessFailed -= OnRenderProcessFailed;
         _nativeView = replacement;
         try
         {
@@ -2844,12 +2891,16 @@ public sealed class BrowserSurface :
             quarantined.NavigationStarted += OnNavigationStarted;
             quarantined.NavigationCompleted += OnNavigationCompleted;
             quarantined.NavigationRejected += OnNavigationRejected;
+            quarantined.RenderProcessFailed += OnRenderProcessFailed;
+            replacement.Dispose();
             return false;
         }
 
         _nativeView.NavigationStarted += OnNavigationStarted;
         _nativeView.NavigationCompleted += OnNavigationCompleted;
         _nativeView.NavigationRejected += OnNavigationRejected;
+        _nativeView.RenderProcessFailed += OnRenderProcessFailed;
+        quarantined.Dispose();
         _lastTerminalNavigationGeneration = 0;
         Publish(new BrowserSessionState(
             BrowserAddress.Blank,
@@ -2872,6 +2923,27 @@ public sealed class BrowserSurface :
         }
 
         return true;
+    }
+
+    private void OnRenderProcessFailed(object? sender, EventArgs args)
+    {
+        if (_disposed || !ReferenceEquals(sender, _nativeView))
+        {
+            return;
+        }
+
+        if (TryReplaceQuarantinedNativeView())
+        {
+            return;
+        }
+
+        _interactionRecoveryFailed = true;
+        PublishFailure(
+            State.Address,
+            BrowserError.Create(
+                BrowserErrorCode.RendererUnavailable,
+                "The embedded browser process stopped unexpectedly.",
+                retryable: false));
     }
 
     private void PublishGovernedFailure(
@@ -2951,7 +3023,7 @@ public sealed class BrowserSurface :
     private static BrowserError EngineFailure() =>
         BrowserError.Create(
             BrowserErrorCode.EngineFailed,
-            "The native browser engine failed.",
+            "The embedded browser engine failed.",
             retryable: true);
 
     private static BrowserResult<T> UnsupportedCapability<T>(
@@ -2978,12 +3050,12 @@ public sealed class BrowserSurface :
     private static BrowserResult<BrowserSessionState>
         SnapshotRecoveryInProgress() =>
         RendererUnavailable(
-            "The native browser renderer is recovering from a timed-out document snapshot.");
+            "The embedded browser renderer is recovering from a timed-out document snapshot.");
 
     private static BrowserResult<BrowserSessionState>
         InteractionRecoveryUnavailable() =>
         RendererUnavailable(
-            "The native browser renderer is unavailable after an ambiguous element interaction.");
+            "The embedded browser renderer is unavailable after an ambiguous element interaction.");
 
     private static BrowserResult<BrowserSessionState> NavigationInProgress() =>
         BrowserResult<BrowserSessionState>.Failure(
@@ -3260,14 +3332,14 @@ public sealed class BrowserSurface :
     }
 
     private sealed class PendingDocumentSnapshot(
-        INativeBrowserView nativeView,
+        IEmbeddedBrowserView nativeView,
         BrowserDocumentBinding document,
         Task<NativeBrowserSnapshotResult> nativeCompletion,
         long referenceEpoch)
     {
         private int _hasTimedOut;
 
-        public INativeBrowserView NativeView { get; } =
+        public IEmbeddedBrowserView NativeView { get; } =
             nativeView ?? throw new ArgumentNullException(nameof(nativeView));
 
         public BrowserDocumentBinding Document { get; } =
@@ -3306,16 +3378,16 @@ public sealed class BrowserSurface :
 
     private sealed record SnapshotReferenceLease(
         BrowserDocumentBinding Document,
-        INativeBrowserView NativeView,
+        IEmbeddedBrowserView NativeView,
         NativeBrowserElementHandle Handle,
         DateTimeOffset ExpiresAtUtc);
 
     private abstract class PendingElementInteraction(
-        INativeBrowserView nativeView,
+        IEmbeddedBrowserView nativeView,
         BrowserDocumentBinding sourceDocument,
         BrowserNavigationOrigin allowedOrigin)
     {
-        public INativeBrowserView NativeView { get; } =
+        public IEmbeddedBrowserView NativeView { get; } =
             nativeView ?? throw new ArgumentNullException(nameof(nativeView));
 
         public BrowserDocumentBinding SourceDocument { get; } =
@@ -3368,7 +3440,7 @@ public sealed class BrowserSurface :
     }
 
     private sealed class PendingElementClick(
-        INativeBrowserView nativeView,
+        IEmbeddedBrowserView nativeView,
         BrowserDocumentBinding sourceDocument,
         BrowserNavigationOrigin allowedOrigin) :
         PendingElementInteraction(
@@ -3391,7 +3463,7 @@ public sealed class BrowserSurface :
     }
 
     private sealed class PendingElementFill(
-        INativeBrowserView nativeView,
+        IEmbeddedBrowserView nativeView,
         BrowserDocumentBinding sourceDocument,
         BrowserNavigationOrigin allowedOrigin) :
         PendingElementInteraction(
@@ -3414,7 +3486,7 @@ public sealed class BrowserSurface :
     }
 
     private sealed class PendingElementCheck(
-        INativeBrowserView nativeView,
+        IEmbeddedBrowserView nativeView,
         BrowserDocumentBinding sourceDocument,
         BrowserNavigationOrigin allowedOrigin) :
         PendingElementInteraction(

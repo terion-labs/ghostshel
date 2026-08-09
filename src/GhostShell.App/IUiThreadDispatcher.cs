@@ -4,6 +4,19 @@ namespace GhostShell.App;
 
 public interface IUiThreadDispatcher
 {
+    /// <summary>
+    /// Fails when presentation-owned state is being touched away from Avalonia's
+    /// UI thread. Headless consumers have no Avalonia application, so there is
+    /// no presentation thread to verify in that case.
+    /// </summary>
+    void VerifyAccess()
+    {
+        if (Avalonia.Application.Current is not null)
+        {
+            Dispatcher.UIThread.VerifyAccess();
+        }
+    }
+
     Task InvokeAsync(Action action, CancellationToken cancellationToken);
 }
 

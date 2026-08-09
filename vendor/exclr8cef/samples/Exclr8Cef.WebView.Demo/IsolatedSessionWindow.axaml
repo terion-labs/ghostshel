@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:cef="using:Exclr8Cef.WebView"
+        x:Class="Exclr8Cef.WebView.Demo.IsolatedSessionWindow"
+        Title="Isolated session — separate CefRequestContext"
+        Width="900" Height="600"
+        Background="#11111B">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Border Grid.Row="0" Background="#181825" Padding="12,8">
+            <StackPanel Orientation="Vertical" Spacing="2">
+                <TextBlock Text="Isolated session" Foreground="#CDD6F4" FontWeight="Bold" FontSize="13" />
+                <TextBlock Foreground="#A6ADC8" FontSize="11" TextWrapping="Wrap"
+                           Text="This WebView runs in its own CefRequestContext — separate cookies, cache, and storage from the main window. Try /cookies/set/foo/bar in both, then /cookies in both, to see the jars diverge." />
+            </StackPanel>
+        </Border>
+        <Border Grid.Row="1" Background="#181825" Padding="8,4">
+            <DockPanel LastChildFill="True">
+                <Button DockPanel.Dock="Right" Content="Reload" Click="OnReloadClick" Padding="10,4" Margin="6,0,0,0" />
+                <TextBox Name="AddressBox" PlaceholderText="URL" KeyDown="OnAddressKeyDown" VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+        <cef:WebView Grid.Row="2" Name="Browser" />
+    </Grid>
+</Window>

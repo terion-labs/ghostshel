@@ -1,0 +1,134 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:cef="using:Exclr8Cef.WebView"
+        xmlns:demo="using:Exclr8Cef.WebView.Demo"
+        x:Class="Exclr8Cef.WebView.Demo.MainWindow"
+        x:DataType="demo:MainWindow"
+        Title="OSR MODE — Avalonia paint-buffer WebView"
+        Width="1280" Height="900">
+    <Window.Resources>
+        <demo:CategoryToBrushConverter x:Key="CategoryBrush" />
+    </Window.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <!-- Branding strip -->
+        <Border Grid.Row="0" Name="BrandingStrip" Background="#1E1E2E" Padding="16,8">
+            <DockPanel LastChildFill="True">
+                <Image DockPanel.Dock="Left" Name="FaviconImage"
+                       Width="20" Height="20" Margin="0,0,10,0"
+                       VerticalAlignment="Center" IsVisible="False" />
+                <StackPanel Orientation="Vertical" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Exclr8Cef.WebView — embedded Chromium inside Avalonia (OSR)"
+                               Foreground="#CDD6F4" FontWeight="Bold" FontSize="14" />
+                    <TextBlock Name="TitleText" Foreground="#A6ADC8" FontSize="12" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Address bar + nav buttons -->
+        <Border Grid.Row="1" Name="AddressBar" Background="#181825" Padding="8,6">
+            <DockPanel LastChildFill="True">
+                <Button DockPanel.Dock="Left"   Name="BackButton"     Content="◀"        Click="OnBackClick"     Padding="10,4" Margin="0,0,4,0" />
+                <Button DockPanel.Dock="Left"   Name="ForwardButton"  Content="▶"        Click="OnForwardClick"  Padding="10,4" Margin="0,0,4,0" />
+                <Button DockPanel.Dock="Left"   Name="ReloadButton"   Content="⟳"        Click="OnReloadClick"   Padding="10,4" Margin="0,0,4,0" />
+                <Button DockPanel.Dock="Left"   Name="StopButton"     Content="✕"        Click="OnStopClick"     Padding="10,4" Margin="0,0,8,0" />
+                <Button DockPanel.Dock="Right"  Name="SavePdfButton"  Content="Save PDF"   Click="OnSavePdfClick"  Padding="10,4" Margin="6,0,0,0" />
+                <Button DockPanel.Dock="Right"  Name="CapturePngButton" Content="Capture PNG" Click="OnCapturePngClick" Padding="10,4" Margin="6,0,0,0"
+                        ToolTip.Tip="Save the latest paint buffer as /tmp/exclr8cef-snapshot.png (vision demo)." />
+                <Button DockPanel.Dock="Right"  Name="HitTestButton" Content="Hit-test mode" Click="OnHitTestModeClick" Padding="10,4" Margin="6,0,0,0"
+                        ToolTip.Tip="Toggle a mode where clicking the page runs document.elementFromPoint and logs the result." />
+                <Button DockPanel.Dock="Right"  Name="WindowedButton" Content="Open Chrome window" Click="OnEmbeddedClick" Padding="10,4" Margin="6,0,0,0"
+                        ToolTip.Tip="Spawn the same demo binary in windowed Chrome-runtime mode. Compares Chrome's native permission bubbles / notification UI against the OSR Alloy path." />
+                <Button DockPanel.Dock="Right"  Name="EmbeddedButton" Content="Open native embedded" Click="OnWindowedClick" Padding="10,4" Margin="6,0,0,0"
+                        ToolTip.Tip="Spawn the demo binary in embedded mode — Alloy runtime + native NSView hosted inside Avalonia, no OSR." />
+                <Button DockPanel.Dock="Right"  Name="RunJsButton"    Content="Run JS"     Click="OnRunJsClick"    Padding="10,4" Margin="6,0,0,0" />
+                <Button DockPanel.Dock="Right"  Name="IsolatedButton" Content="Isolated session" Click="OnIsolatedClick" Padding="10,4" Margin="6,0,0,0"
+                        ToolTip.Tip="Open a second window with its own CefRequestContext — cookies + cache + storage are isolated from this one." />
+                <Button DockPanel.Dock="Right"  Name="DevToolsButton" Content="DevTools"   Click="OnDevToolsClick" Padding="10,4" Margin="6,0,0,0" />
+                <Button DockPanel.Dock="Right"  Name="ZoomOutButton"  Content="−"          Click="OnZoomOutClick"  Padding="8,4" />
+                <Button DockPanel.Dock="Right"  Name="ZoomResetButton" Content="100%"      Click="OnZoomResetClick" Padding="8,4" />
+                <Button DockPanel.Dock="Right"  Name="ZoomInButton"   Content="+"          Click="OnZoomInClick"   Padding="8,4" Margin="0,0,6,0" />
+                <TextBox Name="AddressBox" PlaceholderText="URL" KeyDown="OnAddressKeyDown" VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+
+        <!-- WebView on top, splitter, event console at bottom -->
+        <Grid Grid.Row="2" Name="MainGrid" Background="#11111B"
+              RowDefinitions="*,Auto,220">
+            <Grid Grid.Row="0">
+                <cef:WebView Name="Browser" />
+                <!-- Find bar: appears top-right over the WebView when Cmd/Ctrl+F is pressed. -->
+                <Border Name="FindBar" IsVisible="False"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,8,12,0" Padding="8,4"
+                        Background="#1E1E2E" BorderBrush="#45475A" BorderThickness="1"
+                        CornerRadius="4">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBox Name="FindBox" Width="200" Padding="6,3" FontSize="12"
+                                 Background="#11111B" Foreground="#CDD6F4"
+                                 BorderBrush="#45475A"
+                                 PlaceholderText="find on page"
+                                 KeyDown="OnFindBoxKeyDown" />
+                        <TextBlock Name="FindMatchCount" Foreground="#A6ADC8"
+                                   VerticalAlignment="Center" FontSize="11" MinWidth="60" />
+                        <Button Content="↑" Click="OnFindPrevClick"   Padding="6,2" FontSize="11" Background="Transparent" Foreground="#CDD6F4" />
+                        <Button Content="↓" Click="OnFindNextClick"   Padding="6,2" FontSize="11" Background="Transparent" Foreground="#CDD6F4" />
+                        <Button Content="✕" Click="OnFindCloseClick"  Padding="6,2" FontSize="11" Background="Transparent" Foreground="#CDD6F4" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Row="1" Name="ConsoleSplitter" Height="4" Background="#181825"
+                          HorizontalAlignment="Stretch"
+                          ResizeDirection="Rows" />
+
+            <Border Grid.Row="2" Name="EventConsolePane" Background="#11111B" BorderBrush="#313244" BorderThickness="0,1,0,0">
+                <Grid RowDefinitions="Auto,*">
+                    <Border Grid.Row="0" Background="#181825" Padding="10,4">
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Content="Clear" Click="OnClearEventsClick"
+                                    Padding="8,2" FontSize="11" Background="Transparent"
+                                    Foreground="#A6ADC8" />
+                            <TextBlock Text="Events" Foreground="#CDD6F4" FontWeight="SemiBold"
+                                       FontSize="12" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+                    <ScrollViewer Grid.Row="1" Name="EventScroller" Padding="0">
+                        <ItemsControl Name="EventsList" ItemsSource="{Binding Events}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="demo:EventEntry">
+                                    <Grid ColumnDefinitions="80,90,*" Margin="10,2">
+                                        <TextBlock Grid.Column="0" Text="{Binding Time}"
+                                                   Foreground="#6C7086" FontFamily="ui-monospace,Menlo,Consolas,monospace"
+                                                   FontSize="11" />
+                                        <Border Grid.Column="1" CornerRadius="3" Padding="4,1"
+                                                Margin="0,0,8,0"
+                                                Background="{Binding Category, Converter={StaticResource CategoryBrush}}"
+                                                HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Category}" FontSize="10"
+                                                       FontWeight="SemiBold" Foreground="#11111B" />
+                                        </Border>
+                                        <TextBlock Grid.Column="2" Text="{Binding Message}"
+                                                   Foreground="#CDD6F4" FontFamily="ui-monospace,Menlo,Consolas,monospace"
+                                                   FontSize="11" TextWrapping="Wrap" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3" Name="StatusStrip" Background="#181825" Padding="12,4">
+            <DockPanel LastChildFill="True">
+                <ProgressBar DockPanel.Dock="Right" Name="ProgressBar"
+                             Width="120" Height="6" Minimum="0" Maximum="100"
+                             IsVisible="False" VerticalAlignment="Center"
+                             Foreground="#FAB387" Background="#313244" />
+                <TextBlock Name="StatusText" Foreground="#A6E3A1" FontSize="11"
+                           VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

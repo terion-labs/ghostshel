@@ -1,0 +1,1006 @@
+using System.Diagnostics.CodeAnalysis;
+using Avalonia.Controls;
+using Avalonia.Threading;
+using Exclr8Cef;
+using GhostShell.Application;
+using CefWebView = Exclr8Cef.WebView.WebView;
+
+namespace GhostShell.Browser;
+
+/// <summary>
+/// Adapts one CEF off-screen browser to GhostSHELL's engine-neutral browser
+/// contract. The Exclr8 control owns rendering and input; this type owns the
+/// stricter navigation, permission, and lifetime policy around it.
+/// </summary>
+internal sealed class CefBrowserView : IEmbeddedBrowserView
+{
+    private const string LoadStringHost = "loadstring.exclr8cef.internal";
+
+    private readonly CefWebView _webView;
+    private CefBrowser? _browser;
+    private ActiveNativeNavigation? _activeNavigation;
+    private BrowserAddress? _queuedAddress;
+    private CefLocalDocumentAccessPolicy _localDocumentAccess =
+        CefLocalDocumentAccessPolicy.None;
+    private long _lastNavigationGeneration;
+    private bool _ignoreInitialBlank = true;
+    private bool _disposed;
+
+    public CefBrowserView()
+    {
+        _webView = new CefWebView
+        {
+            Url = BrowserAddress.Blank.Value.AbsoluteUri,
+        };
+        _webView.BrowserReady += OnBrowserReady;
+    }
+
+    public Control View => _webView;
+
+    public bool CanGoBack => _browser?.CanGoBack ?? false;
+
+    public bool CanGoForward => _browser?.CanGoForward ?? false;
+
+    public event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
+
+    public event EventHandler<NativeBrowserNavigationCompletedEventArgs>?
+        NavigationCompleted;
+
+    public event EventHandler<NativeBrowserNavigationRejectedEventArgs>?
+        NavigationRejected;
+
+    public event EventHandler? RenderProcessFailed;
+
+    public void Navigate(BrowserAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        ThrowIfDisposed();
+
+        var navigation = BeginExplicitNavigation(address);
+        _queuedAddress = address;
+        if (_ignoreInitialBlank
+            || _browser is not { IsInitialized: true } browser)
+        {
+            return;
+        }
+
+        DispatchQueuedNavigation(browser, navigation);
+    }
+
+    public bool GoBack() => InvokeHistoryNavigation(
+        static browser => browser.CanGoBack,
+        static browser => browser.GoBack());
+
+    public bool GoForward() => InvokeHistoryNavigation(
+        static browser => browser.CanGoForward,
+        static browser => browser.GoForward());
+
+    public bool Reload()
+    {
+        ThrowIfDisposed();
+        if (_ignoreInitialBlank
+            || _browser is not { IsInitialized: true } browser)
+        {
+            return false;
+        }
+
+        var navigation = BeginExplicitNavigation(pendingAddress: null);
+        try
+        {
+            _ignoreInitialBlank = false;
+            browser.Reload();
+            return true;
+        }
+        catch
+        {
+            ClearUnstartedNavigation(navigation);
+            throw;
+        }
+    }
+
+    public bool Stop()
+    {
+        ThrowIfDisposed();
+        if (_browser is not { IsInitialized: true } browser)
+        {
+            return false;
+        }
+
+        if (_activeNavigation is { } navigation)
+        {
+            navigation.StopRequested = true;
+            _queuedAddress = null;
+            RollBackLocalDocumentAccess();
+        }
+
+        browser.StopLoad();
+        return true;
+    }
+
+    // Semantic automation intentionally remains unavailable in this migration.
+    // The later agent-browser pass will replace this fail-closed implementation
+    // with a separately reviewed, typed CEF automation adapter.
+    public Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync() =>
+        Task.FromResult(NativeBrowserSnapshotResult.Unavailable());
+
+    public Task<NativeBrowserClickResult> ClickAsync(
+        NativeBrowserElementHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        return Task.FromResult(NativeBrowserClickResult.OutcomeUnknown());
+    }
+
+    public Task<NativeBrowserFillResult> FillAsync(
+        NativeBrowserElementHandle handle,
+        string text)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        ArgumentNullException.ThrowIfNull(text);
+        return Task.FromResult(NativeBrowserFillResult.OutcomeUnknown());
+    }
+
+    public Task<NativeBrowserCheckResult> CheckAsync(
+        NativeBrowserElementHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        return Task.FromResult(NativeBrowserCheckResult.OutcomeUnknown());
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _queuedAddress = null;
+        _activeNavigation = null;
+        Volatile.Write(
+            ref _localDocumentAccess,
+            CefLocalDocumentAccessPolicy.None);
+        _webView.BrowserReady -= OnBrowserReady;
+        if (_browser is { } browser)
+        {
+            Unsubscribe(browser);
+            _browser = null;
+        }
+
+        _webView.Dispose();
+    }
+
+    private void OnBrowserReady(object? sender, EventArgs args)
+    {
+        if (_disposed || _webView.Browser is not { } browser)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_browser, browser))
+        {
+            if (_browser is { } previous)
+            {
+                Unsubscribe(previous);
+            }
+
+            _browser = browser;
+            Subscribe(browser);
+        }
+
+        // CEF reports BrowserReady while its initial about:blank load is still
+        // in flight. Dispatching here can silently lose LoadUrl/LoadString.
+        // OnLoadEnd owns the handoff after that bootstrap navigation settles.
+    }
+
+    private void Subscribe(CefBrowser browser)
+    {
+        browser.ResourceRequest += OnResourceRequest;
+        browser.BeforeBrowse += OnBeforeBrowse;
+        browser.LoadStart += OnLoadStart;
+        browser.LoadEnd += OnLoadEnd;
+        browser.LoadError += OnLoadError;
+        browser.RenderProcessGone += OnRenderProcessGone;
+
+        // CEF has no host UI for these prompts in OSR mode. Every privileged
+        // or filesystem-affecting operation therefore defaults closed until a
+        // future typed product contract owns the corresponding user decision.
+        browser.BeforePopup += BlockPopup;
+        browser.JsDialog += BlockJavaScriptDialog;
+        browser.FileDialog += BlockFileDialog;
+        browser.ContextMenu += BlockContextMenu;
+        browser.DownloadStarting += BlockDownload;
+        browser.AuthRequest += BlockAuthentication;
+        browser.PermissionRequest += BlockPermission;
+        browser.MediaAccessRequest += BlockMediaAccess;
+        browser.CertError += BlockCertificateError;
+    }
+
+    private void Unsubscribe(CefBrowser browser)
+    {
+        browser.ResourceRequest -= OnResourceRequest;
+        browser.BeforeBrowse -= OnBeforeBrowse;
+        browser.LoadStart -= OnLoadStart;
+        browser.LoadEnd -= OnLoadEnd;
+        browser.LoadError -= OnLoadError;
+        browser.RenderProcessGone -= OnRenderProcessGone;
+        browser.BeforePopup -= BlockPopup;
+        browser.JsDialog -= BlockJavaScriptDialog;
+        browser.FileDialog -= BlockFileDialog;
+        browser.ContextMenu -= BlockContextMenu;
+        browser.DownloadStarting -= BlockDownload;
+        browser.AuthRequest -= BlockAuthentication;
+        browser.PermissionRequest -= BlockPermission;
+        browser.MediaAccessRequest -= BlockMediaAccess;
+        browser.CertError -= BlockCertificateError;
+    }
+
+    private void DispatchQueuedNavigation(
+        CefBrowser browser,
+        ActiveNativeNavigation navigation)
+    {
+        var address = _queuedAddress;
+        if (_ignoreInitialBlank
+            || address is null
+            || !navigation.MayDispatchQueuedNavigation
+            || !ReferenceEquals(navigation, _activeNavigation))
+        {
+            return;
+        }
+
+        _queuedAddress = null;
+        try
+        {
+            if (address.Document is { } document)
+            {
+                browser.LoadString(document);
+            }
+            else
+            {
+                browser.LoadUrl(address.Value.AbsoluteUri);
+            }
+        }
+        catch
+        {
+            ClearUnstartedNavigation(navigation);
+            throw;
+        }
+    }
+
+    private bool InvokeHistoryNavigation(
+        Func<CefBrowser, bool> canNavigate,
+        Action<CefBrowser> navigate)
+    {
+        ThrowIfDisposed();
+        if (_ignoreInitialBlank
+            || _browser is not { IsInitialized: true } browser
+            || !canNavigate(browser))
+        {
+            return false;
+        }
+
+        var navigation = BeginExplicitNavigation(pendingAddress: null);
+        try
+        {
+            _ignoreInitialBlank = false;
+            navigate(browser);
+            return true;
+        }
+        catch
+        {
+            ClearUnstartedNavigation(navigation);
+            throw;
+        }
+    }
+
+    private void OnResourceRequest(
+        object? sender,
+        ResourceRequestEventArgs args)
+    {
+        try
+        {
+            if (_disposed)
+            {
+                args.Cancel();
+                return;
+            }
+
+            if (args.Type is not Cef.ResourceType.MainFrame)
+            {
+                ResolveSubresource(args);
+                return;
+            }
+
+            // Top-level policy has already run synchronously in BeforeBrowse.
+            // ResourceRequest remains subscribed to constrain subresources.
+            args.Continue();
+        }
+        catch
+        {
+            // Every ResourceRequest token must be resolved. Host or dispatcher
+            // failures deny the request instead of hanging or bypassing policy.
+            args.Cancel();
+        }
+    }
+
+    private void ResolveSubresource(ResourceRequestEventArgs args)
+    {
+        if (Uri.TryCreate(args.Url, UriKind.Absolute, out var uri)
+            && uri.IsFile
+            && !IsPermittedLocalSubresource(
+                uri,
+                Volatile.Read(ref _localDocumentAccess).PermittedPage))
+        {
+            args.Cancel();
+            return;
+        }
+
+        args.Continue();
+    }
+
+    private void OnBeforeBrowse(object? sender, BeforeBrowseEventArgs args)
+    {
+        try
+        {
+            if (_disposed || !Dispatcher.UIThread.CheckAccess())
+            {
+                args.Cancel = true;
+                return;
+            }
+
+            if (_ignoreInitialBlank && IsBlank(args.Url))
+            {
+                return;
+            }
+
+            var navigation = EnsureActiveNavigation();
+            if (!TryResolveNavigationAddress(args.Url, navigation, out var address))
+            {
+                RejectNavigation(
+                    navigation,
+                    NativeBrowserNavigationRejectionReason.UnsupportedAddress);
+                args.Cancel = true;
+                return;
+            }
+
+            navigation.PendingAddress = address;
+            if (!TryAdmitNavigation(navigation, address))
+            {
+                args.Cancel = true;
+                return;
+            }
+
+            navigation.AdmitLeg(args.Url, args.IsRedirect);
+            AdmitLocalDocumentAccess(address);
+        }
+        catch
+        {
+            args.Cancel = true;
+        }
+    }
+
+    private void OnLoadStart(object? sender, LoadStartEventArgs args)
+    {
+        if (!args.IsMainFrame)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            if (_disposed || (_ignoreInitialBlank && IsBlank(args.Url)))
+            {
+                return;
+            }
+
+            var navigation = EnsureActiveNavigation();
+            if (navigation.HasStarted)
+            {
+                return;
+            }
+
+            if (!TryResolveNavigationAddress(args.Url, navigation, out var address))
+            {
+                _browser?.StopLoad();
+                RejectNavigation(
+                    navigation,
+                    NativeBrowserNavigationRejectionReason.UnsupportedAddress);
+                return;
+            }
+
+            navigation.PendingAddress = address;
+            if (!TryAdmitNavigation(navigation, address))
+            {
+                _browser?.StopLoad();
+                return;
+            }
+
+            navigation.AdmitLeg(args.Url, isRedirect: false);
+            AdmitLocalDocumentAccess(address);
+        });
+    }
+
+    private void OnLoadEnd(object? sender, LoadEndEventArgs args)
+    {
+        if (!args.IsMainFrame)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            if (TryFinishInitialBlank(args.Url))
+            {
+                return;
+            }
+
+            var wasStopped = _activeNavigation?.StopRequested == true;
+            CompleteNavigation(
+                args.Url,
+                isSuccess: !wasStopped,
+                wasStopped: wasStopped);
+        });
+    }
+
+    private void OnLoadError(object? sender, LoadErrorEventArgs args)
+    {
+        if (!args.IsMainFrame)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            if (TryFinishInitialBlank(args.FailedUrl))
+            {
+                return;
+            }
+
+            if (args.ErrorCode is Cef.CefErrorCode.Aborted
+                && _activeNavigation?.ShouldAwaitCompletionAfterAbort(
+                    args.FailedUrl) == true)
+            {
+                // BeforeBrowse identified this exact failed URL as the leg
+                // replaced by an admitted redirect. Only that known abort is
+                // non-terminal; window.stop, canceled downloads, and unknown
+                // aborts must release the active generation.
+                return;
+            }
+
+            CompleteNavigation(
+                args.FailedUrl,
+                isSuccess: false,
+                wasStopped: _activeNavigation?.StopRequested == true);
+        });
+    }
+
+    private void OnRenderProcessGone(
+        object? sender,
+        RenderProcessGoneEventArgs args) =>
+        RunOnUiThread(() =>
+        {
+            try
+            {
+                CompleteNavigation(
+                    _browser?.Url,
+                    isSuccess: false,
+                    wasStopped: false);
+            }
+            finally
+            {
+                try
+                {
+                    RenderProcessFailed?.Invoke(this, EventArgs.Empty);
+                }
+                catch
+                {
+                    // A host observer cannot be allowed to escape into CEF's
+                    // process-lifecycle callback.
+                }
+            }
+        });
+
+    private void CompleteNavigation(
+        string? url,
+        bool isSuccess,
+        bool wasStopped = false)
+    {
+        var navigation = _activeNavigation;
+        if (_disposed || navigation is null)
+        {
+            return;
+        }
+
+        BrowserAddress? address = null;
+        if (navigation.PendingAddress?.Document is not null)
+        {
+            address = navigation.PendingAddress;
+        }
+        else if (!string.IsNullOrWhiteSpace(url)
+            && TryResolveNavigationAddress(url, navigation, out var resolved))
+        {
+            address = resolved;
+        }
+        else
+        {
+            address = navigation.PendingAddress;
+        }
+
+        var completedSuccessfully = isSuccess
+            && !wasStopped
+            && !navigation.WasRejected
+            && address is not null;
+        CompleteLocalDocumentAccess(
+            completedSuccessfully,
+            address);
+        _activeNavigation = null;
+        try
+        {
+            NavigationCompleted?.Invoke(
+                this,
+                new NativeBrowserNavigationCompletedEventArgs(
+                    address,
+                    completedSuccessfully,
+                    navigation.Generation,
+                    wasStopped));
+        }
+        catch
+        {
+            // Browser callbacks are isolation boundaries. The state owner has
+            // already received the terminal event if it ran before a failing
+            // secondary subscriber.
+        }
+    }
+
+    private bool TryAdmitNavigation(
+        ActiveNativeNavigation navigation,
+        BrowserAddress address)
+    {
+        navigation.HasStarted = true;
+        var starting = new NativeBrowserNavigationEventArgs(
+            address,
+            navigation.Generation);
+        try
+        {
+            NavigationStarted?.Invoke(this, starting);
+        }
+        catch
+        {
+            starting.Cancel = true;
+        }
+        if (!starting.Cancel)
+        {
+            navigation.PendingAddress = address;
+            return true;
+        }
+
+        RejectNavigation(
+            navigation,
+            NativeBrowserNavigationRejectionReason.OriginPolicy);
+        return false;
+    }
+
+    private void RejectNavigation(
+        ActiveNativeNavigation navigation,
+        NativeBrowserNavigationRejectionReason reason)
+    {
+        if (!ReferenceEquals(_activeNavigation, navigation)
+            || navigation.WasRejected)
+        {
+            return;
+        }
+
+        // Keep the generation active until CEF reports the documented
+        // ERR_ABORTED terminal event. BrowserSurface uses that event to end
+        // its drain fence before accepting another governed navigation.
+        navigation.WasRejected = true;
+        _queuedAddress = null;
+        RollBackLocalDocumentAccess();
+        try
+        {
+            NavigationRejected?.Invoke(
+                this,
+                new NativeBrowserNavigationRejectedEventArgs(
+                    reason,
+                    navigation.Generation));
+        }
+        catch
+        {
+            // Do not let a host callback escape into CEF's request gate.
+        }
+    }
+
+    private ActiveNativeNavigation BeginExplicitNavigation(
+        BrowserAddress? pendingAddress)
+    {
+        if (_activeNavigation is not null)
+        {
+            throw new InvalidOperationException(
+                "A CEF top-level navigation is already active.");
+        }
+
+        return _activeNavigation = NewNavigation(pendingAddress);
+    }
+
+    private ActiveNativeNavigation EnsureActiveNavigation() =>
+        _activeNavigation ??= NewNavigation(pendingAddress: null);
+
+    private ActiveNativeNavigation NewNavigation(BrowserAddress? pendingAddress)
+    {
+        _lastNavigationGeneration = checked(_lastNavigationGeneration + 1);
+        return new ActiveNativeNavigation(
+            _lastNavigationGeneration,
+            pendingAddress);
+    }
+
+    private void ClearUnstartedNavigation(ActiveNativeNavigation navigation)
+    {
+        if (ReferenceEquals(_activeNavigation, navigation)
+            && !navigation.HasStarted)
+        {
+            _activeNavigation = null;
+            _queuedAddress = null;
+        }
+    }
+
+    private bool TryFinishInitialBlank(string? url)
+    {
+        if (!_ignoreInitialBlank
+            || string.IsNullOrWhiteSpace(url)
+            || !IsBlank(url))
+        {
+            return false;
+        }
+
+        _ignoreInitialBlank = false;
+        if (_activeNavigation is { StopRequested: true })
+        {
+            _queuedAddress = null;
+            CompleteNavigation(
+                url,
+                isSuccess: false,
+                wasStopped: true);
+            return true;
+        }
+
+        if (_browser is { IsInitialized: true } browser
+            && _activeNavigation is { } navigation
+            && _queuedAddress is not null)
+        {
+            DispatchQueuedNavigation(browser, navigation);
+        }
+
+        return true;
+    }
+
+    private bool TryResolveNavigationAddress(
+        string? value,
+        ActiveNativeNavigation navigation,
+        [NotNullWhen(true)] out BrowserAddress? address)
+    {
+        if (navigation.PendingAddress is { Document: not null } document
+            && IsLoadStringAddress(value))
+        {
+            address = document;
+            return true;
+        }
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            if (navigation.PendingAddress is { IsLocalFile: true } pending
+                && IsPermittedTopLevelLocalPage(uri, pending))
+            {
+                address = pending;
+                return true;
+            }
+
+            return TryResolveNavigation(
+                uri,
+                Volatile.Read(ref _localDocumentAccess).PermittedPage,
+                out address);
+        }
+
+        address = null;
+        return false;
+    }
+
+    internal static bool TryResolveNavigation(
+        Uri? request,
+        BrowserAddress? permittedLocalPage,
+        [NotNullWhen(true)] out BrowserAddress? address)
+    {
+        if (BrowserAddress.TryParse(request?.AbsoluteUri, out address))
+        {
+            return true;
+        }
+
+        if (request is not null
+            && permittedLocalPage is { } permitted
+            && IsPermittedTopLevelLocalPage(request, permitted))
+        {
+            address = permitted;
+            return true;
+        }
+
+        address = null;
+        return false;
+    }
+
+    private static bool IsPermittedTopLevelLocalPage(
+        Uri request,
+        BrowserAddress? permittedLocalPage) =>
+        permittedLocalPage is { IsLocalFile: true } permitted
+        && string.Equals(
+            request.AbsoluteUri,
+            permitted.Value.AbsoluteUri,
+            StringComparison.Ordinal);
+
+    internal static bool IsPermittedLocalSubresource(
+        Uri request,
+        BrowserAddress? permittedLocalPage)
+    {
+        if (!request.IsFile
+            || permittedLocalPage is not { IsLocalFile: true } permitted)
+        {
+            return false;
+        }
+
+        if (IsPermittedTopLevelLocalPage(request, permitted))
+        {
+            return true;
+        }
+
+        try
+        {
+            var pagePath = Path.GetFullPath(permitted.Value.LocalPath);
+            var resourcePath = Path.GetFullPath(request.LocalPath);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (!string.Equals(
+                    Path.GetDirectoryName(pagePath),
+                    Path.GetDirectoryName(resourcePath),
+                    comparison))
+            {
+                return false;
+            }
+
+            // Adjacent CSS/images/fonts are part of a generated preview, but
+            // a link must not turn that narrow directory capability into a
+            // path outside it. Existing symlink files are denied as well.
+            return !File.Exists(resourcePath)
+                || new FileInfo(resourcePath).LinkTarget is null;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsLoadStringAddress(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return uri.Scheme.Equals("data", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals(LoadStringHost, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBlank(string value) =>
+        string.Equals(
+            value,
+            BrowserAddress.Blank.Value.AbsoluteUri,
+            StringComparison.OrdinalIgnoreCase);
+
+    private void AdmitLocalDocumentAccess(BrowserAddress address)
+    {
+        var current = Volatile.Read(ref _localDocumentAccess);
+        Volatile.Write(
+            ref _localDocumentAccess,
+            current.Admit(address));
+    }
+
+    private void CompleteLocalDocumentAccess(
+        bool isSuccess,
+        BrowserAddress? address)
+    {
+        var current = Volatile.Read(ref _localDocumentAccess);
+        Volatile.Write(
+            ref _localDocumentAccess,
+            current.Complete(isSuccess, address));
+    }
+
+    private void RollBackLocalDocumentAccess()
+    {
+        var current = Volatile.Read(ref _localDocumentAccess);
+        Volatile.Write(
+            ref _localDocumentAccess,
+            current.RollBack());
+    }
+
+    private static void RunOnUiThread(Action operation)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            operation();
+            return;
+        }
+
+        Dispatcher.UIThread.Post(operation);
+    }
+
+    private void ThrowIfDisposed() =>
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+    private static void BlockPopup(object? sender, BeforePopupEventArgs args)
+    {
+        // Subscribing is the cancellation signal in Exclr8CEF.
+    }
+
+    private static void BlockJavaScriptDialog(
+        object? sender,
+        JsDialogEventArgs args) => args.Cancel();
+
+    private static void BlockFileDialog(
+        object? sender,
+        FileDialogEventArgs args) => args.Cancel();
+
+    private static void BlockContextMenu(
+        object? sender,
+        ContextMenuEventArgs args) => args.Cancel();
+
+    private static void BlockDownload(
+        object? sender,
+        DownloadStartingEventArgs args) => args.Cancel();
+
+    private static void BlockAuthentication(
+        object? sender,
+        AuthRequestEventArgs args) => args.Cancel();
+
+    private static void BlockPermission(
+        object? sender,
+        PermissionRequestEventArgs args) => args.Deny();
+
+    private static void BlockMediaAccess(
+        object? sender,
+        MediaAccessRequestEventArgs args) => args.Deny();
+
+    private static void BlockCertificateError(
+        object? sender,
+        CertErrorEventArgs args) => args.Cancel();
+
+    internal sealed class ActiveNativeNavigation(
+        long generation,
+        BrowserAddress? pendingAddress)
+    {
+        private HashSet<string>? _supersededLegs;
+        private string? _currentLeg;
+
+        public long Generation { get; } = generation;
+
+        public BrowserAddress? PendingAddress { get; set; } = pendingAddress;
+
+        public bool HasStarted { get; set; }
+
+        public bool StopRequested { get; set; }
+
+        public bool WasRejected { get; set; }
+
+        public bool MayDispatchQueuedNavigation =>
+            !StopRequested && !WasRejected;
+
+        public void AdmitLeg(string? url, bool isRedirect)
+        {
+            var nextLeg = NormalizeNavigationUrl(url);
+            if (nextLeg is null)
+            {
+                return;
+            }
+
+            if (isRedirect && _currentLeg is not null)
+            {
+                (_supersededLegs ??= new(StringComparer.Ordinal))
+                    .Add(_currentLeg);
+            }
+
+            _currentLeg = nextLeg;
+        }
+
+        public bool ShouldAwaitCompletionAfterAbort(string? failedUrl)
+        {
+            if (StopRequested || WasRejected)
+            {
+                return false;
+            }
+
+            var failedLeg = NormalizeNavigationUrl(failedUrl);
+            return failedLeg is not null
+                && _supersededLegs?.Remove(failedLeg) == true;
+        }
+
+        private static string? NormalizeNavigationUrl(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+                ? uri.AbsoluteUri
+                : value;
+        }
+    }
+}
+
+/// <summary>
+/// Immutable cross-thread capability for local resources. CEF's IO thread only
+/// observes published snapshots; the UI thread replaces the whole policy as a
+/// main-document navigation is admitted or reaches a terminal state.
+/// </summary>
+internal sealed record CefLocalDocumentAccessPolicy
+{
+    private CefLocalDocumentAccessPolicy(
+        BrowserAddress? committedPage,
+        BrowserAddress? provisionalPage,
+        bool hasProvisionalPage)
+    {
+        CommittedPage = committedPage;
+        ProvisionalPage = provisionalPage;
+        HasProvisionalPage = hasProvisionalPage;
+    }
+
+    public static CefLocalDocumentAccessPolicy None { get; } =
+        new(
+            committedPage: null,
+            provisionalPage: null,
+            hasProvisionalPage: false);
+
+    public BrowserAddress? CommittedPage { get; }
+
+    public BrowserAddress? ProvisionalPage { get; }
+
+    public bool HasProvisionalPage { get; }
+
+    public BrowserAddress? PermittedPage =>
+        HasProvisionalPage ? ProvisionalPage : CommittedPage;
+
+    public CefLocalDocumentAccessPolicy Admit(BrowserAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        return new CefLocalDocumentAccessPolicy(
+            CommittedPage,
+            address.IsLocalFile ? address : null,
+            hasProvisionalPage: true);
+    }
+
+    public CefLocalDocumentAccessPolicy Complete(
+        bool isSuccess,
+        BrowserAddress? address)
+    {
+        if (!isSuccess)
+        {
+            return RollBack();
+        }
+
+        ArgumentNullException.ThrowIfNull(address);
+        return new CefLocalDocumentAccessPolicy(
+            address.IsLocalFile ? address : null,
+            provisionalPage: null,
+            hasProvisionalPage: false);
+    }
+
+    public CefLocalDocumentAccessPolicy RollBack() =>
+        new(
+            CommittedPage,
+            provisionalPage: null,
+            hasProvisionalPage: false);
+}

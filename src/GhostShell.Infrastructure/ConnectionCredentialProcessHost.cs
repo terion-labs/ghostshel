@@ -21,6 +21,35 @@ public static class ConnectionCredentialProcessHost
     private const int CredentialUnavailableExitCode = 74;
     private const int ProcessFailureExitCode = 70;
 
+    /// <summary>
+    /// Identifies the two private, short-lived process modes that must run
+    /// without loading the desktop UI or its CEF runtime. The marker is
+    /// deliberately position-sensitive so a normal Chromium subprocess with
+    /// unrelated later arguments remains a Chromium subprocess.
+    /// </summary>
+    public static bool IsPrivateHelperInvocation(
+        IReadOnlyList<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        return IsPrivateHelperInvocation(
+            arguments,
+            Environment.GetEnvironmentVariable(AskpassPipeEnvironment)
+                is not null);
+    }
+
+    internal static bool IsPrivateHelperInvocation(
+        IReadOnlyList<string> arguments,
+        bool hasAskpassPipe)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        return hasAskpassPipe
+            || arguments.Count > 0
+            && string.Equals(
+                arguments[0],
+                ConnectionCredentialSessionInvocation.Marker,
+                StringComparison.Ordinal);
+    }
+
     public static async ValueTask<int?> TryRunAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)

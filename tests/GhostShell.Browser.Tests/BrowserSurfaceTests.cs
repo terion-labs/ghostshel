@@ -21,7 +21,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public void StartsBlankWithTheBoundedBrowserCapabilities()
     {
-        var surface = Surface(new RecordingNativeBrowserView());
+        var surface = Surface(new RecordingEmbeddedBrowserView());
 
         Assert.Equal(BrowserSessionState.Initial(BrowserAddress.Blank), surface.State);
         Assert.Equal(
@@ -44,7 +44,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task ProductionProfileRejectsInteractionsBeforeNativeDispatch()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
             InlineBrowserUiDispatcher.Instance);
@@ -91,7 +91,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task SnapshotCapturesBoundedNodesAndOpaqueReferences()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = NativeBrowserSnapshotResult.Success(
                 new NativeBrowserSnapshot(
@@ -137,7 +137,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task NextSnapshotAndReferenceExpiryInvalidateOldReferences()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("0"),
         };
@@ -167,7 +167,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task ClickConsumesExactHandleAndAllSnapshotReferences()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("original"),
         };
@@ -206,7 +206,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task ForgedAndWrongDocumentReferencesNeverReachNativeClick()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("original"),
         };
@@ -245,7 +245,7 @@ public sealed class BrowserSurfaceTests
         var pendingClick =
             new TaskCompletionSource<NativeBrowserClickResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("original"),
             PendingClick = pendingClick,
@@ -280,7 +280,7 @@ public sealed class BrowserSurfaceTests
         var pendingClick =
             new TaskCompletionSource<NativeBrowserClickResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("original"),
             PendingClick = pendingClick,
@@ -333,7 +333,7 @@ public sealed class BrowserSurfaceTests
         var pendingClick =
             new TaskCompletionSource<NativeBrowserClickResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("original"),
             PendingClick = pendingClick,
@@ -382,12 +382,12 @@ public sealed class BrowserSurfaceTests
         var pendingClick =
             new TaskCompletionSource<NativeBrowserClickResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("original"),
             PendingClick = pendingClick,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(nativeView, replacement);
         var source = Address("https://example.test/start");
         _ = await surface.NavigateAsync(
@@ -428,12 +428,12 @@ public sealed class BrowserSurfaceTests
         var pendingClick =
             new TaskCompletionSource<NativeBrowserClickResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("original"),
             PendingClick = pendingClick,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
             InlineBrowserUiDispatcher.Instance,
@@ -472,7 +472,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task FillConsumesExactHandleTextAndAllSnapshotReferences()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
         };
@@ -511,7 +511,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task InvalidFillReferencesAndPreDispatchCancellationStayNativeFree()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
         };
@@ -561,7 +561,7 @@ public sealed class BrowserSurfaceTests
         var pendingFill =
             new TaskCompletionSource<NativeBrowserFillResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             PendingFill = pendingFill,
@@ -594,7 +594,7 @@ public sealed class BrowserSurfaceTests
         var pendingFill =
             new TaskCompletionSource<NativeBrowserFillResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             PendingFill = pendingFill,
@@ -669,7 +669,7 @@ public sealed class BrowserSurfaceTests
     {
         var nativeStatus =
             (NativeBrowserFillStatus)nativeStatusValue;
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             FillResult = nativeStatus switch
@@ -707,7 +707,7 @@ public sealed class BrowserSurfaceTests
         var pendingFill =
             new TaskCompletionSource<NativeBrowserFillResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             PendingFill = pendingFill,
@@ -747,12 +747,12 @@ public sealed class BrowserSurfaceTests
         var pendingFill =
             new TaskCompletionSource<NativeBrowserFillResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             PendingFill = pendingFill,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(nativeView, replacement);
         var source = Address("https://example.test/start");
         _ = await surface.NavigateAsync(source, CancellationToken.None);
@@ -786,12 +786,12 @@ public sealed class BrowserSurfaceTests
         var pendingFill =
             new TaskCompletionSource<NativeBrowserFillResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             PendingFill = pendingFill,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(nativeView, replacement);
         var document = BrowserDocumentBinding.FromState(surface.State);
         var snapshot = await surface.CaptureSnapshotAsync(
@@ -820,12 +820,12 @@ public sealed class BrowserSurfaceTests
         var pendingFill =
             new TaskCompletionSource<NativeBrowserFillResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             PendingFill = pendingFill,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
             InlineBrowserUiDispatcher.Instance,
@@ -862,7 +862,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task SynchronousFillFailureWithoutReplacementBlocksFurtherUse()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             ThrowOnFill = true,
@@ -908,7 +908,7 @@ public sealed class BrowserSurfaceTests
         AssertFillTextRejectedWithoutConsumingLeaseAsync(
             string invalidText)
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
         };
@@ -940,7 +940,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task OversizedFillTextIsRejectedBeforeNativeDispatch()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
         };
@@ -969,7 +969,7 @@ public sealed class BrowserSurfaceTests
         var pendingFill =
             new TaskCompletionSource<NativeBrowserFillResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = FillableSnapshot("original"),
             PendingFill = pendingFill,
@@ -978,7 +978,7 @@ public sealed class BrowserSurfaceTests
         var surface = new BrowserSurface(
             nativeView,
             dispatcher,
-            () => new RecordingNativeBrowserView(),
+            () => new RecordingEmbeddedBrowserView(),
             static _ => { },
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
         var document = BrowserDocumentBinding.FromState(surface.State);
@@ -1011,7 +1011,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task CheckConsumesExactHandleAndAllSnapshotReferences()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
         };
@@ -1053,7 +1053,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task InvalidCheckReferencesAndPreDispatchCancellationStayNativeFree()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
         };
@@ -1100,7 +1100,7 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
@@ -1132,7 +1132,7 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
@@ -1208,7 +1208,7 @@ public sealed class BrowserSurfaceTests
     {
         var nativeStatus =
             (NativeBrowserCheckStatus)nativeStatusValue;
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             CheckResult = nativeStatus switch
@@ -1243,7 +1243,7 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
@@ -1282,12 +1282,12 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(nativeView, replacement);
         var source = Address("https://example.test/start");
         _ = await surface.NavigateAsync(source, CancellationToken.None);
@@ -1320,12 +1320,12 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var dispatcher = new QueuedBrowserUiDispatcher();
         var surface = new BrowserSurface(
             nativeView,
@@ -1369,12 +1369,12 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
             InlineBrowserUiDispatcher.Instance,
@@ -1413,12 +1413,12 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
         };
-        var replacement = new RecordingNativeBrowserView
+        var replacement = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("replacement"),
         };
@@ -1471,7 +1471,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task SynchronousCheckFailureWithoutReplacementBlocksFurtherUse()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             ThrowOnCheck = true,
@@ -1505,7 +1505,7 @@ public sealed class BrowserSurfaceTests
         var pendingCheck =
             new TaskCompletionSource<NativeBrowserCheckResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = CheckableSnapshot("original"),
             PendingCheck = pendingCheck,
@@ -1514,7 +1514,7 @@ public sealed class BrowserSurfaceTests
         var surface = new BrowserSurface(
             nativeView,
             dispatcher,
-            () => new RecordingNativeBrowserView(),
+            () => new RecordingEmbeddedBrowserView(),
             static _ => { },
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
         var document = BrowserDocumentBinding.FromState(surface.State);
@@ -1546,7 +1546,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task SnapshotRequiresAReadyMatchingDocument()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var stale = BrowserDocumentBinding.FromState(surface.State);
         _ = await surface.NavigateAsync(
@@ -1567,7 +1567,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task SnapshotCancellationBeforeDispatchDoesNotInvokeNativeView()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -1584,7 +1584,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task CancelledSnapshotKeepsNativeInvocationBoundedUntilItDrains()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("0"),
             PendingSnapshot = new(
@@ -1626,7 +1626,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task GovernedNavigationCannotOverlapANativeSnapshot()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             PendingSnapshot = new(
                 TaskCreationOptions.RunContinuationsAsynchronously),
@@ -1655,12 +1655,12 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task TimedOutSnapshotReplacesNativeViewAndFencesLateCompletion()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             PendingSnapshot = new(
                 TaskCreationOptions.RunContinuationsAsynchronously),
         };
-        var replacement = new RecordingNativeBrowserView
+        var replacement = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("replacement"),
         };
@@ -1770,12 +1770,12 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task DeadlineRemainsAuthoritativeWhileUiQuarantineIsQueued()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             PendingSnapshot = new(
                 TaskCreationOptions.RunContinuationsAsynchronously),
         };
-        var replacement = new RecordingNativeBrowserView
+        var replacement = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("replacement"),
         };
@@ -1825,13 +1825,13 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task FailedReplacementFencesNativeViewUntilSnapshotDrains()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = ActionableSnapshot("recovered"),
             PendingSnapshot = new(
                 TaskCreationOptions.RunContinuationsAsynchronously),
         };
-        var replacement = new RecordingNativeBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var presentationCount = 0;
         var presentationAttempted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1898,7 +1898,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task DocumentChangeDuringSnapshotDiscardsLateNativeData()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             PendingSnapshot = new(
                 TaskCreationOptions.RunContinuationsAsynchronously),
@@ -1927,7 +1927,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task InvalidNativeSnapshotUsesOnlyStableSanitizedFailure()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = NativeBrowserSnapshotResult.Invalid(),
         };
@@ -1953,7 +1953,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task NavigateQueuesTheValidatedAddressAndPublishesLoading()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var address = Address("https://example.test/path?q=one");
         var published = new List<BrowserSessionState>();
@@ -1971,7 +1971,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public void SuccessfulCompletionAdvancesTheDocumentRevisionAndHistoryState()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             CanGoBack = true,
             CanGoForward = false,
@@ -1993,7 +1993,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public void FailedCompletionPublishesOnlyAStableEngineNeutralFailure()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var address = Address("https://example.test/failure");
 
@@ -2010,7 +2010,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public void RejectedTopLevelNavigationKeepsTheLastSupportedAddress()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
 
         nativeView.RaiseNavigationRejected();
@@ -2023,7 +2023,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task MissingHistoryReturnsAnExpectedFailureWithoutChangingState()
     {
-        var surface = Surface(new RecordingNativeBrowserView());
+        var surface = Surface(new RecordingEmbeddedBrowserView());
         var initial = surface.State;
 
         var result = await surface.GoBackAsync(CancellationToken.None);
@@ -2036,7 +2036,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task AcceptedBackAndForwardOperationsEnterLoadingState()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             AcceptBack = true,
             AcceptForward = true,
@@ -2058,7 +2058,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task ReloadAndStopPublishLoadingThenReadyWithoutAdvancingRevision()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             AcceptReload = true,
             AcceptStop = true,
@@ -2067,17 +2067,23 @@ public sealed class BrowserSurfaceTests
 
         var reload = await surface.ReloadAsync(CancellationToken.None);
         var stop = await surface.StopAsync(CancellationToken.None);
+        nativeView.RaiseNavigationCompleted(
+            Address("https://example.test/stopped"),
+            isSuccess: false,
+            wasStopped: true);
 
         Assert.True(reload.IsSuccess);
         Assert.True(stop.IsSuccess);
         Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+        Assert.Equal(BrowserAddress.Blank, surface.State.Address);
         Assert.Equal(0, surface.State.DocumentRevision);
+        Assert.Null(surface.State.Failure);
     }
 
     [Fact]
     public async Task VendorExceptionMapsToAStableFailureAndDoesNotEscape()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             ThrowOnNavigate = true,
         };
@@ -2097,7 +2103,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task CancellationDoesNotReachTheNativeRenderer()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -2123,7 +2129,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task AFrameNavigatingInsideALoadedPageDoesNotRenameIt()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var page = Address("https://www.google.com/");
         _ = await surface.NavigateAsync(page, CancellationToken.None);
@@ -2139,7 +2145,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task GovernedNavigationWaitsThroughSameOriginRedirects()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var requested = Address("https://example.test/start");
         var redirected = Address("https://example.test/final?from=redirect");
@@ -2166,7 +2172,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task GovernedNavigationRejectsCrossOriginRedirectAndLateCompletion()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var requested = Address("https://example.test/start");
         var escaped = Address("https://outside.example.test/redirect");
@@ -2209,8 +2215,8 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task FinalOriginEscapeWithoutStartEventQuarantinesNativeView()
     {
-        var nativeView = new RecordingNativeBrowserView();
-        var replacement = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(
             nativeView,
             replacement);
@@ -2248,8 +2254,8 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task CancellationDuringFinalEscapeResetCannotRegressReplacement()
     {
-        var nativeView = new RecordingNativeBrowserView();
-        var replacement = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(
             nativeView,
             replacement);
@@ -2293,8 +2299,8 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task RejectedAttemptDrainsBeforeLaterHumanNavigation()
     {
-        var nativeView = new RecordingNativeBrowserView();
-        var replacement = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(
             nativeView,
             replacement);
@@ -2337,7 +2343,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task CancellationBeforeFirstStartKeepsDelayedNavigationContained()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             AcceptStop = true,
         };
@@ -2377,8 +2383,8 @@ public sealed class BrowserSurfaceTests
     public async Task LateCompletionCannotBeAttributedToANewerNavigation(
         bool reuseRejectedAddress)
     {
-        var nativeView = new RecordingNativeBrowserView();
-        var replacement = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         var surface = SurfaceWithReplacement(
             nativeView,
             replacement);
@@ -2428,8 +2434,8 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task CapturedOldCallbackDuringPresentationCannotReenterReplacement()
     {
-        var nativeView = new RecordingNativeBrowserView();
-        var replacement = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
         Action? capturedCompletion = null;
         var presentationCount = 0;
         var replacementCount = 0;
@@ -2478,7 +2484,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task UnsupportedSchemeRedirectIsAnOriginPolicyDenial()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var requested = Address("https://example.test/start");
         var governed = BeginGovernedNavigation(
@@ -2507,7 +2513,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task GovernedNavigationRejectsAStaleStartingDocumentBinding()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var staleBinding = BrowserNavigationStartBinding.FromState(
             surface.State);
@@ -2535,7 +2541,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task GovernedNavigationFailsClosedWhileAnotherLoadIsActive()
     {
-        var nativeView = new RecordingNativeBrowserView();
+        var nativeView = new RecordingEmbeddedBrowserView();
         var surface = Surface(nativeView);
         var first = Address("https://example.test/first");
         var second = Address("https://example.test/second");
@@ -2562,7 +2568,7 @@ public sealed class BrowserSurfaceTests
     public async Task GovernedHistoryAndReloadCannotEscapeTheCommittedOrigin(
         string operation)
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             AcceptBack = true,
             AcceptForward = true,
@@ -2597,7 +2603,7 @@ public sealed class BrowserSurfaceTests
     [Fact]
     public async Task CancellingGovernedNavigationStopsAndPreservesCommittedState()
     {
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             AcceptStop = true,
         };
@@ -2625,6 +2631,60 @@ public sealed class BrowserSurfaceTests
     }
 
     [Fact]
+    public void DisposeReleasesTheEmbeddedBrowserExactlyOnce()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+
+        surface.Dispose();
+        surface.Dispose();
+
+        Assert.True(nativeView.IsDisposed);
+        Assert.Null(surface.Content);
+    }
+
+    [Fact]
+    public async Task DisposeSettlesAnInFlightGovernedNavigation()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+        var requested = Address("https://example.test/disposed");
+        var navigation = BeginGovernedNavigation(
+            surface,
+            requested,
+            CancellationToken.None);
+        nativeView.RaiseNavigationStarted(requested);
+
+        surface.Dispose();
+        var result = await navigation.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.RendererUnavailable,
+            result.Error?.Code);
+        Assert.True(nativeView.IsDisposed);
+    }
+
+    [Fact]
+    public void RendererProcessFailureReplacesAndDisposesTheFrozenView()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var replacement = new RecordingEmbeddedBrowserView();
+        var surface = new BrowserSurface(
+            nativeView,
+            InlineBrowserUiDispatcher.Instance,
+            () => replacement);
+
+        nativeView.RaiseRenderProcessFailed();
+
+        Assert.True(nativeView.IsDisposed);
+        Assert.False(replacement.IsDisposed);
+        Assert.Same(replacement.View, surface.Content);
+        Assert.Equal(1, surface.State.DocumentRevision);
+        Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+    }
+
+    [Fact]
     public void PublicApiDoesNotExposeTheVendorWebView()
     {
         var exportedTypes = typeof(BrowserSurface).Assembly.GetExportedTypes();
@@ -2635,7 +2695,7 @@ public sealed class BrowserSurfaceTests
         Assert.DoesNotContain(
             publicSignatures,
             signature => signature.Contains(
-                "NativeWebView",
+                "Exclr8Cef",
                 StringComparison.Ordinal));
     }
 
@@ -2755,14 +2815,14 @@ public sealed class BrowserSurfaceTests
             "The drained native snapshot did not release its BrowserSurface fence.");
     }
 
-    private static BrowserSurface Surface(INativeBrowserView nativeView) =>
+    private static BrowserSurface Surface(IEmbeddedBrowserView nativeView) =>
         new(
             nativeView,
             InlineBrowserUiDispatcher.Instance,
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
 
     private static BrowserSurface Surface(
-        INativeBrowserView nativeView,
+        IEmbeddedBrowserView nativeView,
         TimeProvider timeProvider) =>
         new(
             nativeView,
@@ -2771,8 +2831,8 @@ public sealed class BrowserSurfaceTests
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
 
     private static BrowserSurface SurfaceWithReplacement(
-        INativeBrowserView nativeView,
-        INativeBrowserView replacement) =>
+        IEmbeddedBrowserView nativeView,
+        IEmbeddedBrowserView replacement) =>
         new(
             nativeView,
             InlineBrowserUiDispatcher.Instance,

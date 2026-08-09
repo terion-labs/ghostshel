@@ -50,6 +50,8 @@ internal static class ManagedComponentEvidenceBuilder
 
     private static readonly string[] RequiredProjectFiles =
     [
+        "Exclr8Cef.dll",
+        "Exclr8Cef.WebView.dll",
         "GhostShell.dll",
         "GhostShell.Agent.dll",
         "GhostShell.Agent.Providers.dll",
@@ -58,10 +60,13 @@ internal static class ManagedComponentEvidenceBuilder
         "GhostShell.Application.dll",
         "GhostShell.Browser.dll",
         "GhostShell.Core.dll",
+        "GhostShell.Databases.dll",
+        "GhostShell.Docking.dll",
         "GhostShell.Files.dll",
         "GhostShell.Infrastructure.dll",
         "GhostShell.Mcp.dll",
         "GhostShell.Monitoring.dll",
+        "GhostShell.Previews.dll",
         "GhostShell.Protocol.dll",
         "GhostShell.SessionHost.dll",
         "GhostShell.Terminal.dll",
@@ -410,6 +415,17 @@ internal static class ManagedComponentEvidenceBuilder
                 EnsureUnique(
                     component.Notices.Select(notice => notice.ArchivePath),
                     $"{component.Identity} notice archive path");
+                if (component.NuspecLicenseType == "file"
+                    && !component.Notices.Any(notice => string.Equals(
+                        notice.ArchivePath,
+                        component.NuspecLicense,
+                        StringComparison.Ordinal)))
+                {
+                    throw CatalogError(
+                        $"component {component.Identity} must extract its exact "
+                        + "nuspec license file as reviewed evidence");
+                }
+
                 break;
             default:
                 throw CatalogError(
@@ -1616,7 +1632,7 @@ internal static class ManagedComponentEvidenceBuilder
         if (!projectFiles.SetEquals(RequiredProjectFiles))
         {
             throw CatalogError(
-                "project entries must model the exact fifteen GhostSHELL project assemblies");
+                "project entries must model the exact GhostSHELL and vendored binding assemblies");
         }
 
         var runtimeComponents = dependencies
@@ -1771,8 +1787,8 @@ internal static class ManagedComponentEvidenceBuilder
             writer.WriteString(
                 "comment",
                 "Evidence scope: the exact managed dependency closure from "
-                + "GhostShell.deps.json, the exact .NET runtime package, the fifteen "
-                + "GhostSHELL project assemblies, and the published libghostty-vt dylib. "
+                + "GhostShell.deps.json, the exact .NET runtime package, the reviewed "
+                + "project assemblies, and the published libghostty-vt dylib. "
                 + "This is not legal clearance or a complete native dependency SBOM. "
                 + "Release blockers: "
                 + string.Join(" | ", catalog.ReleaseBlockers));

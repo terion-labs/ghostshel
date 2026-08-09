@@ -60,6 +60,9 @@ It owns only concerns that require a real top-level:
 - coordination required by native browser child views. Terminal panels are
   ordinary Avalonia controls and need no native-child coordination.
 
+[ADR 0042](0042-cef-off-screen-browser-runtime.md) later removes the browser
+native-child coordination requirement by moving the panel to CEF OSR.
+
 It does not contain route markup, panel templates, feature dialog branching,
 definition persistence, catalog mutation, runtime graph policy, agent policy,
 MCP policy, secret access, or feature-specific presentation state.

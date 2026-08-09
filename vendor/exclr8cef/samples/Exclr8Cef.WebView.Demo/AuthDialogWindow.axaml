@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Exclr8Cef.WebView.Demo.AuthDialogWindow"
+        Width="420" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#181825"
+        Title="Authentication required">
+    <Border Padding="20">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Name="MessageText"
+                       Foreground="#CDD6F4" FontSize="13" TextWrapping="Wrap"
+                       Margin="0,0,0,12" />
+            <TextBox Grid.Row="1" Name="UsernameBox"
+                     PlaceholderText="Username"
+                     Background="#11111B" Foreground="#CDD6F4"
+                     BorderBrush="#45475A" Padding="8,6" Margin="0,0,0,8" />
+            <TextBox Grid.Row="2" Name="PasswordBox"
+                     PasswordChar="●"
+                     PlaceholderText="Password"
+                     Background="#11111B" Foreground="#CDD6F4"
+                     BorderBrush="#45475A" Padding="8,6" Margin="0,0,0,14" />
+            <StackPanel Grid.Row="3" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Cancel" Click="OnCancelClick"
+                        Padding="14,6" Background="#45475A" Foreground="#CDD6F4" />
+                <Button Content="Sign in" Click="OnOkClick"
+                        Padding="14,6" Background="#89B4FA" Foreground="#11111B" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

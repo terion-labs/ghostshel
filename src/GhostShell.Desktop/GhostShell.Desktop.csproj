@@ -60,6 +60,13 @@
     <GhostShellSqlLanguageArtifactDirectory>$(MSBuildThisFileDirectory)../../native/artifacts/$(GhostShellEffectiveRuntimeIdentifier)</GhostShellSqlLanguageArtifactDirectory>
     <GhostShellSqlLanguageWorkerPath>$(GhostShellSqlLanguageArtifactDirectory)/$(GhostShellSqlLanguageWorkerName)</GhostShellSqlLanguageWorkerPath>
     <GhostShellSqlLanguagePayloadAvailable Condition="'$(GhostShellSqlLanguageSupported)' == 'true' and Exists('$(GhostShellSqlLanguageWorkerPath)') and Exists('$(GhostShellSqlLanguageArtifactDirectory)/THIRD-PARTY-NOTICES.md') and Exists('$(GhostShellSqlLanguageArtifactDirectory)/runtime-dependencies.txt') and Exists('$(GhostShellSqlLanguageArtifactDirectory)/build-receipt.json')">true</GhostShellSqlLanguagePayloadAvailable>
+    <GhostShellCefRuntimeArtifactDirectory Condition="'$(GhostShellCefRuntimeArtifactDirectory)' == ''">$(GhostShellNativeTerminalArtifactDirectory)/cef</GhostShellCefRuntimeArtifactDirectory>
+    <GhostShellCefMacRuntime Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-arm64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'osx-x64'">true</GhostShellCefMacRuntime>
+    <GhostShellCefFlatRuntime Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-arm64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-x64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'win-x64'">true</GhostShellCefFlatRuntime>
+    <GhostShellCefRuntimeRequired Condition="'$(GhostShellCefMacRuntime)' == 'true' or '$(GhostShellCefFlatRuntime)' == 'true'">true</GhostShellCefRuntimeRequired>
+    <GhostShellCefShimLibrary Condition="'$(GhostShellCefMacRuntime)' == 'true'">libexclr8cef.dylib</GhostShellCefShimLibrary>
+    <GhostShellCefShimLibrary Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-arm64' or '$(GhostShellEffectiveRuntimeIdentifier)' == 'linux-x64'">libexclr8cef.so</GhostShellCefShimLibrary>
+    <GhostShellCefShimLibrary Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'win-x64'">exclr8cef.dll</GhostShellCefShimLibrary>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(GhostShellRuntimePackDirectory)/LICENSE.TXT') and Exists('$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT')">
@@ -111,6 +118,34 @@
     <Content Include="$(GhostShellNativeTerminalShellIntegrationDirectory)/zsh/ghostty-integration" Link="ghostty/shell-integration/zsh/ghostty-integration" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(GhostShellCefRuntimeRequired)' == 'true'">
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/$(GhostShellCefShimLibrary)" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/CEF-LICENSE.txt" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/CEF-CREDITS.html" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/EXCLR8CEF-LICENSE.txt" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/cef-runtime-build-receipt.json" />
+    <GhostShellCefRequiredFile Include="$(MSBuildThisFileDirectory)../../licenses/cef-runtime-components.json" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GhostShellCefMacRuntime)' == 'true'">
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/Chromium Embedded Framework.framework/Chromium Embedded Framework" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/GhostSHELL Helper.app/Contents/MacOS/GhostSHELL Helper" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/GhostSHELL Helper (Alerts).app/Contents/MacOS/GhostSHELL Helper (Alerts)" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/GhostSHELL Helper (GPU).app/Contents/MacOS/GhostSHELL Helper (GPU)" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/GhostSHELL Helper (Plugin).app/Contents/MacOS/GhostSHELL Helper (Plugin)" />
+    <GhostShellCefRequiredFile Include="$(GhostShellCefRuntimeArtifactDirectory)/GhostSHELL Helper (Renderer).app/Contents/MacOS/GhostSHELL Helper (Renderer)" />
+
+    <!-- The unbundled macOS build can resolve the shim for compile/test probes,
+         but CEF itself is runnable only after the app-bundle packager installs
+         its framework and helpers under Contents/Frameworks. -->
+    <Content Include="$(GhostShellCefRuntimeArtifactDirectory)/$(GhostShellCefShimLibrary)" Link="$(GhostShellCefShimLibrary)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GhostShellCefFlatRuntime)' == 'true'">
+    <Content Include="$(GhostShellCefRuntimeArtifactDirectory)/**/*" Link="%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../licenses/cef-runtime-components.json" Link="cef-runtime-components.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target
       Name="ValidateNativeTerminalPayload"
       BeforeTargets="PrepareForBuild;Publish"
@@ -130,6 +165,22 @@
     <Error
         Condition="'$(GhostShellSqlLanguageSupported)' == 'true' and !Exists('%(GhostShellSqlLanguageRequiredFile.Identity)')"
         Text="The required SQL language payload for $(GhostShellEffectiveRuntimeIdentifier) is incomplete; missing %(GhostShellSqlLanguageRequiredFile.Identity). Run ./scripts/build-sql-language-worker.sh --rid $(GhostShellEffectiveRuntimeIdentifier)." />
+  </Target>
+
+  <Target
+      Name="ValidateCefRuntimePayload"
+      BeforeTargets="PrepareForBuild;Publish"
+      Condition="'$(GhostShellCefRuntimeRequired)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error
+        Condition="!Exists('%(GhostShellCefRequiredFile.Identity)')"
+        Text="The required CEF runtime payload for $(GhostShellEffectiveRuntimeIdentifier) is incomplete; missing %(GhostShellCefRequiredFile.Identity). Run ./scripts/build-cef-runtime.sh --rid $(GhostShellEffectiveRuntimeIdentifier)." />
+  </Target>
+
+  <Target
+      Name="BlockUnsandboxedWindowsCefPublish"
+      BeforeTargets="Publish"
+      Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'win-x64' and '$(GhostShellAllowUnsandboxedWindowsCefDevelopment)' != 'true'">
+    <Error Text="CEF 150 Windows publishing is blocked until GhostSHELL owns a native bootstrap/CLR launcher. Set GhostShellAllowUnsandboxedWindowsCefDevelopment=true only for an explicit non-release development publish." />
   </Target>
 
   <!--

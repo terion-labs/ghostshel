@@ -5,6 +5,8 @@
 - Terminal-view update: [ADR 0040](0040-cross-platform-libghostty-vt-terminal.md)
   supersedes this record's former assumption that the terminal is also a native
   child view. This record remains accepted for browser adapters.
+- Browser-runtime update: [ADR 0042](0042-cef-off-screen-browser-runtime.md)
+  supersedes this record's host-native engine and native-child-view decisions.
 
 ## Context
 

@@ -4,8 +4,8 @@ using GhostShell.Core;
 namespace GhostShell.App;
 
 /// <summary>
-/// A live attachment between a browser session and the native renderer showing
-/// it, held by the panel for as long as the panel exists.
+/// A live attachment between a browser session and the renderer showing it,
+/// held by the panel for as long as the panel exists.
 ///
 /// It is deliberately not held by the control that draws the panel. Rearranging
 /// panels rebuilds those controls, and an attachment that went with them would

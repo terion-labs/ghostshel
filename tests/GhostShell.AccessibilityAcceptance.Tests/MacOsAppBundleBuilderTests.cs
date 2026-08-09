@@ -16,6 +16,8 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
 
     private static readonly string[] ProjectAssemblyNames =
     [
+        "Exclr8Cef",
+        "Exclr8Cef.WebView",
         "GhostShell",
         "GhostShell.Agent",
         "GhostShell.Agent.Providers",
@@ -24,10 +26,13 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         "GhostShell.Application",
         "GhostShell.Browser",
         "GhostShell.Core",
+        "GhostShell.Databases",
+        "GhostShell.Docking",
         "GhostShell.Files",
         "GhostShell.Infrastructure",
         "GhostShell.Mcp",
         "GhostShell.Monitoring",
+        "GhostShell.Previews",
         "GhostShell.Protocol",
         "GhostShell.SessionHost",
         "GhostShell.Terminal",
@@ -166,7 +171,15 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 .GetProperty("packages")
                 .EnumerateArray()
                 .ToArray();
-            Assert.Equal(19, packages.Length);
+            Assert.Equal(24, packages.Length);
+            AssertProjectPackage(
+                packages,
+                "Exclr8Cef",
+                "Exclr8Cef.dll");
+            AssertProjectPackage(
+                packages,
+                "Exclr8Cef.WebView",
+                "Exclr8Cef.WebView.dll");
             AssertProjectPackage(
                 packages,
                 "GhostShell.Agent",
@@ -185,8 +198,20 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 "GhostShell.Browser.dll");
             AssertProjectPackage(
                 packages,
+                "GhostShell.Databases",
+                "GhostShell.Databases.dll");
+            AssertProjectPackage(
+                packages,
+                "GhostShell.Docking",
+                "GhostShell.Docking.dll");
+            AssertProjectPackage(
+                packages,
                 "GhostShell.Mcp",
                 "GhostShell.Mcp.dll");
+            AssertProjectPackage(
+                packages,
+                "GhostShell.Previews",
+                "GhostShell.Previews.dll");
             Assert.Single(packages, package =>
                 package.GetProperty("name").GetString() == "libghostty-vt"
                 && package.GetProperty("licenseDeclared").GetString() == "MIT");
@@ -205,7 +230,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 relationship.GetProperty("relationshipType").GetString()
                 == "DESCRIBES");
             Assert.Equal(
-                18,
+                23,
                 relationships.Count(relationship =>
                     relationship.GetProperty("relationshipType").GetString()
                     == "DEPENDS_ON"));
@@ -632,6 +657,35 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.False(Directory.Exists(output));
     }
 
+    [Fact]
+    public void Builder_rejects_a_file_license_without_exact_archived_evidence()
+    {
+        var publish = CreatePublishPayload();
+        var inputs = _evidenceInputs[publish];
+        var catalog = JsonNode.Parse(
+            File.ReadAllText(inputs.CatalogPath))!.AsObject();
+        var runtime = catalog["dependencies"]!
+            .AsArray()
+            .Select(node => node!.AsObject())
+            .Single(node =>
+                node["identity"]!.GetValue<string>()
+                == "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10");
+        runtime["nuspecLicenseType"] = "file";
+        runtime["nuspecLicense"] = "LICENSE.txt";
+        File.WriteAllText(inputs.CatalogPath, catalog.ToJsonString());
+        var output = OutputPath();
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(
+                Request(publish, output)));
+
+        Assert.Contains(
+            "must extract its exact nuspec license file",
+            exception.Message,
+            StringComparison.Ordinal);
+        Assert.False(Directory.Exists(output));
+    }
+
     [Theory]
     [InlineData("wrong-root")]
     [InlineData("mixed-namespace")]
@@ -1047,6 +1101,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "--font-assets-catalog", "/repo/licenses/terminal-font-assets.json",
             "--font-assets-build-receipt", "/repo/native/terminal-font-assets-build-receipt.json",
             "--nuget-packages", "/packages",
+            "--cef-runtime-root", "/repo/native/cef/osx-arm64",
+            "--cef-runtime-catalog", "/repo/licenses/cef-runtime-components.json",
+            "--runtime-identifier", "osx-arm64",
         ]);
 
         Assert.Equal("/publish", command.PublishDirectory);
@@ -1066,6 +1123,11 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "/repo/native/terminal-font-assets-build-receipt.json",
             command.FontAssetsBuildReceiptPath);
         Assert.Equal("/packages", command.NuGetPackageRoot);
+        Assert.Equal("/repo/native/cef/osx-arm64", command.CefRuntimeRoot);
+        Assert.Equal(
+            "/repo/licenses/cef-runtime-components.json",
+            command.CefRuntimeCatalogPath);
+        Assert.Equal("osx-arm64", command.RuntimeIdentifier);
         Assert.Throws<PackagingUsageException>(() => MacOsPackagingCommand.Parse(
         [
             "--publish", "/publish",
@@ -1077,6 +1139,60 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "--native-build-receipt", "/repo/native/native-terminal-build-receipt.json",
             "--nuget-packages", "/packages",
         ]));
+    }
+
+    [Fact]
+    public void Command_parser_rejects_x64_until_its_full_evidence_closure_exists()
+    {
+        var exception = Assert.Throws<PackagingUsageException>(() =>
+            MacOsPackagingCommand.Parse(
+            [
+                "--publish", "/publish",
+                "--output", "/output/GhostShell.app",
+                "--version", "1.2.3",
+                "--build-version", "42",
+                "--component-catalog", "/repo/licenses/managed-components.json",
+                "--native-component-catalog", "/repo/licenses/native-terminal-components.json",
+                "--native-build-receipt", "/repo/native/native-terminal-build-receipt.json",
+                "--font-assets-catalog", "/repo/licenses/terminal-font-assets.json",
+                "--font-assets-build-receipt", "/repo/native/terminal-font-assets-build-receipt.json",
+                "--nuget-packages", "/packages",
+                "--cef-runtime-root", "/repo/native/cef/osx-x64",
+                "--cef-runtime-catalog", "/repo/licenses/cef-runtime-components.json",
+                "--runtime-identifier", "osx-x64",
+            ]));
+
+        Assert.Contains(
+            "supports only osx-arm64",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Builder_rejects_x64_before_inspecting_the_publish_payload()
+    {
+        var request = new MacOsAppBundleRequest(
+            "/missing/publish",
+            "/missing/output/GhostShell.app",
+            "1.2.3",
+            "42",
+            "/missing/managed-components.json",
+            "/missing/native-components.json",
+            "/missing/native-receipt.json",
+            "/missing/font-components.json",
+            "/missing/font-receipt.json",
+            "/missing/packages",
+            "/missing/cef",
+            "/missing/cef-components.json",
+            "osx-x64");
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new MacOsAppBundleBuilder().Build(request));
+
+        Assert.Contains(
+            "supports only osx-arm64",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     public void Dispose()

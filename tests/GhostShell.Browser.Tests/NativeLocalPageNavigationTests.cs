@@ -3,7 +3,7 @@ using GhostShell.Application;
 namespace GhostShell.Browser.Tests;
 
 /// <summary>
-/// A previewed local page has to reach the webview, and nothing else on this
+/// A previewed local page has to reach the embedded browser, and nothing else on this
 /// machine may follow it in. The parser stays shut to <c>file:</c> — these
 /// cover the one narrow opening beside it.
 /// </summary>
@@ -15,7 +15,7 @@ public sealed class NativeLocalPageNavigationTests
     [Fact]
     public void An_ordinary_address_resolves_with_no_local_page_permitted()
     {
-        Assert.True(AvaloniaNativeBrowserView.TryResolveNavigation(
+        Assert.True(CefBrowserView.TryResolveNavigation(
             new Uri("https://example.test/page"), null, out var address));
         Assert.Equal("https://example.test/page", address!.Value.AbsoluteUri);
     }
@@ -23,7 +23,7 @@ public sealed class NativeLocalPageNavigationTests
     [Fact]
     public void A_local_page_is_refused_when_none_was_asked_for()
     {
-        Assert.False(AvaloniaNativeBrowserView.TryResolveNavigation(
+        Assert.False(CefBrowserView.TryResolveNavigation(
             LocalUri("report.html"), null, out var address));
         Assert.Null(address);
     }
@@ -33,7 +33,7 @@ public sealed class NativeLocalPageNavigationTests
     {
         var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
 
-        Assert.True(AvaloniaNativeBrowserView.TryResolveNavigation(
+        Assert.True(CefBrowserView.TryResolveNavigation(
             LocalUri("report.html"), permitted, out var address));
         Assert.Same(permitted, address);
     }
@@ -45,7 +45,7 @@ public sealed class NativeLocalPageNavigationTests
 
         // The page's own markup deciding to load the shell's history file is
         // exactly what admitting a whole scheme would have allowed.
-        Assert.False(AvaloniaNativeBrowserView.TryResolveNavigation(
+        Assert.False(CefBrowserView.TryResolveNavigation(
             LocalUri("secrets.html"), permitted, out var address));
         Assert.Null(address);
     }
@@ -55,8 +55,31 @@ public sealed class NativeLocalPageNavigationTests
     {
         var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
 
-        Assert.False(AvaloniaNativeBrowserView.TryResolveNavigation(
+        Assert.False(CefBrowserView.TryResolveNavigation(
             new Uri(new Uri(PageDirectory).AbsoluteUri), permitted, out _));
+    }
+
+    [Fact]
+    public void A_local_page_may_load_an_adjacent_stylesheet()
+    {
+        var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
+
+        Assert.True(CefBrowserView.IsPermittedLocalSubresource(
+            LocalUri("report.css"),
+            permitted));
+    }
+
+    [Fact]
+    public void A_local_page_may_not_load_a_file_from_another_directory()
+    {
+        var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
+        var outside = OperatingSystem.IsWindows()
+            ? new Uri(@"C:\secrets\history.txt")
+            : new Uri("file:///secrets/history.txt");
+
+        Assert.False(CefBrowserView.IsPermittedLocalSubresource(
+            outside,
+            permitted));
     }
 
     [Fact]
@@ -64,7 +87,7 @@ public sealed class NativeLocalPageNavigationTests
     {
         var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
 
-        Assert.False(AvaloniaNativeBrowserView.TryResolveNavigation(
+        Assert.False(CefBrowserView.TryResolveNavigation(
             null, permitted, out var address));
         Assert.Null(address);
     }
@@ -76,7 +99,7 @@ public sealed class NativeLocalPageNavigationTests
 
         // A previewed page may link out to the web; that is the parser's
         // decision as always, not the local-page permit's.
-        Assert.True(AvaloniaNativeBrowserView.TryResolveNavigation(
+        Assert.True(CefBrowserView.TryResolveNavigation(
             new Uri("https://example.test/"), permitted, out var address));
         Assert.NotSame(permitted, address);
     }

@@ -3,18 +3,23 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repository_dir="$(cd -- "${script_dir}/.." && pwd -P)"
-dotnet="${repository_dir}/.dotnet/dotnet"
+dotnet="${GHOSTSHELL_DOTNET:-${repository_dir}/.dotnet/dotnet}"
 configuration="Release"
 version=""
 build_version=""
 output=""
+runtime_identifier=""
+cef_runtime_root=""
+sign_identity=""
+notary_profile=""
 component_catalog="${repository_dir}/licenses/managed-components.json"
+cef_runtime_catalog="${repository_dir}/licenses/cef-runtime-components.json"
 native_component_catalog="${repository_dir}/licenses/native-terminal-components.json"
-native_build_receipt="${repository_dir}/native/artifacts/osx-arm64/native-terminal-build-receipt.json"
 font_assets_catalog="${repository_dir}/licenses/terminal-font-assets.json"
 font_assets_directory="${repository_dir}/native/artifacts/common/fonts/JetBrainsMono"
 font_assets_build_receipt="${repository_dir}/native/artifacts/common/terminal-font-assets-build-receipt.json"
 declare_macos_sdk="${repository_dir}/scripts/declare-macos-sdk26.sh"
+sign_notarize_macos="${repository_dir}/scripts/sign-notarize-macos.sh"
 nuget_packages="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
 sql_language_artifact_directory="${repository_dir}/native/artifacts/osx-arm64"
 sql_language_worker="${sql_language_artifact_directory}/ghostshell-sql-language"
@@ -63,10 +68,17 @@ Usage:
     --version <major.minor.patch> \
     --build-version <number[.number...]> \
     --output <path/to/GhostShell.app> \
-    [--configuration Release]
+    [--runtime-identifier osx-arm64] \
+    [--cef-runtime-root <verified-runtime-directory>] \
+    [--configuration Release] \
+    [--sign-identity <Developer ID Application identity>] \
+    [--notary-profile <notarytool keychain profile>]
 
-Creates an unsigned, self-contained macOS arm64 release candidate. The
-destination must not already exist. The script never launches the application.
+Creates a self-contained macOS arm64 release candidate. Without --sign-identity
+the candidate is unsigned. --notary-profile requires signing. The destination
+must not already exist. The script never launches the application. Standalone
+CEF runtime builds retain separate osx-x64 support; the full application does
+not until its managed catalog and libghostty-vt receipt exist for that RID.
 EOF
 }
 
@@ -92,6 +104,26 @@ while [[ $# -gt 0 ]]; do
             configuration="$2"
             shift 2
             ;;
+        --runtime-identifier)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            runtime_identifier="$2"
+            shift 2
+            ;;
+        --cef-runtime-root)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            cef_runtime_root="$2"
+            shift 2
+            ;;
+        --sign-identity)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            sign_identity="$2"
+            shift 2
+            ;;
+        --notary-profile)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            notary_profile="$2"
+            shift 2
+            ;;
         --help|-h)
             usage
             exit 0
@@ -109,9 +141,30 @@ if [[ -z "${version}" || -z "${build_version}" || -z "${output}" ]]; then
     exit 64
 fi
 
-if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
-    echo "The current macOS release candidate requires an arm64 macOS host." >&2
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "The macOS release candidate requires a macOS host." >&2
     exit 1
+fi
+
+if [[ -z "${runtime_identifier}" ]]; then
+    runtime_identifier="osx-arm64"
+fi
+
+if [[ "${runtime_identifier}" != "osx-arm64" ]]; then
+    echo "Full macOS application packaging currently supports only osx-arm64; osx-x64 lacks a reviewed managed catalog and libghostty-vt receipt." >&2
+    exit 64
+fi
+expected_macho_architecture="arm64"
+
+native_artifact_directory="${repository_dir}/native/artifacts/${runtime_identifier}"
+native_build_receipt="${native_artifact_directory}/native-terminal-build-receipt.json"
+if [[ -z "${cef_runtime_root}" ]]; then
+    cef_runtime_root="${native_artifact_directory}/cef"
+fi
+
+if [[ -n "${notary_profile}" && -z "${sign_identity}" ]]; then
+    echo "--notary-profile requires --sign-identity." >&2
+    exit 64
 fi
 
 if [[ ! -x "${dotnet}" ]]; then
@@ -121,6 +174,11 @@ fi
 
 if [[ ! -x "${declare_macos_sdk}" ]]; then
     echo "The macOS SDK declaration helper is unavailable." >&2
+    exit 1
+fi
+
+if [[ -n "${sign_identity}" && ! -x "${sign_notarize_macos}" ]]; then
+    echo "The macOS signing helper is unavailable." >&2
     exit 1
 fi
 
@@ -143,9 +201,9 @@ if [[ -e "${output}" ]]; then
 fi
 
 required_native=(
-    "${repository_dir}/native/artifacts/osx-arm64/libghostty-vt.dylib"
-    "${repository_dir}/native/artifacts/osx-arm64/GHOSTTY-LICENSE"
-    "${repository_dir}/native/artifacts/osx-arm64/ghostty-vt-required-exports.txt"
+    "${native_artifact_directory}/libghostty-vt.dylib"
+    "${native_artifact_directory}/GHOSTTY-LICENSE"
+    "${native_artifact_directory}/ghostty-vt-required-exports.txt"
     "${sql_language_worker}"
     "${sql_language_artifact_directory}/THIRD-PARTY-NOTICES.md"
     "${sql_language_artifact_directory}/runtime-dependencies.txt"
@@ -251,6 +309,47 @@ if ! macos_version_is_at_most \
     exit 1
 fi
 
+if [[ ! -d "${cef_runtime_root}" ]]; then
+    echo "The verified CEF runtime root does not exist: ${cef_runtime_root}" >&2
+    exit 1
+fi
+if [[ ! -f "${cef_runtime_catalog}" ]]; then
+    echo "The reviewed CEF runtime catalog is unavailable." >&2
+    exit 1
+fi
+
+"${dotnet}" run \
+    --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
+    --configuration Release \
+    -- \
+    cef-runtime-validate \
+    --runtime-root "${cef_runtime_root}" \
+    --catalog "${cef_runtime_catalog}" \
+    --runtime-identifier "${runtime_identifier}"
+
+cef_framework="${cef_runtime_root}/Chromium Embedded Framework.framework"
+cef_macho_files=(
+    "${cef_runtime_root}/libexclr8cef.dylib"
+    "${cef_framework}/Chromium Embedded Framework"
+    "${cef_framework}/Libraries/libEGL.dylib"
+    "${cef_framework}/Libraries/libGLESv2.dylib"
+    "${cef_framework}/Libraries/libcef_sandbox.dylib"
+    "${cef_framework}/Libraries/libvk_swiftshader.dylib"
+    "${cef_runtime_root}/GhostSHELL Helper.app/Contents/MacOS/GhostSHELL Helper"
+    "${cef_runtime_root}/GhostSHELL Helper (Alerts).app/Contents/MacOS/GhostSHELL Helper (Alerts)"
+    "${cef_runtime_root}/GhostSHELL Helper (GPU).app/Contents/MacOS/GhostSHELL Helper (GPU)"
+    "${cef_runtime_root}/GhostSHELL Helper (Plugin).app/Contents/MacOS/GhostSHELL Helper (Plugin)"
+    "${cef_runtime_root}/GhostSHELL Helper (Renderer).app/Contents/MacOS/GhostSHELL Helper (Renderer)"
+)
+for cef_macho in "${cef_macho_files[@]}"; do
+    cef_file_description="$(/usr/bin/file -b "${cef_macho}")"
+    if [[ "${cef_file_description}" != *"Mach-O 64-bit"* \
+            || "${cef_file_description}" != *"${expected_macho_architecture}"* ]]; then
+        echo "CEF runtime file $(basename "${cef_macho}") has the wrong macOS architecture." >&2
+        exit 1
+    fi
+done
+
 working_dir="$(mktemp -d "${TMPDIR:-/tmp}/ghostshell-package-macos.XXXXXX")"
 candidate_parent="$(mktemp -d "${output_parent}/.ghostshell-package.XXXXXX")"
 candidate="${candidate_parent}/GhostShell.app"
@@ -264,13 +363,11 @@ publish_dir="${working_dir}/publish"
 "${dotnet}" publish \
     "${repository_dir}/src/GhostShell.Desktop/GhostShell.Desktop.csproj" \
     --configuration "${configuration}" \
-    --runtime osx-arm64 \
+    --runtime "${runtime_identifier}" \
     --self-contained true \
     --output "${publish_dir}" \
-    -p:Version="${version}" \
-    -p:AssemblyVersion="${version}" \
-    -p:FileVersion="${version}" \
-    -p:InformationalVersion="${version}" \
+    -p:GhostShellProductVersion="${version}" \
+    -p:GhostShellCefRuntimeArtifactDirectory="${cef_runtime_root}" \
     -p:DebugType=None \
     -p:DebugSymbols=false \
     -p:GhostShellSqlLanguageRequired=true
@@ -378,10 +475,13 @@ first_party_assemblies=(
     "GhostShell.Application.dll"
     "GhostShell.Browser.dll"
     "GhostShell.Core.dll"
+    "GhostShell.Databases.dll"
+    "GhostShell.Docking.dll"
     "GhostShell.Files.dll"
     "GhostShell.Infrastructure.dll"
     "GhostShell.Mcp.dll"
     "GhostShell.Monitoring.dll"
+    "GhostShell.Previews.dll"
     "GhostShell.Protocol.dll"
     "GhostShell.SessionHost.dll"
     "GhostShell.Terminal.dll"
@@ -404,14 +504,14 @@ if find "${publish_dir}" ! -type f ! -type d -print -quit | grep -q .; then
 fi
 
 if ! /usr/bin/file "${publish_dir}/GhostShell" \
-        | grep -Eq 'Mach-O 64-bit executable arm64'; then
-    echo "The published GhostShell executable is not a macOS arm64 Mach-O executable." >&2
+        | grep -Eq "Mach-O 64-bit executable ${expected_macho_architecture}"; then
+    echo "The published GhostShell executable has the wrong macOS architecture." >&2
     exit 1
 fi
 
 if ! /usr/bin/file "${publish_dir}/libghostty-vt.dylib" \
-        | grep -Eq 'Mach-O 64-bit dynamically linked shared library arm64'; then
-    echo "libghostty-vt.dylib is not a macOS arm64 dynamic library." >&2
+        | grep -Eq "Mach-O 64-bit dynamically linked shared library ${expected_macho_architecture}"; then
+    echo "libghostty-vt.dylib has the wrong macOS architecture." >&2
     exit 1
 fi
 if ! /usr/bin/otool -D "${publish_dir}/libghostty-vt.dylib" \
@@ -456,7 +556,10 @@ fi
     --native-build-receipt "${native_build_receipt}" \
     --font-assets-catalog "${font_assets_catalog}" \
     --font-assets-build-receipt "${font_assets_build_receipt}" \
-    --nuget-packages "${nuget_packages}"
+    --nuget-packages "${nuget_packages}" \
+    --cef-runtime-root "${cef_runtime_root}" \
+    --cef-runtime-catalog "${cef_runtime_catalog}" \
+    --runtime-identifier "${runtime_identifier}"
 
 /usr/bin/plutil -lint "${candidate}/Contents/Info.plist"
 
@@ -497,6 +600,17 @@ if [[ "${candidate_sql_language_dependencies_sha}" != "${sql_language_expected_d
     exit 1
 fi
 
+if [[ -n "${sign_identity}" ]]; then
+    sign_arguments=(
+        --app "${candidate}"
+        --identity "${sign_identity}"
+    )
+    if [[ -n "${notary_profile}" ]]; then
+        sign_arguments+=(--notary-profile "${notary_profile}")
+    fi
+    "${sign_notarize_macos}" "${sign_arguments[@]}"
+fi
+
 "${dotnet}" run \
     --project \
     "${repository_dir}/tools/GhostShell.AccessibilityAcceptance/GhostShell.AccessibilityAcceptance.csproj" \
@@ -507,4 +621,10 @@ fi
     --package "${candidate}" \
     --output "${output}"
 
-echo "Created unsigned macOS release candidate at ${output}."
+if [[ -n "${notary_profile}" ]]; then
+    echo "Created signed and notarized macOS release candidate at ${output}."
+elif [[ -n "${sign_identity}" ]]; then
+    echo "Created signed macOS release candidate at ${output}."
+else
+    echo "Created unsigned macOS release candidate at ${output}."
+fi

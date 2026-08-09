@@ -27,7 +27,7 @@ The initial desktop product MUST be useful without the agent. Agent features enh
 
 - **Lifecycle follows the host mode.** In the desktop application, closing a panel, tab, or window closes its associated sessions using normal graceful-close and running-process confirmation behavior. In future server mode, closing or reloading a client page only detaches that client; server-owned sessions continue running until an explicit close, timeout, or retention policy applies.
 - **One model, several front ends.** Desktop, Quick Terminal, future web/WASM, CLI, ACP, and A2A clients use the same application operations and runtime protocol.
-- **Native where it matters.** Window materials, system appearance, key conventions, accessibility, and browser engines adapt to the host OS. GhostSHELL retains a recognizable semantic design system.
+- **Native where it matters.** Window materials, system appearance, key conventions, and accessibility adapt to the host OS. GhostSHELL retains a recognizable semantic design system while its embedded browser uses one pinned Chromium runtime across desktop platforms.
 - **Automation is visible and governed.** Every agent action is scoped, cancellable, audited, and passed through the same capability broker.
 - **Definitions are not runtime state.** A saved screen is a reusable definition; opening one creates runtime panel and session instances.
 - **Capabilities are explicit.** Platform-specific features expose support flags and useful fallbacks instead of silently doing less.
@@ -145,7 +145,7 @@ For desktop v1, the session host runs in the desktop process behind an in-memory
 | `GhostShell.Protocol` | Versioned serializable DTOs, envelopes, event and stream contracts | Core primitives only |
 | `GhostShell.SessionHost` | Runtime registry, lifecycle, attachments, input arbitration, projections | Application, Protocol, engine ports |
 | `GhostShell.Terminal` | Terminal/PTY contracts, libghostty shim adapter, screen/input models | Core/Application contracts; native shim privately |
-| `GhostShell.Browser` | Host-native webview adapter and logical browser session | Application contracts; native webview SDK privately |
+| `GhostShell.Browser` | CEF off-screen adapter, process runtime, and logical browser session | Application contracts; vendored Exclr8CEF privately |
 | `GhostShell.Files` | Provider-neutral file locations, capabilities, transfers, previews, and protocol adapters | Core/Application contracts; protocol SDKs privately |
 | `GhostShell.Agent` | Provider-neutral conversation loop, strict stream reduction, bounded context, and inert tool proposals | Core primitives only |
 | `GhostShell.Agent.Providers` | Anthropic and OpenAI-compatible model discovery/streaming plus zero-tool chat composition | Agent, Application, Core; BCL HTTP/SSE privately |
@@ -189,7 +189,7 @@ The protocol MUST support:
 - bounded streams, backpressure, and explicit resynchronization;
 - additive version evolution before breaking versions are introduced.
 
-Do not expose Avalonia types, libghostty structs, webview objects, or provider SDK payloads over the protocol.
+Do not expose Avalonia types, libghostty structs, browser-engine objects, or provider SDK payloads over the protocol.
 
 ## 5. Session host and panels
 
@@ -496,24 +496,26 @@ or suspended, and versioning state can change after any session-time check.
 
 ## 9. Built-in browser
 
-Desktop browser panels MUST use the host's native embedded engine:
+Desktop browser panels use the pinned Chromium Embedded Framework runtime:
 
-| Platform | Primary engine |
+| Platform | Rendering/deployment |
 |---|---|
-| macOS | `WKWebView` |
-| Windows | WebView2 |
-| Linux GNOME/KDE | WPE WebKit; WebKitGTK fallback |
+| macOS | CPU OSR; bundled framework and five helper applications |
+| Windows | CPU OSR; flat runtime (release blocked on the CEF 150 sandbox bootstrap) |
+| Linux | CPU OSR; flat runtime plus qualified Chromium sandbox |
 
 Profiles own cookies, storage, permissions, downloads, cache, and history. Ephemeral profiles are supported. OAuth and security-sensitive authentication flows SHOULD be opened in the system browser when the identity provider disallows embedded user agents.
 
-In desktop mode, a browser session and its native webview follow the lifetime of the owning panel. Closing the panel closes the browser session. An engine-process crash may recreate the panel from the last logical URL/history/profile snapshot, but the UI must clearly report that volatile page state was lost.
+In desktop mode, a browser session and its CEF view follow the lifetime of the
+owning panel. Closing the panel closes the browser. A renderer-process crash
+replaces the frozen view and reports loss of volatile page state.
 
-**Implemented foundation (2026-07-23).** `GhostShell.Application` now exposes
+**Implemented CEF foundation (2026-08-08).** `GhostShell.Application` exposes
 closed browser address, state, result, renderer, logical-session, and typed host
-operation contracts. `GhostShell.Browser` privately wraps the official
-`Avalonia.Controls.WebView` 12.0.1 `NativeWebView`; `GhostShell.App` and the
-session host contain no vendor webview types. The desktop composition root owns
-the concrete adapter. Browser panels are reachable from saved screens, the
+operation contracts. `GhostShell.Browser` privately wraps the source-pinned
+Exclr8CEF CPU-OSR control; `GhostShell.App` and the session host contain no CEF
+types. The desktop composition root owns the concrete adapter and the desktop
+entry point owns CEF subprocess/init/pump/shutdown ordering. Browser panels are reachable from saved screens, the
 launcher, the panel chooser, and command search; their chrome supports address,
 back, forward, reload, stop, status, keyboard focus, and accessible names.
 HTTP(S) and `about:blank` are the only accepted top-level addresses, new windows
@@ -523,12 +525,16 @@ dispatches the typed operations with normal revision/deadline/cancellation
 guards, and closes browser sessions through the existing panel/tab/window
 lifecycle. Runtime recovery retains the last logical URL, while detach/reattach
 preserves monotonic document revisions and does not reload the same retained
-renderer. [ADR 0020](adr/0020-native-webview-wrapper-and-first-browser-capability-slice.md)
-records the deliberately narrow capability matrix.
+renderer. The view is ordinary Avalonia content, so layout, clipping, and
+overlays no longer depend on a native child surface. [ADR 0042](adr/0042-cef-off-screen-browser-runtime.md)
+records the runtime, packaging, and release gates.
 
 ### 9.1 Engine-neutral automation
 
-The user-facing/agent-facing API follows the useful interaction model of `agent-browser`, while the backend remains a native webview rather than assuming Chrome DevTools Protocol everywhere.
+The engine-neutral contracts retain the useful interaction model of
+`agent-browser`. The production CEF adapter currently advertises state and
+governed navigation only; semantic automation is deferred to its own trust-model
+pass and fails closed in this migration.
 
 **Implemented governed contracts (2026-07-24).** The native agent runtime has
 ten closed typed browser operations: `browser.read_state`, `browser.snapshot`,
@@ -539,7 +545,7 @@ observations under `BrowserData`; click, fill, and check are mutations under
 `BrowserInteraction`; and the five navigation operations are mutations under
 `BrowserNavigation`. Snapshot capture, click, fill, and check use fixed
 application-private native-adapter scripts. No provider-authored script,
-raw-JavaScript tool, selector, DOM or native-webview object, CDP client, or
+raw-JavaScript tool, selector, DOM or browser-engine object, CDP client, or
 Node.js child process enters the public path.
 
 The production desktop advertises a narrower immutable profile: state read,
@@ -729,13 +735,19 @@ Required common operations:
 - profile/cookie/storage management through explicit capabilities;
 - downloads, dialogs, permission prompts, certificate failures, and new-window requests as events.
 
-Console and network inspection are optional engine capabilities. WebView2 can offer richer DevTools-backed behavior; WKWebView, WPE WebKit, and WebKitGTK adapters return `UnsupportedCapability` for unavailable features rather than simulating success. Named-platform snapshot, synthetic-click/fill/check, event-ordering, and interaction conformance remains required.
+Console, network inspection, DevTools integration, and semantic interaction are
+optional future CEF capabilities. Unimplemented operations return
+`UnsupportedCapability` or outcome-unknown rather than simulating success.
 
 Every browser tool call passes through domain allow/deny policy, content-boundary labeling, and the capability broker. Browser page text is untrusted input and MUST never silently elevate tool permissions.
 
-### 9.2 Native-view composition constraint
+### 9.2 Off-screen composition
 
-Native child views can impose z-order, clipping, focus, and transform limitations under Avalonia. Browser and terminal panel layouts MUST use rectangular, non-transformed hosts. Popovers, agent surfaces, and modal actions MUST be tested above native surfaces; when composition is unsupported they move to a docked sibling, separate top-level, or platform-native overlay. No core workflow may require an Avalonia flyout to paint reliably over a native surface.
+CEF paints into an Avalonia-owned visual. Browser panels therefore follow normal
+Avalonia z-order, clipping, transforms, popovers, and modal overlays. The CPU OSR
+path coalesces pending frames to bound memory and latency. Shared-texture OSR is
+not enabled until every platform has a complete handle ABI, GPU-copy lifetime
+proof, device-loss recovery, and acceptance evidence.
 
 ## 10. Built-in agent
 
@@ -1550,18 +1562,18 @@ Exit criteria:
 - Quick Terminal shares definitions/settings but follows its own focus and restore policy.
 - A provider conformance suite verifies listing, bounded reads, writes, conflicts, cancellation, error mapping, and every declared optional capability for POSIX, Windows, S3, SFTP, FTP, SMB, and WebDAV test backends.
 
-### M3 — Native browser and governed agent
+### M3 — Embedded browser and governed agent
 
 **Implementation status: governed terminal, including bounded paste and closed
 destructive character chords,
 scope-clipped workspace-graph observations, governed bounded File Viewer
 observations plus exact mkdir/permanent-delete contracts (with production
 delete fail-closed pending an eligible provider), production browser
-state/navigation and candidate
-snapshot/click/fill/check contracts, mixed panel/tab/workspace targeting,
+state/navigation contracts (now on CEF OSR), deferred
+snapshot/click/fill/check implementation, mixed panel/tab/workspace targeting,
 selected-terminal targeting, bounded initial provider steering, governed native
-stdio MCP, and the native browser foundation are in progress
-(2026-07-25).**
+stdio MCP, and the embedded Chromium foundation are in progress
+(2026-08-08).**
 `GhostShell.Agent` now provides the native, in-process, provider-neutral kernel
 selected by ADR 0017. It accepts a closed typed provider stream, reduces it
 under event/text/tool/JSON limits, preserves provider stop reasons, commits only
@@ -2075,9 +2087,10 @@ Saved-screen template targeting beyond the live current-tab scope, browser
 profiles and permission/download/error flows, reference-backed interactions
 beyond click/fill/check, named-platform snapshot/redirect/click/fill/check, and browser
 automation conformance and document automation remain incomplete. The
-native browser foundation, governed state/navigation tools, candidate
-snapshot/click/fill/check contracts, and one-action top-level origin containment are
-implemented. Snapshot/click/fill/check are not production-advertised and the work
+CEF browser foundation, governed state/navigation tools, closed
+snapshot/click/fill/check contracts, and top-level origin containment are
+implemented. Snapshot/click/fill/check are not implemented by or
+production-advertised on the CEF adapter, and the work
 does not yet satisfy all browser or agent-control exit criteria below. The
 governed direct-stdio MCP bridge, profile management, and bounded one-shot
 Settings initialization/discovery test are implemented; persistent health
@@ -2086,7 +2099,7 @@ transports remain later work.
 
 Deliver:
 
-- native browser adapters, profiles, browser chrome, permissions/download/error flows;
+- embedded CEF runtime, profiles, browser chrome, permissions/download/error flows;
 - initial governed browser state/snapshot/click/fill/check/navigation plus the remaining
   common browser automation subset and capability matrix;
 - AI provider settings and secure credential references;
@@ -2099,8 +2112,8 @@ Deliver:
 
 Exit criteria:
 
-- One conformance suite runs against WKWebView, WebView2, and WPE WebKit (with
-  the WebKitGTK fallback where selected) and records optional capabilities.
+- One conformance suite runs the pinned CEF runtime on macOS, Windows, and Linux
+  and records optional capabilities.
 - An agent can operate a test interactive TUI through screen reads and exact keys, with user interruption and cancellation.
 - An agent can inspect and manipulate a test page using stable snapshot references.
 - `Off`, `Ask`, `Auto`, and `YOLO` are enforced session-host-side, not merely reflected in disabled UI; YOLO confirmation, indicator, audit, and immediate disable behavior are tested.
@@ -2221,7 +2234,12 @@ critical path to agent automation.
 
 The server runs `SessionHost` independently of a browser page and serves a versioned static HTML/WASM client over HTTPS alongside its authenticated streaming gateway. Closing or reloading the page detaches the client; it does not terminate sessions. The browser receives a snapshot and resumes ordered streams by sequence.
 
-The WASM application is a client shell, not a place to run native webviews or server PTYs. Avalonia Browser/WASM MAY provide shared chrome and view models; terminal display uses a web-capable renderer driven by server screen diffs. Browser panels in server mode use a server/browser backend or an explicitly client-local browser capability rather than pretending `WKWebView` exists in WASM.
+The WASM application is a client shell, not a place to run the desktop CEF
+runtime or server PTYs. Avalonia Browser/WASM MAY provide shared chrome and view
+models; terminal display uses a web-capable renderer driven by server screen
+diffs. Browser panels in server mode use a server/browser backend or an
+explicitly client-local browser capability rather than pretending desktop CEF
+exists in WASM.
 
 Server mode additionally requires TLS, authentication, session revocation, CSRF/origin controls, tenant/user isolation, quotas, rate limits, encrypted secret storage, audit retention, resumable streams, backpressure, and deployment/upgrade operations. Multi-user collaboration is out of scope until explicitly designed.
 
@@ -2310,7 +2328,7 @@ Create concise ADRs for these decisions before their corresponding implementatio
 3. in-process desktop versus standalone server session host and transport;
 4. SQLite schema strategy and scrollback storage;
 5. file-provider libraries, capability mapping, and transfer semantics;
-6. native webview wrappers and browser capability matrix;
+6. embedded browser runtime and capability matrix;
 7. native agent runtime, provider boundary, lifecycle, and capability-broker integration;
 8. platform appearance adapters and native material use;
 9. server terminal renderer and streaming representation;
@@ -2324,7 +2342,7 @@ Defaults until an ADR changes them:
 - Desktop close actions close their owned sessions; only server-client disconnect/reload uses persistent detach semantics.
 - SQLite stores definitions/snapshots/audit metadata; the OS vault stores secrets.
 - The application follows the OS accent by default and uses GhostSHELL bronze only when no OS accent is available.
-- Desktop browser panels use native webviews.
+- Desktop browser panels use the source-pinned CEF off-screen runtime.
 - File providers use maintained protocol libraries or platform APIs behind the common capability contract.
 - Pi is a behavior reference only; the desktop agent runtime is native .NET.
 - `YOLO` is supported but is never an inferred or default agent permission.
@@ -2343,9 +2361,8 @@ These are reference points, not substitute specifications:
 - [GNOME `AdwStyleManager`](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/main/class.StyleManager.html)
 - [KDE `KColorScheme`](https://api.kde.org/kcolorscheme.html)
 - [Ghostty/libghostty](https://github.com/ghostty-org/ghostty)
-- [Apple `WKWebView`](https://developer.apple.com/documentation/webkit/wkwebview/)
-- [Microsoft WebView2 user-data profiles](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/user-data-folder)
-- [WebKitGTK `WebKitWebView`](https://webkitgtk.org/reference/webkit2gtk/stable/class.WebView.html)
+- [Chromium Embedded Framework](https://github.com/chromiumembedded/cef)
+- [CEF off-screen rendering](https://github.com/chromiumembedded/cef/blob/master/tests/cefclient/browser/osr_renderer.h)
 - [`vercel-labs/agent-browser`](https://github.com/vercel-labs/agent-browser)
 - [`earendil-works/pi`](https://github.com/earendil-works/pi) and its [SDK documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md)
 - [`manaflow-ai/cmux`](https://github.com/manaflow-ai/cmux)

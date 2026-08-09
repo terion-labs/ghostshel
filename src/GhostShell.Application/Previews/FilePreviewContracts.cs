@@ -63,7 +63,7 @@ public sealed record ImagePreviewRendering : FilePreviewRendering;
 /// <summary>A document, rendered a page at a time.</summary>
 public sealed record PdfPreviewRendering : FilePreviewRendering;
 
-/// <summary>A web page, rendered by the system's webview.</summary>
+/// <summary>A web page, rendered by the embedded browser.</summary>
 public sealed record WebPagePreviewRendering : FilePreviewRendering;
 
 /// <summary>A database, opened with the shell's database viewer.</summary>

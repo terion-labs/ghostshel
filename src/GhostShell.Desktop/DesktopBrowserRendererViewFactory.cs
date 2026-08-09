@@ -9,6 +9,6 @@ internal sealed class DesktopBrowserRendererViewFactory(
     public BrowserRendererView Create()
     {
         var surface = new BrowserSurface(sessionFactory.CapabilityProfile);
-        return new BrowserRendererView(surface, surface);
+        return new BrowserRendererView(surface, surface, surface);
     }
 }

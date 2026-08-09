@@ -84,15 +84,8 @@
       </Grid>
     </controls:PanelChrome.HeaderContent>
 
-    <!--
-      Along the bottom, where a browser has always put what it is doing — and
-      where, in this panel, it is the only thing the shell can still put
-      anywhere: the page is an operating-system view drawn above every pixel the
-      shell has, so a status line inside the panel is a status line nobody sees
-      and a control inside it is a control nobody can press. The header keeps its
-      width for the address instead, and the corner past the text stays clear so
-      a floating panel has somewhere to be resized from.
-    -->
+    <!-- Keep page status in a stable footer so navigation and failure messages
+         remain visible without taking width from the address editor. -->
     <controls:PanelChrome.Footer>
       <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <TextBlock
@@ -122,47 +115,10 @@
           RendererView="{Binding RendererView}"
           SessionClient="{Binding SessionClient}"
           SessionRequest="{Binding SessionRequest}" />
-      <!--
-        What the panel is, for the moment it cannot show what it holds. A native
-        view is composited above everything the shell draws, so while the dock
-        needs its placement targets seen the page steps aside — and an empty
-        rectangle mid-drag reads as a panel that has broken rather than one that
-        is being moved.
-      -->
       <Border
           Margin="1"
           Padding="{controls:Inset Xl}"
           Background="{DynamicResource ShellBackgroundBrush}"
-          IsHitTestVisible="False"
-          IsVisible="{Binding IsSurfaceSuspended, ElementName=RuntimeBrowser}">
-        <StackPanel
-            MaxWidth="440"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="{DynamicResource ShellSpaceSm}">
-          <icons:SymbolIcon
-              FontSize="24"
-              Foreground="{DynamicResource ShellMutedBrush}"
-              Symbol="Globe" />
-          <TextBlock
-              FontSize="{DynamicResource ShellFontSize11}"
-              FontWeight="SemiBold"
-              Text="{Binding Title}"
-              TextAlignment="Center"
-              TextTrimming="CharacterEllipsis" />
-          <TextBlock
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize10}"
-              Text="{Binding AddressText, ElementName=RuntimeBrowser}"
-              TextAlignment="Center"
-              TextTrimming="CharacterEllipsis" />
-        </StackPanel>
-      </Border>
-      <Border
-          Margin="1"
-          Padding="{controls:Inset Xl}"
-          Background="{DynamicResource ShellBackgroundBrush}"
-          IsHitTestVisible="False"
           IsVisible="{Binding ShowFallback, ElementName=RuntimeBrowser}">
         <StackPanel
             MaxWidth="440"

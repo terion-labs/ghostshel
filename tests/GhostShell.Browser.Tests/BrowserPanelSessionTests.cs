@@ -501,7 +501,7 @@ public sealed class BrowserPanelSessionTests
     public async Task DetachInvalidatesSurfaceElementReferences()
     {
         await using var session = Session(BrowserAddress.Blank);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             SnapshotResult = NativeBrowserSnapshotResult.Success(
                 new NativeBrowserSnapshot(
@@ -718,7 +718,7 @@ public sealed class BrowserPanelSessionTests
     public async Task StopInterruptsGovernedNavigationWaitingForNativeCompletion()
     {
         await using var session = Session(BrowserAddress.Blank);
-        var nativeView = new RecordingNativeBrowserView
+        var nativeView = new RecordingEmbeddedBrowserView
         {
             AcceptStop = true,
         };

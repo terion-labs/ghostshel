@@ -10,18 +10,23 @@ internal sealed record MacOsPackagingCommand(
     string NativeBuildReceiptPath,
     string FontAssetsCatalogPath,
     string FontAssetsBuildReceiptPath,
-    string NuGetPackageRoot)
+    string NuGetPackageRoot,
+    string CefRuntimeRoot,
+    string CefRuntimeCatalogPath,
+    string RuntimeIdentifier)
 {
     public static MacOsPackagingCommand Parse(IReadOnlyList<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        if (arguments.Count != 20)
+        if (arguments.Count != 26)
         {
             throw new PackagingUsageException(
                 "macos requires --publish, --output, --version, --build-version, "
                 + "--component-catalog, --native-component-catalog, "
                 + "--native-build-receipt, --font-assets-catalog, "
-                + "--font-assets-build-receipt, and --nuget-packages.");
+                + "--font-assets-build-receipt, --nuget-packages, "
+                + "--cef-runtime-root, --cef-runtime-catalog, and "
+                + "--runtime-identifier.");
         }
 
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -38,7 +43,10 @@ internal sealed record MacOsPackagingCommand(
                     or "--native-build-receipt"
                     or "--font-assets-catalog"
                     or "--font-assets-build-receipt"
-                    or "--nuget-packages"))
+                    or "--nuget-packages"
+                    or "--cef-runtime-root"
+                    or "--cef-runtime-catalog"
+                    or "--runtime-identifier"))
             {
                 throw new PackagingUsageException($"Unknown option {name}.");
             }
@@ -59,7 +67,10 @@ internal sealed record MacOsPackagingCommand(
             Required(values, "--native-build-receipt"),
             Required(values, "--font-assets-catalog"),
             Required(values, "--font-assets-build-receipt"),
-            Required(values, "--nuget-packages"));
+            Required(values, "--nuget-packages"),
+            Required(values, "--cef-runtime-root"),
+            Required(values, "--cef-runtime-catalog"),
+            RequireSupportedAppRuntimeIdentifier(values));
     }
 
     public MacOsAppBundleRequest ToRequest() => new(
@@ -72,7 +83,22 @@ internal sealed record MacOsPackagingCommand(
         NativeBuildReceiptPath,
         FontAssetsCatalogPath,
         FontAssetsBuildReceiptPath,
-        NuGetPackageRoot);
+        NuGetPackageRoot,
+        CefRuntimeRoot,
+        CefRuntimeCatalogPath,
+        RuntimeIdentifier);
+
+    private static string RequireSupportedAppRuntimeIdentifier(
+        IReadOnlyDictionary<string, string> values)
+    {
+        var value = Required(values, "--runtime-identifier");
+        return value == "osx-arm64"
+            ? value
+            : throw new PackagingUsageException(
+                "Full macOS application packaging currently supports only "
+                + "osx-arm64; osx-x64 lacks a reviewed managed catalog and "
+                + "libghostty-vt receipt.");
+    }
 
     private static string Required(
         IReadOnlyDictionary<string, string> values,

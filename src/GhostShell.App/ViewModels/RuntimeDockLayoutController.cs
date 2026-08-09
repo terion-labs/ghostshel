@@ -797,7 +797,7 @@ internal sealed class RuntimeDockFactory : Factory
     /// Takes a panel out of the tiled layout without ending it.
     ///
     /// The document survives — its identity, its context, and so its session and
-    /// its native surface. It simply has no place in the layout for a while,
+    /// rendered content. It simply has no place in the layout for a while,
     /// because the shell is drawing it somewhere the layout does not reach.
     /// </summary>
     public IDocument? Detach(string panelId)

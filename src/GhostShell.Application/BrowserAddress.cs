@@ -83,7 +83,7 @@ public sealed record BrowserAddress
 
     /// <summary>
     /// A page carried as markup rather than fetched from anywhere: a previewed
-    /// remote HTML file whose bytes are already in memory. The webview shows
+    /// remote HTML file whose bytes are already in memory. The browser shows
     /// the markup directly, so the file is never written to this machine.
     ///
     /// Like <see cref="ForLocalFile"/>, deliberately unreachable from

@@ -224,7 +224,7 @@ public enum FilePanelPreviewKind
     /// <summary>A PDF document, rendered a page at a time from the whole file.</summary>
     Pdf,
 
-    /// <summary>A web page, rendered by the operating system's webview.</summary>
+    /// <summary>A web page, rendered by the embedded browser.</summary>
     Html,
 }
 

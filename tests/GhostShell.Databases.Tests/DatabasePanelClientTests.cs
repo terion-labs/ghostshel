@@ -9,11 +9,10 @@ public sealed class DatabasePanelClientTests : IDisposable
         Path.GetTempPath(),
         $"ghostshell-databases-tests-{Guid.NewGuid():N}.db");
 
-    private string ConnectionString => $"Data Source={_databasePath}";
+    private string ConnectionString => $"Data Source={_databasePath};Pooling=False";
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (File.Exists(_databasePath))
         {
             File.Delete(_databasePath);

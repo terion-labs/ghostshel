@@ -1,0 +1,160 @@
+# Build matrix: every PR and every push to main runs the native shim +
+# managed bindings on macOS arm64, macOS x64, Windows x64, and Linux x64.
+# Each job uploads its build artifact for downstream debugging.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  # CI builds publish a pre-release version per push, e.g. 0.8.0-ci.42, to
+  # GitHub Packages (nuget.pkg.github.com). Tag-driven proper releases on
+  # nuget.org are handled by release.yml.
+  CI_VERSION: 0.8.0-ci.${{ github.run_number }}
+
+jobs:
+  build:
+    name: ${{ matrix.os }} (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            rid: osx-arm64
+            cef_platform: macosarm64
+            cmake_arch: ""
+          # osx-x64 is cross-compiled from the macos-14 (Apple Silicon) runner.
+          # See release.yml for context.
+          - os: macos-14
+            rid: osx-x64
+            cef_platform: macosx64
+            cmake_arch: "-DCMAKE_OSX_ARCHITECTURES=x86_64"
+          - os: windows-latest
+            rid: win-x64
+            cef_platform: windows64
+            cmake_arch: ""
+          - os: ubuntu-22.04
+            rid: linux-x64
+            cef_platform: linux64
+            cmake_arch: ""
+          - os: ubuntu-22.04-arm
+            rid: linux-arm64
+            cef_platform: linuxarm64
+            cmake_arch: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup CMake / Ninja (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: |
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install cmake ninja
+          else
+            sudo apt-get update
+            sudo apt-get install -y cmake ninja-build build-essential libgtk-3-dev libnss3-dev
+          fi
+
+      - name: Setup CMake / Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y ninja
+          # cmake is preinstalled on windows-latest
+
+      - name: Setup MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache CEF binary distribution
+        uses: actions/cache@v4
+        with:
+          path: third_party/cef/${{ matrix.cef_platform }}
+          key: cef-${{ matrix.cef_platform }}-${{ hashFiles('cef.json') }}
+
+      - name: Download CEF
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.cef_platform }}
+        run: ./scripts/download-cef.sh
+
+      - name: Configure (CMake)
+        shell: bash
+        env:
+          EXCLR8CEF_PLATFORM: ${{ matrix.cef_platform }}
+        run: |
+          cmake -S native -B native/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_arch }}
+
+      - name: Build native shim
+        shell: bash
+        run: cmake --build native/build --parallel
+
+      - name: Run native version probe
+        shell: bash
+        run: |
+          # The probe links the shim and prints CEF version + Chromium version.
+          ./native/build/shim/exclr8cef_version_probe || ./native/build/shim/Release/exclr8cef_version_probe.exe
+
+      - name: Build managed (.NET)
+        shell: bash
+        run: dotnet build tests/Exclr8Cef.SmokeTest -c Release
+
+      - name: Run managed smoke test
+        # The cross-compiled osx-x64 dylib can't load into the arm64 dotnet
+        # process running on macos-14. Skipped here; coverage is provided by
+        # the osx-arm64 job, which exercises the same managed code.
+        if: matrix.rid != 'osx-x64'
+        shell: bash
+        run: dotnet run --no-build -c Release --project tests/Exclr8Cef.SmokeTest
+
+      - name: Run unit tests
+        shell: bash
+        run: dotnet test tests/Exclr8Cef.WebView.Tests -c Release --nologo
+
+      - name: Build Avalonia demo
+        shell: bash
+        run: dotnet publish samples/Exclr8Cef.WebView.Demo -c Release -r ${{ matrix.rid }} --self-contained true /nologo
+
+      - name: Stage native files for runtime package
+        shell: bash
+        run: |
+          mkdir -p artifacts/staging-${{ matrix.rid }}
+          ./scripts/stage-native-files.sh ${{ matrix.rid }} artifacts/staging-${{ matrix.rid }}
+
+      - name: Pack runtime NuGet
+        shell: bash
+        run: |
+          dotnet pack src/runtime/runtime.csproj \
+            -c Release \
+            -p:Exclr8CefRid=${{ matrix.rid }} \
+            -p:Exclr8CefStagingDir="$(pwd)/artifacts/staging-${{ matrix.rid }}" \
+            -p:Exclr8CefVersion=${{ env.CI_VERSION }} \
+            -o artifacts/nupkgs
+
+      - name: Publish runtime NuGet to GitHub Packages
+        # Skip on pull requests — the GITHUB_TOKEN from a fork PR cannot push.
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          dotnet nuget push "artifacts/nupkgs/runtime.${{ matrix.rid }}.Exclr8Cef.*.nupkg" \
+            --source https://nuget.pkg.github.com/alexmehlhorn/index.json \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate
