@@ -890,11 +890,109 @@ public sealed class DatabaseResultRowViewModel : ObservableObject
     }
 }
 
-public sealed record DatabaseRowFieldViewModel(
-    string Name,
-    string DataTypeName,
-    string Text,
-    bool IsNull);
+/// <summary>
+/// One field in the row inspector — a live window onto the row's cell, not a
+/// snapshot of it. Editing works on a draft: Apply stages the draft into the
+/// cell exactly like typing in the grid would, Revert discards it. The
+/// Save/Revert pair on the toolbar remains what commits or abandons the row.
+/// </summary>
+public sealed class DatabaseRowFieldViewModel : ObservableObject, IDisposable
+{
+    private readonly DatabaseResultCellViewModel _cell;
+    private string _draft = string.Empty;
+    private bool _isEditing;
+
+    public DatabaseRowFieldViewModel(
+        DatabaseResultColumnViewModel column,
+        DatabaseResultCellViewModel cell)
+    {
+        ArgumentNullException.ThrowIfNull(column);
+        _cell = cell ?? throw new ArgumentNullException(nameof(cell));
+        Name = column.Name;
+        DataTypeName = column.DataTypeName;
+        _cell.PropertyChanged += OnCellChanged;
+    }
+
+    public string Name { get; }
+
+    public string DataTypeName { get; }
+
+    public string? Text => _cell.Text;
+
+    public bool IsNull => _cell.IsNull;
+
+    /// <summary>Booleans and read-only cells stay display-only; the grid owns them.</summary>
+    public bool CanEdit => _cell.UsesTextEditor;
+
+    public bool ShowsEditAction => CanEdit && !IsEditing;
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        private set
+        {
+            if (SetProperty(ref _isEditing, value))
+            {
+                OnPropertyChanged(nameof(ShowsEditAction));
+            }
+        }
+    }
+
+    public string Draft
+    {
+        get => _draft;
+        set => SetProperty(ref _draft, value ?? string.Empty);
+    }
+
+    public string? ValidationError => _cell.ValidationError;
+
+    public bool HasValidationError => !string.IsNullOrWhiteSpace(_cell.ValidationError);
+
+    public void BeginEdit()
+    {
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        Draft = _cell.IsNull ? string.Empty : _cell.EditText;
+        IsEditing = true;
+    }
+
+    /// <summary>Stages the draft into the cell — the same move as typing in the grid.</summary>
+    public void ApplyEdit()
+    {
+        if (!IsEditing)
+        {
+            return;
+        }
+
+        _cell.EditText = Draft;
+        IsEditing = false;
+    }
+
+    public void CancelEdit() => IsEditing = false;
+
+    private void OnCellChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        switch (e.PropertyName)
+        {
+            case null:
+            case nameof(DatabaseResultCellViewModel.Text):
+            case nameof(DatabaseResultCellViewModel.State):
+                OnPropertyChanged(nameof(Text));
+                OnPropertyChanged(nameof(IsNull));
+                break;
+            case nameof(DatabaseResultCellViewModel.ValidationError):
+                OnPropertyChanged(nameof(ValidationError));
+                OnPropertyChanged(nameof(HasValidationError));
+                break;
+        }
+    }
+
+    public void Dispose() => _cell.PropertyChanged -= OnCellChanged;
+}
 
 public sealed class DatabaseResultColumnViewModel(
     DatabaseColumnDescriptor column,

@@ -793,15 +793,21 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         PublishInteractionStates();
     }
 
-    private void RefreshSelectedRowFields() => SelectedRowFields = _selectedRow is null
-        ? []
-        : ResultColumns
-            .Zip(_selectedRow.Cells, (column, cell) => new DatabaseRowFieldViewModel(
-                column.Name,
-                column.DataTypeName,
-                cell.Text,
-                cell.IsNull))
-            .ToArray();
+    private void RefreshSelectedRowFields()
+    {
+        foreach (var field in SelectedRowFields)
+        {
+            field.Dispose();
+        }
+
+        SelectedRowFields = _selectedRow is null
+            ? []
+            : ResultColumns
+                .Zip(
+                    _selectedRow.Cells,
+                    (column, cell) => new DatabaseRowFieldViewModel(column, cell))
+                .ToArray();
+    }
 
     /// <summary>
     /// The durable "driverId:connection string" address, or null while the

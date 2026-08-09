@@ -571,6 +571,56 @@ public sealed partial class DatabaseWorkspaceView : UserControl
             TimeSpan.FromSeconds(1.2));
     }
 
+    private void OnFieldEditClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if ((sender as Control)?.DataContext is DatabaseRowFieldViewModel field)
+        {
+            field.BeginEdit();
+        }
+    }
+
+    private void OnFieldApplyClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if ((sender as Control)?.DataContext is DatabaseRowFieldViewModel field)
+        {
+            field.ApplyEdit();
+        }
+    }
+
+    private void OnFieldCancelClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if ((sender as Control)?.DataContext is DatabaseRowFieldViewModel field)
+        {
+            field.CancelEdit();
+        }
+    }
+
+    private void OnFieldDraftKeyDown(object? sender, KeyEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not DatabaseRowFieldViewModel field)
+        {
+            return;
+        }
+
+        // Enter inserts lines in a multi-line draft; Cmd+Enter applies,
+        // Escape reverts — the same grammar as the SQL editor.
+        if (e.Key == Key.Enter
+            && (e.KeyModifiers.HasFlag(KeyModifiers.Meta)
+                || e.KeyModifiers.HasFlag(KeyModifiers.Control)))
+        {
+            e.Handled = true;
+            field.ApplyEdit();
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            field.CancelEdit();
+        }
+    }
+
     private void OnDatabaseHeaderClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

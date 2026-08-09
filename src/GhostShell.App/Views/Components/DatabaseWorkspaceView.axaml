@@ -804,21 +804,69 @@
                                   Spacing="{DynamicResource ShellSpaceXs}">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                                   <TextBlock
+                                      VerticalAlignment="Center"
                                       FontSize="{DynamicResource ShellFontSize10}"
                                       FontWeight="SemiBold"
                                       Text="{Binding Name}"
                                       TextTrimming="CharacterEllipsis" />
-                                  <TextBlock
-                                      Grid.Column="1"
-                                      Classes="Muted"
-                                      FontSize="{DynamicResource ShellFontSize9}"
-                                      Text="{Binding DataTypeName}" />
+                                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Classes="Muted"
+                                        FontSize="{DynamicResource ShellFontSize9}"
+                                        IsVisible="{Binding !IsEditing}"
+                                        Text="{Binding DataTypeName}" />
+                                    <Button
+                                        Classes="IconButton"
+                                        Click="OnFieldEditClick"
+                                        IsVisible="{Binding ShowsEditAction}"
+                                        ToolTip.Tip="Edit this value"
+                                        AutomationProperties.Name="{Binding Name, StringFormat=Edit {0}}">
+                                      <icons:SymbolIcon Symbol="Edit" FontSize="11" />
+                                    </Button>
+                                    <Button
+                                        Classes="IconButton"
+                                        Click="OnFieldApplyClick"
+                                        IsVisible="{Binding IsEditing}"
+                                        ToolTip.Tip="Apply (stages the change; Save commits the row)"
+                                        AutomationProperties.Name="{Binding Name, StringFormat=Apply {0}}">
+                                      <icons:SymbolIcon Symbol="Checkmark" FontSize="11" Foreground="{DynamicResource ShellSuccessBrush}" />
+                                    </Button>
+                                    <Button
+                                        Classes="IconButton"
+                                        Click="OnFieldCancelClick"
+                                        IsVisible="{Binding IsEditing}"
+                                        ToolTip.Tip="Revert this edit"
+                                        AutomationProperties.Name="{Binding Name, StringFormat=Revert {0}}">
+                                      <icons:SymbolIcon Symbol="Dismiss" FontSize="11" />
+                                    </Button>
+                                  </StackPanel>
                                 </Grid>
                                 <TextBlock
                                     Classes.Muted="{Binding IsNull}"
                                     FontFamily="{DynamicResource ShellDataFontFamily}"
                                     FontSize="{DynamicResource ShellFontSize10}"
+                                    IsVisible="{Binding !IsEditing}"
                                     Text="{Binding Text}"
+                                    TextWrapping="Wrap" />
+                                <TextBox
+                                    Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                                    MinHeight="24"
+                                    MaxHeight="200"
+                                    AcceptsReturn="True"
+                                    TextWrapping="Wrap"
+                                    FontFamily="{DynamicResource ShellDataFontFamily}"
+                                    FontSize="{DynamicResource ShellFontSize10}"
+                                    IsVisible="{Binding IsEditing}"
+                                    Text="{Binding Draft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    KeyDown="OnFieldDraftKeyDown"
+                                    AutomationProperties.Name="{Binding Name, StringFormat=Draft value for {0}}" />
+                                <TextBlock
+                                    Classes="Muted"
+                                    FontSize="{DynamicResource ShellFontSize9}"
+                                    Foreground="{DynamicResource ShellDangerBrush}"
+                                    IsVisible="{Binding HasValidationError}"
+                                    Text="{Binding ValidationError}"
                                     TextWrapping="Wrap" />
                               </StackPanel>
                             </Border>

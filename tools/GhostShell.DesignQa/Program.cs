@@ -887,6 +887,9 @@ internal sealed class QaApplication : Avalonia.Application
         // Editing a prose-sized cell grows the expanded editor beside it; the
         // probe proves the popup opens on the real edit path and holds focus.
         ("database-cell-expand-editor-2x", CreateDatabaseCellExpandProbe, null),
+        // A row-inspector field mid-edit: draft box open, apply/revert where
+        // the type label sits, the neighbours still read-only.
+        ("database-inspector-edit-2x", CreateDatabaseInspectorEditProbe, null),
         ("database-sort-descending-2x", CreateDatabaseSortDescendingProbe, null),
         ("database-raw-query-context-menu-2x", CreateDatabaseRawQueryContextMenuProbe, null),
         ("database-copy-insert-2x", CreateDatabaseCopyInsertProbe, null),
@@ -1941,6 +1944,28 @@ internal sealed class QaApplication : Avalonia.Application
         window.Closed += (_, _) => viewer.Dispose();
         return window;
     }
+
+    private static Window CreateDatabaseInspectorEditProbe() =>
+        CreatePreparedDatabaseProbe(
+            width: 720,
+            height: 560,
+            async (window, viewer, _) =>
+            {
+                await PreviewQaDeploymentTableAsync(viewer);
+                viewer.SelectRow(viewer.ResultRows[0]);
+                var field = viewer.SelectedRowFields.Single(candidate =>
+                    string.Equals(candidate.Name, "service", StringComparison.Ordinal));
+                field.BeginEdit();
+                field.Draft = "checkout-web-eu — renamed through the inspector "
+                    + "draft, applied with Cmd+Enter.";
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                if (!field.IsEditing)
+                {
+                    throw new InvalidOperationException(
+                        "The inspector field did not enter its editing state.");
+                }
+            });
 
     private static Window CreateDatabaseCellExpandProbe() =>
         CreatePreparedDatabaseProbe(

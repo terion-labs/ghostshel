@@ -1168,6 +1168,46 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Inspector_fields_edit_the_same_cell_the_grid_does()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+        await panel.PreviewTableAsync(panel.Tables[0]);
+        panel.SelectRow(panel.ResultRows[0]);
+
+        var field = panel.SelectedRowFields.Single(candidate => candidate.Name == "name");
+        Assert.True(field.CanEdit);
+        Assert.False(panel.HasPendingChanges);
+
+        // Apply stages into the cell — the same move as typing in the grid.
+        field.BeginEdit();
+        field.Draft = "edited through the inspector";
+        field.ApplyEdit();
+        Assert.False(field.IsEditing);
+        Assert.Equal("edited through the inspector", field.Text);
+        Assert.True(panel.HasPendingChanges);
+        Assert.Equal(
+            "edited through the inspector",
+            panel.ResultRows[0].Cells[1].EditText);
+
+        // Revert abandons the draft without touching the cell.
+        field.BeginEdit();
+        field.Draft = "discarded";
+        field.CancelEdit();
+        Assert.Equal("edited through the inspector", field.Text);
+
+        // The field is a live window: a grid-side edit shows up in it.
+        panel.ResultRows[0].Cells[1].EditText = "edited through the grid";
+        Assert.Equal("edited through the grid", field.Text);
+    }
+
+    [Fact]
     public async Task The_database_overview_lists_every_object_read_only()
     {
         var client = new FakeDatabasePanelClient();
