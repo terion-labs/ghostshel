@@ -334,7 +334,7 @@
                               AutomationProperties.Name="Include this filter condition" />
                           <ComboBox
                               Grid.Column="1"
-                              Classes="Compact"
+                              Classes="Dense"
                               VerticalAlignment="Center"
                               HorizontalAlignment="Stretch"
                               ItemsSource="{Binding Columns}"
@@ -347,7 +347,7 @@
                           </ComboBox>
                           <ComboBox
                               Grid.Column="2"
-                              Classes="Compact"
+                              Classes="Dense"
                               VerticalAlignment="Center"
                               HorizontalAlignment="Stretch"
                               ItemsSource="{Binding Operators}"
@@ -360,7 +360,7 @@
                           </ComboBox>
                           <TextBox
                               Grid.Column="3"
-                              Classes="Compact"
+                              Classes="Dense"
                               VerticalAlignment="Center"
                               Text="{Binding Value, Mode=TwoWay}"
                               IsVisible="{Binding NeedsValue}"
@@ -369,7 +369,7 @@
                               AutomationProperties.Name="Filter value" />
                           <Button
                               Grid.Column="4"
-                              Classes="SecondaryButton Compact"
+                              Classes="SecondaryButton Dense"
                               VerticalAlignment="Center"
                               Click="OnApplyFilterClick"
                               Content="Apply"
@@ -399,7 +399,7 @@
                   <Button
                       Grid.Column="1"
                       VerticalAlignment="Center"
-                      Classes="TextButton Compact"
+                      Classes="TextButton Dense"
                       Click="OnClearFilterClick"
                       Content="Clear"
                       AutomationProperties.Name="Clear the table filter" />
@@ -409,40 +409,40 @@
                   <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                     <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
                       <Button
-                          Classes="SecondaryButton Compact"
+                          Classes="SecondaryButton Dense"
                           Click="OnAddRowClick"
                           Content="Add row"
                           IsEnabled="{Binding CanMutateRows}"
                           AutomationProperties.Name="Add a database row" />
                       <Button
-                          Classes="TextButton Compact"
+                          Classes="TextButton Dense"
                           Click="OnDeleteRowClick"
                           Content="Delete"
                           Foreground="{DynamicResource ShellDangerBrush}"
                           IsEnabled="{Binding CanDeleteSelectedRow}"
                           AutomationProperties.Name="Delete the selected database row" />
                       <Button
-                          Classes="TextButton Compact"
+                          Classes="TextButton Dense"
                           Click="OnSetNullClick"
                           Content="NULL"
                           IsEnabled="{Binding CanSetSelectedCellNull}"
                           ToolTip.Tip="Set the active cell to NULL"
                           AutomationProperties.Name="Set the active cell to NULL" />
                       <Button
-                          Classes="TextButton Compact"
+                          Classes="TextButton Dense"
                           Click="OnSetDefaultClick"
                           Content="DEFAULT"
                           IsEnabled="{Binding CanSetSelectedCellDefault}"
                           ToolTip.Tip="Use the column default for this new row"
                           AutomationProperties.Name="Set the active cell to DEFAULT" />
                       <Button
-                          Classes="TextButton Compact"
+                          Classes="TextButton Dense"
                           Click="OnRevertChangesClick"
                           Content="Revert"
                           IsEnabled="{Binding CanRevertChanges}"
                           AutomationProperties.Name="Revert unsaved database changes" />
                       <Button
-                          Classes="PrimaryButton Compact"
+                          Classes="PrimaryButton Dense"
                           Click="OnSaveChangesClick"
                           Content="Save"
                           IsEnabled="{Binding CanSaveChanges}"
@@ -476,7 +476,7 @@
                         ToolTip.Tip="Rows per page / total matching rows">
                       <TextBox
                           Width="52"
-                          Classes="Compact"
+                          Classes="Dense"
                           HorizontalContentAlignment="Center"
                           Text="{Binding PageLimitText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                           IsEnabled="{Binding CanChangePageLimit}"
@@ -928,19 +928,19 @@
                     Orientation="Horizontal"
                     Spacing="{DynamicResource ShellSpaceXs}">
                   <Button
-                      Classes="SecondaryButton Compact"
+                      Classes="SecondaryButton Dense"
                       Click="OnCopyMermaidDiagramClick"
                       Content="Copy source"
                       IsEnabled="{Binding HasMermaidDiagram}"
                       AutomationProperties.Name="Copy the Mermaid ER diagram source" />
                   <Button
-                      Classes="SecondaryButton Compact"
+                      Classes="SecondaryButton Dense"
                       Click="OnCopyMermaidSvgClick"
                       Content="Copy SVG"
                       IsEnabled="{Binding HasMermaidDiagram}"
                       AutomationProperties.Name="Copy the rendered Mermaid ER diagram SVG" />
                   <Button
-                      Classes="SecondaryButton Compact"
+                      Classes="SecondaryButton Dense"
                       Click="OnSaveMermaidDiagramClick"
                       Content="Save…"
                       IsEnabled="{Binding HasMermaidDiagram}"

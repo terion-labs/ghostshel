@@ -1512,6 +1512,51 @@ internal sealed class QaApplication : Avalonia.Application
                 initialFamily: SavedConnectionFamily.Database)), null),
         ("dialog-ai-provider-editor", () => new AiProviderProfileEditorDialog(
             new AiProviderProfileEditorViewModel(new QaAiProfileRuntime(), [])), null),
+        // The chrome glyphs at cell size and at proof size, side by side: if a
+        // glyph is whole at 64 and cut at 12, the clip is measurement, not art.
+        ("icon-probe", static () =>
+        {
+            var symbols = new[]
+            {
+                FluentIcons.Common.Symbol.WindowMultiple,
+                FluentIcons.Common.Symbol.SplitVertical,
+                FluentIcons.Common.Symbol.SplitHorizontal,
+                FluentIcons.Common.Symbol.Dismiss,
+            };
+            var grid = new StackPanel { Spacing = 24, Margin = new Thickness(24) };
+            foreach (var size in new[] { 12d, 24d, 64d })
+            {
+                var row = new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    Spacing = 24,
+                };
+                foreach (var symbol in symbols)
+                {
+                    row.Children.Add(new Border
+                    {
+                        BorderBrush = Avalonia.Media.Brushes.Gray,
+                        BorderThickness = new Thickness(1),
+                        Child = new FluentIcons.Avalonia.SymbolIcon
+                        {
+                            Symbol = symbol,
+                            FontSize = size,
+                        },
+                    });
+                }
+
+                grid.Children.Add(row);
+            }
+
+            return new Window
+            {
+                Width = 560,
+                Height = 420,
+                CanResize = false,
+                ShowInTaskbar = false,
+                Content = grid,
+            };
+        }, null),
         ("dialog-mcp-server-editor", () => new McpServerProfileEditorDialog(
             new McpServerProfileEditorViewModel()), null),
         ("dialog-saved-screen-editor", () => new SavedScreenEditorDialog(

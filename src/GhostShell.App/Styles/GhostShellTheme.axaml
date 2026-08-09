@@ -840,8 +840,11 @@
     <Setter Property="Background" Value="Transparent" />
   </Style>
 
-  <!-- Dense control rows: filter bars and data toolbars. -->
-  <Style Selector="Button.Compact">
+  <!-- Dense control rows: filter bars and data toolbars. "Dense", not
+       "Compact": the design system already spends Compact on the 24-square
+       icon buttons of a panel's chrome, and a generic Button.Compact quietly
+       restyled every one of them. -->
+  <Style Selector="Button.Dense">
     <Setter Property="MinHeight" Value="24" />
     <Setter Property="Height" Value="24" />
     <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
@@ -849,14 +852,14 @@
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
   </Style>
 
-  <Style Selector="ComboBox.Compact">
+  <Style Selector="ComboBox.Dense">
     <Setter Property="MinHeight" Value="24" />
     <Setter Property="Height" Value="24" />
     <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
   </Style>
 
-  <Style Selector="TextBox.Compact">
+  <Style Selector="TextBox.Dense">
     <Setter Property="MinHeight" Value="24" />
     <Setter Property="Height" Value="24" />
     <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
