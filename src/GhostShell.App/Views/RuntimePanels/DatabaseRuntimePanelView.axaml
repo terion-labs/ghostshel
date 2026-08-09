@@ -12,6 +12,23 @@
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
     AutomationProperties.Name="Database panel">
+  <UserControl.Styles>
+    <!-- On the database overview the perspectives fade out but keep their
+         space: collapsing them re-measures the whole header, and selecting
+         an object must never move the controls under the cursor. -->
+    <Style Selector="Border.PerspectiveToggle">
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.PerspectiveToggle.overviewHidden">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsEnabled" Value="False" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+  </UserControl.Styles>
   <controls:PanelChrome
       CloseLabel="Close database panel"
       CloseRequested="OnCloseClick"
@@ -103,12 +120,12 @@
 
           <!-- The three perspectives on the selected object, out of the
                connection group: switching views is not a connection change.
-               The database overview is not an object; they hide with it. -->
+               The database overview is not an object; they fade with it. -->
           <Border
               Grid.Column="1"
               VerticalAlignment="Center"
-              Classes="Segmented"
-              IsVisible="{Binding !IsDatabaseOverview}">
+              Classes="Segmented PerspectiveToggle"
+              Classes.overviewHidden="{Binding IsDatabaseOverview}">
             <UniformGrid Columns="3">
               <ToggleButton
                   x:Name="DataModeButton"
