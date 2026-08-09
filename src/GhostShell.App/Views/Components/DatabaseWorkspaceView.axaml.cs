@@ -634,6 +634,55 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         }
     }
 
+    /// <summary>
+    /// The workspace only asks; opening an object in another tab or panel is
+    /// the shell's move, since tabs and splits belong to it.
+    /// </summary>
+    public event EventHandler<GhostShell.Application.DatabaseTableDescriptor>?
+        OpenObjectInTabRequested;
+
+    public event EventHandler<GhostShell.Application.DatabaseTableDescriptor>?
+        OpenObjectInPanelRequested;
+
+    private void OnObjectOpenInTabClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if ((sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+        {
+            OpenObjectInTabRequested?.Invoke(this, item.Descriptor);
+        }
+    }
+
+    private void OnObjectOpenInPanelClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if ((sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+        {
+            OpenObjectInPanelRequested?.Invoke(this, item.Descriptor);
+        }
+    }
+
+    private async void OnObjectOpenStructureClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (Panel is { } panel
+            && (sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+        {
+            await panel.PreviewTableAsync(item);
+            panel.SetMode(DatabaseWorkspaceMode.Structure);
+        }
+    }
+
+    private async void OnObjectCopyNameClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (Panel is { } panel
+            && (sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+        {
+            _ = await CopyTextAsync(item.Name, panel);
+        }
+    }
+
     private void OnDatabaseHeaderClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

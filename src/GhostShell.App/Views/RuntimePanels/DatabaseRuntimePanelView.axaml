@@ -158,7 +158,9 @@
       </Border>
 
       <Grid Grid.Row="1">
-        <components:DatabaseWorkspaceView />
+        <components:DatabaseWorkspaceView
+            OpenObjectInTabRequested="OnOpenObjectInTab"
+            OpenObjectInPanelRequested="OnOpenObjectInPanel" />
         <ProgressBar Classes="WorkingStripe" IsVisible="{Binding IsBusy}" />
       </Grid>
     </Grid>

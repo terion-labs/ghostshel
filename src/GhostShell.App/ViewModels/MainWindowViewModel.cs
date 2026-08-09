@@ -11465,7 +11465,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string? driverId = null,
         string? connectionString = null,
         ConnectionProfile? tunnelConnection = null,
-        DatabaseConnectionProfile? savedConnection = null) =>
+        DatabaseConnectionProfile? savedConnection = null,
+        DatabaseObjectId? initialObject = null) =>
         _databasePanelClient is null
             ? new UnavailableRuntimePanelViewModel(
                 panelId,
@@ -11481,7 +11482,101 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 connectionString,
                 tunnelConnection,
                 savedConnection,
-                ResolveDatabasePasswordAsync);
+                ResolveDatabasePasswordAsync,
+                initialObject: initialObject);
+
+    /// <summary>
+    /// A twin of a live database panel: same connection, tunnel and all,
+    /// opening straight onto one object. The twin binds the same saved
+    /// profile when there is one, so passwords resolve the same way.
+    /// </summary>
+    private RuntimePanelViewModel CreateDatabaseTwinPanel(
+        DatabaseRuntimePanelViewModel source,
+        DatabaseTableDescriptor databaseObject)
+    {
+        if (source.SavedConnectionId is { } profileId
+            && FindDatabaseConnection(profileId) is { } profile)
+        {
+            return CreateDatabasePanel(
+                PanelInstanceId.New(),
+                databaseObject.DisplayName,
+                tunnelConnection: ResolveDatabaseTunnel(profile),
+                savedConnection: profile,
+                initialObject: databaseObject.Id);
+        }
+
+        return CreateDatabasePanel(
+            PanelInstanceId.New(),
+            databaseObject.DisplayName,
+            source.SelectedDriver.Id,
+            source.ConnectionString,
+            source.TunnelConnection,
+            initialObject: databaseObject.Id);
+    }
+
+    /// <summary>Opens an object from a live panel as its own tab, same connection.</summary>
+    public async Task<bool> OpenDatabaseObjectInTabAsync(
+        DatabaseRuntimePanelViewModel source,
+        DatabaseTableDescriptor databaseObject,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(databaseObject);
+        ClearError();
+        var workspace = RuntimeWorkspace;
+        if (workspace is null)
+        {
+            SetError("Open a workspace before opening an object in a tab.");
+            return false;
+        }
+
+        return await AppendRuntimeTabAsync(
+            workspace,
+            _ =>
+            {
+                var tab = new RuntimeTabViewModel(
+                    TabInstanceId.New(),
+                    databaseObject.DisplayName,
+                    "Database");
+                AddPanelOrDispose(tab, CreateDatabaseTwinPanel(source, databaseObject));
+                return tab;
+            },
+            "database object tab creation",
+            cancellationToken);
+    }
+
+    /// <summary>Opens an object beside its panel — the split with a purpose.</summary>
+    public async Task<bool> OpenDatabaseObjectInPanelAsync(
+        DatabaseRuntimePanelViewModel source,
+        DatabaseTableDescriptor databaseObject,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(databaseObject);
+        ClearError();
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.Tabs.FirstOrDefault(candidate =>
+                candidate.Panels.Contains(source))
+            ?? workspace?.ActiveTab;
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace before opening an object in a panel.");
+            return false;
+        }
+
+        var panel = CreateDatabaseTwinPanel(source, databaseObject);
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            panel,
+            "panel split",
+            () =>
+            {
+                _ = tab.SplitActivePanel(panel, PanelSplitOrientation.LeftRight);
+                StartTrackingRecovery(panel);
+            },
+            cancellationToken);
+    }
 
     private const string SavedDatabaseTargetPrefix = "saved:";
 

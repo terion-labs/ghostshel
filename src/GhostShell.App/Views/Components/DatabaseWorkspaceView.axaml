@@ -63,15 +63,14 @@
 
       <Border
           x:Name="ObjectsSidebar"
-          BorderBrush="{DynamicResource ShellBorderBrush}"
-          BorderThickness="0,0,1,0">
+          Background="{DynamicResource ShellSidebarBrush}">
         <Grid RowDefinitions="Auto,Auto,*">
           <!-- The database itself heads its objects; selecting it opens the
                catalog overview. -->
           <Button
               Classes="ListRow"
               Classes.selected="{Binding IsDatabaseOverview}"
-              Margin="{controls:Inset Top=Sm}"
+              Margin="{controls:Inset Horizontal=Xs, Top=Sm}"
               Click="OnDatabaseHeaderClick"
               IsEnabled="{Binding IsConnected}"
               ToolTip.Tip="Show the database's objects"
@@ -96,7 +95,7 @@
           </Button>
           <TextBox
               Grid.Row="1"
-              Margin="{controls:Inset Sm}"
+              Margin="{controls:Inset Horizontal=Xs, Vertical=Sm}"
               Text="{Binding TableFilter, Mode=TwoWay}"
               PlaceholderText="Filter objects…"
               AutomationProperties.Name="Filter database objects" />
@@ -115,6 +114,28 @@
                       Click="OnTableClick"
                       ToolTip.Tip="{Binding KindLabel}"
                       AutomationProperties.Name="{Binding Name, StringFormat=Open {0}}">
+                    <Button.ContextMenu>
+                      <ContextMenu AutomationProperties.Name="Database object actions">
+                        <MenuItem
+                            Click="OnObjectOpenInTabClick"
+                            Header="Open in New Tab"
+                            AutomationProperties.Name="Open this object in a new tab" />
+                        <MenuItem
+                            Click="OnObjectOpenInPanelClick"
+                            Header="Open in New Panel"
+                            AutomationProperties.Name="Open this object in a new panel beside this one" />
+                        <Separator />
+                        <MenuItem
+                            Click="OnObjectOpenStructureClick"
+                            Header="Open Structure"
+                            AutomationProperties.Name="Open this object's structure" />
+                        <Separator />
+                        <MenuItem
+                            Click="OnObjectCopyNameClick"
+                            Header="Copy Name"
+                            AutomationProperties.Name="Copy this object's name" />
+                      </ContextMenu>
+                    </Button.ContextMenu>
                     <Grid
                         Margin="{controls:Inset Horizontal=Md, Vertical=Xs}"
                         ColumnDefinitions="Auto,*"
@@ -151,10 +172,18 @@
           Grid.Column="1"
           Width="5"
           HorizontalAlignment="Stretch"
-          Background="Transparent"
+          Background="{DynamicResource ShellSidebarBrush}"
           ResizeDirection="Columns"
           ResizeBehavior="PreviousAndNext"
           AutomationProperties.Name="Resize the database objects list" />
+      <!-- The boundary is one line at the content's edge, drawn over the
+           splitter so sidebar and grip read as a single slab. -->
+      <Border
+          Grid.Column="1"
+          Width="1"
+          HorizontalAlignment="Right"
+          Background="{DynamicResource ShellBorderBrush}"
+          IsHitTestVisible="False" />
 
       <Grid Grid.Column="2" RowDefinitions="Auto,Auto,Auto,*">
         <!-- Only the folded objects list surfaces here; the perspectives moved
@@ -901,57 +930,45 @@
             </Grid>
           </Grid>
 
-          <!-- DATABASE ER DIAGRAM -->
-          <Grid
-              RowDefinitions="Auto,*"
-              IsVisible="{Binding IsDatabaseDiagramOverview}">
-            <Border
-                Background="{DynamicResource ShellSurfaceBrush}"
-                BorderBrush="{DynamicResource ShellBorderBrush}"
-                BorderThickness="0,0,0,1">
-              <Grid
-                  Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
-                  ColumnDefinitions="*,Auto"
-                  ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                <StackPanel VerticalAlignment="Center">
-                  <TextBlock
-                      Classes="SectionHeading"
-                      Text="Mermaid ER diagram" />
-                  <TextBlock
-                      Classes="Muted"
-                      FontSize="{DynamicResource ShellFontSize9}"
-                      Text="Tables, columns, keys, and foreign-key relationships" />
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="{DynamicResource ShellSpaceXs}">
-                  <Button
-                      Classes="SecondaryButton Dense"
-                      Click="OnCopyMermaidDiagramClick"
-                      Content="Copy source"
-                      IsEnabled="{Binding HasMermaidDiagram}"
-                      AutomationProperties.Name="Copy the Mermaid ER diagram source" />
-                  <Button
-                      Classes="SecondaryButton Dense"
-                      Click="OnCopyMermaidSvgClick"
-                      Content="Copy SVG"
-                      IsEnabled="{Binding HasMermaidDiagram}"
-                      AutomationProperties.Name="Copy the rendered Mermaid ER diagram SVG" />
-                  <Button
-                      Classes="SecondaryButton Dense"
-                      Click="OnSaveMermaidDiagramClick"
-                      Content="Save…"
-                      IsEnabled="{Binding HasMermaidDiagram}"
-                      AutomationProperties.Name="Save the Mermaid ER diagram" />
-                </StackPanel>
-              </Grid>
-            </Border>
+          <!-- DATABASE ER DIAGRAM: the diagram fills the whole area, and the
+               header panel floats over its top edge as dark glass — the dense
+               background tone, translucent, so the diagram slides beneath it.
+               (Tinted translucency, not blur — Avalonia's acrylic backdrop is
+               window-level and cannot blur in-app content behind a control.) -->
+          <Grid IsVisible="{Binding IsDatabaseDiagramOverview}">
             <local:DatabaseMermaidDiagramView
                 x:Name="MermaidDiagramRenderer"
-                Grid.Row="1"
-                MermaidSource="{Binding MermaidDiagramSource}" />
+                MermaidSource="{Binding MermaidDiagramSource}"
+                HeaderVeilHeight="{Binding #DiagramHeaderBar.Bounds.Height}" />
+            <Border
+                x:Name="DiagramHeaderBar"
+                VerticalAlignment="Top"
+                Background="{DynamicResource ShellVeilBrush}">
+              <StackPanel
+                  Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                  HorizontalAlignment="Right"
+                  Orientation="Horizontal"
+                  Spacing="{DynamicResource ShellSpaceXs}">
+                <Button
+                    Classes="TextButton Dense"
+                    Click="OnCopyMermaidDiagramClick"
+                    Content="Copy source"
+                    IsEnabled="{Binding HasMermaidDiagram}"
+                    AutomationProperties.Name="Copy the Mermaid ER diagram source" />
+                <Button
+                    Classes="TextButton Dense"
+                    Click="OnCopyMermaidSvgClick"
+                    Content="Copy SVG"
+                    IsEnabled="{Binding HasMermaidDiagram}"
+                    AutomationProperties.Name="Copy the rendered Mermaid ER diagram SVG" />
+                <Button
+                    Classes="TextButton Dense"
+                    Click="OnSaveMermaidDiagramClick"
+                    Content="Save…"
+                    IsEnabled="{Binding HasMermaidDiagram}"
+                    AutomationProperties.Name="Save the Mermaid ER diagram" />
+              </StackPanel>
+            </Border>
           </Grid>
 
           <!-- STRUCTURE -->

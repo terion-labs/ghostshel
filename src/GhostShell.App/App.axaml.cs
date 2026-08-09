@@ -628,6 +628,17 @@ public sealed partial class App : Avalonia.Application
                 resources.RaisedSurface.R,
                 resources.RaisedSurface.G,
                 resources.RaisedSurface.B)));
+        // A veil is glass over the app's own content: a genuinely translucent
+        // wash of the background tone, weighted toward black so it reads as a
+        // distinct darker band even over its own colour — and anything that
+        // slides beneath it stays visible, dimmed rather than hidden.
+        Publish(
+            "ShellVeilBrush",
+            new SolidColorBrush(Color.FromArgb(
+                0xA8,
+                (byte)(resources.Background.R / 2),
+                (byte)(resources.Background.G / 2),
+                (byte)(resources.Background.B / 2))));
         Publish("ShellSurfaceHoverBrush", Brush(resources.HoverSurface));
         Publish("ShellBorderBrush", Brush(resources.Border));
         Publish("ShellControlSurfaceBrush", Brush(resources.ControlSurface));

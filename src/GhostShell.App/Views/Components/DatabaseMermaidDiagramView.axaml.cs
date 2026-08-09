@@ -22,6 +22,15 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
             nameof(MermaidSource),
             string.Empty);
 
+    /// <summary>
+    /// Height of the host's header veil. While positive, the top band of the
+    /// diagram renders again beneath the veil, blurred — the header's
+    /// backdrop. Zero turns the mirror off entirely.
+    /// </summary>
+    public static readonly StyledProperty<double> HeaderVeilHeightProperty =
+        AvaloniaProperty.Register<DatabaseMermaidDiagramView, double>(
+            nameof(HeaderVeilHeight));
+
     private const double MinimumZoom = 0.5;
     private const double MaximumZoom = 8;
     private const double ZoomStep = 1.25;
@@ -32,6 +41,8 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
     private SvgSource? _svgSource;
     private CancellationTokenSource? _renderCancellation;
     private long _renderGeneration;
+    private double _zoom = 1;
+    private Vector _pan;
 
     public DatabaseMermaidDiagramView()
     {
@@ -42,6 +53,29 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         Viewport.PointerMoved += OnPointerMoved;
         Viewport.PointerReleased += OnPointerReleased;
         Viewport.DoubleTapped += (_, _) => FitDiagram();
+        // The clip is in view coordinates, so it follows the viewport's size.
+        Viewport.SizeChanged += (_, _) => SyncMirrorBand();
+    }
+
+    public double HeaderVeilHeight
+    {
+        get => GetValue(HeaderVeilHeightProperty);
+        set => SetValue(HeaderVeilHeightProperty, value);
+    }
+
+    /// <summary>
+    /// The mirror fills the same slot with the same alignment as the real
+    /// surface, so their geometry cannot diverge; only this clip makes it a
+    /// band. The clip lives on the untransformed panel, so it stays in view
+    /// space while the surface inside pans and zooms.
+    /// </summary>
+    private void SyncMirrorBand()
+    {
+        var height = Math.Max(0, HeaderVeilHeight);
+        HeaderBlurBand.IsVisible = height > 0 && _svgSource is not null;
+        HeaderBlurBand.Clip = height > 0 && Viewport.Bounds.Width > 0
+            ? new RectangleGeometry(new Rect(0, 0, Viewport.Bounds.Width, height))
+            : null;
     }
 
     public string MermaidSource
@@ -63,6 +97,10 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         if (change.Property == MermaidSourceProperty)
         {
             RequestRender();
+        }
+        else if (change.Property == HeaderVeilHeightProperty)
+        {
+            SyncMirrorBand();
         }
     }
 
@@ -150,7 +188,7 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         Padding = 32,
         NodeSpacing = 36,
         LayerSpacing = 72,
-        Transparent = false,
+        Transparent = true,
         SanitizeMode = SanitizeMode.Block,
     };
 
@@ -177,6 +215,8 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         var previous = _svgSource;
         _svgSource = source;
         DiagramSurface.SvgSource = source;
+        DiagramSurfaceMirror.SvgSource = source;
+        SyncMirrorBand();
         previous?.Dispose();
     }
 
@@ -222,7 +262,7 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
 
         _dragging = true;
         _dragOrigin = e.GetPosition(Viewport);
-        _dragPan = new Vector(DiagramSurface.PanX, DiagramSurface.PanY);
+        _dragPan = _pan;
         Viewport.Cursor = new Cursor(StandardCursorType.SizeAll);
         e.Pointer.Capture(Viewport);
     }
@@ -234,9 +274,8 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
             return;
         }
 
-        var delta = e.GetPosition(Viewport) - _dragOrigin;
-        DiagramSurface.PanX = _dragPan.X + (delta.X / DiagramSurface.Zoom);
-        DiagramSurface.PanY = _dragPan.Y + (delta.Y / DiagramSurface.Zoom);
+        _pan = _dragPan + (e.GetPosition(Viewport) - _dragOrigin);
+        ApplyDiagramTransform();
     }
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -253,18 +292,37 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
 
     private void ZoomBy(double factor)
     {
-        DiagramSurface.Zoom = Math.Clamp(
-            DiagramSurface.Zoom * factor,
-            MinimumZoom,
-            MaximumZoom);
-        ZoomLevelText.Text = $"{Math.Round(DiagramSurface.Zoom * 100)}%";
+        _zoom = Math.Clamp(_zoom * factor, MinimumZoom, MaximumZoom);
+        ApplyDiagramTransform();
+        ZoomLevelText.Text = $"{Math.Round(_zoom * 100)}%";
     }
 
     private void FitDiagram()
     {
-        DiagramSurface.Zoom = 1;
-        DiagramSurface.PanX = 0;
-        DiagramSurface.PanY = 0;
+        _zoom = 1;
+        _pan = default;
+        ApplyDiagramTransform();
         ZoomLevelText.Text = "Fit";
+    }
+
+    /// <summary>
+    /// Pan and zoom as a render transform on the surface, not through the SVG
+    /// control's own navigation: a render transform does not clip, so panned
+    /// content slides beneath the header veil and dies only at the viewport's
+    /// real edges. The control's internal pan clipped at its fitted rectangle,
+    /// which is what kept guillotining tables in the middle of the panel.
+    /// </summary>
+    private void ApplyDiagramTransform()
+    {
+        DiagramSurface.RenderTransform = BuildDiagramTransform();
+        DiagramSurfaceMirror.RenderTransform = BuildDiagramTransform();
+    }
+
+    private TransformGroup BuildDiagramTransform()
+    {
+        var transform = new TransformGroup();
+        transform.Children.Add(new ScaleTransform(_zoom, _zoom));
+        transform.Children.Add(new TranslateTransform(_pan.X, _pan.Y));
+        return transform;
     }
 }

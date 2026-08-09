@@ -1208,6 +1208,50 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task A_panel_born_pointing_at_an_object_opens_straight_onto_it()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "people",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db",
+            initialObject: new DatabaseObjectId(null, null, "people"));
+        await panel.Initialization;
+
+        Assert.True(panel.IsConnected);
+        Assert.Equal("people", panel.SelectedObject?.Name);
+        Assert.False(panel.IsDatabaseOverview);
+    }
+
+    [Fact]
+    public async Task Switching_perspective_hides_the_data_surface_and_says_so()
+    {
+        var client = new FakeDatabasePanelClient();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            driverId: "sqlite",
+            connectionString: "Data Source=demo.db");
+        await panel.Initialization;
+        await panel.PreviewTableAsync(panel.Tables[0]);
+        Assert.True(panel.ShowDataSurface);
+
+        var raised = new List<string>();
+        panel.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        panel.SetMode(DatabaseWorkspaceMode.Structure);
+
+        // The view binds the derived surface flag; if the mode change does not
+        // raise it, the data grid stays visible under the structure view.
+        Assert.False(panel.ShowDataSurface);
+        Assert.Contains(nameof(DatabaseRuntimePanelViewModel.ShowDataSurface), raised);
+        Assert.True(panel.ShowStructure);
+    }
+
+    [Fact]
     public async Task The_database_overview_lists_every_object_read_only()
     {
         var client = new FakeDatabasePanelClient();

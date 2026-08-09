@@ -121,6 +121,8 @@
           ConnectionSelected="OnPanelConnectionSelected"
           NewConnectionRequested="OnPanelNewConnectionRequested"
           EditConnectionRequested="OnPanelEditDatabaseConnectionRequested"
+          OpenObjectInTabRequested="OnDatabaseObjectOpenInTabRequested"
+          OpenObjectInPanelRequested="OnDatabaseObjectOpenInPanelRequested"
           SplitRequested="OnSplitRuntimePanelRequested"
           GotFocus="OnRuntimePanelGotFocus"
           PointerPressed="OnRuntimePanelPointerPressed" />

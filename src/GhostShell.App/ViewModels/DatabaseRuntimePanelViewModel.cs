@@ -72,6 +72,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private IReadOnlyList<DatabaseIndexViewModel> _indexes = [];
     private IReadOnlyList<DatabaseFilterColumnViewModel> _filterColumns = [];
     private bool _isDatabaseOverview;
+    private DatabaseObjectId? _pendingInitialObject;
     private DatabaseOverviewMode _databaseOverviewMode;
     private string _mermaidDiagramSource = string.Empty;
     private string _mermaidDiagramText = string.Empty;
@@ -114,9 +115,11 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         ConnectionProfile? tunnelConnection = null,
         DatabaseConnectionProfile? savedConnection = null,
         Func<SecretRef, CancellationToken, Task<string?>>? passwordResolver = null,
-        string? forcedReadOnlyReason = null)
+        string? forcedReadOnlyReason = null,
+        DatabaseObjectId? initialObject = null)
         : base(id, PanelKind.DatabaseViewer, title, "Database")
     {
+        _pendingInitialObject = initialObject;
         _tunnelConnection = tunnelConnection?.Endpoint is ConnectionEndpoint.Ssh
             ? tunnelConnection
             : null;
@@ -286,6 +289,9 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 OnPropertyChanged(nameof(ShowData));
                 OnPropertyChanged(nameof(ShowStructure));
                 OnPropertyChanged(nameof(ShowIndexes));
+                // The data surface derives from the mode too; without this the
+                // data grid stays visible underneath the structure view.
+                OnPropertyChanged(nameof(ShowDataSurface));
             }
         }
     }
@@ -866,6 +872,12 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     public ConnectionId? TunnelConnectionId => _tunnelConnection?.Id;
 
     /// <summary>
+    /// The tunnel profile itself — a twin panel on the same connection needs
+    /// the profile, because an inline tunnel is not in any catalog.
+    /// </summary>
+    public ConnectionProfile? TunnelConnection => _tunnelConnection;
+
+    /// <summary>
     /// The connection pill's label: the profile this panel is bound to, or an
     /// invitation when it has nothing to connect to yet.
     /// </summary>
@@ -1303,6 +1315,19 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
         if (IsConnected)
         {
+            // A panel born pointing at one object opens straight onto it —
+            // "open in new tab/panel" means that object, not the overview.
+            if (_pendingInitialObject is { } target)
+            {
+                _pendingInitialObject = null;
+                if (_allTables.FirstOrDefault(table => table.Descriptor.Id == target)
+                    is { } table)
+                {
+                    await PreviewTableAsync(table);
+                    return;
+                }
+            }
+
             // A connected database is itself the initial selection. This
             // avoids the contradictory startup state where the database was
             // highlighted in the sidebar but table perspectives were active.

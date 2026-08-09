@@ -1288,6 +1288,26 @@ public sealed partial class MainWindow
         }
     }
 
+    private async void OnDatabaseObjectOpenInTabRequested(
+        object? sender,
+        GhostShell.Application.DatabaseTableDescriptor e)
+    {
+        if (sender is Control { DataContext: DatabaseRuntimePanelViewModel panel })
+        {
+            await ViewModel.OpenDatabaseObjectInTabAsync(panel, e, _lifetime.Token);
+        }
+    }
+
+    private async void OnDatabaseObjectOpenInPanelRequested(
+        object? sender,
+        GhostShell.Application.DatabaseTableDescriptor e)
+    {
+        if (sender is Control { DataContext: DatabaseRuntimePanelViewModel panel })
+        {
+            await ViewModel.OpenDatabaseObjectInPanelAsync(panel, e, _lifetime.Token);
+        }
+    }
+
     /// <summary>
     /// The panel's gear: its saved connection opens in the editor, and the
     /// saved changes reconnect the panel through the updated profile.

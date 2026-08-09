@@ -11,7 +11,7 @@
   <Grid>
     <Border
         x:Name="Viewport"
-        Background="{DynamicResource ShellBackgroundBrush}"
+        Background="Transparent"
         ClipToBounds="True"
         Cursor="Hand">
       <svg:Svg
@@ -22,17 +22,41 @@
           StretchDirection="Both" />
     </Border>
 
+    <!-- The header's blurred backdrop: a mirror of the surface in the same
+         layout slot with the same alignment — identical geometry by
+         construction — clipped to the veil band by a rectangle rather than by
+         a differently-sized parent, and blurred. A real backdrop blur,
+         possible because the content behind the header is our own picture. -->
+    <Panel
+        x:Name="HeaderBlurBand"
+        IsHitTestVisible="False"
+        IsVisible="False">
+      <svg:Svg
+          x:Name="DiagramSurfaceMirror"
+          HorizontalAlignment="Stretch"
+          VerticalAlignment="Stretch"
+          Stretch="Uniform"
+          StretchDirection="Both">
+        <svg:Svg.Effect>
+          <BlurEffect Radius="16" />
+        </svg:Svg.Effect>
+      </svg:Svg>
+    </Panel>
+
     <Border
         x:Name="Toolbar"
         HorizontalAlignment="Right"
         VerticalAlignment="Bottom"
         Margin="{controls:Inset Md}"
-        Padding="{controls:Inset Horizontal=Xs, Vertical=Xs}"
-        Background="{DynamicResource ShellSurfaceBrush}"
+        Background="{DynamicResource ShellVeilBrush}"
         BorderBrush="{DynamicResource ShellBorderBrush}"
         BorderThickness="1"
-        CornerRadius="{DynamicResource ShellControlCornerRadius}">
-      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+        CornerRadius="{DynamicResource ShellControlCornerRadius}"
+        ClipToBounds="True">
+      <StackPanel
+          Margin="{controls:Inset Horizontal=Xs, Vertical=Xs}"
+          Orientation="Horizontal"
+          Spacing="{DynamicResource ShellSpaceXs}">
         <Button
             Classes="IconButton"
             Click="OnZoomOutClick"
@@ -59,8 +83,8 @@
             Click="OnZoomInClick"
             ToolTip.Tip="Zoom in"
             AutomationProperties.Name="Zoom into the ER diagram">
-          <icons:SymbolIcon Symbol="ZoomIn" FontSize="12" />
-        </Button>
+            <icons:SymbolIcon Symbol="ZoomIn" FontSize="12" />
+          </Button>
       </StackPanel>
     </Border>
 

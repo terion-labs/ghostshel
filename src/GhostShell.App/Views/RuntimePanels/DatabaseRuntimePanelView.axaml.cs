@@ -126,6 +126,14 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
     /// <summary>The panel asks the shell to open its connection in the editor.</summary>
     public event EventHandler<RoutedEventArgs>? EditConnectionRequested;
 
+    /// <summary>An object wants its own tab on the same connection.</summary>
+    public event EventHandler<GhostShell.Application.DatabaseTableDescriptor>?
+        OpenObjectInTabRequested;
+
+    /// <summary>An object wants a panel split beside this one.</summary>
+    public event EventHandler<GhostShell.Application.DatabaseTableDescriptor>?
+        OpenObjectInPanelRequested;
+
     /// <summary>
     /// Splitting places an empty panel beside this one; what it becomes is chosen
     /// there rather than in a modal over the window.
@@ -147,6 +155,16 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
 
     private void OnEditConnectionClick(object? sender, RoutedEventArgs e) =>
         EditConnectionRequested?.Invoke(this, e);
+
+    private void OnOpenObjectInTab(
+        object? sender,
+        GhostShell.Application.DatabaseTableDescriptor e) =>
+        OpenObjectInTabRequested?.Invoke(this, e);
+
+    private void OnOpenObjectInPanel(
+        object? sender,
+        GhostShell.Application.DatabaseTableDescriptor e) =>
+        OpenObjectInPanelRequested?.Invoke(this, e);
 
     private void OnSplitRequested(object? sender, PanelSplitOrientation orientation) =>
         SplitRequested?.Invoke(sender, orientation);
