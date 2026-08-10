@@ -472,6 +472,52 @@ public sealed class BrowserOperationTests
         Assert.Equal(HostErrorCode.SessionClosed, afterClose.Error().Code);
     }
 
+    [Fact]
+    public async Task LoadingBrowserClosesWithoutDestructiveConfirmation()
+    {
+        var browsers = new FakeBrowserPanelSessionFactory();
+        await using var host = CreateHost(browsers);
+        var sessionId = new SessionId("loading-browser");
+        var panelId = new PanelInstanceId("loading-browser-panel");
+        var address = Address("https://example.test/watch?v=one");
+        _ = (await host.EnsureBrowserSessionAsync(
+            new EnsureBrowserSessionRequest(
+                sessionId,
+                Owner(panelId.Value),
+                "Browser",
+                address),
+            Context(),
+            CancellationToken.None)).Value();
+        var attachment = (await host.AttachAsync(
+            new AttachSessionRequest(
+                sessionId,
+                ClientId,
+                AttachmentKind.Interactive,
+                new ViewportDescriptor(800, 600, 1),
+                BrowserCapabilities()),
+            Context(),
+            CancellationToken.None)).Value();
+        var renderer = new FakeBrowserRenderer(address);
+        _ = (await host.AttachBrowserRendererAsync(
+            new AttachBrowserRendererRequest(
+                sessionId,
+                attachment.Attachment.Id,
+                renderer),
+            Context(),
+            CancellationToken.None)).Value();
+        renderer.BeginLoading(address);
+
+        var closed = (await host.CloseAsync(
+            CloseScopeRequest.Panel(panelId, CloseDecision.Request),
+            Context(),
+            CancellationToken.None)).Value();
+
+        var completed = Assert.IsType<CloseScopeResult.Completed>(closed);
+        Assert.Equal(
+            SessionCloseOutcome.GracefullyClosed,
+            Assert.Single(completed.Sessions).Outcome);
+    }
+
     private static readonly ClientId ClientId = new("client-1");
 
     private static InMemorySessionHostClient CreateHost(

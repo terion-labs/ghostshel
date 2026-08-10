@@ -439,6 +439,9 @@ public sealed class SqliteRecentSessionStore :
         }
         catch (SqliteException exception)
         {
+            Console.Error.WriteLine(
+                "[ghostshell:history] SQLite history read failed "
+                + $"(code {exception.SqliteErrorCode}, extended {exception.SqliteExtendedErrorCode}).");
             return Failure<IReadOnlyList<RecentSessionRecord>>(
                 MapSqliteError(exception),
                 "The recent-session store could not read history.");

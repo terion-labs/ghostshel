@@ -99,6 +99,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public event EventHandler<NativeBrowserNavigationCompletedEventArgs>? NavigationCompleted;
 
+    public event EventHandler<NativeBrowserAddressChangedEventArgs>? AddressChanged;
+
     public event EventHandler<NativeBrowserNavigationRejectedEventArgs>?
         NavigationRejected;
 
@@ -281,6 +283,11 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public void RaiseRenderProcessFailed() =>
         RenderProcessFailed?.Invoke(this, EventArgs.Empty);
+
+    public void RaiseAddressChanged(BrowserAddress address) =>
+        AddressChanged?.Invoke(
+            this,
+            new NativeBrowserAddressChangedEventArgs(address));
 
     public Action CaptureNavigationCompletedCallback(
         BrowserAddress? address,

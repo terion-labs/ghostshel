@@ -528,14 +528,16 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     }
 }
 
-public sealed class ProcessMonitorEntryViewModel
+public sealed class ProcessMonitorEntryViewModel : ObservableObject
 {
+    private ProcessMonitorEntry _entry;
+
     public ProcessMonitorEntryViewModel(ProcessMonitorEntry entry)
     {
-        Entry = entry ?? throw new ArgumentNullException(nameof(entry));
+        _entry = entry ?? throw new ArgumentNullException(nameof(entry));
     }
 
-    public ProcessMonitorEntry Entry { get; }
+    public ProcessMonitorEntry Entry => _entry;
 
     public int ProcessId => Entry.ProcessId;
 
@@ -552,6 +554,21 @@ public sealed class ProcessMonitorEntryViewModel
     public string AccessibleSummary =>
         $"PID {ProcessId}, {Name}, CPU {MonitorPanelPresentation.AccessiblePercent(Entry.CpuPercent)}, "
         + $"memory {Memory}, started {Started}.";
+
+    internal void Update(ProcessMonitorEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (_entry == entry)
+        {
+            return;
+        }
+
+        _entry = entry;
+        // Avalonia treats an empty property name as "all properties changed".
+        // One row notification lets its compiled bindings refresh together;
+        // emitting one event per displayed field multiplies the UI-thread work.
+        OnPropertyChanged(string.Empty);
+    }
 }
 
 public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
@@ -1047,16 +1064,32 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         var terms = Filter.Split(
             ' ',
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var filtered = _latestEntries.Where(entry =>
-            terms.Length == 0
-            || terms.All(term =>
-                entry.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
-                || entry.ProcessId.ToString(CultureInfo.InvariantCulture)
-                    .Contains(term, StringComparison.OrdinalIgnoreCase)));
-        Processes.Clear();
-        foreach (var entry in filtered)
+        var visibleEntries = _latestEntries
+            .Where(entry =>
+                terms.Length == 0
+                || terms.All(term =>
+                    entry.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || entry.ProcessId.ToString(CultureInfo.InvariantCulture)
+                        .Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+
+        // Rows are stable presentation slots. Rebuilding the collection every two
+        // seconds makes Avalonia discard and recreate as many as 250 containers,
+        // briefly starving other composited surfaces in the same window.
+        var retainedCount = Math.Min(Processes.Count, visibleEntries.Length);
+        for (var index = 0; index < retainedCount; index++)
         {
-            Processes.Add(new ProcessMonitorEntryViewModel(entry));
+            Processes[index].Update(visibleEntries[index]);
+        }
+
+        while (Processes.Count > visibleEntries.Length)
+        {
+            Processes.RemoveAt(Processes.Count - 1);
+        }
+
+        for (var index = retainedCount; index < visibleEntries.Length; index++)
+        {
+            Processes.Add(new ProcessMonitorEntryViewModel(visibleEntries[index]));
         }
 
         SelectedProcess = hadSelection

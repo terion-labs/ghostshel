@@ -4,8 +4,15 @@
 // - excef_execute_process / excef_initialize / excef_run_message_loop / excef_shutdown
 
 #import <Cocoa/Cocoa.h>
+#import <CoreVideo/CoreVideo.h>
+#import <IOSurface/IOSurface.h>
+#import <Metal/Metal.h>
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
+#include <mutex>
 
 #include "include/cef_app.h"
 #include "include/cef_application_mac.h"
@@ -27,6 +34,80 @@
 
 namespace {
 std::unique_ptr<CefScopedLibraryLoader> g_library_loader;
+
+std::once_flag g_accelerated_copy_once;
+id<MTLDevice> g_accelerated_copy_device;
+id<MTLCommandQueue> g_accelerated_copy_queue;
+
+struct ExternalBeginFrameClock {
+    int browser_id = 0;
+    CGDirectDisplayID display_id = 0;
+    CVDisplayLinkRef display_link = nullptr;
+    bool diagnostics = false;
+    uint64_t diagnostic_ticks = 0;
+    std::chrono::steady_clock::time_point diagnostic_started_at;
+};
+
+std::mutex g_external_begin_frame_clocks_mu;
+std::map<int, std::unique_ptr<ExternalBeginFrameClock>>
+    g_external_begin_frame_clocks;
+
+void EnsureAcceleratedCopyDevice() {
+    std::call_once(g_accelerated_copy_once, [] {
+        g_accelerated_copy_device = MTLCreateSystemDefaultDevice();
+        g_accelerated_copy_queue =
+            [g_accelerated_copy_device newCommandQueue];
+    });
+}
+
+CGDirectDisplayID DisplayIdForWindow(void* window_handle) {
+    NSWindow* window = (__bridge NSWindow*)window_handle;
+    NSNumber* screen_number =
+        window.screen.deviceDescription[@"NSScreenNumber"];
+    return screen_number == nil
+        ? CGMainDisplayID()
+        : screen_number.unsignedIntValue;
+}
+
+CVReturn ExternalBeginFrameDisplayLinkCallback(
+    CVDisplayLinkRef,
+    const CVTimeStamp*,
+    const CVTimeStamp*,
+    CVOptionFlags,
+    CVOptionFlags*,
+    void* context) {
+    auto* clock = static_cast<ExternalBeginFrameClock*>(context);
+    auto browser = exclr8cef::GetOsrBrowser(clock->browser_id);
+    if (browser) {
+        browser->GetHost()->SendExternalBeginFrame();
+    }
+
+    if (clock->diagnostics) {
+        ++clock->diagnostic_ticks;
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = now - clock->diagnostic_started_at;
+        if (elapsed >= std::chrono::seconds(5)) {
+            const double seconds =
+                std::chrono::duration<double>(elapsed).count();
+            std::fprintf(
+                stderr,
+                "[exclr8cef] CoreVideo display-link begin frames: %.1f/s.\n",
+                clock->diagnostic_ticks / seconds);
+            clock->diagnostic_ticks = 0;
+            clock->diagnostic_started_at = now;
+        }
+    }
+    return kCVReturnSuccess;
+}
+
+void StopExternalBeginFrameClock(
+    std::unique_ptr<ExternalBeginFrameClock> clock) {
+    if (!clock) {
+        return;
+    }
+    CVDisplayLinkStop(clock->display_link);
+    CVDisplayLinkRelease(clock->display_link);
+}
 }
 
 @interface Exclr8CefApplication : NSApplication <CefAppProtocol> {
@@ -55,6 +136,69 @@ std::unique_ptr<CefScopedLibraryLoader> g_library_loader;
 }
 
 @end
+
+extern "C" int excef_start_external_begin_frame_clock(
+    int browser_id,
+    void* window_handle) {
+    const CGDirectDisplayID display_id = DisplayIdForWindow(window_handle);
+    std::unique_ptr<ExternalBeginFrameClock> previous;
+    {
+        std::lock_guard<std::mutex> lock(g_external_begin_frame_clocks_mu);
+        auto it = g_external_begin_frame_clocks.find(browser_id);
+        if (it != g_external_begin_frame_clocks.end()) {
+            if (it->second->display_id == display_id) {
+                return 1;
+            }
+            previous = std::move(it->second);
+            g_external_begin_frame_clocks.erase(it);
+        }
+    }
+    StopExternalBeginFrameClock(std::move(previous));
+
+    auto clock = std::make_unique<ExternalBeginFrameClock>();
+    clock->browser_id = browser_id;
+    clock->display_id = display_id;
+    clock->diagnostics = std::getenv(
+        "EXCLR8CEF_ACCELERATION_DIAGNOSTICS") != nullptr;
+    clock->diagnostic_started_at = std::chrono::steady_clock::now();
+    if (CVDisplayLinkCreateWithCGDisplay(
+            display_id,
+            &clock->display_link) != kCVReturnSuccess
+        || clock->display_link == nullptr) {
+        return 0;
+    }
+    if (CVDisplayLinkSetOutputCallback(
+            clock->display_link,
+            ExternalBeginFrameDisplayLinkCallback,
+            clock.get()) != kCVReturnSuccess) {
+        CVDisplayLinkRelease(clock->display_link);
+        return 0;
+    }
+    if (CVDisplayLinkStart(clock->display_link) != kCVReturnSuccess) {
+        CVDisplayLinkRelease(clock->display_link);
+        return 0;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_external_begin_frame_clocks_mu);
+        g_external_begin_frame_clocks.emplace(browser_id, std::move(clock));
+    }
+    return 1;
+}
+
+extern "C" void excef_stop_external_begin_frame_clock(int browser_id) {
+    std::unique_ptr<ExternalBeginFrameClock> clock;
+    {
+        std::lock_guard<std::mutex> lock(g_external_begin_frame_clocks_mu);
+        auto it = g_external_begin_frame_clocks.find(browser_id);
+        if (it == g_external_begin_frame_clocks.end()) {
+            return;
+        }
+        clock = std::move(it->second);
+        g_external_begin_frame_clocks.erase(it);
+    }
+    StopExternalBeginFrameClock(std::move(clock));
+}
 
 extern "C" int excef_execute_process(int argc, char** argv) {
     @autoreleasepool {
@@ -109,6 +253,139 @@ extern "C" void excef_shutdown(void) {
         exclr8cef::SetSchedulePumpCallback(nullptr);
         g_library_loader.reset();
     }
+}
+
+extern "C" int excef_copy_macos_accelerated_frame(
+    const void* source_io_surface,
+    int width,
+    int height,
+    int format,
+    excef_macos_accelerated_frame* out_frame) {
+    if (!source_io_surface || !out_frame || width <= 0 || height <= 0 ||
+        (format != 0 && format != 1)) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        *out_frame = {};
+        EnsureAcceleratedCopyDevice();
+        if (!g_accelerated_copy_device || !g_accelerated_copy_queue) {
+            return 0;
+        }
+
+        IOSurfaceRef source =
+            static_cast<IOSurfaceRef>(const_cast<void*>(source_io_surface));
+        const size_t source_width = IOSurfaceGetWidth(source);
+        const size_t source_height = IOSurfaceGetHeight(source);
+        if (source_width < static_cast<size_t>(width) ||
+            source_height < static_cast<size_t>(height)) {
+            return 0;
+        }
+
+        const OSType surface_format = format == 0
+            ? kCVPixelFormatType_32RGBA
+            : kCVPixelFormatType_32BGRA;
+        const MTLPixelFormat metal_format = format == 0
+            ? MTLPixelFormatRGBA8Unorm
+            : MTLPixelFormatBGRA8Unorm;
+        const size_t bytes_per_row = IOSurfaceAlignProperty(
+            kIOSurfaceBytesPerRow,
+            static_cast<size_t>(width) * 4);
+        NSDictionary* properties = @{
+            (__bridge NSString*)kIOSurfaceWidth: @(width),
+            (__bridge NSString*)kIOSurfaceHeight: @(height),
+            (__bridge NSString*)kIOSurfaceBytesPerElement: @4,
+            (__bridge NSString*)kIOSurfaceBytesPerRow: @(bytes_per_row),
+            (__bridge NSString*)kIOSurfaceAllocSize:
+                @(bytes_per_row * static_cast<size_t>(height)),
+            (__bridge NSString*)kIOSurfacePixelFormat: @(surface_format),
+        };
+        IOSurfaceRef destination = IOSurfaceCreate(
+            (__bridge CFDictionaryRef)properties);
+        if (!destination) {
+            return 0;
+        }
+
+        MTLTextureDescriptor* source_descriptor =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metal_format
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:NO];
+        source_descriptor.usage = MTLTextureUsageShaderRead;
+        MTLTextureDescriptor* destination_descriptor =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metal_format
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:NO];
+        destination_descriptor.usage = MTLTextureUsageShaderRead;
+        id<MTLTexture> source_texture =
+            [g_accelerated_copy_device newTextureWithDescriptor:source_descriptor
+                                                       iosurface:source
+                                                           plane:0];
+        id<MTLTexture> destination_texture =
+            [g_accelerated_copy_device newTextureWithDescriptor:destination_descriptor
+                                                       iosurface:destination
+                                                           plane:0];
+        if (!source_texture || !destination_texture) {
+            CFRelease(destination);
+            return 0;
+        }
+
+        id<MTLCommandBuffer> command_buffer =
+            [g_accelerated_copy_queue commandBuffer];
+        id<MTLBlitCommandEncoder> blit = [command_buffer blitCommandEncoder];
+        if (!command_buffer || !blit) {
+            CFRelease(destination);
+            return 0;
+        }
+
+        [blit copyFromTexture:source_texture
+                  sourceSlice:0
+                  sourceLevel:0
+                 sourceOrigin:MTLOriginMake(0, 0, 0)
+                   sourceSize:MTLSizeMake(width, height, 1)
+                    toTexture:destination_texture
+             destinationSlice:0
+             destinationLevel:0
+            destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        [command_buffer commit];
+        [command_buffer waitUntilCompleted];
+        if (command_buffer.status != MTLCommandBufferStatusCompleted) {
+            CFRelease(destination);
+            return 0;
+        }
+
+        id<MTLSharedEvent> ready_event =
+            [g_accelerated_copy_device newSharedEvent];
+        if (!ready_event) {
+            CFRelease(destination);
+            return 0;
+        }
+        ready_event.signaledValue = 1;
+
+        out_frame->io_surface = destination;
+        out_frame->ready_event = (__bridge_retained void*)ready_event;
+        out_frame->ready_value = 1;
+        out_frame->width = width;
+        out_frame->height = height;
+        out_frame->format = format;
+        return 1;
+    }
+}
+
+extern "C" void excef_release_macos_accelerated_frame(
+    excef_macos_accelerated_frame* frame) {
+    if (!frame) {
+        return;
+    }
+    if (frame->io_surface) {
+        CFRelease(frame->io_surface);
+    }
+    if (frame->ready_event) {
+        CFBridgingRelease(frame->ready_event);
+    }
+    *frame = {};
 }
 
 // ---- External message pump variant ---------------------------------------

@@ -26,9 +26,19 @@ public sealed class OnboardingViewModelTests
         await viewModel.Initialization;
 
         Assert.True(viewModel.IsVisible);
+        Assert.Equal("Welcome to GhostSHELL", viewModel.Title);
+        Assert.Equal(
+            "GhostSHELL checked the basics you need to get started.",
+            viewModel.Introduction);
         Assert.Equal("Ready", viewModel.LocalTerminalState);
+        Assert.Equal("Your default shell is available.", viewModel.LocalTerminalDetail);
         Assert.Equal("Ready", viewModel.CredentialVaultState);
-        Assert.Contains("did not launch", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "Passwords can be stored securely by your operating system.",
+            viewModel.CredentialVaultDetail);
+        Assert.Equal(
+            "No terminal was opened and no passwords were accessed during these checks.",
+            viewModel.StatusMessage);
         Assert.True(viewModel.CanFinish);
 
         await viewModel.CompleteAsync(CancellationToken.None);
@@ -56,7 +66,10 @@ public sealed class OnboardingViewModelTests
         Assert.False(viewModel.IsVisible);
         viewModel.ShowReview();
         Assert.True(viewModel.IsVisible);
-        Assert.Equal("Review local setup", viewModel.Title);
+        Assert.Equal("Check your setup", viewModel.Title);
+        Assert.Equal(
+            "Make sure your terminal and secure password storage are ready to use.",
+            viewModel.Introduction);
 
         await viewModel.CompleteAsync(CancellationToken.None);
 
@@ -114,10 +127,7 @@ public sealed class OnboardingViewModelTests
         Assert.True(viewModel.IsVisible);
         Assert.True(viewModel.HasFailure);
         Assert.False(viewModel.CanFinish);
-        Assert.Contains(
-            nameof(OnboardingProgressErrorCode.StorageUnavailable),
-            viewModel.StatusMessage,
-            StringComparison.Ordinal);
+        Assert.Equal("We couldn't load your setup status. Try again.", viewModel.StatusMessage);
 
         store.ReadError = null;
         await viewModel.RefreshAsync(CancellationToken.None);

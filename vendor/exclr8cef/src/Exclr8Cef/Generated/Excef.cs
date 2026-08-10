@@ -230,6 +230,12 @@ internal static unsafe partial class Excef
     public static extern void excef_send_external_begin_frame(int browser_id);
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern int excef_start_external_begin_frame_clock(int browser_id, void* window_handle);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void excef_stop_external_begin_frame_clock(int browser_id);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void excef_set_touch_handle_size_callback([NativeTypeName("excef_touch_handle_size_cb_t")] delegate* unmanaged[Cdecl]<int, int, int*, int*, void> cb);
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -550,6 +556,12 @@ internal static unsafe partial class Excef
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern int excef_create_offscreen_browser_ex(int width, int height, float device_scale_factor, [NativeTypeName("const char *")] sbyte* url, [NativeTypeName("excef_paint_callback_t")] delegate* unmanaged[Cdecl]<int, void*, int, int, void> paint, int context_handle, int flags);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern int excef_copy_macos_accelerated_frame(void* source_io_surface, int width, int height, int format, excef_macos_accelerated_frame* out_frame);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void excef_release_macos_accelerated_frame(excef_macos_accelerated_frame* frame);
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void excef_ime_set_composition(int browser_id, [NativeTypeName("const char *")] sbyte* text, int replacement_range_from, int replacement_range_length, int selection_range_from, int selection_range_length);

@@ -1991,6 +1991,30 @@ public sealed class BrowserSurfaceTests
     }
 
     [Fact]
+    public void SameDocumentAddressChangeUpdatesChromeWithoutAdvancingRevision()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+        var document = Address("https://example.test/watch?v=one");
+        var nextRoute = Address("https://example.test/watch?v=two");
+
+        nativeView.RaiseNavigationStarted(document);
+        nativeView.RaiseNavigationCompleted(document, isSuccess: true);
+        var documentRevision = surface.State.DocumentRevision;
+        nativeView.CanGoBack = true;
+        nativeView.CanGoForward = false;
+
+        nativeView.RaiseAddressChanged(nextRoute);
+
+        Assert.Equal(nextRoute, surface.State.Address);
+        Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+        Assert.Equal(documentRevision, surface.State.DocumentRevision);
+        Assert.True(surface.State.CanGoBack);
+        Assert.False(surface.State.CanGoForward);
+        Assert.Null(surface.State.Failure);
+    }
+
+    [Fact]
     public void FailedCompletionPublishesOnlyAStableEngineNeutralFailure()
     {
         var nativeView = new RecordingEmbeddedBrowserView();

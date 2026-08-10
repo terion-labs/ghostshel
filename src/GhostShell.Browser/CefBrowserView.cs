@@ -46,6 +46,9 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     public event EventHandler<NativeBrowserNavigationCompletedEventArgs>?
         NavigationCompleted;
 
+    public event EventHandler<NativeBrowserAddressChangedEventArgs>?
+        AddressChanged;
+
     public event EventHandler<NativeBrowserNavigationRejectedEventArgs>?
         NavigationRejected;
 
@@ -196,6 +199,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     {
         browser.ResourceRequest += OnResourceRequest;
         browser.BeforeBrowse += OnBeforeBrowse;
+        browser.AddressChanged += OnAddressChanged;
+        browser.LoadingStateChanged += OnLoadingStateChanged;
         browser.LoadStart += OnLoadStart;
         browser.LoadEnd += OnLoadEnd;
         browser.LoadError += OnLoadError;
@@ -207,7 +212,6 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.BeforePopup += BlockPopup;
         browser.JsDialog += BlockJavaScriptDialog;
         browser.FileDialog += BlockFileDialog;
-        browser.ContextMenu += BlockContextMenu;
         browser.DownloadStarting += BlockDownload;
         browser.AuthRequest += BlockAuthentication;
         browser.PermissionRequest += BlockPermission;
@@ -219,6 +223,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     {
         browser.ResourceRequest -= OnResourceRequest;
         browser.BeforeBrowse -= OnBeforeBrowse;
+        browser.AddressChanged -= OnAddressChanged;
+        browser.LoadingStateChanged -= OnLoadingStateChanged;
         browser.LoadStart -= OnLoadStart;
         browser.LoadEnd -= OnLoadEnd;
         browser.LoadError -= OnLoadError;
@@ -226,7 +232,6 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.BeforePopup -= BlockPopup;
         browser.JsDialog -= BlockJavaScriptDialog;
         browser.FileDialog -= BlockFileDialog;
-        browser.ContextMenu -= BlockContextMenu;
         browser.DownloadStarting -= BlockDownload;
         browser.AuthRequest -= BlockAuthentication;
         browser.PermissionRequest -= BlockPermission;
@@ -378,6 +383,96 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         }
     }
 
+    private void OnAddressChanged(object? sender, string url) =>
+        RunOnUiThread(() =>
+        {
+            if (_disposed || (_ignoreInitialBlank && IsBlank(url)))
+            {
+                return;
+            }
+
+            if (_activeNavigation is { } navigation)
+            {
+                ObserveAddressChangeDuringNavigation(navigation, url);
+                return;
+            }
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                || !TryResolveNavigation(
+                    uri,
+                    Volatile.Read(ref _localDocumentAccess).PermittedPage,
+                    out var address))
+            {
+                return;
+            }
+
+            PublishSameDocumentAddress(address);
+        });
+
+    private void OnLoadingStateChanged(object? sender, LoadingState state) =>
+        RunOnUiThread(() =>
+        {
+            if (_disposed || state.IsLoading)
+            {
+                return;
+            }
+
+            TryCompleteSameDocumentNavigation();
+        });
+
+    private void ObserveAddressChangeDuringNavigation(
+        ActiveNativeNavigation navigation,
+        string url)
+    {
+        if (!TryResolveNavigationAddress(url, navigation, out var address))
+        {
+            return;
+        }
+
+        navigation.PendingAddress = address;
+        navigation.HasObservedAddressChange = true;
+        if (!navigation.HasStarted && !TryAdmitNavigation(navigation, address))
+        {
+            return;
+        }
+
+        navigation.AdmitLeg(url, isRedirect: false);
+        AdmitLocalDocumentAccess(address);
+    }
+
+    private void TryCompleteSameDocumentNavigation()
+    {
+        if (_activeNavigation is not
+            {
+                HasObservedAddressChange: true,
+                HasDocumentLoadStarted: false,
+            } navigation)
+        {
+            return;
+        }
+
+        var address = navigation.PendingAddress;
+        CompleteNavigation(
+            address?.Value.AbsoluteUri,
+            isSuccess: !navigation.WasRejected,
+            wasStopped: navigation.StopRequested);
+    }
+
+    private void PublishSameDocumentAddress(BrowserAddress address)
+    {
+        try
+        {
+            AddressChanged?.Invoke(
+                this,
+                new NativeBrowserAddressChangedEventArgs(address));
+        }
+        catch
+        {
+            // Browser callbacks are isolation boundaries. A host observer
+            // cannot be allowed to escape into CEF's display callback.
+        }
+    }
+
     private void OnLoadStart(object? sender, LoadStartEventArgs args)
     {
         if (!args.IsMainFrame)
@@ -393,6 +488,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             }
 
             var navigation = EnsureActiveNavigation();
+            navigation.HasDocumentLoadStarted = true;
             if (navigation.HasStarted)
             {
                 return;
@@ -854,10 +950,6 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         object? sender,
         FileDialogEventArgs args) => args.Cancel();
 
-    private static void BlockContextMenu(
-        object? sender,
-        ContextMenuEventArgs args) => args.Cancel();
-
     private static void BlockDownload(
         object? sender,
         DownloadStartingEventArgs args) => args.Cancel();
@@ -890,6 +982,10 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         public BrowserAddress? PendingAddress { get; set; } = pendingAddress;
 
         public bool HasStarted { get; set; }
+
+        public bool HasDocumentLoadStarted { get; set; }
+
+        public bool HasObservedAddressChange { get; set; }
 
         public bool StopRequested { get; set; }
 

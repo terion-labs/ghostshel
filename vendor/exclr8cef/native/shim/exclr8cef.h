@@ -573,6 +573,11 @@ EXCEF_API void excef_send_touch_event(int browser_id,
 // (see excef_create_offscreen_browser_ex). Useful for deterministic
 // frame timing in record / replay / agent loops.
 EXCEF_API void excef_send_external_begin_frame(int browser_id);
+// Start/stop a platform display-link clock that issues one external begin
+// frame per hardware display callback. Currently supported on macOS.
+EXCEF_API int excef_start_external_begin_frame_clock(int browser_id,
+                                                      void* window_handle);
+EXCEF_API void excef_stop_external_begin_frame_clock(int browser_id);
 
 // ---- OSR render-handler events -----------------------------------------
 //
@@ -643,6 +648,31 @@ typedef void (*excef_accelerated_paint_cb_t)(int browser_id,
                                                 uint64_t timestamp_us,
                                                 const void* shared_handle);
 EXCEF_API void excef_set_accelerated_paint_callback(excef_accelerated_paint_cb_t cb);
+
+// macOS-only owned copy of one accelerated paint frame. CEF recycles the
+// source IOSurface as soon as OnAcceleratedPaint returns, so a compositor
+// cannot safely retain that pointer. This helper performs a synchronous
+// GPU-to-GPU Metal blit into a new IOSurface and returns that surface plus a
+// signaled MTLSharedEvent suitable for compositor import. The caller owns the
+// returned objects and must call excef_release_macos_accelerated_frame.
+// Returns 1 on success and 0 when unsupported or when the copy fails.
+typedef struct excef_macos_accelerated_frame {
+    void* io_surface;
+    void* ready_event;
+    uint64_t ready_value;
+    int width;
+    int height;
+    int format;
+} excef_macos_accelerated_frame;
+
+EXCEF_API int excef_copy_macos_accelerated_frame(
+    const void* source_io_surface,
+    int width,
+    int height,
+    int format,
+    excef_macos_accelerated_frame* out_frame);
+EXCEF_API void excef_release_macos_accelerated_frame(
+    excef_macos_accelerated_frame* frame);
 
 // ---- Navigation / lifecycle ----------------------------------------------
 
@@ -929,9 +959,10 @@ EXCEF_API void excef_resolve_file_dialog(uint64_t token, const char* paths);
 //
 // CefContextMenuHandler::RunContextMenu. Fires on right-click / long-press.
 // The page-side `params` includes the click coordinates and selection /
-// link / image info; we expose x,y here and serialize the model's command
-// items as "<id>\t<label>" per line (separators come through as id=0 with
-// empty label; submenus are flattened — first level only in v1).
+// link / image info; we expose x,y here and serialize each top-level item as
+// "<id>\t<kind>\t<enabled>\t<checked>\t<depth>\t<label>". Kinds
+// 0/1/2/3/4 are command/check/radio/separator/submenu, and depth preserves
+// the native menu hierarchy.
 //
 // In OSR mode CEF cannot render the menu itself, so the host MUST render
 // its own and call excef_resolve_context_menu with the chosen command id

@@ -147,6 +147,11 @@ public:
                        CefRefPtr<CefFileDialogCallback> callback) override;
 
     // CefContextMenuHandler
+    void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                              CefRefPtr<CefFrame> frame,
+                              CefRefPtr<CefContextMenuParams> params,
+                              CefRefPtr<CefMenuModel> model) override;
+
     bool RunContextMenu(CefRefPtr<CefBrowser> browser,
                          CefRefPtr<CefFrame> frame,
                          CefRefPtr<CefContextMenuParams> params,

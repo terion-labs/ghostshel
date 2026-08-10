@@ -32,7 +32,7 @@ and pins CEF `150.0.9+g81b0088+chromium-150.0.7871.46`.
 
 `GhostShell.Browser` is the only product project that references the binding.
 Its public contracts remain engine-neutral. `CefBrowserView` hosts the binding's
-CPU BGRA OSR control as an ordinary Avalonia visual, while `BrowserSurface`
+OSR control as an ordinary Avalonia visual, while `BrowserSurface`
 owns logical state, origin containment, crash replacement, and deterministic
 disposal. Layout rebuilds reparent the same visual and preserve the panel-owned
 session attachment; they do not suspend, conceal, or recreate the browser.
@@ -50,11 +50,16 @@ Panel close removes the control from the visual tree before disposal. Shutdown
 force-closes all remaining browsers, continues the external CEF pump until every
 `OnBeforeClose` is observed, and only then calls `CefShutdown`.
 
-The baseline renderer is classic CPU OSR. Its UI handoff coalesces pending
-frames so a busy renderer cannot queue an unbounded sequence of full-frame
-copies. Accelerated shared-texture rendering is not advertised: the selected
-binding does not yet carry Linux DMA-BUF plane metadata through its ABI and its
-Windows/macOS interop is not production-qualified.
+macOS uses CEF accelerated paint and copies each borrowed IOSurface into an
+application-owned IOSurface with Metal before the callback returns. Avalonia
+imports that surface through timeline-semaphore GPU interop, so browser pixels
+remain in GPU memory. Accelerated browsers opt into CEF external begin frames;
+the native shim requests one Chromium frame on each CoreVideo CVDisplayLink
+callback, so Chromium follows the hardware display cadence instead of a fixed
+60 fps timer. The clock stops while detached and does not invalidate or redraw
+sibling visuals. Pending frames are coalesced so neither accelerated nor
+CPU fallback rendering can build an unbounded queue. Linux DMA-BUF and Windows
+shared-handle presentation remain unqualified and use the CPU fallback.
 
 The semantic snapshot/click/fill/check implementation is deliberately excluded
 from this migration. Existing application contracts remain, but the production
@@ -86,8 +91,9 @@ app host.
 - macOS, Windows, and Linux share Chromium behavior and one adapter boundary.
 - Distribution size, memory use, packaging complexity, and security ownership
   increase materially.
-- CPU OSR adds a CPU copy and texture upload per presented frame; accelerated
-  rendering remains a measured follow-up, not a falsely portable switch.
+- macOS browser frames remain GPU-resident after CEF's required owned copy and
+  use display-linked external begin frames. Other platforms still pay the CPU OSR
+  copy/upload cost until their shared-texture contracts are qualified.
 - Windows production packaging is fail-closed until its sandbox bootstrap is
   implemented and qualified.
 
@@ -97,7 +103,7 @@ app host.
   the migration and retains three behavior matrices.
 - Consuming the published Exclr8CEF NuGet packages cannot produce a complete
   native runtime and omits required fixes.
-- Enabling shared textures without complete platform handle metadata and tested
-  synchronization would make the fastest path the least reliable one.
+- Pretending one shared-texture ABI is portable across IOSurface, NT-handle, and
+  DMA-BUF platforms would make the fastest path the least reliable one.
 - Reintroducing raw JavaScript automation during the renderer migration would
   mix the explicitly deferred agentic trust model into the engine boundary.

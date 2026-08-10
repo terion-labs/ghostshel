@@ -92,6 +92,9 @@ if(OS_MAC)
     target_link_libraries(${SHIM_LIB} PRIVATE
         libcef_dll_wrapper
         ${CEF_STANDARD_LIBS}
+        "-framework CoreVideo"
+        "-framework IOSurface"
+        "-framework Metal"
     )
 else()
     target_link_libraries(${SHIM_LIB} PRIVATE

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <climits>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <set>
@@ -17,8 +18,10 @@
 #include "include/cef_devtools_message_observer.h"
 #include "include/cef_frame.h"
 #include "include/cef_parser.h"
+#include "include/cef_pack_strings.h"
 #include "include/cef_process_message.h"
 #include "include/cef_request_context.h"
+#include "include/cef_resource_bundle.h"
 #include "include/cef_resource_handler.h"
 #include "include/cef_response.h"
 #include "include/cef_scheme.h"
@@ -1470,6 +1473,86 @@ void Exclr8CefOsrHandler::OnDownloadUpdated(CefRefPtr<CefBrowser> /*browser*/,
     g_download_progress_pending.erase(token);
 }
 
+void Exclr8CefOsrHandler::OnBeforeContextMenu(
+        CefRefPtr<CefBrowser> /*browser*/,
+        CefRefPtr<CefFrame> /*frame*/,
+        CefRefPtr<CefContextMenuParams> params,
+        CefRefPtr<CefMenuModel> model) {
+    if (!params || !model) return;
+
+    auto localized = [](int string_id, const char* fallback) {
+        CefRefPtr<CefResourceBundle> resources =
+            CefResourceBundle::GetGlobal();
+        if (resources) {
+            CefString label = resources->GetLocalizedString(string_id);
+            if (!label.empty()) return label;
+        }
+        return CefString(fallback);
+    };
+    auto ensure_separator_after = [&](size_t index) {
+        if (index <= model->GetCount() &&
+            (index == model->GetCount() ||
+             model->GetTypeAt(index) != MENUITEMTYPE_SEPARATOR)) {
+            model->InsertSeparatorAt(index);
+        }
+    };
+
+    if (params->IsEditable()) {
+        const auto flags = params->GetEditStateFlags();
+        struct EditCommand {
+            int command_id;
+            int label_id;
+            const char* fallback;
+            cef_context_menu_edit_state_flags_t enabled_flag;
+        };
+        const EditCommand commands[] = {
+            {MENU_ID_UNDO, IDS_CONTENT_CONTEXT_UNDO, "Undo",
+             CM_EDITFLAG_CAN_UNDO},
+            {MENU_ID_REDO, IDS_CONTENT_CONTEXT_REDO, "Redo",
+             CM_EDITFLAG_CAN_REDO},
+            {MENU_ID_CUT, IDS_CONTENT_CONTEXT_CUT, "Cut",
+             CM_EDITFLAG_CAN_CUT},
+            {MENU_ID_COPY, IDS_CONTENT_CONTEXT_COPY, "Copy",
+             CM_EDITFLAG_CAN_COPY},
+            {MENU_ID_PASTE, IDS_CONTENT_CONTEXT_PASTE, "Paste",
+             CM_EDITFLAG_CAN_PASTE},
+            {MENU_ID_SELECT_ALL, IDS_CONTENT_CONTEXT_SELECTALL, "Select All",
+             CM_EDITFLAG_CAN_SELECT_ALL},
+        };
+
+        size_t insertion_index = 0;
+        for (const auto& command : commands) {
+            if (model->GetIndexOf(command.command_id) >= 0) continue;
+            model->InsertItemAt(
+                insertion_index++,
+                command.command_id,
+                localized(command.label_id, command.fallback));
+            model->SetEnabled(
+                command.command_id,
+                (flags & command.enabled_flag) != 0);
+            if (command.command_id == MENU_ID_REDO ||
+                command.command_id == MENU_ID_PASTE ||
+                command.command_id == MENU_ID_SELECT_ALL) {
+                ensure_separator_after(insertion_index++);
+            }
+        }
+        return;
+    }
+
+    const auto page_edit_flags = params->GetEditStateFlags();
+    const bool can_copy_selection =
+        !params->GetSelectionText().empty() ||
+        (page_edit_flags & CM_EDITFLAG_CAN_COPY) != 0;
+    if (can_copy_selection &&
+        model->GetIndexOf(MENU_ID_COPY) < 0) {
+        model->InsertItemAt(
+            0,
+            MENU_ID_COPY,
+            localized(IDS_CONTENT_CONTEXT_COPY, "Copy"));
+        model->InsertSeparatorAt(1);
+    }
+}
+
 bool Exclr8CefOsrHandler::RunContextMenu(CefRefPtr<CefBrowser> /*browser*/,
                                           CefRefPtr<CefFrame> /*frame*/,
                                           CefRefPtr<CefContextMenuParams> params,
@@ -1482,28 +1565,45 @@ bool Exclr8CefOsrHandler::RunContextMenu(CefRefPtr<CefBrowser> /*browser*/,
         g_context_menu_pending[token] = PendingContextMenu{id_, callback};
     }
 
-    // Serialize top-level command items only. Format: "<id>\t<label>" per
-    // line; separators encode as "0\t". Submenus / checks / radios are
-    // flattened to plain entries for v1.
+    // Serialize the complete menu hierarchy. Format:
+    // "<id>\t<kind>\t<enabled>\t<checked>\t<depth>\t<label>" per line,
+    // where kind maps command/check/radio/separator/submenu to 0/1/2/3/4.
     std::string items;
-    size_t count = model->GetCount();
-    for (size_t i = 0; i < count; ++i) {
-        cef_menu_item_type_t t = model->GetTypeAt(i);
-        if (t == MENUITEMTYPE_SEPARATOR) {
-            if (!items.empty()) items += '\n';
-            items += "0\t";
-            continue;
-        }
-        // Treat COMMAND / CHECK / RADIO uniformly; skip submenus (their
-        // command id is 0 and selecting them would be ambiguous).
-        if (t == MENUITEMTYPE_SUBMENU) continue;
-        int id = model->GetCommandIdAt(i);
-        std::string label = model->GetLabelAt(i).ToString();
+    std::function<void(CefRefPtr<CefMenuModel>, int)> append_model;
+    append_model = [&](CefRefPtr<CefMenuModel> current, int depth) {
+      const size_t count = current->GetCount();
+      for (size_t i = 0; i < count; ++i) {
+        const cef_menu_item_type_t t = current->GetTypeAt(i);
+        const bool is_separator = t == MENUITEMTYPE_SEPARATOR;
+        const bool is_submenu = t == MENUITEMTYPE_SUBMENU;
+        const int id = is_separator ? 0 : current->GetCommandIdAt(i);
+        const int kind = is_separator ? 3 :
+                         is_submenu ? 4 :
+                         t == MENUITEMTYPE_CHECK ? 1 :
+                         t == MENUITEMTYPE_RADIO ? 2 : 0;
+        const std::string label = is_separator
+            ? std::string()
+            : current->GetLabelAt(i).ToString();
         if (!items.empty()) items += '\n';
         items += std::to_string(id);
         items += '\t';
+        items += std::to_string(kind);
+        items += '\t';
+        items += current->IsEnabledAt(i) ? '1' : '0';
+        items += '\t';
+        items += current->IsCheckedAt(i) ? '1' : '0';
+        items += '\t';
+        items += std::to_string(depth);
+        items += '\t';
         items += label;
-    }
+
+        if (is_submenu) {
+          CefRefPtr<CefMenuModel> submenu = current->GetSubMenuAt(i);
+          if (submenu) append_model(submenu, depth + 1);
+        }
+      }
+    };
+    append_model(model, 0);
     g_context_menu_cb(id_, token, params->GetXCoord(), params->GetYCoord(), items.c_str());
     return true;
 }
@@ -2009,6 +2109,7 @@ void RegisterOsrHandler(int browser_id, CefRefPtr<Exclr8CefOsrHandler> handler) 
     g_osr_browsers[browser_id] = std::move(handler);
 }
 void UnregisterOsrHandler(int browser_id) {
+    excef_stop_external_begin_frame_clock(browser_id);
     std::lock_guard<std::mutex> lock(g_osr_browsers_mu);
     g_osr_browsers.erase(browser_id);
 }
@@ -2608,6 +2709,16 @@ extern "C" void excef_send_external_begin_frame(int browser_id) {
     auto b = get_browser(browser_id);
     if (b) b->GetHost()->SendExternalBeginFrame();
 }
+
+#if !defined(__APPLE__)
+extern "C" int excef_start_external_begin_frame_clock(
+    int,
+    void*) {
+    return 0;
+}
+
+extern "C" void excef_stop_external_begin_frame_clock(int) {}
+#endif
 
 // ---- Navigation -----------------------------------------------------------
 

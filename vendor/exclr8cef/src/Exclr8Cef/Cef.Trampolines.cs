@@ -660,21 +660,30 @@ public static partial class Cef
         catch { Excef.excef_resolve_context_menu(token, -1); }
     }
 
-    private static ContextMenuItem[] ParseContextMenuItems(string raw)
+    internal static ContextMenuItem[] ParseContextMenuItems(string raw)
     {
         if (raw.Length == 0) return Array.Empty<ContextMenuItem>();
         var lines = raw.Split('\n');
         var result = new ContextMenuItem[lines.Length];
         for (int i = 0; i < lines.Length; i++)
         {
-            var tab = lines[i].IndexOf('\t');
-            int id = 0; string label = "";
-            if (tab >= 0)
-            {
-                int.TryParse(lines[i].AsSpan(0, tab), out id);
-                label = lines[i][(tab + 1)..];
-            }
-            result[i] = new ContextMenuItem(id, label);
+            var fields = lines[i].Split('\t', 6);
+            int.TryParse(fields.ElementAtOrDefault(0), out var id);
+            int.TryParse(fields.ElementAtOrDefault(1), out var kindValue);
+            var enabled = fields.ElementAtOrDefault(2) != "0";
+            var isChecked = fields.ElementAtOrDefault(3) == "1";
+            int.TryParse(fields.ElementAtOrDefault(4), out var depth);
+            var label = fields.ElementAtOrDefault(5) ?? "";
+            var kind = Enum.IsDefined(typeof(ContextMenuItemKind), kindValue)
+                ? (ContextMenuItemKind)kindValue
+                : ContextMenuItemKind.Command;
+            result[i] = new ContextMenuItem(
+                id,
+                label,
+                kind,
+                enabled,
+                isChecked,
+                Math.Max(0, depth));
         }
         return result;
     }

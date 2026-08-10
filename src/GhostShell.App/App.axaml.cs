@@ -932,7 +932,7 @@ public sealed partial class App : Avalonia.Application
         _ = MainWindowViewModel.RetryRecentSessionHistoryAsync(CancellationToken.None);
         _ = await MainWindowViewModel.RestoreSessionOnStartupAsync(CancellationToken.None);
         // Whatever the restore did or did not find, the window does not come up
-        // empty: Main is always there to come up in.
-        _ = await MainWindowViewModel.OpenDefaultWorkspaceIfIdleAsync(CancellationToken.None);
+        // empty: Main's launcher is always there to come up in.
+        _ = await MainWindowViewModel.OpenDefaultLauncherIfIdleAsync(CancellationToken.None);
     }
 }

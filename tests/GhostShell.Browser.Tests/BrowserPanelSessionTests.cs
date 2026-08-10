@@ -39,10 +39,13 @@ public sealed class BrowserPanelSessionTests
 
         await session.AttachRendererAsync(renderer, CancellationToken.None);
         await session.AttachRendererAsync(renderer, CancellationToken.None);
+        var snapshot = await session.SnapshotAsync(CancellationToken.None);
 
         Assert.Equal(1, renderer.NavigateCount);
         Assert.Equal(address, renderer.LastNavigatedAddress);
         Assert.Equal(BrowserLoadState.Loading, session.State.LoadState);
+        Assert.False(snapshot.HasActiveWork);
+        Assert.Equal("The browser is loading a page.", snapshot.StatusDetail);
         await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await session.AttachRendererAsync(
                 new RecordingBrowserRenderer(),

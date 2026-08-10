@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -8,7 +9,9 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
+using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace Exclr8Cef.WebView;
 
@@ -43,6 +46,9 @@ public class WebView : Control, IWebView, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _browserReady = false;
+        IsAcceleratedRenderingActive = false;
+        StopExternalFramePacing();
         if (_browser is not null)
         {
             UnsubscribeBrowserEvents(_browser);
@@ -63,6 +69,15 @@ public class WebView : Control, IWebView, IDisposable
                 _pendingPaint = null;
             }
         }
+        lock (_acceleratedPaintGate)
+        {
+            _pendingMainAcceleratedPaint?.Frame.Dispose();
+            _pendingMainAcceleratedPaint = null;
+            _pendingPopupAcceleratedPaint?.Frame.Dispose();
+            _pendingPopupAcceleratedPaint = null;
+        }
+        DismissBrowserContextMenu();
+        DisposeAcceleratedPresentation();
         GC.SuppressFinalize(this);
     }
 
@@ -145,6 +160,23 @@ public class WebView : Control, IWebView, IDisposable
     public CefRequestContext? RequestContext { get; set; }
 
     /// <summary>
+    /// Prefer CEF's shared-texture rendering path when the current platform
+    /// and Avalonia compositor can import it. macOS uses an IOSurface copied
+    /// on-GPU with Metal; unsupported configurations fall back to CPU paint.
+    /// Set before the control is attached.
+    /// </summary>
+    public bool PreferAcceleratedRendering { get; set; } = OperatingSystem.IsMacOS();
+
+    /// <summary>True after this control creates a shared-texture CEF browser.</summary>
+    public bool IsAcceleratedRenderingActive { get; private set; }
+
+    /// <summary>
+    /// True after Avalonia has imported and presented at least one CEF
+    /// shared-texture frame. Useful for host diagnostics and smoke tests.
+    /// </summary>
+    public bool HasPresentedAcceleratedFrame { get; private set; }
+
+    /// <summary>
     /// Fires once the underlying CEF browser is fully initialized
     /// (CEF's <c>OnAfterCreated</c> has run and the browser is safe to
     /// call). Subscribe per-browser events
@@ -207,6 +239,39 @@ public class WebView : Control, IWebView, IDisposable
     private readonly object _paintGate = new();
     private PendingPaint? _pendingPaint;
     private bool _paintDispatchScheduled;
+    private readonly object _acceleratedPaintGate = new();
+    private PendingAcceleratedPaint? _pendingMainAcceleratedPaint;
+    private PendingAcceleratedPaint? _pendingPopupAcceleratedPaint;
+    private Task? _acceleratedPaintPump;
+    private bool _acceleratedPaintPumpScheduled;
+    private bool _acceleratedInitializationStarted;
+    private bool _acceleratedInitializationComplete;
+    private bool _acceleratedFailureReported;
+    private ICompositionGpuInterop? _gpuInterop;
+    private Compositor? _compositor;
+    private CompositionContainerVisual? _acceleratedRootVisual;
+    private CompositionSurfaceVisual? _acceleratedMainVisual;
+    private CompositionSurfaceVisual? _acceleratedPopupVisual;
+    private CompositionDrawingSurface? _acceleratedMainSurface;
+    private CompositionDrawingSurface? _acceleratedPopupSurface;
+    private bool _externalFramePacingActive;
+    private ContextMenu? _browserContextMenu;
+    private ContextMenuEventArgs? _browserContextMenuRequest;
+    private long _acceleratedFramesReceived;
+    private long _acceleratedFramesCopied;
+    private long _acceleratedCopyTicks;
+    private long _acceleratedCopyMaxTicks;
+    private long _acceleratedFramesDropped;
+    private long _acceleratedFramesPresented;
+    private long _acceleratedPresentationTicks;
+    private long _acceleratedPresentationMaxTicks;
+    private long _diagnosticsWindowStartedAt;
+    private long _diagnosticsWindowReceivedFrames;
+    private long _diagnosticsWindowCopiedFrames;
+    private long _diagnosticsWindowCopyTicks;
+    private long _diagnosticsWindowDroppedFrames;
+    private long _diagnosticsWindowPresentedFrames;
+    private long _diagnosticsWindowPresentationTicks;
     private bool _disposed;
 
     public WebView()
@@ -446,11 +511,13 @@ public class WebView : Control, IWebView, IDisposable
         try { BrowserClosing?.Invoke(this, args); }
         catch { /* a misbehaving handler doesn't get to wedge teardown */ }
         if (args.Cancel) return false;
+        StopExternalFramePacing();
         UnsubscribeBrowserEvents(_browser);
         _browser.Close(force: true);
         _browser = null;
         _bitmap?.Dispose();
         _bitmap = null;
+        IsAcceleratedRenderingActive = false;
         return true;
     }
 
@@ -473,17 +540,23 @@ public class WebView : Control, IWebView, IDisposable
         {
             _hostedWindow = win;
             win.Closing += OnHostWindowClosing;
+            win.PositionChanged += OnHostWindowPositionChanged;
         }
+
+        StartExternalFramePacingIfReady();
+        BeginAcceleratedPresentationInitialization();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _attached = false;
+        StopExternalFramePacing();
         _browser?.WasHidden(true);
 
         if (_hostedWindow is not null)
         {
             _hostedWindow.Closing -= OnHostWindowClosing;
+            _hostedWindow.PositionChanged -= OnHostWindowPositionChanged;
             _hostedWindow = null;
         }
         base.OnDetachedFromVisualTree(e);
@@ -497,6 +570,19 @@ public class WebView : Control, IWebView, IDisposable
         if (!Teardown()) e.Cancel = true;
     }
 
+    private void OnHostWindowPositionChanged(
+        object? sender,
+        PixelPointEventArgs e)
+    {
+        if (!_externalFramePacingActive || _browser is null)
+        {
+            return;
+        }
+
+        _externalFramePacingActive = _browser.StartExternalBeginFrameClock(
+            _hostedWindow?.TryGetPlatformHandle()?.Handle ?? 0);
+    }
+
     protected override Size ArrangeOverride(Size finalSize)
     {
         var size = base.ArrangeOverride(finalSize);
@@ -506,16 +592,40 @@ public class WebView : Control, IWebView, IDisposable
         if (scale <= 0) scale = 1.0;
         int w = Math.Max(1, (int)finalSize.Width);
         int h = Math.Max(1, (int)finalSize.Height);
+        UpdateAcceleratedVisualBounds(size);
 
         if (_browser is null)
         {
+            if (ShouldAttemptAcceleratedRendering()
+                && !_acceleratedInitializationComplete)
+            {
+                BeginAcceleratedPresentationInitialization();
+                return size;
+            }
+
             _browserWidth = w;
             _browserHeight = h;
             _renderScale = scale;
-            var browser = Cef.CreateOffscreenBrowser(w, h, (float)scale, Url ?? "about:blank", RequestContext);
+            var flags = BrowserCreationFlags(_gpuInterop is not null);
+            var browser = Cef.CreateOffscreenBrowserEx(
+                w,
+                h,
+                (float)scale,
+                Url ?? "about:blank",
+                RequestContext,
+                flags);
             if (browser is not null)
             {
                 _browser = browser;
+                IsAcceleratedRenderingActive =
+                    (flags & Cef.OffscreenFlags.SharedTexture) != 0;
+                if (AccelerationDiagnosticsEnabled())
+                {
+                    Console.Error.WriteLine(
+                        IsAcceleratedRenderingActive
+                            ? "[exclr8cef] CEF shared-texture mode is active."
+                            : "[exclr8cef] CEF is using the CPU paint fallback.");
+                }
                 SubscribeBrowserEvents(browser);
                 // BrowserReady fires when CEF's OnAfterCreated has run —
                 // that's when the underlying CefBrowser ref is populated
@@ -525,7 +635,12 @@ public class WebView : Control, IWebView, IDisposable
                 // timing.
                 browser.Initialized += (_, _) =>
                 {
+                    if (!IsAcceleratedRenderingActive)
+                    {
+                        browser.WindowlessFrameRate = CpuFallbackFrameRate;
+                    }
                     _browserReady = true;
+                    StartExternalFramePacingIfReady();
                     _browserReadyHandlers?.Invoke(this, EventArgs.Empty);
                 };
             }
@@ -548,6 +663,14 @@ public class WebView : Control, IWebView, IDisposable
         return size;
     }
 
+    internal static Cef.OffscreenFlags BrowserCreationFlags(bool accelerated) =>
+        accelerated
+            ? Cef.OffscreenFlags.SharedTexture
+                | Cef.OffscreenFlags.ExternalBeginFrame
+            : Cef.OffscreenFlags.None;
+
+    internal const int CpuFallbackFrameRate = 30;
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -567,6 +690,8 @@ public class WebView : Control, IWebView, IDisposable
         b.LoadingStateChanged  += OnBrowserLoadingStateChanged;
         b.CursorChanged        += OnBrowserCursorChanged;
         b.Painted              += OnBrowserPainted;
+        b.AcceleratedPaint     += OnBrowserAcceleratedPaint;
+        b.ContextMenu          += OnBrowserContextMenu;
         b.PopupShow            += OnBrowserPopupShow;
         b.PopupSize            += OnBrowserPopupSize;
         b.PopupPainted         += OnBrowserPopupPainted;
@@ -581,6 +706,8 @@ public class WebView : Control, IWebView, IDisposable
         b.LoadingStateChanged  -= OnBrowserLoadingStateChanged;
         b.CursorChanged        -= OnBrowserCursorChanged;
         b.Painted              -= OnBrowserPainted;
+        b.AcceleratedPaint     -= OnBrowserAcceleratedPaint;
+        b.ContextMenu          -= OnBrowserContextMenu;
         b.PopupShow            -= OnBrowserPopupShow;
         b.PopupSize            -= OnBrowserPopupSize;
         b.PopupPainted         -= OnBrowserPopupPainted;
@@ -618,6 +745,677 @@ public class WebView : Control, IWebView, IDisposable
         // platform handle that is created lazily on first use, and creating
         // it on a CEF worker thread can produce a handle that doesn't render.
         Dispatcher.UIThread.Post(() => Cursor = MapCursor(type));
+    }
+
+    // ---- Shared-texture presentation ----------------------------------
+
+    private bool ShouldAttemptAcceleratedRendering() =>
+        PreferAcceleratedRendering && OperatingSystem.IsMacOS();
+
+    private void BeginAcceleratedPresentationInitialization()
+    {
+        if (_acceleratedInitializationStarted || _browser is not null)
+        {
+            return;
+        }
+
+        _acceleratedInitializationStarted = true;
+        if (!ShouldAttemptAcceleratedRendering())
+        {
+            _acceleratedInitializationComplete = true;
+            return;
+        }
+
+        _ = InitializeAcceleratedPresentationAsync();
+    }
+
+    private async Task InitializeAcceleratedPresentationAsync()
+    {
+        try
+        {
+            var elementVisual = ElementComposition.GetElementVisual(this);
+            if (elementVisual is null)
+            {
+                return;
+            }
+
+            var compositor = elementVisual.Compositor;
+            var interop = await compositor.TryGetCompositionGpuInterop();
+            if (_disposed)
+            {
+                return;
+            }
+            if (!_attached)
+            {
+                _acceleratedInitializationStarted = false;
+                return;
+            }
+
+            const string imageHandle =
+                KnownPlatformGraphicsExternalImageHandleTypes.IOSurfaceRef;
+            const string eventHandle =
+                KnownPlatformGraphicsExternalSemaphoreHandleTypes.MetalSharedEvent;
+            bool supportsImage = interop?.SupportedImageHandleTypes.Contains(imageHandle)
+                == true;
+            bool supportsEvent = interop?.SupportedSemaphoreTypes.Contains(eventHandle)
+                == true;
+            bool supportsTimeline = supportsImage
+                && (interop!.GetSynchronizationCapabilities(imageHandle)
+                    & CompositionGpuImportedImageSynchronizationCapabilities.TimelineSemaphores)
+                != 0;
+            if (!supportsImage || !supportsEvent || !supportsTimeline)
+            {
+                return;
+            }
+
+            _compositor = compositor;
+            _gpuInterop = interop;
+            _acceleratedMainSurface = compositor.CreateDrawingSurface();
+            _acceleratedPopupSurface = compositor.CreateDrawingSurface();
+            _acceleratedMainVisual = compositor.CreateSurfaceVisual();
+            _acceleratedPopupVisual = compositor.CreateSurfaceVisual();
+            _acceleratedRootVisual = compositor.CreateContainerVisual();
+
+            _acceleratedMainVisual.Surface = _acceleratedMainSurface;
+            _acceleratedPopupVisual.Surface = _acceleratedPopupSurface;
+            _acceleratedPopupVisual.Visible = false;
+            _acceleratedRootVisual.Children.InsertAtTop(_acceleratedMainVisual);
+            _acceleratedRootVisual.Children.InsertAtTop(_acceleratedPopupVisual);
+            UpdateAcceleratedVisualBounds(Bounds.Size);
+            ElementComposition.SetElementChildVisual(this, _acceleratedRootVisual);
+            StartExternalFramePacingIfReady();
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            ReportAcceleratedRenderingFailure(
+                "Avalonia GPU interop initialization failed",
+                exception);
+            DisposeAcceleratedPresentation();
+        }
+        finally
+        {
+            if (!_disposed && _attached)
+            {
+                _acceleratedInitializationComplete = true;
+                InvalidateArrange();
+            }
+        }
+    }
+
+    private void UpdateAcceleratedVisualBounds(Size size)
+    {
+        if (_acceleratedRootVisual is null
+            || _acceleratedMainVisual is null
+            || _acceleratedPopupVisual is null)
+        {
+            return;
+        }
+
+        var visualSize = new Vector(size.Width, size.Height);
+        _acceleratedRootVisual.Size = visualSize;
+        _acceleratedMainVisual.Size = visualSize;
+        _acceleratedPopupVisual.Offset = new Vector3D(_popupX, _popupY, 0);
+        _acceleratedPopupVisual.Size = new Vector(_popupW, _popupH);
+        _acceleratedPopupVisual.Visible = _popupVisible;
+    }
+
+    private void OnBrowserAcceleratedPaint(
+        object? sender,
+        AcceleratedPaintEventArgs paint)
+    {
+        if (_disposed || !IsAcceleratedRenderingActive)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _acceleratedFramesReceived);
+
+        MacAcceleratedFrame? frame;
+        long copyStartedAt = Stopwatch.GetTimestamp();
+        try
+        {
+            frame = MacAcceleratedFrame.TryCopy(paint);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            ReportAcceleratedRenderingFailure(
+                "CEF IOSurface copy failed",
+                exception);
+            return;
+        }
+        if (frame is null)
+        {
+            ReportAcceleratedRenderingFailure(
+                "CEF IOSurface copy was rejected");
+            return;
+        }
+
+        long copyTicks = Stopwatch.GetTimestamp() - copyStartedAt;
+        Interlocked.Increment(ref _acceleratedFramesCopied);
+        Interlocked.Add(ref _acceleratedCopyTicks, copyTicks);
+        RecordMaximum(ref _acceleratedCopyMaxTicks, copyTicks);
+
+        var pending = new PendingAcceleratedPaint(paint.ElementType, frame);
+        lock (_acceleratedPaintGate)
+        {
+            if (paint.ElementType == Cef.PaintElementType.Popup)
+            {
+                if (_pendingPopupAcceleratedPaint is not null)
+                {
+                    Interlocked.Increment(ref _acceleratedFramesDropped);
+                }
+                _pendingPopupAcceleratedPaint?.Frame.Dispose();
+                _pendingPopupAcceleratedPaint = pending;
+            }
+            else
+            {
+                if (_pendingMainAcceleratedPaint is not null)
+                {
+                    Interlocked.Increment(ref _acceleratedFramesDropped);
+                }
+                _pendingMainAcceleratedPaint?.Frame.Dispose();
+                _pendingMainAcceleratedPaint = pending;
+            }
+
+            if (_acceleratedPaintPumpScheduled)
+            {
+                return;
+            }
+            _acceleratedPaintPumpScheduled = true;
+        }
+
+        Dispatcher.UIThread.Post(
+            StartAcceleratedPaintPump,
+            DispatcherPriority.Render);
+    }
+
+    private void StartAcceleratedPaintPump()
+    {
+        _acceleratedPaintPump = ProcessAcceleratedPaintQueueAsync();
+    }
+
+    private async Task ProcessAcceleratedPaintQueueAsync()
+    {
+        try
+        {
+            while (!_disposed)
+            {
+                PendingAcceleratedPaint? pending;
+                lock (_acceleratedPaintGate)
+                {
+                    pending = _pendingPopupAcceleratedPaint
+                        ?? _pendingMainAcceleratedPaint;
+                    if (pending?.ElementType == Cef.PaintElementType.Popup)
+                    {
+                        _pendingPopupAcceleratedPaint = null;
+                    }
+                    else if (pending is not null)
+                    {
+                        _pendingMainAcceleratedPaint = null;
+                    }
+                    else
+                    {
+                        _acceleratedPaintPumpScheduled = false;
+                        return;
+                    }
+                }
+
+                await PresentAcceleratedFrameAsync(pending);
+            }
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            ReportAcceleratedRenderingFailure(
+                "Avalonia shared-texture presentation failed",
+                exception);
+            lock (_acceleratedPaintGate)
+            {
+                _pendingMainAcceleratedPaint?.Frame.Dispose();
+                _pendingMainAcceleratedPaint = null;
+                _pendingPopupAcceleratedPaint?.Frame.Dispose();
+                _pendingPopupAcceleratedPaint = null;
+                _acceleratedPaintPumpScheduled = false;
+            }
+        }
+    }
+
+    private async Task PresentAcceleratedFrameAsync(PendingAcceleratedPaint pending)
+    {
+        var surface = pending.ElementType == Cef.PaintElementType.Popup
+            ? _acceleratedPopupSurface
+            : _acceleratedMainSurface;
+        var interop = _gpuInterop;
+        if (surface is null || interop is null)
+        {
+            pending.Frame.Dispose();
+            return;
+        }
+
+        ICompositionImportedGpuImage? image = null;
+        ICompositionImportedGpuSemaphore? readyEvent = null;
+        long presentationStartedAt = Stopwatch.GetTimestamp();
+        try
+        {
+            var frame = pending.Frame;
+            ulong readyValue = frame.ReadyValue;
+            var format = frame.Format switch
+            {
+                Cef.CefColorType.Rgba8888 =>
+                    PlatformGraphicsExternalImageFormat.R8G8B8A8UNorm,
+                Cef.CefColorType.Bgra8888 =>
+                    PlatformGraphicsExternalImageFormat.B8G8R8A8UNorm,
+                _ => throw new NotSupportedException(
+                    "CEF returned an unsupported accelerated-paint format."),
+            };
+            image = interop.ImportImage(
+                new PlatformHandle(
+                    frame.IOSurface,
+                    KnownPlatformGraphicsExternalImageHandleTypes.IOSurfaceRef),
+                new PlatformGraphicsExternalImageProperties
+                {
+                    Width = frame.Width,
+                    Height = frame.Height,
+                    Format = format,
+                    TopLeftOrigin = true,
+                });
+            readyEvent = interop.ImportSemaphore(
+                new PlatformHandle(
+                    frame.ReadyEvent,
+                    KnownPlatformGraphicsExternalSemaphoreHandleTypes.MetalSharedEvent));
+
+            // Avalonia's macOS handle wrapper retained both ref-counted
+            // objects synchronously during Import*, so the native copy can
+            // release its ownership before the render-thread import runs.
+            frame.Dispose();
+
+            // Imports and drawing-surface updates are serialized in call order
+            // by Avalonia's compositor. Queue the update immediately so both
+            // imports and the surface snapshot run in one compositor commit.
+            // Awaiting ImportCompleted here splits every frame across two
+            // commits and caps presentation at roughly half the refresh rate.
+            await surface.UpdateWithTimelineSemaphoresAsync(
+                image,
+                readyEvent,
+                readyValue,
+                readyEvent,
+                readyValue + 1);
+            long presentationTicks =
+                Stopwatch.GetTimestamp() - presentationStartedAt;
+            Interlocked.Increment(ref _acceleratedFramesPresented);
+            Interlocked.Add(
+                ref _acceleratedPresentationTicks,
+                presentationTicks);
+            RecordMaximum(
+                ref _acceleratedPresentationMaxTicks,
+                presentationTicks);
+            ReportAccelerationDiagnosticsIfNeeded();
+            if (!HasPresentedAcceleratedFrame)
+            {
+                HasPresentedAcceleratedFrame = true;
+                Trace.TraceInformation(
+                    "Exclr8CEF presented its first Metal/IOSurface frame.");
+                if (AccelerationDiagnosticsEnabled())
+                {
+                    Console.Error.WriteLine(
+                        "[exclr8cef] Presented the first Metal/IOSurface frame.");
+                }
+            }
+        }
+        finally
+        {
+            pending.Frame.Dispose();
+            if (readyEvent is not null)
+            {
+                await readyEvent.DisposeAsync();
+            }
+            if (image is not null)
+            {
+                await image.DisposeAsync();
+            }
+        }
+    }
+
+    private void ReportAcceleratedRenderingFailure(
+        string message,
+        Exception? exception = null)
+    {
+        if (_acceleratedFailureReported)
+        {
+            return;
+        }
+
+        _acceleratedFailureReported = true;
+        if (exception is null)
+        {
+            Trace.TraceError("{0}.", message);
+        }
+        else
+        {
+            Trace.TraceError("{0}: {1}", message, exception);
+        }
+    }
+
+    private static bool AccelerationDiagnosticsEnabled() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable(
+                "EXCLR8CEF_ACCELERATION_DIAGNOSTICS"),
+            "1",
+            StringComparison.Ordinal);
+
+    private void ReportAccelerationDiagnosticsIfNeeded()
+    {
+        if (!AccelerationDiagnosticsEnabled())
+        {
+            return;
+        }
+
+        long now = Stopwatch.GetTimestamp();
+        if (_diagnosticsWindowStartedAt == 0)
+        {
+            _diagnosticsWindowStartedAt = now;
+            _diagnosticsWindowReceivedFrames =
+                Interlocked.Read(ref _acceleratedFramesReceived);
+            _diagnosticsWindowCopiedFrames =
+                Interlocked.Read(ref _acceleratedFramesCopied);
+            _diagnosticsWindowCopyTicks =
+                Interlocked.Read(ref _acceleratedCopyTicks);
+            _diagnosticsWindowDroppedFrames =
+                Interlocked.Read(ref _acceleratedFramesDropped);
+            _diagnosticsWindowPresentedFrames =
+                Interlocked.Read(ref _acceleratedFramesPresented);
+            _diagnosticsWindowPresentationTicks =
+                Interlocked.Read(ref _acceleratedPresentationTicks);
+            Interlocked.Exchange(ref _acceleratedCopyMaxTicks, 0);
+            Interlocked.Exchange(ref _acceleratedPresentationMaxTicks, 0);
+            return;
+        }
+
+        double elapsedSeconds = Stopwatch.GetElapsedTime(
+            _diagnosticsWindowStartedAt,
+            now).TotalSeconds;
+        if (elapsedSeconds < 5)
+        {
+            return;
+        }
+
+        long receivedFrames = Interlocked.Read(ref _acceleratedFramesReceived);
+        long copiedFrames = Interlocked.Read(ref _acceleratedFramesCopied);
+        long copyTicks = Interlocked.Read(ref _acceleratedCopyTicks);
+        long droppedFrames = Interlocked.Read(ref _acceleratedFramesDropped);
+        long presentedFrames = Interlocked.Read(ref _acceleratedFramesPresented);
+        long presentationTicks = Interlocked.Read(ref _acceleratedPresentationTicks);
+        long maximumCopyTicks =
+            Interlocked.Exchange(ref _acceleratedCopyMaxTicks, 0);
+        long maximumPresentationTicks =
+            Interlocked.Exchange(ref _acceleratedPresentationMaxTicks, 0);
+        long presentedInWindow =
+            presentedFrames - _diagnosticsWindowPresentedFrames;
+        long copiedInWindow = copiedFrames - _diagnosticsWindowCopiedFrames;
+        long copyTicksInWindow = copyTicks - _diagnosticsWindowCopyTicks;
+        long presentationTicksInWindow =
+            presentationTicks - _diagnosticsWindowPresentationTicks;
+        double averageCopyMilliseconds = copiedInWindow == 0
+            ? 0
+            : copyTicksInWindow * 1000d
+                / Stopwatch.Frequency
+                / copiedInWindow;
+        double averagePresentationMilliseconds = presentedInWindow == 0
+            ? 0
+            : presentationTicksInWindow * 1000d
+                / Stopwatch.Frequency
+                / presentedInWindow;
+        double maximumCopyMilliseconds =
+            maximumCopyTicks * 1000d / Stopwatch.Frequency;
+        double maximumPresentationMilliseconds =
+            maximumPresentationTicks * 1000d / Stopwatch.Frequency;
+
+        Console.Error.WriteLine(
+            "[exclr8cef] Frame pacing: received {0:F1}/s, " +
+            "presented {1:F1}/s, coalesced {2}, copy {3:F2}/{4:F2} ms " +
+            "avg/max, presentation {5:F2}/{6:F2} ms avg/max.",
+            (receivedFrames - _diagnosticsWindowReceivedFrames) / elapsedSeconds,
+            presentedInWindow / elapsedSeconds,
+            droppedFrames - _diagnosticsWindowDroppedFrames,
+            averageCopyMilliseconds,
+            maximumCopyMilliseconds,
+            averagePresentationMilliseconds,
+            maximumPresentationMilliseconds);
+
+        _diagnosticsWindowStartedAt = now;
+        _diagnosticsWindowReceivedFrames = receivedFrames;
+        _diagnosticsWindowCopiedFrames = copiedFrames;
+        _diagnosticsWindowCopyTicks = copyTicks;
+        _diagnosticsWindowDroppedFrames = droppedFrames;
+        _diagnosticsWindowPresentedFrames = presentedFrames;
+        _diagnosticsWindowPresentationTicks = presentationTicks;
+    }
+
+    private static void RecordMaximum(ref long target, long value)
+    {
+        long observed = Interlocked.Read(ref target);
+        while (value > observed)
+        {
+            long previous = Interlocked.CompareExchange(
+                ref target,
+                value,
+                observed);
+            if (previous == observed)
+            {
+                return;
+            }
+            observed = previous;
+        }
+    }
+
+    // ---- Browser context menu -----------------------------------------
+
+    private void OnBrowserContextMenu(
+        object? sender,
+        ContextMenuEventArgs request)
+    {
+        Dispatcher.UIThread.Post(
+            () => ShowBrowserContextMenu(request),
+            DispatcherPriority.Input);
+    }
+
+    private void ShowBrowserContextMenu(ContextMenuEventArgs request)
+    {
+        if (_disposed || !_attached)
+        {
+            request.Cancel();
+            return;
+        }
+
+        DismissBrowserContextMenu();
+
+        var menu = new ContextMenu();
+        var parentMenus = new Stack<MenuItem>();
+        foreach (var item in request.Items)
+        {
+            while (parentMenus.Count > item.Depth)
+            {
+                parentMenus.Pop();
+            }
+            if (item.Depth > parentMenus.Count)
+            {
+                // Ignore malformed orphan children without losing the rest
+                // of the native menu request.
+                continue;
+            }
+
+            Control menuControl;
+            if (item.IsSeparator)
+            {
+                menuControl = new Separator();
+            }
+            else
+            {
+                var menuItem = new MenuItem
+                {
+                    Header = NormalizeContextMenuLabel(item.Label),
+                    IsEnabled = item.IsEnabled,
+                    IsChecked = item.IsChecked,
+                    ToggleType = item.Kind switch
+                    {
+                        ContextMenuItemKind.Check => MenuItemToggleType.CheckBox,
+                        ContextMenuItemKind.Radio => MenuItemToggleType.Radio,
+                        _ => MenuItemToggleType.None,
+                    },
+                };
+                if (item.Kind != ContextMenuItemKind.Submenu)
+                {
+                    var commandId = item.CommandId;
+                    menuItem.Click += (_, _) => ResolveBrowserContextMenu(
+                        menu,
+                        request,
+                        commandId);
+                }
+                menuControl = menuItem;
+            }
+
+            if (parentMenus.TryPeek(out var parentMenu))
+            {
+                parentMenu.Items.Add(menuControl);
+            }
+            else
+            {
+                menu.Items.Add(menuControl);
+            }
+
+            if (item.Kind == ContextMenuItemKind.Submenu)
+            {
+                parentMenus.Push((MenuItem)menuControl);
+            }
+        }
+
+        if (menu.Items.Count == 0)
+        {
+            request.Cancel();
+            return;
+        }
+
+        menu.Closed += (_, _) => CancelBrowserContextMenu(menu, request);
+        _browserContextMenu = menu;
+        _browserContextMenuRequest = request;
+        menu.Open(this);
+    }
+
+    internal static string NormalizeContextMenuLabel(string label)
+    {
+        if (!label.Contains('&', StringComparison.Ordinal))
+        {
+            return label;
+        }
+
+        var normalized = new System.Text.StringBuilder(label.Length);
+        for (var index = 0; index < label.Length; index++)
+        {
+            if (label[index] != '&')
+            {
+                normalized.Append(label[index]);
+                continue;
+            }
+
+            if (index + 1 < label.Length && label[index + 1] == '&')
+            {
+                normalized.Append('&');
+                index++;
+            }
+        }
+        return normalized.ToString();
+    }
+
+    private void ResolveBrowserContextMenu(
+        ContextMenu menu,
+        ContextMenuEventArgs request,
+        int commandId)
+    {
+        if (!ReferenceEquals(menu, _browserContextMenu)
+            || !ReferenceEquals(request, _browserContextMenuRequest))
+        {
+            return;
+        }
+
+        _browserContextMenu = null;
+        _browserContextMenuRequest = null;
+        request.Continue(commandId);
+        menu.Close();
+    }
+
+    private void CancelBrowserContextMenu(
+        ContextMenu menu,
+        ContextMenuEventArgs request)
+    {
+        if (!ReferenceEquals(menu, _browserContextMenu))
+        {
+            return;
+        }
+
+        _browserContextMenu = null;
+        _browserContextMenuRequest = null;
+        request.Cancel();
+    }
+
+    private void DismissBrowserContextMenu()
+    {
+        var menu = _browserContextMenu;
+        var request = _browserContextMenuRequest;
+        _browserContextMenu = null;
+        _browserContextMenuRequest = null;
+        request?.Cancel();
+        menu?.Close();
+    }
+
+    private void DisposeAcceleratedPresentation()
+    {
+        StopExternalFramePacing();
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            ElementComposition.SetElementChildVisual(this, null);
+        }
+        _acceleratedRootVisual?.Children.RemoveAll();
+        _acceleratedRootVisual = null;
+        _acceleratedMainVisual = null;
+        _acceleratedPopupVisual = null;
+        _acceleratedMainSurface?.Dispose();
+        _acceleratedMainSurface = null;
+        _acceleratedPopupSurface?.Dispose();
+        _acceleratedPopupSurface = null;
+        _gpuInterop = null;
+        _compositor = null;
+    }
+
+    private void StartExternalFramePacingIfReady()
+    {
+        if (_externalFramePacingActive
+            || !_attached
+            || _disposed
+            || !_browserReady
+            || !IsAcceleratedRenderingActive
+            || _browser is null)
+        {
+            return;
+        }
+
+        _externalFramePacingActive =
+            _browser.StartExternalBeginFrameClock(
+                _hostedWindow?.TryGetPlatformHandle()?.Handle ?? 0);
+        if (!_externalFramePacingActive)
+        {
+            ReportAcceleratedRenderingFailure(
+                "The CoreVideo external-begin-frame clock could not start");
+        }
+    }
+
+    private void StopExternalFramePacing()
+    {
+        if (!_externalFramePacingActive)
+        {
+            return;
+        }
+
+        _browser?.StopExternalBeginFrameClock();
+        _externalFramePacingActive = false;
     }
 
     // ---- Paint pipeline ------------------------------------------------
@@ -799,12 +1597,20 @@ public class WebView : Control, IWebView, IDisposable
         int Height,
         int ByteCount);
 
+    private sealed record PendingAcceleratedPaint(
+        Cef.PaintElementType ElementType,
+        MacAcceleratedFrame Frame);
+
     // ---- Popup overlay handling ----------------------------------------
 
     private void OnBrowserPopupShow(object? sender, bool show)
         => Dispatcher.UIThread.Post(() =>
         {
             _popupVisible = show;
+            if (_acceleratedPopupVisual is not null)
+            {
+                _acceleratedPopupVisual.Visible = show;
+            }
             if (!show)
             {
                 // Drop the bitmap on hide so the next show starts fresh —
@@ -820,6 +1626,11 @@ public class WebView : Control, IWebView, IDisposable
         => Dispatcher.UIThread.Post(() =>
         {
             _popupX = r.X; _popupY = r.Y; _popupW = r.Width; _popupH = r.Height;
+            if (_acceleratedPopupVisual is not null)
+            {
+                _acceleratedPopupVisual.Offset = new Vector3D(r.X, r.Y, 0);
+                _acceleratedPopupVisual.Size = new Vector(r.Width, r.Height);
+            }
             InvalidateVisual();
         });
 

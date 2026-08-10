@@ -6,51 +6,40 @@ using GhostShell.Core;
 namespace GhostShell.App.Tests;
 
 /// <summary>
-/// The drain error is a promise that failed session-metadata persistence is
-/// said out loud at exit — but a failure a successful retry has since
-/// recovered is a ghost, and reporting ghosts at quit taught the user to
-/// ignore the message. Observed live: with keys sealed under the startup
-/// PIN, the first history read runs against a database that cannot open
-/// yet; the post-unlock retry succeeds, and quit still printed the corpse
-/// of the pre-unlock failure.
+/// A history read failure makes the History UI unavailable, but does not mean
+/// session metadata failed to persist. The shutdown drain reports writes only.
 /// </summary>
 public sealed class RecentSessionDrainErrorTests
 {
     [Fact]
-    public async Task A_recovered_history_failure_is_not_reported_at_exit()
+    public async Task A_history_read_failure_is_not_reported_as_persistence_loss()
     {
         var store = new FlakyStore();
         var history = new RecentSessionHistory(store, TimeProvider.System);
         using var viewModel = CreateViewModel(history);
 
-        // The construction-time load ran against the failing store.
-        var beforeRetry = await viewModel.FlushRecentSessionHistoryAsync(
+        var flush = await viewModel.FlushRecentSessionHistoryAsync(
             CancellationToken.None);
-        Assert.False(beforeRetry.IsSuccess);
 
-        // The store heals — the unlock happened — and the retry succeeds.
-        store.Healed = true;
-        Assert.True(await viewModel.RetryRecentSessionHistoryAsync(CancellationToken.None));
-
-        var afterRetry = await viewModel.FlushRecentSessionHistoryAsync(
-            CancellationToken.None);
-        Assert.True(
-            afterRetry.IsSuccess,
-            $"A recovered failure was still reported at exit: {afterRetry.Error?.Message}");
+        Assert.True(flush.IsSuccess, flush.Error?.Message);
+        Assert.True(viewModel.HasRecentSessionFailure);
     }
 
     [Fact]
-    public async Task An_unrecovered_history_failure_is_still_reported_at_exit()
+    public async Task A_successful_retry_recovers_history_availability()
     {
         var store = new FlakyStore();
         var history = new RecentSessionHistory(store, TimeProvider.System);
         using var viewModel = CreateViewModel(history);
 
-        // A failed retry clears nothing: the promise stands.
-        _ = await viewModel.RetryRecentSessionHistoryAsync(CancellationToken.None);
+        _ = await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
+        store.Healed = true;
+
+        Assert.True(await viewModel.RetryRecentSessionHistoryAsync(CancellationToken.None));
         var flush = await viewModel.FlushRecentSessionHistoryAsync(CancellationToken.None);
 
-        Assert.False(flush.IsSuccess);
+        Assert.True(flush.IsSuccess, flush.Error?.Message);
+        Assert.False(viewModel.HasRecentSessionFailure);
     }
 
     private static MainWindowViewModel CreateViewModel(RecentSessionHistory history)

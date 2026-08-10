@@ -271,7 +271,7 @@ internal sealed class FakeBrowserPanelSession(
                 State.LoadState == BrowserLoadState.Failed
                     ? SessionHealth.Degraded
                     : SessionHealth.Healthy,
-                State.LoadState == BrowserLoadState.Loading,
+                false,
                 _renderer is null
                     ? "Waiting for browser renderer."
                     : "Browser renderer attached.",
@@ -400,6 +400,18 @@ internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) : IBrow
     public BrowserNavigationOrigin? LastCheckOrigin { get; private set; }
 
     public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+    public void BeginLoading(BrowserAddress address)
+    {
+        State = new BrowserSessionState(
+            address,
+            State.Title,
+            BrowserLoadState.Loading,
+            State.CanGoBack,
+            State.CanGoForward,
+            State.DocumentRevision);
+        StateChanged?.Invoke(this, new BrowserStateChangedEventArgs(State));
+    }
 
     public ValueTask<BrowserResult<BrowserSessionState>> NavigateAsync(
         BrowserAddress address,

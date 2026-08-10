@@ -1638,15 +1638,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            lock (_historyGate)
-            {
-                // The store just answered in full — retention and the list
-                // both. The sticky drain error describes a world this retry
-                // replaced (a read against the still-sealed database, say),
-                // and reporting it at exit would be reporting a ghost.
-                _historyDrainError = null;
-            }
-
             return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -2405,8 +2396,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
             if (runtime.Tabs.Count == 0)
             {
-                SetError("That workspace has no runnable tabs or connections.");
-                return false;
+                runtime.Tabs.Add(CreateLauncherTab());
             }
 
             runtime.ActiveTab = runtime.Tabs[0];
@@ -2991,20 +2981,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Opens Main when the window has come up with nothing in it.
+    /// Opens Main on its launcher when the window has come up with nothing in it.
     ///
-    /// Main always exists, so there is always somewhere to be, and starting on
-    /// an empty launcher makes you choose a workspace before you can do
-    /// anything — every time, including the times you would have chosen the one
-    /// that is always there. It defers to everything that has a better claim on
-    /// the window: a restored session, an overlay, an unfinished first run.
+    /// Main always exists, so there is always somewhere for the launcher to
+    /// live. It defers to everything that has a better claim on the window: a
+    /// restored session or an overlay. First-run onboarding is part of the
+    /// launcher, so it needs this workspace rather than blocking it.
     /// </summary>
-    public async Task<bool> OpenDefaultWorkspaceIfIdleAsync(
+    public async Task<bool> OpenDefaultLauncherIfIdleAsync(
         CancellationToken cancellationToken = default)
     {
         if (RuntimeWorkspace is not null
-            || HasOverlay
-            || Onboarding?.IsVisible == true)
+            || HasOverlay)
         {
             return false;
         }
@@ -3013,7 +3001,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             item.Id.Value,
             WorkspaceDefinition.DefaultWorkspaceId,
             StringComparison.Ordinal));
-        return main is not null && await OpenWorkspaceAsync(main.Id, cancellationToken);
+        if (main is null
+            || !await OpenWorkspaceAsync(main.Id, cancellationToken))
+        {
+            return false;
+        }
+
+        if (RuntimeWorkspace?.ActiveTab is { } activeTab
+            && IsLauncherTab(activeTab))
+        {
+            return true;
+        }
+
+        return await AddLauncherTabAsync(cancellationToken);
     }
 
     public async Task<bool> RestoreSessionOnStartupAsync(
@@ -7492,7 +7492,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 var result = await _recentSessionHistory.ClearThroughAsync(cutoff, token);
                 if (!result.IsSuccess)
                 {
-                    ApplyRecentSessionFailure(result.Error!);
+                    ApplyRecentSessionPersistenceFailure(result.Error!);
                     return;
                 }
 
@@ -7533,7 +7533,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 var result = await _recentSessionHistory.ClearAllAsync(token);
                 if (!result.IsSuccess)
                 {
-                    ApplyRecentSessionFailure(result.Error!);
+                    ApplyRecentSessionPersistenceFailure(result.Error!);
                     return;
                 }
 
@@ -7610,7 +7610,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     }
                     else
                     {
-                        ApplyRecentSessionFailure(saved.Error);
+                        ApplyRecentSessionPersistenceFailure(saved.Error);
                     }
 
                     return;
@@ -9066,7 +9066,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     token);
                 if (!result.IsSuccess)
                 {
-                    ApplyRecentSessionFailure(result.Error!);
+                    ApplyRecentSessionPersistenceFailure(result.Error!);
                     return;
                 }
             }
@@ -9194,7 +9194,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         continue;
                     }
 
-                    ApplyRecentSessionFailure(result.Error!);
+                    ApplyRecentSessionPersistenceFailure(result.Error!);
                     return;
                 }
             }
@@ -9248,7 +9248,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 $"Recent-session metadata is temporarily unavailable ({exception.GetType().Name}).");
             Console.Error.WriteLine(
                 $"[ghostshell:history] queued history operation failed: {exception}");
-            ApplyRecentSessionFailure(error);
+            ApplyRecentSessionPersistenceFailure(error);
         }
     }
 
@@ -9434,11 +9434,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void ApplyRecentSessionFailure(RecentSessionStoreError error)
     {
-        lock (_historyGate)
-        {
-            _historyDrainError ??= error;
-        }
-
         HasRecentSessionFailure = true;
         HasUnreadableRecentSessionHistory =
             error.Code == RecentSessionStoreErrorCode.InvalidHistoryData;
@@ -9452,6 +9447,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         RefreshHistorySearchResults();
         RefreshLauncherSearchResults();
         NotifyHistoryActionStateChanged();
+    }
+
+    private void ApplyRecentSessionPersistenceFailure(
+        RecentSessionStoreError error)
+    {
+        lock (_historyGate)
+        {
+            _historyDrainError ??= error;
+        }
+
+        ApplyRecentSessionFailure(error);
     }
 
     private void NotifyHistoryActionStateChanged()

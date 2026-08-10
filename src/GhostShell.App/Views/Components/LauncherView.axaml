@@ -70,7 +70,7 @@
             <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
               <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <icons:SymbolIcon Symbol="WindowConsole" FontSize="15" />
-                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Local shell" />
+                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Default terminal" />
               </Grid>
               <TextBlock Classes="Eyebrow" Text="{Binding Onboarding.LocalTerminalState}" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Onboarding.LocalTerminalDetail}" TextWrapping="Wrap" />
@@ -80,7 +80,7 @@
             <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
               <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <icons:SymbolIcon Symbol="Shield" FontSize="15" />
-                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Credential vault" />
+                <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Secure password storage" />
               </Grid>
               <TextBlock Classes="Eyebrow" Text="{Binding Onboarding.CredentialVaultState}" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Onboarding.CredentialVaultDetail}" TextWrapping="Wrap" />
@@ -102,7 +102,7 @@
                 Click="OnRetryOnboardingClick"
                 IsVisible="{Binding Onboarding.CanRetry, FallbackValue=False}"
                 Content="Retry" />
-            <Button Classes="PrimaryButton" Click="OnFinishOnboardingClick" Content="Got it" />
+            <Button Classes="PrimaryButton" Click="OnFinishOnboardingClick" Content="Continue" />
           </StackPanel>
         </Grid>
       </StackPanel>

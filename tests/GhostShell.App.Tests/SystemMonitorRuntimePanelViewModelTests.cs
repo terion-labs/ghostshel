@@ -226,6 +226,29 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task ProcessRefreshRetainsRowsWithoutCollectionChurn()
+    {
+        var (client, host) = CreateHost();
+        host.ProcessResults.Enqueue(ProcessSuccess(ProcessRange(cpuOffset: 0)));
+        host.ProcessResults.Enqueue(ProcessSuccess(ProcessRange(cpuOffset: 1)));
+        using var panel = CreateProcessPanel(client);
+        await panel.Start();
+        var originalRows = panel.Processes.ToArray();
+        var collectionNotifications = 0;
+        var firstRowNotifications = 0;
+        panel.Processes.CollectionChanged += (_, _) => collectionNotifications++;
+        originalRows[0].PropertyChanged += (_, _) => firstRowNotifications++;
+
+        await panel.RefreshAsync();
+
+        Assert.Equal(0, collectionNotifications);
+        Assert.Equal(1, firstRowNotifications);
+        Assert.Equal(ProcessMonitorQuery.DefaultMaximumResults, panel.Processes.Count);
+        Assert.Equal(originalRows, panel.Processes);
+        Assert.Equal("1.0%", panel.Processes[0].Cpu);
+    }
+
+    [Fact]
     public async Task DisposalCancelsAnInFlightReadWithoutLateStateMutation()
     {
         var (client, host) = CreateHost();
@@ -439,6 +462,23 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
             9_000,
             3,
             true);
+
+    private static ProcessMonitorSnapshot ProcessRange(int cpuOffset) =>
+        new(
+            new DateTimeOffset(2026, 1, 2, 3, 4, 5 + cpuOffset, TimeSpan.Zero),
+            Enumerable.Range(1, ProcessMonitorQuery.DefaultMaximumResults)
+                .Select(index => new ProcessMonitorEntry(
+                    index,
+                    $"process-{index}",
+                    (index - 1 + cpuOffset) % 100,
+                    index * 1_024,
+                    TimeSpan.FromSeconds(index),
+                    DateTimeOffset.UnixEpoch.AddSeconds(index),
+                    false))
+                .ToArray(),
+            ProcessMonitorQuery.DefaultMaximumResults,
+            ProcessMonitorQuery.DefaultMaximumResults,
+            false);
 
     private static HostResult<MonitorPanelResult<SystemStatisticsSnapshot>>
         StatisticsSuccess(SystemStatisticsSnapshot snapshot) =>

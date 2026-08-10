@@ -19,6 +19,12 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     event EventHandler<NativeBrowserNavigationCompletedEventArgs>? NavigationCompleted;
 
+    /// <summary>
+    /// Raised when the main document changes its visible address without
+    /// committing a different document, for example via history.pushState.
+    /// </summary>
+    event EventHandler<NativeBrowserAddressChangedEventArgs>? AddressChanged;
+
     event EventHandler<NativeBrowserNavigationRejectedEventArgs>?
         NavigationRejected;
 
@@ -50,6 +56,13 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     Task<NativeBrowserCheckResult> CheckAsync(
         NativeBrowserElementHandle handle);
+}
+
+internal sealed class NativeBrowserAddressChangedEventArgs(
+    BrowserAddress address) : EventArgs
+{
+    public BrowserAddress Address { get; } =
+        address ?? throw new ArgumentNullException(nameof(address));
 }
 
 internal sealed class NativeBrowserNavigationEventArgs(

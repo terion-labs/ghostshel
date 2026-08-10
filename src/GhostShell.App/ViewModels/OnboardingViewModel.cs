@@ -26,12 +26,12 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
     private bool _isVisible;
     private bool _isBusy;
     private bool _hasFailure;
-    private string _statusMessage = "Checking this local profile…";
+    private string _statusMessage = "Checking your setup…";
     private string _localTerminalState = "Checking";
-    private string _localTerminalDetail = "Resolving the configured local shell without launching it.";
+    private string _localTerminalDetail = "Checking that your default shell is available.";
     private string _credentialVaultState = "Checking";
     private string _credentialVaultDetail =
-        "Checking whether credentials can use operating-system protected storage.";
+        "Checking that secure password storage is available.";
     private bool _disposed;
 
     public OnboardingViewModel(
@@ -126,11 +126,11 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
 
     public bool CanFinish => IsVisible && _progress is not null && !IsBusy;
 
-    public string Title => _reviewRequested ? "Review local setup" : "Welcome to GhostSHELL";
+    public string Title => _reviewRequested ? "Check your setup" : "Welcome to GhostSHELL";
 
     public string Introduction => _reviewRequested
-        ? "Recheck this profile’s local prerequisites and privacy choices."
-        : "Confirm the local shell, credential storage, and session-history privacy before you settle in.";
+        ? "Make sure your terminal and secure password storage are ready to use."
+        : "GhostSHELL checked the basics you need to get started.";
 
     public string StatusMessage
     {
@@ -212,7 +212,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
             {
                 IsBusy = true;
                 HasFailure = false;
-                StatusMessage = "Checking this local profile…";
+                StatusMessage = "Checking your setup…";
             }, operation.Token).ConfigureAwait(false);
 
             var progress = await _progressStore.ReadAsync(operation.Token).ConfigureAwait(false);
@@ -230,8 +230,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
                     _progress = null;
                     IsVisible = true;
                     HasFailure = true;
-                    StatusMessage =
-                        $"Local setup progress is unavailable ({progress.Error!.Code}). Retry to finish setup.";
+                    StatusMessage = "We couldn't load your setup status. Try again.";
                     OnPropertyChanged(nameof(CanFinish));
                     return;
                 }
@@ -241,10 +240,10 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
                     || _progress.CompletedVersion < CurrentVersion;
                 HasFailure = localTerminal.HasFailure || vault.HasFailure;
                 StatusMessage = HasFailure
-                    ? "At least one local prerequisite needs attention. You can still import definitions or review privacy settings."
+                    ? "Something below needs attention, but you can still use the launcher."
                     : _progress.CompletedVersion >= CurrentVersion
-                        ? "This profile’s first-run setup is complete."
-                        : "These checks use local metadata only and did not launch a terminal process.";
+                        ? "Your setup is ready."
+                        : "No terminal was opened and no passwords were accessed during these checks.";
                 OnPropertyChanged(nameof(CanInteract));
                 OnPropertyChanged(nameof(CanFinish));
             }, operation.Token).ConfigureAwait(false);
@@ -261,8 +260,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
                     _progress = null;
                     IsVisible = true;
                     HasFailure = true;
-                    StatusMessage =
-                        "Local setup checks could not be completed. No application data was changed.";
+                    StatusMessage = "We couldn't check your setup. Nothing was changed.";
                     OnPropertyChanged(nameof(CanFinish));
                 }, operation.Token).ConfigureAwait(false);
             }
@@ -306,8 +304,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
                 await PublishAsync(() =>
                 {
                     HasFailure = true;
-                    StatusMessage =
-                        "First-run progress must be loaded before setup can be finished.";
+                    StatusMessage = "Your setup status is still loading. Try again in a moment.";
                 }, operation.Token).ConfigureAwait(false);
                 return;
             }
@@ -316,7 +313,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
             {
                 IsBusy = true;
                 HasFailure = false;
-                StatusMessage = "Saving first-run progress…";
+                StatusMessage = "Saving…";
             }, operation.Token).ConfigureAwait(false);
             var result = await _progressStore.CompleteAsync(
                     CurrentVersion,
@@ -328,15 +325,14 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
                 if (!result.IsSuccess)
                 {
                     HasFailure = true;
-                    StatusMessage =
-                        $"First-run progress could not be saved ({result.Error!.Code}).";
+                    StatusMessage = "We couldn't save this step. Try again.";
                     return;
                 }
 
                 _progress = result.Value!;
                 _reviewRequested = false;
                 IsVisible = false;
-                StatusMessage = "First-run setup complete.";
+                StatusMessage = "Your setup is ready.";
                 OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(Introduction));
                 OnPropertyChanged(nameof(CanInteract));
@@ -353,8 +349,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
                 await PublishAsync(() =>
                 {
                     HasFailure = true;
-                    StatusMessage =
-                        "First-run progress could not be saved. No other application data was changed.";
+                    StatusMessage = "We couldn't save this step. Nothing else was changed.";
                 }, operation.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (operation.IsCancellationRequested)
@@ -395,7 +390,7 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
         {
             return new(
                 "Needs attention",
-                "No local terminal definition is available. Import a setup or create a local connection.",
+                "No local terminal is set up. Add one in Connections.",
                 HasFailure: true);
         }
 
@@ -409,12 +404,12 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
             ConnectionRuntimeResult<ConnectionTestReport>.Success =>
                 new(
                     "Ready",
-                    "The configured local shell is installed and executable. This check did not launch it.",
+                    "Your default shell is available.",
                     HasFailure: false),
             ConnectionRuntimeResult<ConnectionTestReport>.Failure failure =>
                 new(
                     "Needs attention",
-                    $"{failure.Error.Message} Open the connection editor to repair it.",
+                    $"{failure.Error.Message} Open Connections to fix it.",
                     HasFailure: true),
             _ => throw new InvalidOperationException(
                 "The local terminal check returned an invalid result."),
@@ -427,18 +422,18 @@ public sealed class OnboardingViewModel : ObservableObject, IDisposable
         {
             return new(
                 "Ready",
-                "Credential values can use operating-system protected storage. Definitions keep opaque references only.",
+                "Passwords can be stored securely by your operating system.",
                 HasFailure: false);
         }
 
         return _vaultAvailability.Persistence == SecretVaultPersistenceKind.MemoryOnly
             ? new(
                 "Memory only",
-                "Persistent credential storage is unavailable. Credentials can exist only for this process.",
+                "Passwords will be kept only until GhostSHELL closes.",
                 HasFailure: true)
             : new(
                 "Unavailable",
-                "Persistent credentials cannot be saved. Local terminals without stored credentials still work.",
+                "GhostSHELL can't save passwords securely. Terminals that don't need a saved password will still work.",
                 HasFailure: true);
     }
 

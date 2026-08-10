@@ -44,10 +44,19 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
         using var process = new Process { StartInfo = start };
         try
         {
-            if (!process.Start())
+            // Unix process creation performs fork/exec synchronously. Connection
+            // commands include periodic monitor samples, so never perform that
+            // work on a caller that may be Avalonia's main thread.
+            var started = await Task.Run(process.Start, cancellationToken)
+                .ConfigureAwait(false);
+            if (!started)
             {
                 return StartFailed();
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled();
         }
         catch (Exception exception) when (exception is
             Win32Exception or FileNotFoundException or UnauthorizedAccessException)

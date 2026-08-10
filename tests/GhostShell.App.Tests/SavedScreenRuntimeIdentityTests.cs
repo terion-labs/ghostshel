@@ -290,11 +290,11 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     /// <summary>
-    /// The window comes up in Main rather than on an empty launcher — but only
-    /// when nothing with a better claim already has it.
+    /// The window comes up on Main's launcher rather than the no-workspace
+    /// empty state — but only when nothing with a better claim already has it.
     /// </summary>
     [Fact]
-    public async Task An_idle_window_opens_Main_and_leaves_a_restored_session_alone()
+    public async Task An_idle_window_opens_Mains_launcher_and_leaves_a_restored_session_alone()
     {
         var connection = LocalConnection("startup-connection", "Connection");
         var main = new WorkspaceDefinition(
@@ -317,15 +317,80 @@ public sealed class SavedScreenRuntimeIdentityTests
             [], [], [], [], []);
         using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
 
-        Assert.True(await viewModel.OpenDefaultWorkspaceIfIdleAsync());
+        Assert.True(await viewModel.OpenDefaultLauncherIfIdleAsync());
         var opened = viewModel.RuntimeWorkspace;
         Assert.NotNull(opened);
         Assert.True(viewModel.Workspaces.Single(item => item.Id == main.Id).IsInFront);
+        var launcher = Assert.IsType<RuntimeTabViewModel>(opened.ActiveTab);
+        Assert.IsType<PanelPlaceholderViewModel>(Assert.Single(launcher.Panels));
 
         // Something is already in the window, so this has no claim on it.
         Assert.True(await viewModel.OpenWorkspaceAsync(other.Id));
-        Assert.False(await viewModel.OpenDefaultWorkspaceIfIdleAsync());
+        Assert.False(await viewModel.OpenDefaultLauncherIfIdleAsync());
         Assert.NotSame(opened, viewModel.RuntimeWorkspace);
+    }
+
+    [Fact]
+    public async Task An_empty_Main_workspace_opens_directly_on_its_launcher()
+    {
+        var main = new WorkspaceDefinition(
+            new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            WorkspaceDefinition.DefaultWorkspaceName,
+            null,
+            null,
+            []);
+        var snapshot = new DefinitionCatalogSnapshot(
+            [],
+            [],
+            [],
+            [Store(main)],
+            [], [], [], [], []);
+        using var viewModel = CreateViewModel(snapshot, new EmptyFileClients());
+
+        Assert.True(await viewModel.OpenDefaultLauncherIfIdleAsync());
+
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var launcher = Assert.Single(runtime.Tabs);
+        Assert.Same(launcher, runtime.ActiveTab);
+        Assert.IsType<PanelPlaceholderViewModel>(Assert.Single(launcher.Panels));
+        Assert.Null(viewModel.OperationError);
+    }
+
+    [Fact]
+    public async Task First_run_onboarding_opens_inside_Mains_launcher()
+    {
+        var main = new WorkspaceDefinition(
+            new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            WorkspaceDefinition.DefaultWorkspaceName,
+            null,
+            null,
+            []);
+        var snapshot = new DefinitionCatalogSnapshot(
+            [],
+            [],
+            [],
+            [Store(main)],
+            [], [], [], [], []);
+        var onboarding = new OnboardingViewModel(
+            new IncompleteOnboardingProgressStore(),
+            new FixedDefinitionCatalog(snapshot),
+            new SuccessfulConnectionRuntime(),
+            new EmptySecretVault().Availability);
+        using var viewModel = CreateViewModel(
+            snapshot,
+            new EmptyFileClients(),
+            onboarding: onboarding);
+        await onboarding.Initialization;
+        Assert.True(onboarding.IsVisible);
+
+        Assert.True(await viewModel.OpenDefaultLauncherIfIdleAsync());
+
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var launcher = Assert.Single(runtime.Tabs);
+        Assert.Same(launcher, runtime.ActiveTab);
+        Assert.IsType<PanelPlaceholderViewModel>(Assert.Single(launcher.Panels));
     }
 
     /// <summary>
@@ -2431,7 +2496,8 @@ public sealed class SavedScreenRuntimeIdentityTests
         RuntimeRecoveryWriter? recoveryWriter = null,
         RecentSessionHistory? recentSessionHistory = null,
         IConnectionRuntime? connectionRuntime = null,
-        ISessionHostClient? sessionClient = null) =>
+        ISessionHostClient? sessionClient = null,
+        OnboardingViewModel? onboarding = null) =>
         new(
             sessionClient ?? DispatchProxy.Create<ISessionHostClient, NullSessionClient>(),
             new FixedDefinitionCatalog(snapshot),
@@ -2441,7 +2507,26 @@ public sealed class SavedScreenRuntimeIdentityTests
             files,
             new TerminalStartupCommandDispatcher(new SuccessfulAuditStore(), TimeProvider.System),
             runtimeRecoveryWriter: recoveryWriter,
-            recentSessionHistory: recentSessionHistory);
+            recentSessionHistory: recentSessionHistory,
+            onboarding: onboarding);
+
+    private sealed class IncompleteOnboardingProgressStore : IOnboardingProgressStore
+    {
+        public ValueTask<OnboardingProgressResult<OnboardingProgress>> ReadAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                OnboardingProgressResult<OnboardingProgress>.Success(
+                    new OnboardingProgress(0, 1)));
+        }
+
+        public ValueTask<OnboardingProgressResult<OnboardingProgress>> CompleteAsync(
+            int version,
+            long expectedRevision,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
 
     private static ApplicationStartupState InitializeRun(string runId)
     {

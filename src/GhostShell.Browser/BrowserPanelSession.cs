@@ -1488,7 +1488,7 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
             BrowserLoadState.Loading => new PanelSessionSnapshot(
                 SessionLifecycle.Active,
                 SessionHealth.Healthy,
-                true,
+                false,
                 "The browser is loading a page."),
             BrowserLoadState.Failed => new PanelSessionSnapshot(
                 SessionLifecycle.Active,

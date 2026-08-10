@@ -90,6 +90,7 @@ public sealed class BrowserSurface :
 
         _nativeView.NavigationStarted += OnNavigationStarted;
         _nativeView.NavigationCompleted += OnNavigationCompleted;
+        _nativeView.AddressChanged += OnAddressChanged;
         _nativeView.NavigationRejected += OnNavigationRejected;
         _nativeView.RenderProcessFailed += OnRenderProcessFailed;
 
@@ -134,6 +135,7 @@ public sealed class BrowserSurface :
         var nativeView = _nativeView;
         nativeView.NavigationStarted -= OnNavigationStarted;
         nativeView.NavigationCompleted -= OnNavigationCompleted;
+        nativeView.AddressChanged -= OnAddressChanged;
         nativeView.NavigationRejected -= OnNavigationRejected;
         nativeView.RenderProcessFailed -= OnRenderProcessFailed;
         Content = null;
@@ -2597,6 +2599,31 @@ public sealed class BrowserSurface :
             State.DocumentRevision + 1));
     }
 
+    private void OnAddressChanged(
+        object? sender,
+        NativeBrowserAddressChangedEventArgs args)
+    {
+        if (!ReferenceEquals(sender, _nativeView)
+            || _disposed
+            || State.LoadState == BrowserLoadState.Loading
+            || State.Address == args.Address)
+        {
+            return;
+        }
+
+        // History API and fragment changes keep the current document alive.
+        // Preserve its title, readiness, and revision while updating browser
+        // chrome and the history buttons from Chromium's latest state.
+        Publish(new BrowserSessionState(
+            args.Address,
+            State.Title,
+            State.LoadState,
+            _nativeView.CanGoBack,
+            _nativeView.CanGoForward,
+            State.DocumentRevision,
+            State.Failure));
+    }
+
     private void OnNavigationRejected(
         object? sender,
         NativeBrowserNavigationRejectedEventArgs args)
@@ -2871,6 +2898,7 @@ public sealed class BrowserSurface :
         var quarantined = _nativeView;
         quarantined.NavigationStarted -= OnNavigationStarted;
         quarantined.NavigationCompleted -= OnNavigationCompleted;
+        quarantined.AddressChanged -= OnAddressChanged;
         quarantined.NavigationRejected -= OnNavigationRejected;
         quarantined.RenderProcessFailed -= OnRenderProcessFailed;
         _nativeView = replacement;
@@ -2890,6 +2918,7 @@ public sealed class BrowserSurface :
             _nativeView = quarantined;
             quarantined.NavigationStarted += OnNavigationStarted;
             quarantined.NavigationCompleted += OnNavigationCompleted;
+            quarantined.AddressChanged += OnAddressChanged;
             quarantined.NavigationRejected += OnNavigationRejected;
             quarantined.RenderProcessFailed += OnRenderProcessFailed;
             replacement.Dispose();
@@ -2898,6 +2927,7 @@ public sealed class BrowserSurface :
 
         _nativeView.NavigationStarted += OnNavigationStarted;
         _nativeView.NavigationCompleted += OnNavigationCompleted;
+        _nativeView.AddressChanged += OnAddressChanged;
         _nativeView.NavigationRejected += OnNavigationRejected;
         _nativeView.RenderProcessFailed += OnRenderProcessFailed;
         quarantined.Dispose();

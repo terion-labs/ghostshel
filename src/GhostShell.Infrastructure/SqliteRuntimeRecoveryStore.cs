@@ -172,11 +172,14 @@ public sealed class SqliteRuntimeRecoveryStore :
                 "The runtime recovery payload exceeds the safe snapshot limit.");
         }
 
+        var sqliteStage = "open connection";
         try
         {
             await using var connection = await _database.OpenConnectionAsync(cancellationToken)
                 .ConfigureAwait(false);
+            sqliteStage = "begin transaction";
             await using var transaction = connection.BeginTransaction(deferred: false);
+            sqliteStage = "read active run";
             var activeRunId = await ReadActiveRunIdAsync(
                 connection,
                 transaction,
@@ -190,25 +193,56 @@ public sealed class SqliteRuntimeRecoveryStore :
                     "The runtime recovery snapshot does not belong to the active run.");
             }
 
+            // Keep the bounded-count check and UPSERT as separate statements.
+            // In the bundled CEF process, SQLite3MC 3.49.1 returned SQLITE_NOMEM
+            // for the combined INSERT ... SELECT ... WHERE ... ON CONFLICT form.
+            // The immediate transaction keeps this two-statement form atomic.
+            sqliteStage = "inspect snapshot inventory";
+            await using (var inventory = connection.CreateCommand())
+            {
+                inventory.Transaction = transaction;
+                inventory.CommandText = """
+                    SELECT
+                        COUNT(*),
+                        EXISTS (
+                            SELECT 1
+                            FROM runtime_snapshots
+                            WHERE run_id = $runId AND snapshot_key = $key)
+                    FROM runtime_snapshots
+                    WHERE run_id = $runId;
+                    """;
+                inventory.Parameters.AddWithValue("$runId", snapshot.RunId);
+                inventory.Parameters.AddWithValue("$key", snapshot.Key);
+                await using var reader = await inventory.ExecuteReaderAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+                    || reader.GetValue(0) is not long snapshotCount
+                    || reader.GetValue(1) is not long existingSnapshot
+                    || snapshotCount < 0
+                    || existingSnapshot is not 0 and not 1)
+                {
+                    throw new InvalidDataException(
+                        "Runtime recovery snapshot inventory is invalid.");
+                }
+
+                var inventoryIsFull = snapshotCount
+                    >= RuntimeRecoveryInventory.MaximumSnapshotsPerRun;
+                if (snapshotCount > RuntimeRecoveryInventory.MaximumSnapshotsPerRun
+                    || (inventoryIsFull && existingSnapshot == 0))
+                {
+                    return Failure<Unit>(
+                        ApplicationRunErrorCode.StorageFailure,
+                        "The active run already contains the maximum recovery snapshots.");
+                }
+            }
+
+            sqliteStage = "write snapshot";
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
                 INSERT INTO runtime_snapshots(
                     run_id, snapshot_key, schema_version, payload_json, updated_utc)
-                SELECT $runId, $key, $schemaVersion, $payloadJson, $updatedUtc
-                WHERE (
-                    EXISTS (
-                        SELECT 1
-                        FROM runtime_snapshots
-                        WHERE run_id = $runId AND snapshot_key = $key)
-                    AND (
-                        SELECT COUNT(*)
-                        FROM runtime_snapshots
-                        WHERE run_id = $runId) <= $maximumSnapshots)
-                    OR (
-                        SELECT COUNT(*)
-                        FROM runtime_snapshots
-                        WHERE run_id = $runId) < $maximumSnapshots
+                VALUES ($runId, $key, $schemaVersion, $payloadJson, $updatedUtc)
                 ON CONFLICT(run_id, snapshot_key) DO UPDATE SET
                     schema_version = excluded.schema_version,
                     payload_json = excluded.payload_json,
@@ -218,9 +252,6 @@ public sealed class SqliteRuntimeRecoveryStore :
             command.Parameters.AddWithValue("$key", snapshot.Key);
             command.Parameters.AddWithValue("$schemaVersion", snapshot.SchemaVersion);
             command.Parameters.AddWithValue("$payloadJson", snapshot.PayloadJson);
-            command.Parameters.AddWithValue(
-                "$maximumSnapshots",
-                RuntimeRecoveryInventory.MaximumSnapshotsPerRun);
             command.Parameters.AddWithValue(
                 "$updatedUtc",
                 snapshot.UpdatedAt.ToString("O", CultureInfo.InvariantCulture));
@@ -232,6 +263,7 @@ public sealed class SqliteRuntimeRecoveryStore :
                     "The active run already contains the maximum recovery snapshots.");
             }
 
+            sqliteStage = "commit transaction";
             await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
             return ApplicationRunResult<Unit>.Success(Unit.Value);
         }
@@ -243,6 +275,11 @@ public sealed class SqliteRuntimeRecoveryStore :
         }
         catch (SqliteException exception)
         {
+            Console.Error.WriteLine(
+                $"[ghostshell:recovery] SQLite save failed "
+                + $"during {sqliteStage} "
+                + $"for {payloadBytes} payload bytes "
+                + $"(code {exception.SqliteErrorCode}, extended {exception.SqliteExtendedErrorCode}).");
             return Failure<Unit>(
                 MapSqliteError(exception),
                 "Runtime recovery state could not be saved.");

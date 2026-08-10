@@ -765,6 +765,25 @@ public sealed partial class CefBrowser : IDisposable
     }
 
     /// <summary>
+    /// Start a platform display-link clock that drives external begin frames.
+    /// Returns <see langword="false"/> when the platform has no qualified
+    /// display-link implementation or the clock could not be created.
+    /// </summary>
+    public unsafe bool StartExternalBeginFrameClock(nint windowHandle) =>
+        !_closed
+        && Excef.excef_start_external_begin_frame_clock(
+            Id,
+            (void*)windowHandle) != 0;
+
+    /// <summary>
+    /// Stop the platform display-link clock started for this browser.
+    /// </summary>
+    public void StopExternalBeginFrameClock()
+    {
+        if (!_closed) Excef.excef_stop_external_begin_frame_clock(Id);
+    }
+
+    /// <summary>
     /// Exit page-driven HTML5 fullscreen. Equivalent to JS
     /// <c>document.exitFullscreen()</c>. Pass <paramref name="willCauseResize"/> = true
     /// (the default) so Chromium knows the host will resize the view in response —

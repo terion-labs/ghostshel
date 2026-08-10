@@ -393,12 +393,32 @@ public sealed class DownloadProgressEventArgs : EventArgs
     public void Resume() => Native.Excef.excef_download_action(_token, 2);
 }
 
-/// <summary>One entry in <see cref="ContextMenuEventArgs.Items"/>.</summary>
-/// <param name="CommandId">CEF's command id; 0 + empty label = separator.</param>
-/// <param name="Label">The display text (system locale).</param>
-public readonly record struct ContextMenuItem(int CommandId, string Label)
+/// <summary>The visual behavior of a <see cref="ContextMenuItem"/>.</summary>
+public enum ContextMenuItemKind
 {
-    public bool IsSeparator => CommandId == 0 && string.IsNullOrEmpty(Label);
+    Command = 0,
+    Check = 1,
+    Radio = 2,
+    Separator = 3,
+    Submenu = 4,
+}
+
+/// <summary>One entry in <see cref="ContextMenuEventArgs.Items"/>.</summary>
+/// <param name="CommandId">CEF's command id; 0 for separators.</param>
+/// <param name="Label">The display text in the system locale.</param>
+/// <param name="Kind">How the host should render the item.</param>
+/// <param name="IsEnabled">Whether the command can currently run.</param>
+/// <param name="IsChecked">The current check/radio state.</param>
+/// <param name="Depth">Zero for root items; one or more for submenu children.</param>
+public readonly record struct ContextMenuItem(
+    int CommandId,
+    string Label,
+    ContextMenuItemKind Kind,
+    bool IsEnabled,
+    bool IsChecked,
+    int Depth)
+{
+    public bool IsSeparator => Kind == ContextMenuItemKind.Separator;
 }
 
 /// <summary>
