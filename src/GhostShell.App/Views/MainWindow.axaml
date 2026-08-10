@@ -67,8 +67,10 @@
           BackRequested="OnBrowserBackClick"
           BrowserStateChanged="OnBrowserStateChanged"
           CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
           ForwardRequested="OnBrowserForwardClick"
           GotFocus="OnRuntimePanelGotFocus"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
           PointerPressed="OnRuntimePanelPointerPressed"
           SplitRequested="OnSplitRuntimePanelRequested"
           ReloadRequested="OnBrowserReloadClick"
@@ -131,6 +133,19 @@
           PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
 
+    <DataTemplate DataType="vm:DockerRuntimePanelViewModel">
+      <panelViews:DockerRuntimePanelView
+          CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
+          InlineShellRequested="OnDockerInlineShellRequested"
+          InlineShellTrustHostKeyRequested="OnDockerInlineShellTrustHostKeyRequested"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
+          ShellRequested="OnDockerShellRequested"
+          SplitRequested="OnSplitRuntimePanelRequested"
+          GotFocus="OnRuntimePanelGotFocus"
+          PointerPressed="OnRuntimePanelPointerPressed" />
+    </DataTemplate>
+
     <DataTemplate DataType="vm:UnavailableRuntimePanelViewModel">
       <panelViews:UnavailableRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
@@ -144,6 +159,7 @@
           BrowserRequested="OnPlaceholderBrowserClick"
           CloseRequested="OnCloseRuntimePanelClick"
           DatabaseRequested="OnPlaceholderDatabaseClick"
+          DockerRequested="OnPlaceholderDockerClick"
           FileViewerRequested="OnPlaceholderFileViewerClick"
           GotFocus="OnRuntimePanelGotFocus"
           ConnectionLaunchRequested="OnPlaceholderConnectionLaunchRequested"
@@ -318,6 +334,7 @@
           AddBrowserPanelRequested="OnAddBrowserPanelClick"
           AddConnectionPanelRequested="OnAddConnectionPanelClick"
           AddDatabasePanelRequested="OnAddDatabasePanelClick"
+          AddDockerPanelRequested="OnAddDockerPanelClick"
           AddFilePanelRequested="OnAddFilePanelClick"
           AddProcessMonitorPanelRequested="OnAddProcessMonitorPanelClick"
           AddStatisticsPanelRequested="OnAddStatisticsPanelClick"

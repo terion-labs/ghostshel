@@ -76,6 +76,15 @@
             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="SQL viewer" />
           </StackPanel>
         </Button>
+        <Button Classes="ChooserButton PanelChooser" Click="OnAddDockerPanelClick" AutomationProperties.Name="Add Docker panel">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <Border Width="36" Height="36" Classes="ChooserIconTile">
+              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Box" FontSize="18" />
+            </Border>
+            <TextBlock FontWeight="SemiBold" Text="Docker" />
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Containers &amp; images" />
+          </StackPanel>
+        </Button>
       </controls:CardGridPanel>
       <!-- A new panel is not only a blank adapter: a saved connection or screen
            is just as likely to be what belongs here, so both are offered

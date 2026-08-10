@@ -2658,12 +2658,16 @@ public sealed class BrowserSurfaceTests
     public void DisposeReleasesTheEmbeddedBrowserExactlyOnce()
     {
         var nativeView = new RecordingEmbeddedBrowserView();
-        var surface = Surface(nativeView);
+        var networkLifetime = new CountingDisposable();
+        var surface = new BrowserSurface(
+            nativeView,
+            networkLifetime: networkLifetime);
 
         surface.Dispose();
         surface.Dispose();
 
         Assert.True(nativeView.IsDisposed);
+        Assert.Equal(1, networkLifetime.DisposeCount);
         Assert.Null(surface.Content);
     }
 
@@ -2994,5 +2998,12 @@ public sealed class BrowserSurfaceTests
         public void FailMarshalling() => _hasAccess = false;
 
         public void RestoreAccess() => _hasAccess = true;
+    }
+
+    private sealed class CountingDisposable : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose() => DisposeCount++;
     }
 }

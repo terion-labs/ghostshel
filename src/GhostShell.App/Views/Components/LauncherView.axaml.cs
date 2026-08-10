@@ -25,6 +25,7 @@ public sealed partial class LauncherView : UserControl
     public event EventHandler<RoutedEventArgs>? CloseRequested;
     public event EventHandler<RoutedEventArgs>? NewBrowserRequested;
     public event EventHandler<RoutedEventArgs>? NewDatabaseRequested;
+    public event EventHandler<RoutedEventArgs>? NewDockerRequested;
     public event EventHandler<RoutedEventArgs>? NewFileViewerRequested;
     public event EventHandler<RoutedEventArgs>? NewLocalTerminalRequested;
     public event EventHandler<RoutedEventArgs>? NewProcessMonitorRequested;
@@ -67,6 +68,9 @@ public sealed partial class LauncherView : UserControl
 
     private void OnNewDatabaseClick(object? sender, RoutedEventArgs e) =>
         NewDatabaseRequested?.Invoke(sender, e);
+
+    private void OnNewDockerClick(object? sender, RoutedEventArgs e) =>
+        NewDockerRequested?.Invoke(sender, e);
 
     private void OnNewFileViewerClick(object? sender, RoutedEventArgs e) =>
         NewFileViewerRequested?.Invoke(sender, e);

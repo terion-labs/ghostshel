@@ -927,6 +927,13 @@ public sealed partial class MainWindow : Window
         await RequestNewAdapterTabAsync(PanelKind.DatabaseViewer);
     }
 
+    private async void OnNewDockerClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await RequestNewAdapterTabAsync(PanelKind.Docker);
+    }
+
     private async void OnAddConnectionClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -1647,6 +1654,9 @@ public sealed partial class MainWindow : Window
                 break;
             case PanelKind.DatabaseViewer:
                 await RequestNewDatabaseAsync();
+                break;
+            case PanelKind.Docker:
+                await RequestNewDockerAsync();
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, null);

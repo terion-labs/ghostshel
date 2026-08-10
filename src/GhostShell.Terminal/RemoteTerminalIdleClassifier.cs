@@ -3,9 +3,10 @@ using GhostShell.Application;
 namespace GhostShell.Terminal;
 
 /// <summary>
-/// Adds the one piece of close-safety information libghostty cannot derive for an SSH surface.
-/// The local foreground process remains <c>ssh</c> for the entire remote session, so Ghostty's
-/// semantic-prompt signal is unavailable unless the remote shell happens to install integration.
+/// Adds the close-safety information libghostty cannot derive when the host foreground process
+/// permanently wraps another interactive shell. SSH keeps <c>ssh</c> in the foreground, and an
+/// inline container shell keeps <c>docker exec</c> there, so Ghostty's semantic-prompt signal is
+/// unavailable unless the wrapped shell happens to install integration.
 /// This classifier is deliberately conservative: it recognizes only common shell prompt shapes
 /// at the canonical cursor and otherwise preserves the confirmation.
 /// </summary>
@@ -15,8 +16,9 @@ internal static class RemoteTerminalIdleClassifier
     {
         ArgumentNullException.ThrowIfNull(launch);
         return launch.ConnectionMetadata?.ConnectionBoundary.StartsWith(
-            "SSH:",
-            StringComparison.OrdinalIgnoreCase) == true;
+                   "SSH:",
+                   StringComparison.OrdinalIgnoreCase) == true
+               || launch.ShellActivityFallback == TerminalShellActivityFallback.PromptShape;
     }
 
     public static bool IsAtShellPrompt(
@@ -62,13 +64,17 @@ internal static class RemoteTerminalIdleClassifier
 
         var prompt = cursorText[^1];
         var prefix = cursorText[..^1];
+        var trimmedPrefix = prefix.TrimEnd();
         return prompt switch
         {
             '$' or '#' or '%' =>
                 prefix.Length == 0
                 || prefix.Contains('@', StringComparison.Ordinal)
                 || prefix.EndsWith(']')
-                || prefix.EndsWith(':'),
+                || prefix.EndsWith(':')
+                || (prefix.EndsWith(' ')
+                    && (trimmedPrefix.StartsWith('/')
+                        || trimmedPrefix.StartsWith('~'))),
             '>' =>
                 prefix.StartsWith("PS ", StringComparison.OrdinalIgnoreCase)
                 || prefix.Contains('@', StringComparison.Ordinal)

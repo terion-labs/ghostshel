@@ -32,7 +32,10 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
         _title = panel.Title ?? string.Empty;
         _selectedConnection = panel.ConnectionId is { } connectionId
             ? ConnectionOptions.SingleOrDefault(option => option.Id == connectionId)
-            : null;
+            : panel.Kind == ScreenPanelKind.Browser
+                ? ConnectionOptions.FirstOrDefault(option =>
+                    option.IsAvailable && option.ConnectionKind == ConnectionKind.Local)
+                : null;
         FileProviderProfileId? fileProviderId = panel.Kind == ScreenPanelKind.FileViewer
             ? panel.FileProviderProfileId ?? new FileProviderProfileId("builtin.files.home")
             : null;
@@ -66,13 +69,23 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
         or ScreenPanelKind.FileViewer
         or ScreenPanelKind.DatabaseViewer;
 
-    /// <summary>For a database panel the connection is the optional SSH tunnel.</summary>
+    /// <summary>Browsers use local or SSH routes; databases keep an optional SSH tunnel.</summary>
     public bool SupportsConnection => Kind is ScreenPanelKind.Terminal
-        or ScreenPanelKind.DatabaseViewer;
+        or ScreenPanelKind.Browser
+        or ScreenPanelKind.DatabaseViewer
+        or ScreenPanelKind.Docker;
 
     public IReadOnlyList<WorkspaceLayoutSlotOption> SlotOptions => _slotOptions;
 
     public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
+
+    public IReadOnlyList<ScreenConnectionOption> ApplicableConnectionOptions =>
+        Kind is ScreenPanelKind.Browser or ScreenPanelKind.Docker
+            ? ConnectionOptions
+                .Where(option => option.ConnectionKind is ConnectionKind.Local or ConnectionKind.Ssh
+                    || !option.IsAvailable && option.Id == _original.ConnectionId)
+                .ToArray()
+            : ConnectionOptions;
 
     public IReadOnlyList<ScreenFileProviderOption> FileProviderOptions { get; }
 
@@ -149,7 +162,12 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
 
     public bool HasMissingSlot => SelectedSlot?.IsAvailable != true;
 
-    public bool HasMissingConnection => IsTerminal && SelectedConnection?.IsAvailable != true;
+    public bool HasMissingConnection =>
+        (Kind is ScreenPanelKind.Terminal or ScreenPanelKind.Browser or ScreenPanelKind.Docker)
+        && (SelectedConnection?.IsAvailable != true
+            || Kind is ScreenPanelKind.Browser or ScreenPanelKind.Docker
+                && SelectedConnection.ConnectionKind is not (
+                    ConnectionKind.Local or ConnectionKind.Ssh));
 
     public bool HasMissingFileProvider => IsFileViewer && SelectedFileProvider?.IsAvailable != true;
 

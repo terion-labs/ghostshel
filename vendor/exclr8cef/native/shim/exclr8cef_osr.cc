@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <climits>
 #include <cstring>
 #include <functional>
@@ -493,6 +494,7 @@ void Exclr8CefOsrHandler::GetViewRect(CefRefPtr<CefBrowser> /*browser*/,
     // (returned from GetScreenInfo) to size the paint buffer.
     rect.x = 0;
     rect.y = 0;
+    std::lock_guard<std::mutex> lock(size_mu_);
     rect.width = width_;
     rect.height = height_;
 }
@@ -502,6 +504,7 @@ bool Exclr8CefOsrHandler::GetScreenInfo(CefRefPtr<CefBrowser> /*browser*/,
     info.device_scale_factor = device_scale_factor_;
     // Treat the entire view as the available screen — host doesn't carry
     // monitor-extent info across the C ABI in this version.
+    std::lock_guard<std::mutex> lock(size_mu_);
     info.rect = CefRect(0, 0, width_, height_);
     info.available_rect = info.rect;
     return true;
@@ -548,6 +551,30 @@ void Exclr8CefOsrHandler::OnAcceleratedPaint(CefRefPtr<CefBrowser> /*browser*/,
 #else
     const void* shared_handle = nullptr;
 #endif
+    if (type == PET_VIEW) {
+        int expected_width;
+        int expected_height;
+        {
+            std::lock_guard<std::mutex> lock(size_mu_);
+            expected_width = static_cast<int>(
+                std::lround(width_ * device_scale_factor_));
+            expected_height = static_cast<int>(
+                std::lround(height_ * device_scale_factor_));
+        }
+        constexpr int kPixelRoundingTolerance = 1;
+        const bool current_size =
+            std::abs(info.extra.coded_size.width - expected_width)
+                <= kPixelRoundingTolerance
+            && std::abs(info.extra.coded_size.height - expected_height)
+                <= kPixelRoundingTolerance;
+        if (!current_size) {
+            // CEF can complete an old accelerated resize after the final
+            // WasResized call. Treat the actual IOSurface dimensions as the
+            // acknowledgement: keep reasserting the settled viewport at a
+            // bounded 75 ms cadence until CEF produces the requested size.
+            QueueSettledSizeOnUi();
+        }
+    }
     g_accelerated_paint_cb(id_,
                             static_cast<int>(type),
                             info.extra.coded_size.width,
@@ -2000,18 +2027,163 @@ void Exclr8CefOsrHandler::OnFullscreenModeChange(CefRefPtr<CefBrowser> /*browser
     }
 }
 
+namespace {
+class OsrResizeTask final : public CefTask {
+public:
+    explicit OsrResizeTask(CefRefPtr<Exclr8CefOsrHandler> handler)
+        : handler_(std::move(handler)) {}
+
+    void Execute() override {
+        if (handler_) handler_->ApplyPendingSizeOnUi();
+    }
+
+private:
+    CefRefPtr<Exclr8CefOsrHandler> handler_;
+    IMPLEMENT_REFCOUNTING(OsrResizeTask);
+};
+
+class SettledOsrResizeTask final : public CefTask {
+public:
+    SettledOsrResizeTask(
+        CefRefPtr<Exclr8CefOsrHandler> handler,
+        uint64_t generation)
+        : handler_(std::move(handler)), generation_(generation) {}
+
+    void Execute() override {
+        if (handler_) handler_->ApplySettledSizeOnUi(generation_);
+    }
+
+private:
+    CefRefPtr<Exclr8CefOsrHandler> handler_;
+    uint64_t generation_;
+    IMPLEMENT_REFCOUNTING(SettledOsrResizeTask);
+};
+}  // namespace
+
 void Exclr8CefOsrHandler::SetSize(int width, int height) {
-    width_ = width;
-    height_ = height;
-    // Called from the host thread — use the locked accessor, not browser_.
+    {
+        std::lock_guard<std::mutex> lock(size_mu_);
+        width_ = width;
+        height_ = height;
+    }
+    resize_generation_.fetch_add(1, std::memory_order_acq_rel);
+    QueuePendingSizeOnUi();
+    QueueSettledSizeOnUi();
+}
+
+void Exclr8CefOsrHandler::QueuePendingSizeOnUi() {
+    bool expected = false;
+    if (!resize_task_pending_.compare_exchange_strong(
+            expected,
+            true,
+            std::memory_order_acq_rel)) {
+        return;
+    }
+
+    if (CefCurrentlyOn(TID_UI)) {
+        ApplyPendingSizeOnUi();
+        return;
+    }
+
+    auto task = CefRefPtr<CefTask>(new OsrResizeTask(this));
+    if (!CefPostTask(TID_UI, task)) {
+        resize_task_pending_.store(false, std::memory_order_release);
+    }
+}
+
+void Exclr8CefOsrHandler::ApplyPendingSizeOnUi() {
+    int applied_width;
+    int applied_height;
+    {
+        std::lock_guard<std::mutex> lock(size_mu_);
+        applied_width = width_;
+        applied_height = height_;
+    }
+
+    // CefBrowserHost::WasResized is a CEF-UI-thread operation. Keeping one
+    // task outstanding collapses a fast splitter drag to the latest size
+    // instead of leaving Chromium to drain a long queue after the drag.
     auto b = browser();
     if (b) b->GetHost()->WasResized();
+
+    resize_task_pending_.store(false, std::memory_order_release);
+    bool size_changed;
+    {
+        std::lock_guard<std::mutex> lock(size_mu_);
+        size_changed = width_ != applied_width || height_ != applied_height;
+    }
+    if (size_changed) {
+        QueuePendingSizeOnUi();
+    }
+}
+
+void Exclr8CefOsrHandler::QueueSettledSizeOnUi() {
+    bool expected = false;
+    if (!settled_resize_task_pending_.compare_exchange_strong(
+            expected,
+            true,
+            std::memory_order_acq_rel)) {
+        return;
+    }
+
+    const uint64_t generation =
+        resize_generation_.load(std::memory_order_acquire);
+    if (!PostSettledSizeTask(generation)) {
+        settled_resize_task_pending_.store(
+            false,
+            std::memory_order_release);
+    }
+}
+
+bool Exclr8CefOsrHandler::PostSettledSizeTask(uint64_t generation) {
+    constexpr int64_t kSettledResizeDelayMilliseconds = 75;
+    auto task = CefRefPtr<CefTask>(
+        new SettledOsrResizeTask(this, generation));
+    return CefPostDelayedTask(
+        TID_UI,
+        task,
+        kSettledResizeDelayMilliseconds);
+}
+
+void Exclr8CefOsrHandler::ApplySettledSizeOnUi(
+    uint64_t scheduled_generation) {
+    const uint64_t current_generation =
+        resize_generation_.load(std::memory_order_acquire);
+    if (current_generation != scheduled_generation) {
+        // The splitter is still moving. Keep a single trailing task and
+        // restart its quiet period from the newest observed size.
+        if (!PostSettledSizeTask(current_generation)) {
+            settled_resize_task_pending_.store(
+                false,
+                std::memory_order_release);
+        }
+        return;
+    }
+
+    auto b = browser();
+    if (b) {
+        // Reaffirm the final size after Chromium's resize pipeline has gone
+        // quiet, then force a full frame. Old-size accelerated frames can
+        // otherwise arrive last and leave a static page stuck at an
+        // intermediate splitter position indefinitely.
+        b->GetHost()->WasResized();
+        b->GetHost()->Invalidate(PET_VIEW);
+    }
+
+    settled_resize_task_pending_.store(false, std::memory_order_release);
+    if (resize_generation_.load(std::memory_order_acquire)
+        != current_generation) {
+        QueueSettledSizeOnUi();
+    }
 }
 
 void Exclr8CefOsrHandler::SetDeviceScaleFactor(float scale) {
     if (scale <= 0.0f) return;
-    if (scale == device_scale_factor_) return;
-    device_scale_factor_ = scale;
+    {
+        std::lock_guard<std::mutex> lock(size_mu_);
+        if (scale == device_scale_factor_) return;
+        device_scale_factor_ = scale;
+    }
     auto b = browser();
     if (b) b->GetHost()->NotifyScreenInfoChanged();
 }

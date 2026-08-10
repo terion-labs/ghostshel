@@ -57,6 +57,11 @@ public sealed partial class CodePreviewView : UserControl
     public CodePreviewView()
     {
         InitializeComponent();
+        // A preview is a document reader, not an editor with an insertion area
+        // below the last line. AvaloniaEdit otherwise includes roughly another
+        // viewport in its vertical extent, so scrolling to the end can leave the
+        // final line stranded at the top above a screenful of empty canvas.
+        Editor.Options.AllowScrollBelowDocument = false;
         ActualThemeVariantChanged += (_, _) => ApplyTheme();
 
         // Wrapped text is only as tall as its width allows, so a height

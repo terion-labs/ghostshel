@@ -153,6 +153,13 @@
             <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Query SQLite, Postgres, MySQL" TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
+        <Button Classes="ChooserButton LauncherTile" Click="OnNewDockerClick" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Open a Docker panel">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <Border Width="38" Height="38" HorizontalAlignment="Left" Classes="ChooserIconTile"><icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="Box" FontSize="19" /></Border>
+            <TextBlock Foreground="{DynamicResource ShellTextBrush}" FontWeight="SemiBold" Text="Docker" TextTrimming="CharacterEllipsis" />
+            <TextBlock Classes="Muted" Foreground="{DynamicResource ShellMutedBrush}" FontSize="{DynamicResource ShellFontSize11}" Text="Manage local or remote engines" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Button>
       </controls:CardGridPanel>
     </StackPanel>
 

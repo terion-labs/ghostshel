@@ -158,6 +158,38 @@ public sealed partial class MainWindow
         }
     }
 
+    public async Task RequestNewDockerAsync()
+    {
+        if (ViewModel.HasOverlay && !await TryCloseOverlayAsync())
+        {
+            return;
+        }
+
+        if (!ViewModel.HasRuntimeWorkspace)
+        {
+            if (ViewModel.Workspaces.FirstOrDefault() is { } workspace)
+            {
+                await OpenRuntimeWorkspaceAsync(token =>
+                    ViewModel.OpenWorkspaceAsync(workspace.Id, token));
+            }
+            else
+            {
+                await OpenDefaultLocalTerminalAsync();
+            }
+        }
+
+        if (ViewModel.RuntimeWorkspace?.ActiveTab is null)
+        {
+            ViewModel.SetError("Open a workspace before adding a Docker panel.");
+            return;
+        }
+
+        if (await ViewModel.AddDockerPanelAsync(_lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
     public Task RequestNewStatisticsAsync() =>
         RequestNewMonitorAsync(PanelKind.Statistics);
 
@@ -170,7 +202,8 @@ public sealed partial class MainWindow
             or PanelKind.FileViewer
             or PanelKind.Statistics
             or PanelKind.ProcessMonitor
-            or PanelKind.DatabaseViewer))
+            or PanelKind.DatabaseViewer
+            or PanelKind.Docker))
         {
             throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
@@ -202,6 +235,8 @@ public sealed partial class MainWindow
                 await ViewModel.AddProcessMonitorTabAsync(_lifetime.Token),
             PanelKind.DatabaseViewer =>
                 await ViewModel.AddDatabaseTabAsync(_lifetime.Token),
+            PanelKind.Docker =>
+                await ViewModel.AddDockerTabAsync(_lifetime.Token),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
         if (added)
@@ -217,6 +252,7 @@ public sealed partial class MainWindow
         PanelKind.Statistics => RequestNewStatisticsAsync(),
         PanelKind.ProcessMonitor => RequestNewProcessMonitorAsync(),
         PanelKind.DatabaseViewer => RequestNewDatabaseAsync(),
+        PanelKind.Docker => RequestNewDockerAsync(),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -1033,6 +1069,53 @@ public sealed partial class MainWindow
             () => ViewModel.AddDatabasePanelAsync(_lifetime.Token));
     }
 
+    private async void OnPlaceholderDockerClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddDockerPanelAsync(_lifetime.Token));
+    }
+
+    private async void OnDockerShellRequested(
+        object? sender,
+        DockerRuntimePanelViewModel panel)
+    {
+        _ = sender;
+        if (await ViewModel.OpenDockerContainerShellAsync(panel, _lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private async void OnDockerInlineShellRequested(
+        object? sender,
+        DockerRuntimePanelViewModel panel)
+    {
+        _ = sender;
+        if (await ViewModel.OpenDockerContainerInlineShellAsync(panel, _lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private async void OnDockerInlineShellTrustHostKeyRequested(
+        object? sender,
+        TerminalRuntimePanelViewModel panel)
+    {
+        _ = sender;
+        if (panel.HostKeyReview is not { } review)
+        {
+            return;
+        }
+
+        var confirmed = await new SshHostKeyReviewDialog(review).ShowDialog<bool>(this);
+        if (confirmed)
+        {
+            await panel.TrustHostKeyAsync(_lifetime.Token);
+        }
+    }
+
     private async void OnPlaceholderConnectionLaunchRequested(
         object? sender,
         SavedConnectionLaunchViewModel launch)
@@ -1433,6 +1516,10 @@ public sealed partial class MainWindow
         (panel, selection) switch
         {
             (
+                BrowserRuntimePanelViewModel browser,
+                PanelConnectionOptionViewModel.Target.Connection target) =>
+                browser.ConnectionId == target.Id,
+            (
                 FileRuntimePanelViewModel files,
                 PanelConnectionOptionViewModel.Target.FileProvider target) =>
                 files.UsesProfile(target.Id),
@@ -1444,6 +1531,10 @@ public sealed partial class MainWindow
                 ProcessMonitorRuntimePanelViewModel processes,
                 PanelConnectionOptionViewModel.Target.Connection target) =>
                 processes.ConnectionId == target.Id,
+            (
+                DockerRuntimePanelViewModel docker,
+                PanelConnectionOptionViewModel.Target.Connection target) =>
+                docker.ConnectionId == target.Id,
             (
                 DatabaseRuntimePanelViewModel database,
                 PanelConnectionOptionViewModel.Target.Database target) =>
@@ -2166,6 +2257,16 @@ public sealed partial class MainWindow
         _ = sender;
         _ = e;
         if (await ViewModel.AddDatabasePanelAsync(_lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private async void OnAddDockerPanelClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (await ViewModel.AddDockerPanelAsync(_lifetime.Token))
         {
             FocusActivePanel();
         }

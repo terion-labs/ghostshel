@@ -835,7 +835,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
                 connection.Id,
                 connection.Name,
                 KindBadges.Connection(connection.ConnectionKind),
-                true))
+                true,
+                connection.ConnectionKind))
             .ToList();
         var referencedIds = workspace.Entries
             .OfType<WorkspaceEntry.ConnectionReference>()

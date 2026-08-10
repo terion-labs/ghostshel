@@ -8,4 +8,5 @@ public enum ScreenPanelKind
     Statistics = 4,
     ProcessMonitor = 5,
     DatabaseViewer = 6,
+    Docker = 7,
 }

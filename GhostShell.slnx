@@ -8,6 +8,7 @@
     <Project Path="src/GhostShell.Browser/GhostShell.Browser.csproj" />
     <Project Path="src/GhostShell.Core/GhostShell.Core.csproj" />
     <Project Path="src/GhostShell.Databases/GhostShell.Databases.csproj" />
+    <Project Path="src/GhostShell.Docker/GhostShell.Docker.csproj" />
     <Project Path="src/GhostShell.Desktop/GhostShell.Desktop.csproj" />
     <Project Path="src/GhostShell.Docking/GhostShell.Docking.csproj" />
     <Project Path="src/GhostShell.Files/GhostShell.Files.csproj" />
@@ -31,6 +32,7 @@
     <Project Path="tests/GhostShell.Core.Tests/GhostShell.Core.Tests.csproj" />
     <Project Path="tests/GhostShell.Databases.Tests/GhostShell.Databases.Tests.csproj" />
     <Project Path="tests/GhostShell.Databases.IntegrationTests/GhostShell.Databases.IntegrationTests.csproj" />
+    <Project Path="tests/GhostShell.Docker.Tests/GhostShell.Docker.Tests.csproj" />
     <Project Path="tests/GhostShell.Files.Tests/GhostShell.Files.Tests.csproj" />
     <Project Path="tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj" />
     <Project Path="tests/GhostShell.Mcp.Tests/GhostShell.Mcp.Tests.csproj" />

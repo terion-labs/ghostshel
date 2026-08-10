@@ -394,6 +394,9 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void OnAddDatabasePanelClick(object? sender, RoutedEventArgs e) =>
         AddPanel(sender, e, ScreenPanelKind.DatabaseViewer);
 
+    private void OnAddDockerPanelClick(object? sender, RoutedEventArgs e) =>
+        AddPanel(sender, e, ScreenPanelKind.Docker);
+
     private void AddPanel(object? sender, RoutedEventArgs e, ScreenPanelKind kind)
     {
         _ = e;

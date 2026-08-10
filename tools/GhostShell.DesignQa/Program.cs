@@ -180,6 +180,7 @@ internal sealed record RouteCapture(
     string Name,
     Action<MainWindowViewModel> Apply,
     string? FocusFirst = null,
+    int Width = 1440,
     int Height = 900,
     ThemePreference? Theme = null,
     string? ClickFirst = null,
@@ -193,6 +194,8 @@ internal sealed class QaApplication : Avalonia.Application
     private static readonly QaOfflineAgentRuntime AgentRuntime = new();
 
     private static readonly EmptyFileClients Files = new();
+
+    private static readonly QaDockerEngineClient Docker = new();
 
     private static readonly RouteCapture[] Routes =
     [
@@ -288,6 +291,67 @@ internal sealed class QaApplication : Avalonia.Application
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleCapabilityRequest();
         }),
+        // The Docker browser with realistic engine data: navigation, selected
+        // container, lifecycle affordances, inspection rows, and live metrics.
+        new("workspace-docker", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm);
+        }),
+        new("workspace-docker-stats", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectDetail(DockerPanelDetail.Stats);
+        }),
+        new("workspace-docker-logs", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectDetail(DockerPanelDetail.Logs);
+        }),
+        new("workspace-docker-log-search", vm =>
+        {
+            vm.ShowWorkspace();
+            var panel = AddSampleDockerPanel(vm);
+            panel.SelectDetail(DockerPanelDetail.Logs);
+            panel.LogSearchText = "warn";
+            panel.LogSearchContext = 2;
+            panel.SearchLogsAsync().GetAwaiter().GetResult();
+        }),
+        new("workspace-docker-json", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectDetail(DockerPanelDetail.Json);
+        }),
+        new("workspace-docker-shell", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectDetail(DockerPanelDetail.Shell);
+        }),
+        new("workspace-docker-files", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectDetail(DockerPanelDetail.Files);
+        }, PrepareCapture: SelectDockerReadmePreview),
+        new("workspace-docker-images", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectSection(DockerPanelSection.Images);
+        }),
+        new("workspace-docker-volumes", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectSection(DockerPanelSection.Volumes);
+        }),
+        new("workspace-docker-networks", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectSection(DockerPanelSection.Networks);
+        }),
+        new("workspace-docker-narrow", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleDockerPanel(vm).SelectSection(DockerPanelSection.Containers);
+        }, Width: 1080),
         // The database viewer with a connected stub: table list, query editor,
         // and a populated result grid. Last workspace route, because the added
         // panel stays in the shared fixture.
@@ -1751,7 +1815,8 @@ internal sealed class QaApplication : Avalonia.Application
             timeProvider: new QaTimeProvider(),
             aiProviderRuntime: AgentProfiles,
             agentChatRuntime: AgentRuntime,
-            databasePanelClient: new QaDatabasePanelClient());
+            databasePanelClient: new QaDatabasePanelClient(),
+            dockerEngineClient: Docker);
 
         // Real connection pills, so the row that carries them is reviewable
         // rather than rendering empty.
@@ -1867,6 +1932,62 @@ internal sealed class QaApplication : Avalonia.Application
             .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
             .GetSetMethod(nonPublic: true)!
             .Invoke(workspace, [tab]);
+    }
+
+    private static DockerRuntimePanelViewModel AddSampleDockerPanel(
+        MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            throw new InvalidOperationException(
+                "The Docker route needs a runtime workspace.");
+        }
+
+        var tab = workspace.Tabs.FirstOrDefault(candidate =>
+            candidate.Panels.Any(panel => panel is DockerRuntimePanelViewModel));
+        if (tab is null)
+        {
+            tab = new RuntimeTabViewModel(
+                new TabInstanceId("qa-tab-docker"),
+                "Docker",
+                "Local");
+            var panel = new DockerRuntimePanelViewModel(
+                new PanelInstanceId("qa-panel-docker"),
+                "Docker",
+                Docker,
+                BuiltInConnections.Local);
+            tab.AddPanel(panel);
+            _ = tab.ActivatePanel(panel.Id);
+            tab.NotifyPanelLayoutChanged();
+            workspace.Tabs.Add(tab);
+        }
+
+        foreach (var candidate in workspace.Tabs)
+        {
+            candidate.IsActive = ReferenceEquals(candidate, tab);
+        }
+
+        typeof(RuntimeWorkspaceViewModel)
+            .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(workspace, [tab]);
+
+        return tab.ActivePanel as DockerRuntimePanelViewModel
+            ?? throw new InvalidOperationException(
+                "The Docker route did not activate its Docker panel.");
+    }
+
+    private static void SelectDockerReadmePreview(MainWindow window)
+    {
+        var files = window.GetVisualDescendants()
+            .OfType<GhostShell.App.Views.RuntimePanels.FileRuntimePanelView>()
+            .FirstOrDefault(view => view.IsEmbedded)
+            ?.DataContext as FileRuntimePanelViewModel;
+        if (files?.Entries.FirstOrDefault(entry => entry.Name == "README.md") is { } readme)
+        {
+            files.SelectedEntry = readme;
+            _ = files.PreviewSelectedAsync();
+        }
     }
 
     /// <summary>
@@ -3002,8 +3123,9 @@ internal sealed class QaApplication : Avalonia.Application
                     window.UpdateLayout();
                 }
 
-                if (window.Height != route.Height)
+                if (window.Width != route.Width || window.Height != route.Height)
                 {
+                    window.Width = route.Width;
                     window.Height = route.Height;
                     await Task.Delay(200);
                     Dispatcher.UIThread.RunJobs();
@@ -3046,7 +3168,9 @@ internal sealed class QaApplication : Avalonia.Application
                     continue;
                 }
 
-                using (var bitmap = new RenderTargetBitmap(new PixelSize(1440, route.Height), new Vector(96, 96)))
+                using (var bitmap = new RenderTargetBitmap(
+                           new PixelSize(route.Width, route.Height),
+                           new Vector(96, 96)))
                 {
                     bitmap.Render(window);
                     bitmap.Save(path);
@@ -3061,7 +3185,7 @@ internal sealed class QaApplication : Avalonia.Application
                 {
                     var retinaPath = Path.Combine(Program.OutputDirectory, "workspace-2x.png");
                     using var retina = new RenderTargetBitmap(
-                        new PixelSize(2880, route.Height * 2),
+                        new PixelSize(route.Width * 2, route.Height * 2),
                         new Vector(192, 192));
                     retina.Render(window);
                     retina.Save(retinaPath);

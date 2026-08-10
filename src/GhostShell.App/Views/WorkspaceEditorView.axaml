@@ -347,6 +347,7 @@
                     <Button Classes="TextButton Accent" Click="OnAddStatisticsPanelClick" Content="+ Statistics" IsEnabled="{Binding CanAddPanel}" />
                     <Button Classes="TextButton Accent" Click="OnAddProcessMonitorPanelClick" Content="+ Processes" IsEnabled="{Binding CanAddPanel}" />
                     <Button Classes="TextButton Accent" Click="OnAddDatabasePanelClick" Content="+ Database" IsEnabled="{Binding CanAddPanel}" />
+                    <Button Classes="TextButton Accent" Click="OnAddDockerPanelClick" Content="+ Docker" IsEnabled="{Binding CanAddPanel}" />
                   </WrapPanel>
                 </Grid>
 
@@ -387,7 +388,7 @@
 
                           <StackPanel Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding SupportsConnection}">
                             <TextBlock FontWeight="SemiBold" Text="Connection" />
-                            <ComboBox ItemsSource="{Binding ConnectionOptions}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}">
+                            <ComboBox ItemsSource="{Binding ApplicableConnectionOptions}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}">
                               <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
                             </ComboBox>
                           </StackPanel>

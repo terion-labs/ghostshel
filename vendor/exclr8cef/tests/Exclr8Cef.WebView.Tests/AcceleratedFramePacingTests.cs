@@ -44,4 +44,47 @@ public sealed class AcceleratedFramePacingTests
             expected,
             WebView.DisplayLinkedFramePacingEnabled(requestedMode));
     }
+
+    [Theory]
+    [InlineData(1600, 900, 2.0, 800, 450)]
+    [InlineData(800, 450, 1.0, 800, 450)]
+    [InlineData(600, 300, 0.0, 600, 300)]
+    public void AcceleratedFrameKeepsItsPixelCorrectLogicalSize(
+        int physicalWidth,
+        int physicalHeight,
+        double renderScale,
+        double expectedWidth,
+        double expectedHeight)
+    {
+        var size = WebView.AcceleratedFrameVisualSize(
+            physicalWidth,
+            physicalHeight,
+            renderScale);
+
+        Assert.Equal(expectedWidth, size.X);
+        Assert.Equal(expectedHeight, size.Y);
+    }
+
+    [Theory]
+    [InlineData(1600, 900, 800, 450, 2.0, true)]
+    [InlineData(1601, 901, 800, 450, 2.0, true)]
+    [InlineData(1400, 900, 800, 450, 2.0, false)]
+    [InlineData(1600, 700, 800, 450, 2.0, false)]
+    public void AcceleratedPresentationRejectsFramesFromOlderResizeRequests(
+        int physicalWidth,
+        int physicalHeight,
+        int logicalWidth,
+        int logicalHeight,
+        double renderScale,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WebView.AcceleratedFrameMatchesView(
+                physicalWidth,
+                physicalHeight,
+                logicalWidth,
+                logicalHeight,
+                renderScale));
+    }
 }

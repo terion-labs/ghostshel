@@ -311,10 +311,10 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             {
                 OnPropertyChanged(nameof(ConnectionDisplayName));
                 NotifyFileInteractionStateChanged();
-                // Switching to a remote provider is what makes the
-                // auto-download choice relevant, and to a local one what makes
-                // it disappear.
-                OnPropertyChanged(nameof(IsRemoteProvider));
+                // The choice follows the transport: remote filesystems and
+                // Docker resources transfer preview bytes onto the host;
+                // ordinary local files do not.
+                OnPropertyChanged(nameof(RequiresHostTransferForPreview));
                 OnContentPresentationChanged();
             }
         }
@@ -762,16 +762,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(AutoDownloadPreviewLabel));
 
     /// <summary>
-    /// Whether this provider's files are fetched over a network. Local
-    /// providers read from disk, so nothing is downloaded and the whole
-    /// question does not arise.
+    /// Whether previewing this provider must transfer bytes onto the host.
+    /// This includes remote filesystems and Docker resources, regardless of
+    /// whether the Docker engine itself is local or reached over SSH.
     /// </summary>
-    public bool IsRemoteProvider => SelectedProfile?.Family
-        is FileProviderFamily.S3
-        or FileProviderFamily.Sftp
-        or FileProviderFamily.Ftp
-        or FileProviderFamily.Smb
-        or FileProviderFamily.WebDav;
+    public bool RequiresHostTransferForPreview =>
+        SelectedProfile?.RequiresHostTransferForPreview == true;
 
     public bool AutoDownloadPreviews
     {
@@ -2311,11 +2307,10 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        // A remote preview is a download. Above the threshold, or with
-        // auto-download off, the file waits to be asked for rather than
-        // spending the user's bandwidth on a selection they may just be
-        // scrolling past.
-        if (IsRemoteProvider
+        // A transferred preview spends bandwidth or copies bytes into host
+        // storage. Above the threshold, or with auto-load off, it waits to be
+        // asked for instead of doing that work while the user scrolls.
+        if (RequiresHostTransferForPreview
             && !ReferenceEquals(entry, requested)
             && !_grantedPreviews.Contains(PreviewGrantKey(entry))
             && (!AutoDownloadPreviews

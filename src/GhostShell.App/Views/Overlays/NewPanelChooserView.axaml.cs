@@ -21,6 +21,8 @@ public sealed partial class NewPanelChooserView : UserControl
 
     public event EventHandler<RoutedEventArgs>? AddDatabasePanelRequested;
 
+    public event EventHandler<RoutedEventArgs>? AddDockerPanelRequested;
+
     public event EventHandler<RoutedEventArgs>? AddTerminalPanelRequested;
 
     /// <summary>Raised with the chosen connection row as the sender.</summary>
@@ -51,6 +53,9 @@ public sealed partial class NewPanelChooserView : UserControl
 
     private void OnAddDatabasePanelClick(object? sender, RoutedEventArgs e) =>
         AddDatabasePanelRequested?.Invoke(sender, e);
+
+    private void OnAddDockerPanelClick(object? sender, RoutedEventArgs e) =>
+        AddDockerPanelRequested?.Invoke(sender, e);
 
     private void OnAddTerminalPanelClick(object? sender, RoutedEventArgs e) =>
         AddTerminalPanelRequested?.Invoke(sender, e);

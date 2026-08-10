@@ -154,7 +154,8 @@ public sealed partial class InMemorySessionHostClient :
             request.Launch.Executable ?? string.Empty,
             request.Launch.ConnectionId?.Value ?? string.Empty,
             request.Launch.ConnectionMetadata?.ConnectionBoundary ?? string.Empty,
-            request.Launch.ConnectionMetadata?.InitialWorkingDirectory ?? string.Empty);
+            request.Launch.ConnectionMetadata?.InitialWorkingDirectory ?? string.Empty,
+            request.Role.ToString());
         if (TryReplay(context, fingerprint, 0, out HostResult<SessionSnapshot>? replay))
         {
             return replay;
@@ -181,7 +182,8 @@ public sealed partial class InMemorySessionHostClient :
             if (WorkspaceGraphFailure<SessionSnapshot>(
                     _workspaceGraphs.ValidateSessionOwner(
                         request.Owner,
-                        PanelKind.Terminal)) is { } ownerFailure)
+                        PanelKind.Terminal,
+                        request.Role)) is { } ownerFailure)
             {
                 return ownerFailure;
             }
@@ -210,7 +212,8 @@ public sealed partial class InMemorySessionHostClient :
                         _workspaceGraphs.LinkSession(
                             request.Owner,
                             PanelKind.Terminal,
-                            request.SessionId)) is { } existingLinkFailure)
+                            request.SessionId,
+                            request.Role)) is { } existingLinkFailure)
                 {
                     return existingLinkFailure;
                 }
@@ -247,7 +250,8 @@ public sealed partial class InMemorySessionHostClient :
                 engineSnapshot,
                 _eventRetention,
                 _timeProvider,
-                TerminalSessionMetadata.FromLaunch(request.Launch));
+                TerminalSessionMetadata.FromLaunch(request.Launch),
+                role: request.Role);
             lock (_gate)
             {
                 _sessions.Add(request.SessionId, hosted);
@@ -257,7 +261,8 @@ public sealed partial class InMemorySessionHostClient :
                     _workspaceGraphs.LinkSession(
                         request.Owner,
                         PanelKind.Terminal,
-                        request.SessionId)) is { } linkFailure)
+                        request.SessionId,
+                        request.Role)) is { } linkFailure)
             {
                 return await RemoveRejectedSessionAsync(hosted, linkFailure)
                     .ConfigureAwait(false);
@@ -1740,7 +1745,8 @@ public sealed partial class InMemorySessionHostClient :
                     _workspaceGraphs.UnlinkSession(
                         target.Owner,
                         target.Engine.Kind,
-                        target.Id);
+                        target.Id,
+                        target.Role);
                 }
             }
 

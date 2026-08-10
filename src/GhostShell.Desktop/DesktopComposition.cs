@@ -6,6 +6,7 @@ using GhostShell.Application;
 using GhostShell.Application.Previews;
 using GhostShell.Browser;
 using GhostShell.Databases;
+using GhostShell.Docker;
 using GhostShell.Previews;
 using GhostShell.Files;
 using GhostShell.Infrastructure;
@@ -113,6 +114,7 @@ public static class DesktopComposition
         services.AddSingleton<IConnectionRuntimeAdapter, WslConnectionRuntimeAdapter>();
         services.AddSingleton<IConnectionRuntime, ConnectionRuntime>();
         services.AddSingleton<IConnectionCommandExecutor, ConnectionCommandExecutor>();
+        services.AddSingleton<IDockerEngineClient, DockerEngineClient>();
         services.AddSingleton<SshKnownHostStore>();
         services.AddSingleton<ISshHostKeyTrustStore>(provider =>
             provider.GetRequiredService<SshKnownHostStore>());
@@ -144,6 +146,7 @@ public static class DesktopComposition
             provider.GetRequiredService<BrowserPanelSessionFactory>());
         services.AddSingleton<ISystemMonitorPanelSessionFactory, SystemMonitorPanelSessionFactory>();
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
+        services.AddSingleton<SshNetBrowserTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();
         services.AddSingleton<ISqlLanguageService, CalciteSqlLanguageService>();
         services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();

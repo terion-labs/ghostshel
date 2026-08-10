@@ -12,6 +12,25 @@ public interface IConnectionCommandExecutor
     ValueTask<ConnectionCommandResult> ExecuteAsync(
         ConnectionCommand request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Executes a command whose standard output is binary. Docker's archive
+    /// endpoint is exposed by the CLI this way, so decoding it as terminal text
+    /// would corrupt file names and contents before the Docker adapter sees it.
+    /// </summary>
+    ValueTask<ConnectionBinaryCommandResult> ExecuteBinaryAsync(
+        ConnectionBinaryCommand request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lets a caller consume standard output as it arrives. The consumer must
+    /// read through end-of-stream; this keeps large archives bounded by the
+    /// consumer's own state instead of by an arbitrary capture buffer.
+    /// </summary>
+    ValueTask<ConnectionStreamingCommandResult<T>> ExecuteStreamingAsync<T>(
+        ConnectionBinaryCommand request,
+        Func<Stream, CancellationToken, ValueTask<T>> consumeOutput,
+        CancellationToken cancellationToken);
 }
 
 public sealed record ConnectionCommand
@@ -31,7 +50,7 @@ public sealed record ConnectionCommand
             throw new ArgumentOutOfRangeException(nameof(timeout));
         }
 
-        if (maximumOutputCharacters is <= 0 or > 2 * 1024 * 1024)
+        if (maximumOutputCharacters is <= 0 or > 16 * 1024 * 1024)
         {
             throw new ArgumentOutOfRangeException(nameof(maximumOutputCharacters));
         }
@@ -71,4 +90,64 @@ public enum ConnectionCommandOutcome
 public sealed record ConnectionCommandResult(
     ConnectionCommandOutcome Outcome,
     int? ExitCode,
-    string StandardOutput);
+    string StandardOutput,
+    string StandardError = "",
+    bool OutputTruncated = false);
+
+public sealed record ConnectionBinaryCommand
+{
+    public ConnectionBinaryCommand(
+        ConnectionProfile connection,
+        string executable,
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        int maximumOutputBytes)
+    {
+        Connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        ArgumentException.ThrowIfNullOrWhiteSpace(executable);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+        }
+
+        if (maximumOutputBytes is <= 0 or > 64 * 1024 * 1024)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumOutputBytes));
+        }
+
+        if (executable.Contains('\0')
+            || arguments.Any(argument => argument is null || argument.Contains('\0')))
+        {
+            throw new ArgumentException("Command argv cannot contain NUL characters.");
+        }
+
+        Executable = executable;
+        Arguments = Array.AsReadOnly(arguments.ToArray());
+        Timeout = timeout;
+        MaximumOutputBytes = maximumOutputBytes;
+    }
+
+    public ConnectionProfile Connection { get; }
+
+    public string Executable { get; }
+
+    public IReadOnlyList<string> Arguments { get; }
+
+    public TimeSpan Timeout { get; }
+
+    public int MaximumOutputBytes { get; }
+}
+
+public sealed record ConnectionBinaryCommandResult(
+    ConnectionCommandOutcome Outcome,
+    int? ExitCode,
+    ReadOnlyMemory<byte> StandardOutput,
+    string StandardError = "",
+    bool OutputTruncated = false);
+
+public sealed record ConnectionStreamingCommandResult<T>(
+    ConnectionCommandOutcome Outcome,
+    int? ExitCode,
+    T? Value,
+    string StandardError = "");

@@ -1329,7 +1329,7 @@
     List rows are separated by a leading rule so a list never draws a divider
     against its container's own rounded bottom edge.
   -->
-  <!-- List rows share one shape everywhere: inset, rounded, Finder-like —
+  <!-- List rows share one shape everywhere: inset and rounded —
        the same geometry ListBoxItem carries, so a Button-based list and a
        ListBox read as the same control. Separators are gone; the rounding is
        the separation. -->

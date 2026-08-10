@@ -705,7 +705,7 @@ public sealed class SavedScreenEditorViewModelTests
         Assert.Null(roundTrip[0].FileProviderProfileId);
         Assert.Equal("/workspace", roundTrip[0].Startup.Location);
         Assert.Equal(["dotnet test"], roundTrip[0].Startup.Commands);
-        Assert.Null(roundTrip[1].ConnectionId);
+        Assert.Equal(connection.Id, roundTrip[1].ConnectionId);
         Assert.Null(roundTrip[1].FileProviderProfileId);
         Assert.Equal("https://example.test", roundTrip[1].Startup.Location);
         Assert.Empty(roundTrip[1].Startup.Commands);

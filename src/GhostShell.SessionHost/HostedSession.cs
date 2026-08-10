@@ -29,7 +29,8 @@ internal sealed class HostedSession
         int eventRetention,
         TimeProvider timeProvider,
         TerminalSessionMetadata? terminalMetadata = null,
-        FileSessionMetadata? fileMetadata = null)
+        FileSessionMetadata? fileMetadata = null,
+        PanelSessionRole role = PanelSessionRole.Primary)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(owner);
@@ -38,6 +39,11 @@ internal sealed class HostedSession
         if (eventRetention < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(eventRetention));
+        }
+
+        if (!Enum.IsDefined(role))
+        {
+            throw new ArgumentOutOfRangeException(nameof(role), role, null);
         }
 
         if ((engine.Kind == PanelKind.Terminal) != (terminalMetadata is not null))
@@ -54,6 +60,13 @@ internal sealed class HostedSession
                 nameof(fileMetadata));
         }
 
+        if (role == PanelSessionRole.Embedded && engine.Kind != PanelKind.Terminal)
+        {
+            throw new ArgumentException(
+                "Only terminal sessions can currently be embedded in another panel.",
+                nameof(role));
+        }
+
         var browserMetadata = engine is IBrowserPanelSession browser
             ? BrowserSessionMetadata.FromState(browser.State)
             : null;
@@ -66,6 +79,7 @@ internal sealed class HostedSession
 
         Engine = engine;
         Owner = owner;
+        Role = role;
         Title = title;
         _eventRetention = eventRetention;
         _timeProvider = timeProvider;
@@ -89,6 +103,8 @@ internal sealed class HostedSession
     public IPanelSession Engine { get; }
 
     public SessionOwner Owner { get; }
+
+    public PanelSessionRole Role { get; }
 
     public string Title { get; }
 

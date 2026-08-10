@@ -4,6 +4,7 @@ using Avalonia.Media;
 using GhostShell.App;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Docker;
 
 namespace GhostShell.DesignQa;
 
@@ -130,6 +131,277 @@ internal sealed class ImmediateUiDispatcher : IUiThreadDispatcher
         action();
         return Task.CompletedTask;
     }
+}
+
+internal sealed class QaDockerEngineClient : IDockerEngineClient
+{
+    private static readonly DockerEngineSnapshot Snapshot = new(
+        new DockerEngineSummary("28.3.0", "Docker Desktop", "arm64", "1.51"),
+        [
+            Container("api", "ghcr.io/ghostshell/api:main", "running", "Up 2 hours", "3.8%", "284 MiB / 2 GiB", "ghostshell"),
+            Container("postgres", "postgres:17-alpine", "running", "Up 2 hours (healthy)", "1.1%", "196 MiB / 2 GiB", "ghostshell"),
+            Container("redis", "redis:8-alpine", "running", "Up 2 hours", "0.4%", "42 MiB / 2 GiB", "ghostshell"),
+            Container("worker", "ghcr.io/ghostshell/worker:main", "running", "Up 2 hours", "8.6%", "418 MiB / 2 GiB", "workers"),
+            Container("mailpit", "axllent/mailpit:v1.27", "running", "Up 2 hours", "0.2%", "31 MiB / 2 GiB", "tooling"),
+            Container("migrations", "ghcr.io/ghostshell/api:main", "exited", "Exited (0) 2 hours ago", "—", "—", "ghostshell"),
+        ],
+        [
+            new DockerImageSummary("sha256:api", "ghcr.io/ghostshell/api", "main", "386 MB", "2 days ago"),
+            new DockerImageSummary("sha256:postgres", "postgres", "17-alpine", "274 MB", "3 weeks ago"),
+            new DockerImageSummary("sha256:redis", "redis", "8-alpine", "60 MB", "1 month ago"),
+            new DockerImageSummary("sha256:mailpit", "axllent/mailpit", "v1.27", "52 MB", "2 months ago"),
+        ],
+        [
+            new DockerVolumeSummary("ghostshell_postgres", "local", "local", "/var/lib/docker/volumes/ghostshell_postgres/_data"),
+            new DockerVolumeSummary("ghostshell_cache", "local", "local", "/var/lib/docker/volumes/ghostshell_cache/_data"),
+            new DockerVolumeSummary("ghostshell_uploads", "local", "local", "/var/lib/docker/volumes/ghostshell_uploads/_data"),
+        ],
+        [
+            new DockerNetworkSummary("network-app", "ghostshell_default", "bridge", "local", "2026-08-08"),
+            new DockerNetworkSummary("network-bridge", "bridge", "bridge", "local", "2026-08-01"),
+            new DockerNetworkSummary("network-host", "host", "host", "local", "2026-08-01"),
+        ],
+        new DateTimeOffset(2026, 8, 10, 9, 30, 0, TimeSpan.Zero));
+
+    public ValueTask<DockerResult<DockerEngineSnapshot>> ReadSnapshotAsync(
+        ConnectionProfile connection,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<DockerResult<DockerEngineSnapshot>>(
+            new DockerResult<DockerEngineSnapshot>.Success(Snapshot));
+
+    public ValueTask<DockerResult<IReadOnlyList<DockerVolumeUsage>>> ReadVolumeUsageAsync(
+        ConnectionProfile connection,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<DockerResult<IReadOnlyList<DockerVolumeUsage>>>(
+            new DockerResult<IReadOnlyList<DockerVolumeUsage>>.Success(
+            [
+                new DockerVolumeUsage("ghostshell_postgres", "2.4 GB", 2_400_000_000),
+                new DockerVolumeUsage("ghostshell_uploads", "680 MB", 680_000_000),
+                new DockerVolumeUsage("ghostshell_cache", "42 MB", 42_000_000),
+            ]));
+
+    public ValueTask<DockerResult<DockerResourceInspection>> InspectAsync(
+        ConnectionProfile connection,
+        DockerResourceReference resource,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<DockerInspectionProperty> properties = resource.Kind switch
+        {
+            DockerResourceKind.Image =>
+            [
+                new DockerInspectionProperty("ID", resource.Id),
+                new DockerInspectionProperty("Tag", resource.DisplayName),
+                new DockerInspectionProperty("Created", "2 days ago"),
+                new DockerInspectionProperty("Size", "386 MB"),
+                new DockerInspectionProperty("Platform", "linux/arm64"),
+                new DockerInspectionProperty("Working directory", "/app"),
+                new DockerInspectionProperty("Entrypoint", "[\"/usr/local/bin/docker-entrypoint.sh\"]"),
+                new DockerInspectionProperty("Command", "[\"bun\",\"server/index.mjs\"]"),
+            ],
+            DockerResourceKind.Network =>
+            [
+                new DockerInspectionProperty("Name", resource.DisplayName),
+                new DockerInspectionProperty("ID", resource.Id),
+                new DockerInspectionProperty("Created", "Aug 8, 2026 at 14:20"),
+                new DockerInspectionProperty("Subnet", "172.22.0.0/16"),
+                new DockerInspectionProperty("Gateway", "172.22.0.1"),
+                new DockerInspectionProperty("Driver", "bridge"),
+                new DockerInspectionProperty("Scope", "local"),
+            ],
+            _ =>
+            [
+                new DockerInspectionProperty("ID", $"sha256:{resource.Id}"),
+                new DockerInspectionProperty("State", "running"),
+                new DockerInspectionProperty("Created", "Aug 8, 2026 at 14:22"),
+                new DockerInspectionProperty("Image", "ghcr.io/ghostshell/api:main"),
+                new DockerInspectionProperty("Ports", "0.0.0.0:8080 → 8080/tcp"),
+                new DockerInspectionProperty("Network", "ghostshell_default"),
+                new DockerInspectionProperty("Address", "172.22.0.4"),
+                new DockerInspectionProperty("Working directory", "/app"),
+            ],
+        };
+        return ValueTask.FromResult<DockerResult<DockerResourceInspection>>(
+            new DockerResult<DockerResourceInspection>.Success(
+                new DockerResourceInspection(
+                    resource,
+                    properties,
+                    "{\n  \"Id\": \"sha256:api\",\n  \"State\": { \"Status\": \"running\" }\n}")));
+    }
+
+    public ValueTask<DockerResult<DockerContainerLogPage>> ReadContainerLogsAsync(
+        ConnectionProfile connection,
+        DockerContainerLogRequest request,
+        CancellationToken cancellationToken)
+    {
+        var allLines = Enumerable.Range(0, 120)
+            .Select(index => new DockerContainerLogLine(
+                $"2026-08-10T09:{28 + (index / 60):00}:{index % 60:00}.000000000Z",
+                index % 11 == 0
+                    ? $"warn retrying upstream request attempt={index / 11 + 1}"
+                    : $"info request completed status=200 duration={12 + index % 31}ms"))
+            .ToArray();
+        var lines = allLines;
+        if (!string.IsNullOrWhiteSpace(request.SearchText))
+        {
+            var indexes = new SortedSet<int>();
+            for (var index = 0; index < allLines.Length; index++)
+            {
+                if (!allLines[index].Message.Contains(request.SearchText, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                for (var context = Math.Max(0, index - request.ContextLines);
+                     context <= Math.Min(allLines.Length - 1, index + request.ContextLines);
+                     context++)
+                {
+                    indexes.Add(context);
+                }
+            }
+
+            var previous = -2;
+            lines = indexes.Select(index =>
+            {
+                var line = allLines[index] with { StartsContextBlock = index != previous + 1 };
+                previous = index;
+                return line;
+            }).ToArray();
+        }
+
+        return ValueTask.FromResult<DockerResult<DockerContainerLogPage>>(
+            new DockerResult<DockerContainerLogPage>.Success(new DockerContainerLogPage(
+                lines,
+                true,
+                lines.FirstOrDefault()?.Timestamp,
+                lines.LastOrDefault()?.Timestamp)));
+    }
+
+    public ValueTask<DockerResult<bool>> DownloadContainerLogsAsync(
+        ConnectionProfile connection,
+        string containerId,
+        Stream destination,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<DockerResult<bool>>(new DockerResult<bool>.Success(true));
+
+    public ValueTask<DockerResult<string>> ResolveContainerShellAsync(
+        ConnectionProfile connection,
+        string containerId,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<DockerResult<string>>(
+            new DockerResult<string>.Success("/bin/sh"));
+
+    public ValueTask<DockerResult<DockerFileListing>> ListFilesAsync(
+        ConnectionProfile connection,
+        DockerResourceReference resource,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<DockerFileEntry> entries = path == "/"
+            ?
+            [
+                Directory("bin"),
+                Directory("etc"),
+                Directory("home"),
+                Directory("opt"),
+                Directory("usr"),
+                Directory("var"),
+                File(".dockerenv", 0),
+                File("README.md", 1240),
+                File("run.sh", 4096),
+            ]
+            : [];
+        return ValueTask.FromResult<DockerResult<DockerFileListing>>(
+            new DockerResult<DockerFileListing>.Success(
+                new DockerFileListing(resource, path, entries)));
+    }
+
+    public ValueTask<DockerResult<DockerFileEntry>> StatFileAsync(
+        ConnectionProfile connection,
+        DockerResourceReference resource,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var name = path.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        DockerFileEntry? entry = name switch
+        {
+            "README.md" => File("README.md", 1240),
+            "run.sh" => File("run.sh", 4096),
+            ".dockerenv" => File(".dockerenv", 0),
+            { } directory when directory is "bin" or "etc" or "home" or "opt" or "usr" or "var" =>
+                Directory(directory),
+            _ => null,
+        };
+        return entry is null
+            ? ValueTask.FromResult<DockerResult<DockerFileEntry>>(
+                new DockerResult<DockerFileEntry>.Failure(new DockerError(
+                    DockerErrorCode.FileNotFound,
+                    $"'{path}' does not exist.",
+                    false)))
+            : ValueTask.FromResult<DockerResult<DockerFileEntry>>(
+                new DockerResult<DockerFileEntry>.Success(entry with { Path = path }));
+    }
+
+    public ValueTask<DockerResult<DockerFileContent>> ReadFileAsync(
+        ConnectionProfile connection,
+        DockerResourceReference resource,
+        string path,
+        long maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(
+            "# Container image\n\nThis content is rendered by the shared File Viewer preview.\n");
+        var length = (int)Math.Min(bytes.Length, maximumBytes);
+        return ValueTask.FromResult<DockerResult<DockerFileContent>>(
+            new DockerResult<DockerFileContent>.Success(new DockerFileContent(
+                resource,
+                path,
+                bytes.AsMemory(0, length),
+                length < bytes.Length)));
+    }
+
+    public ValueTask<DockerResult<bool>> RunContainerActionAsync(
+        ConnectionProfile connection,
+        string containerId,
+        DockerContainerAction action,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<DockerResult<bool>>(new DockerResult<bool>.Success(true));
+
+    private static DockerFileEntry Directory(string name) => new(
+        name,
+        $"/{name}",
+        DockerFileKind.Directory,
+        null,
+        new DateTimeOffset(2026, 8, 8, 14, 22, 0, TimeSpan.Zero));
+
+    private static DockerFileEntry File(string name, long size) => new(
+        name,
+        $"/{name}",
+        DockerFileKind.File,
+        size,
+        new DateTimeOffset(2026, 8, 8, 14, 22, 0, TimeSpan.Zero));
+
+    private static DockerContainerSummary Container(
+        string name,
+        string image,
+        string state,
+        string status,
+        string cpu,
+        string memory,
+        string? composeProject) =>
+        new(
+            $"{name}-01f9a4",
+            name,
+            image,
+            state,
+            status,
+            name == "api" ? "0.0.0.0:8080→8080/tcp" : string.Empty,
+            "2 hours ago",
+            cpu,
+            memory,
+            "4.2 MB / 2.8 MB",
+            "18 MB / 4 KB",
+            composeProject,
+            name);
 }
 
 internal sealed class MemoryOnlySecretVault : ISecretVault

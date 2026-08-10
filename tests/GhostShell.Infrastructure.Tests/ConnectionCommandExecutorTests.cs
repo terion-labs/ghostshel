@@ -6,6 +6,77 @@ namespace GhostShell.Infrastructure.Tests;
 public sealed class ConnectionCommandExecutorTests
 {
     [Fact]
+    public async Task TextCommandsReportTruncationWithoutAllocatingTheEntireLimitUpFront()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var profile = ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local());
+        var executor = new ConnectionCommandExecutor(new FixedRuntime(profile));
+
+        var result = await executor.ExecuteAsync(
+            new ConnectionCommand(
+                profile,
+                "sh",
+                ["-c", "printf abcdef"],
+                TimeSpan.FromSeconds(5),
+                4),
+            CancellationToken.None);
+
+        Assert.Equal("abcd", result.StandardOutput);
+        Assert.True(result.OutputTruncated);
+    }
+
+    [Fact]
+    public void TextCommandsAllowBoundedStructuredOutputUpToSixteenMegabytes()
+    {
+        var profile = ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local());
+
+        var command = new ConnectionCommand(
+            profile,
+            "docker",
+            ["volume", "ls"],
+            TimeSpan.FromSeconds(5),
+            16 * 1024 * 1024);
+
+        Assert.Equal(16 * 1024 * 1024, command.MaximumOutputCharacters);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ConnectionCommand(
+            profile,
+            "docker",
+            ["volume", "ls"],
+            TimeSpan.FromSeconds(5),
+            (16 * 1024 * 1024) + 1));
+    }
+
+    [Fact]
+    public async Task BinaryCommandsPreserveNullBytes()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var profile = ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local());
+        var executor = new ConnectionCommandExecutor(new FixedRuntime(profile));
+
+        var result = await executor.ExecuteBinaryAsync(
+            new ConnectionBinaryCommand(
+                profile,
+                "sh",
+                ["-c", "printf '\\000\\001ABC'"],
+                TimeSpan.FromSeconds(5),
+                1024),
+            CancellationToken.None);
+
+        Assert.Equal(ConnectionCommandOutcome.Exited, result.Outcome);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal([0, 1, 65, 66, 67], result.StandardOutput.ToArray());
+        Assert.False(result.OutputTruncated);
+    }
+
+    [Fact]
     public void SshCommandsReuseAnAuthenticatedControlConnection()
     {
         var profile = SshProfile();
@@ -84,5 +155,32 @@ public sealed class ConnectionCommandExecutorTests
 
         Assert.True(valueIndex >= 0, $"Missing SSH option: {expectedValue}");
         Assert.True(valueIndex < arguments.IndexOf("--"));
+    }
+
+    private sealed class FixedRuntime(ConnectionProfile profile) : IConnectionRuntime
+    {
+        public ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+            ConnectionProfile requestedProfile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            _ = progress;
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(profile.Id, requestedProfile.Id);
+            return ValueTask.FromResult(ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(
+                new ConnectionOpenPlan(
+                    profile.Id,
+                    ConnectionKind.Local,
+                    new TerminalLaunchRequest(null),
+                    ConnectionAuthenticationMode.None,
+                    SshHostKeyPolicy.NotApplicable,
+                    ConnectionReconnectMode.NotApplicable)));
+        }
+
+        public ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(
+            ConnectionProfile requestedProfile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }

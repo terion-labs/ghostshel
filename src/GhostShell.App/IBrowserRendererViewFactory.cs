@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using GhostShell.App.Controls;
 using GhostShell.Application;
+using GhostShell.Core;
 
 namespace GhostShell.App;
 
@@ -10,7 +11,12 @@ namespace GhostShell.App;
 /// </summary>
 public interface IBrowserRendererViewFactory
 {
+    /// <summary>Creates a direct local browser for lightweight embedded previews.</summary>
     BrowserRendererView Create();
+
+    ValueTask<BrowserRendererView> CreateAsync(
+        ConnectionProfile connection,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>

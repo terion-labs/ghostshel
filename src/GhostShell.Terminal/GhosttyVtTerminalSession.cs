@@ -688,15 +688,16 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
             return false;
         }
 
-        if (_shellActivity == TerminalShellActivityState.Running
-            || !RemoteTerminalIdleClassifier.AppliesTo(_launch))
+        if (!RemoteTerminalIdleClassifier.AppliesTo(_launch))
         {
             return true;
         }
 
-        // A remote SSH shell usually cannot inherit GhostSHELL's local startup
-        // integration. Retain the established conservative prompt fallback for
-        // that one transport: anything ambiguous still requires confirmation.
+        // Wrapped interactive sessions such as SSH and `docker exec` keep the
+        // outer host command running while the inner shell is idle at its prompt.
+        // For launches explicitly allowed to use prompt-shape fallback, classify
+        // the visible inner shell instead of trusting the outer command state.
+        // Anything ambiguous still requires confirmation.
         try
         {
             var snapshot = BuildScreenSnapshotUnsafe(BuildRenderFrameUnsafe());

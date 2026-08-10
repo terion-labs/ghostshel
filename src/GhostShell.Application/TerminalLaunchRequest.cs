@@ -22,7 +22,9 @@ public sealed record TerminalLaunchRequest
         TerminalKeymapSnapshot? keymap = null,
         ConnectionId? connectionId = null,
         TerminalConnectionMetadata? connectionMetadata = null,
-        string? initialCommand = null)
+        string? initialCommand = null,
+        TerminalShellActivityFallback shellActivityFallback =
+            TerminalShellActivityFallback.None)
     {
         ValidateText(workingDirectory, nameof(workingDirectory));
         ValidateText(executable, nameof(executable));
@@ -37,6 +39,13 @@ public sealed record TerminalLaunchRequest
         TerminalConnectionMetadata.ValidateConnectionId(
             connectionId,
             nameof(connectionId));
+        if (!Enum.IsDefined(shellActivityFallback))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(shellActivityFallback),
+                shellActivityFallback,
+                "The terminal shell-activity fallback is not recognized.");
+        }
 
         if (executable is not null && string.IsNullOrWhiteSpace(executable))
         {
@@ -60,6 +69,7 @@ public sealed record TerminalLaunchRequest
         ConnectionId = connectionId;
         ConnectionMetadata = connectionMetadata;
         InitialCommand = initialCommand;
+        ShellActivityFallback = shellActivityFallback;
     }
 
     public string? WorkingDirectory { get; }
@@ -92,6 +102,8 @@ public sealed record TerminalLaunchRequest
     /// </summary>
     public string? InitialCommand { get; }
 
+    public TerminalShellActivityFallback ShellActivityFallback { get; }
+
     public TerminalLaunchRequest WithPresentationProfiles(
         TerminalRenderProfileSnapshot? renderProfile,
         TerminalKeymapSnapshot? keymap) =>
@@ -104,7 +116,22 @@ public sealed record TerminalLaunchRequest
             keymap,
             ConnectionId,
             ConnectionMetadata,
-            InitialCommand);
+            InitialCommand,
+            ShellActivityFallback);
+
+    public TerminalLaunchRequest WithShellActivityFallback(
+        TerminalShellActivityFallback fallback) =>
+        new(
+            WorkingDirectory,
+            Executable,
+            Arguments,
+            Environment,
+            RenderProfile,
+            Keymap,
+            ConnectionId,
+            ConnectionMetadata,
+            InitialCommand,
+            fallback);
 
     private static IReadOnlyList<string> SnapshotArguments(IReadOnlyList<string>? arguments)
     {

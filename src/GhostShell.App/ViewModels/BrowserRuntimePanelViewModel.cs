@@ -5,8 +5,15 @@ namespace GhostShell.App.ViewModels;
 
 public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
 {
-    private readonly BrowserRendererView _rendererView;
+    private readonly object _initializationGate = new();
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly IBrowserRendererViewFactory _rendererViewFactory;
+    private readonly ConnectionProfile _connection;
+    private BrowserRendererView? _rendererView;
     private BrowserAddress _currentAddress;
+    private Task _initialization = Task.CompletedTask;
+    private string? _routeErrorMessage;
+    private bool _initializationStarted;
     private bool _disposed;
 
     public BrowserRuntimePanelViewModel(
@@ -16,7 +23,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         BrowserAddress initialAddress,
         ISessionHostClient sessionClient,
         ClientId clientId,
-        BrowserRendererView rendererView)
+        ConnectionProfile connection,
+        IBrowserRendererViewFactory rendererViewFactory)
         : base(id, PanelKind.Browser, title, "Browser")
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -24,8 +32,16 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         SessionClient = sessionClient
             ?? throw new ArgumentNullException(nameof(sessionClient));
         ClientId = clientId;
-        _rendererView = rendererView
-            ?? throw new ArgumentNullException(nameof(rendererView));
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+        {
+            throw new ArgumentException(
+                "A browser connection must be local or SSH.",
+                nameof(connection));
+        }
+
+        _rendererViewFactory = rendererViewFactory
+            ?? throw new ArgumentNullException(nameof(rendererViewFactory));
         _currentAddress = initialAddress;
         SessionRequest = new EnsureBrowserSessionRequest(
             SessionId.New(),
@@ -40,7 +56,47 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
 
     public EnsureBrowserSessionRequest SessionRequest { get; }
 
-    public BrowserRendererView RendererView => _rendererView;
+    public ConnectionId ConnectionId => _connection.Id;
+
+    public string ConnectionDisplayName => _connection.Endpoint is ConnectionEndpoint.Local
+        ? "Local"
+        : _connection.Name;
+
+    public BrowserRendererView? RendererView
+    {
+        get => _rendererView;
+        private set => SetProperty(ref _rendererView, value);
+    }
+
+    public string? RouteErrorMessage
+    {
+        get => _routeErrorMessage;
+        private set
+        {
+            if (SetProperty(ref _routeErrorMessage, value))
+            {
+                OnPropertyChanged(nameof(HasRouteError));
+            }
+        }
+    }
+
+    public bool HasRouteError => RouteErrorMessage is not null;
+
+    public Task StartInitialization()
+    {
+        lock (_initializationGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_initializationStarted)
+            {
+                return _initialization;
+            }
+
+            _initializationStarted = true;
+            _initialization = InitializeAsync();
+            return _initialization;
+        }
+    }
 
     public BrowserAddress CurrentAddress
     {
@@ -54,15 +110,46 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         CurrentAddress = state.Address;
     }
 
+    private async Task InitializeAsync()
+    {
+        try
+        {
+            var renderer = await _rendererViewFactory
+                .CreateAsync(_connection, _lifetime.Token);
+            if (_disposed)
+            {
+                renderer.Dispose();
+                return;
+            }
+
+            RendererView = renderer;
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            RouteErrorMessage = exception.Message;
+            throw;
+        }
+    }
+
     public override void Dispose()
     {
-        if (_disposed)
+        lock (_initializationGate)
         {
-            return;
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
         }
 
-        _disposed = true;
-        _rendererView.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+        RendererView?.Dispose();
+        RendererView = null;
         base.Dispose();
     }
 }

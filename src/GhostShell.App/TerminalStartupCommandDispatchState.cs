@@ -4,9 +4,9 @@ using GhostShell.Core;
 namespace GhostShell.App;
 
 /// <summary>
-/// Owns one runtime panel's immutable startup-command batch and serializes every renderer that can
-/// deliver it. The state deliberately outlives renderer replacement so policy, identity, backoff,
-/// and terminal outcomes cannot reset during reattach or reconnect.
+/// Owns one terminal session owner's immutable startup-command batch and serializes every renderer
+/// that can deliver it. The state deliberately outlives renderer replacement so policy, identity,
+/// backoff, and terminal outcomes cannot reset during reattach or reconnect.
 /// </summary>
 public sealed class TerminalStartupCommandDispatchState : IDisposable
 {

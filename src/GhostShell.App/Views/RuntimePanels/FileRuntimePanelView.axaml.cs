@@ -15,6 +15,9 @@ namespace GhostShell.App.Views.RuntimePanels;
 
 public sealed partial class FileRuntimePanelView : UserControl
 {
+    public static readonly StyledProperty<bool> IsEmbeddedProperty =
+        AvaloniaProperty.Register<FileRuntimePanelView, bool>(nameof(IsEmbedded));
+
     private const double FileDragThreshold = 6;
     private static readonly DataFormat<FilePanelTransferPayload> FileDragFormat =
         DataFormat.CreateInProcessFormat<FilePanelTransferPayload>(
@@ -51,6 +54,16 @@ public sealed partial class FileRuntimePanelView : UserControl
         AddHandler(DragDrop.DragOverEvent, OnFileDragOver);
         AddHandler(DragDrop.DragLeaveEvent, OnFileDragLeave);
         AddHandler(DragDrop.DropEvent, OnFileDrop);
+    }
+
+    /// <summary>
+    /// Hosts the complete File Viewer content inside another panel without a
+    /// second panel header. It does not select a smaller or alternate browser.
+    /// </summary>
+    public bool IsEmbedded
+    {
+        get => GetValue(IsEmbeddedProperty);
+        set => SetValue(IsEmbeddedProperty, value);
     }
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;

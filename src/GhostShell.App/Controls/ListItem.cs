@@ -21,14 +21,23 @@ internal sealed class ListItem : TemplatedControl
     public static readonly StyledProperty<object?> TrailingProperty =
         AvaloniaProperty.Register<ListItem, object?>(nameof(Trailing));
 
+    public static readonly StyledProperty<Thickness> ContentPaddingProperty =
+        AvaloniaProperty.Register<ListItem, Thickness>(nameof(ContentPadding));
+
     public static readonly StyledProperty<string?> TitleProperty =
         AvaloniaProperty.Register<ListItem, string?>(nameof(Title));
 
     public static readonly StyledProperty<string?> DetailProperty =
         AvaloniaProperty.Register<ListItem, string?>(nameof(Detail));
 
-    static ListItem() =>
+    public static readonly StyledProperty<string?> MetadataProperty =
+        AvaloniaProperty.Register<ListItem, string?>(nameof(Metadata));
+
+    static ListItem()
+    {
         DetailProperty.Changed.AddClassHandler<ListItem>((item, _) => item.UpdateStateClasses());
+        MetadataProperty.Changed.AddClassHandler<ListItem>((item, _) => item.UpdateStateClasses());
+    }
 
     public ListItem() => UpdateStateClasses();
 
@@ -44,6 +53,13 @@ internal sealed class ListItem : TemplatedControl
     {
         get => GetValue(TrailingProperty);
         set => SetValue(TrailingProperty, value);
+    }
+
+    /// <summary>Inset shared by the leading mark, labels, and trailing content.</summary>
+    public Thickness ContentPadding
+    {
+        get => GetValue(ContentPaddingProperty);
+        set => SetValue(ContentPaddingProperty, value);
     }
 
     public string? Title
@@ -62,6 +78,16 @@ internal sealed class ListItem : TemplatedControl
         set => SetValue(DetailProperty, value);
     }
 
-    private void UpdateStateClasses() =>
+    /// <summary>Optional tertiary state, such as age, size, or lifecycle status.</summary>
+    public string? Metadata
+    {
+        get => GetValue(MetadataProperty);
+        set => SetValue(MetadataProperty, value);
+    }
+
+    private void UpdateStateClasses()
+    {
         PseudoClasses.Set(":detailed", !string.IsNullOrWhiteSpace(Detail));
+        PseudoClasses.Set(":metadata", !string.IsNullOrWhiteSpace(Metadata));
+    }
 }

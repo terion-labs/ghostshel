@@ -8,6 +8,9 @@ public sealed class RemoteTerminalIdleClassifierTests
     [InlineData("[user@host project]$ ", 21)]
     [InlineData("user@host% ", 11)]
     [InlineData("PS C:\\Users\\deploy> ", 19)]
+    [InlineData("/ # ", 3)]
+    [InlineData("/app # ", 6)]
+    [InlineData("~/workspace $ ", 13)]
     public void Common_remote_shell_prompts_are_idle(string line, int cursorColumn)
     {
         var state = State(cursorColumn);
@@ -71,6 +74,27 @@ public sealed class RemoteTerminalIdleClassifierTests
         };
 
         Assert.False(IsAtShellPrompt("root@ubuntu:~# ", state));
+    }
+
+    [Fact]
+    public void Explicit_prompt_shape_fallback_applies_to_local_container_shells()
+    {
+        var launch = new GhostShell.Application.TerminalLaunchRequest(
+            "/tmp",
+            shellActivityFallback:
+                GhostShell.Application.TerminalShellActivityFallback.PromptShape);
+
+        Assert.True(RemoteTerminalIdleClassifier.AppliesTo(launch));
+    }
+
+    [Fact]
+    public void Prompt_fallback_does_not_apply_to_unrelated_local_commands()
+    {
+        var launch = new GhostShell.Application.TerminalLaunchRequest(
+            "/tmp",
+            initialCommand: "dotnet test");
+
+        Assert.False(RemoteTerminalIdleClassifier.AppliesTo(launch));
     }
 
     private static bool IsAtShellPrompt(string screen, ScreenState state) =>

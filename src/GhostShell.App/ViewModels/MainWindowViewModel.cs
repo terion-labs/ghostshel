@@ -10,6 +10,7 @@ using GhostShell.App;
 using GhostShell.Application;
 using GhostShell.Application.Previews;
 using GhostShell.Core;
+using GhostShell.Docker;
 
 namespace GhostShell.App.ViewModels;
 
@@ -77,6 +78,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public FileTransferClipboard FileTransferClipboard { get; } = new();
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
     private readonly IDatabasePanelClient? _databasePanelClient;
+    private readonly IDockerEngineClient? _dockerEngineClient;
     private readonly ISqlLanguageService? _sqlLanguageService;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
     private readonly IPdfPreviewRenderer? _pdfPreviewRenderer;
@@ -213,7 +215,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IMcpCredentialSessionInvalidator?
             mcpCredentialSessionInvalidator = null,
         SessionRestoreCoordinator? sessionRestoreCoordinator = null,
-        ISqlLanguageService? sqlLanguageService = null)
+        ISqlLanguageService? sqlLanguageService = null,
+        IDockerEngineClient? dockerEngineClient = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         OpenWorkspaces = new(_openWorkspaces);
@@ -230,6 +233,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
         _browserRendererViewFactory = browserRendererViewFactory;
         _databasePanelClient = databasePanelClient;
+        _dockerEngineClient = dockerEngineClient;
         _sqlLanguageService = sqlLanguageService;
         _imagePreviewDecoder = imagePreviewDecoder;
         _pdfPreviewRenderer = pdfPreviewRenderer;
@@ -417,6 +421,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             connection.Kind,
             connection.Detail,
             connection.CanOpen));
+
+    public IEnumerable<PanelConnectionOptionViewModel> BrowserConnectionOptions =>
+        Connections
+            .Where(connection => FindConnection(connection.Id)?.Endpoint is
+                ConnectionEndpoint.Local or ConnectionEndpoint.Ssh)
+            .Select(connection => new PanelConnectionOptionViewModel(
+                new PanelConnectionOptionViewModel.Target.Connection(connection.Id),
+                connection.Name,
+                connection.Kind,
+                connection.Detail,
+                CanOpen: true));
 
     public IReadOnlyList<PanelConnectionOptionViewModel> FileConnectionOptions =>
         BuildFileConnectionOptions();
@@ -5075,6 +5090,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 title,
                 kind,
                 connection),
+            PanelKind.Docker => CreateDockerPanel(
+                PanelInstanceId.New(),
+                title,
+                connection),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
         return await AddRuntimePanelUnderReceiptAsync(
@@ -5279,6 +5298,35 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 livePanel.Kind,
                 connection);
         }
+        else if (livePanel is BrowserRuntimePanelViewModel browser)
+        {
+            if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+            {
+                SetError("A browser can use only a local or SSH connection.");
+                return false;
+            }
+
+            replacement = CreateBrowserPanel(
+                workspace.Id,
+                tab.Id,
+                livePanel.Id,
+                livePanel.Title,
+                browser.CurrentAddress,
+                connection);
+        }
+        else if (livePanel is DockerRuntimePanelViewModel)
+        {
+            if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+            {
+                SetError("A Docker panel can use only a local or SSH connection.");
+                return false;
+            }
+
+            replacement = CreateDockerPanel(
+                livePanel.Id,
+                livePanel.Title,
+                connection);
+        }
         else
         {
             SetError("This panel type does not support connection switching.");
@@ -5460,6 +5508,32 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             tab,
             panel,
             "Database panel creation",
+            () =>
+            {
+                tab.AddPanel(panel);
+                StartTrackingRecovery(panel);
+                _ = tab.ActivatePanel(panel.Id);
+            },
+            cancellationToken);
+    }
+
+    public async Task<bool> AddDockerPanelAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace tab before adding a Docker panel.");
+            return false;
+        }
+
+        var panel = CreateDockerPanel(PanelInstanceId.New(), "Docker");
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            panel,
+            "Docker panel creation",
             () =>
             {
                 tab.AddPanel(panel);
@@ -5914,6 +5988,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default) =>
         AddSinglePanelTabAsync(PanelKind.DatabaseViewer, cancellationToken);
 
+    public Task<bool> AddDockerTabAsync(
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.Docker, cancellationToken);
+
     public Task<bool> AddProcessMonitorTabAsync(
         CancellationToken cancellationToken = default) =>
         AddSinglePanelTabAsync(PanelKind.ProcessMonitor, cancellationToken);
@@ -5931,7 +6009,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             or PanelKind.FileViewer
             or PanelKind.Statistics
             or PanelKind.ProcessMonitor
-            or PanelKind.DatabaseViewer))
+            or PanelKind.DatabaseViewer
+            or PanelKind.Docker))
         {
             throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
@@ -5998,6 +6077,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelKind.DatabaseViewer => CreateDatabasePanel(
                     PanelInstanceId.New(),
                     title),
+                PanelKind.Docker => CreateDockerPanel(
+                    PanelInstanceId.New(),
+                    title),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
             };
             if (kind == PanelKind.Browser
@@ -6025,6 +6107,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.Statistics => "Statistics",
         PanelKind.ProcessMonitor => "Process Monitor",
         PanelKind.DatabaseViewer => "Database",
+        PanelKind.Docker => "Docker",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -6828,7 +6911,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 or nameof(FileRuntimePanelViewModel.CurrentLocation)
                 or nameof(FileRuntimePanelViewModel.ShowHidden),
             BrowserRuntimePanelViewModel => eventArgs.PropertyName is
-                nameof(BrowserRuntimePanelViewModel.CurrentAddress),
+                nameof(BrowserRuntimePanelViewModel.CurrentAddress)
+                or nameof(BrowserRuntimePanelViewModel.ConnectionId),
             DatabaseRuntimePanelViewModel => eventArgs.PropertyName is
                 nameof(DatabaseRuntimePanelViewModel.RecoveryTarget)
                 or nameof(DatabaseRuntimePanelViewModel.TunnelConnectionId),
@@ -7209,6 +7293,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 PanelKind.Statistics => ScreenPanelKind.Statistics,
                 PanelKind.ProcessMonitor => ScreenPanelKind.ProcessMonitor,
                 PanelKind.DatabaseViewer => ScreenPanelKind.DatabaseViewer,
+                PanelKind.Docker => ScreenPanelKind.Docker,
                 _ => null,
             };
 
@@ -7222,10 +7307,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ConnectionId? connectionId = panel switch
         {
             TerminalRuntimePanelViewModel terminal => terminal.ConnectionId,
+            BrowserRuntimePanelViewModel browser => browser.ConnectionId,
             FileRuntimePanelViewModel file => file.ConnectionId,
             StatisticsRuntimePanelViewModel statistics => statistics.ConnectionId,
             ProcessMonitorRuntimePanelViewModel processes => processes.ConnectionId,
             DatabaseRuntimePanelViewModel database => database.TunnelConnectionId,
+            DockerRuntimePanelViewModel docker => docker.ConnectionId,
             _ => null,
         };
         var stored = storedTab?.Panels.FirstOrDefault(candidate =>
@@ -9643,6 +9730,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             static (a, b) => a.PresentsSameAs(b));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(PanelConnectionOptions));
+        OnPropertyChanged(nameof(BrowserConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
         OnPropertyChanged(nameof(FileConnectionOptions));
         OnPropertyChanged(nameof(HasNoConnections));
@@ -9892,6 +9980,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.FileViewer => "Open files",
         PanelKind.Statistics => "Open statistics",
         PanelKind.ProcessMonitor => "Open processes",
+        PanelKind.Docker => "Open Docker",
         _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
     };
 
@@ -9901,6 +9990,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.FileViewer => Symbol.Folder,
         PanelKind.Statistics => Symbol.PulseSquare,
         PanelKind.ProcessMonitor => Symbol.Gauge,
+        PanelKind.Docker => Symbol.Box,
         _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
     };
 
@@ -10518,6 +10608,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     ? null
                     : "The database drivers are unavailable in this build.",
                 ["create", "new", "database", "sql", "sqlite", "postgres", "mysql", "panel"]),
+            new LauncherSearchResultViewModel(
+                new LauncherSearchTarget.CreatePanel(PanelKind.Docker),
+                Symbol.Box,
+                "Create · Docker",
+                "New Docker panel",
+                "Manage containers, images, volumes, and networks locally or over SSH.",
+                _dockerEngineClient is null ? "Unavailable" : "Open",
+                _dockerEngineClient is not null,
+                _dockerEngineClient is null
+                    ? "Docker support is unavailable in this build."
+                    : null,
+                ["create", "new", "docker", "container", "image", "volume", "network", "panel"]),
         ]);
 
         foreach (var command in BuiltInCommands.Registry.Commands)
@@ -10843,6 +10945,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         title,
                         panel,
                         connection),
+                PanelKind.Docker => CreateDockerPanel(
+                    PanelInstanceId.New(),
+                    title,
+                    connection),
                 _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
             };
             AddPanelOrDispose(tab, runtimePanel);
@@ -11066,6 +11172,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Browser)
         {
+            var connection = recovered.ConnectionId is { } browserConnectionId
+                ? FindConnection(new ConnectionId(browserConnectionId))
+                : LocalConnection();
+            if (connection is null)
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Browser,
+                    recovered.Title,
+                    "Browser",
+                    "The recovered browser connection is no longer available.");
+            }
+
             return BrowserAddress.TryParse(
                 recovered.StartupLocation,
                 out var address)
@@ -11074,7 +11193,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     tabId,
                     PanelInstanceId.New(),
                     recovered.Title,
-                    address)
+                    address,
+                    connection)
                 : new UnavailableRuntimePanelViewModel(
                     PanelInstanceId.New(),
                     PanelKind.Browser,
@@ -11092,6 +11212,24 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 recovered.ConnectionId is { } tunnelId
                     ? FindConnection(new ConnectionId(tunnelId))
                     : null);
+        }
+
+        if (recovered.Kind == RuntimePanelRecoveryKind.Docker)
+        {
+            var connection = recovered.ConnectionId is { } dockerConnectionId
+                ? FindConnection(new ConnectionId(dockerConnectionId))
+                : LocalConnection();
+            return connection is null
+                ? new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Docker,
+                    recovered.Title,
+                    "Docker",
+                    "The recovered Docker connection is no longer available.")
+                : CreateDockerPanel(
+                    PanelInstanceId.New(),
+                    recovered.Title,
+                    connection);
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Statistics)
@@ -11277,6 +11415,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     "This panel has an invalid startup URL. Repair the saved screen with a complete HTTP or HTTPS address.");
             }
 
+            var browserRoute = panel.ConnectionId is { } browserConnectionId
+                ? FindConnection(browserConnectionId)
+                : LocalConnection();
+            if (browserRoute is null)
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Browser,
+                    title,
+                    "Browser",
+                    "The browser connection is no longer in the catalog. Repair the saved screen with a local or SSH connection.");
+            }
+
             return CreateBrowserPanel(
                 workspaceId,
                 tabId,
@@ -11286,7 +11437,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     ? BrowserAddress.Blank
                     : BrowserAddress.TryParse(panel.Startup.Location, out var address)
                         ? address
-                        : BrowserAddress.Blank);
+                        : BrowserAddress.Blank,
+                browserRoute);
         }
 
         if (panel.Kind is ScreenPanelKind.Statistics or ScreenPanelKind.ProcessMonitor)
@@ -11331,6 +11483,27 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 panel.ConnectionId is { } tunnelId ? FindConnection(tunnelId) : null);
         }
 
+        if (panel.Kind == ScreenPanelKind.Docker)
+        {
+            var dockerConnection = panel.ConnectionId is { } dockerConnectionId
+                ? FindConnection(dockerConnectionId)
+                : LocalConnection();
+            if (dockerConnection is null)
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Docker,
+                    title,
+                    "Docker",
+                    "The Docker panel connection is no longer available.");
+            }
+
+            return CreateDockerPanel(
+                PanelInstanceId.New(),
+                title,
+                dockerConnection);
+        }
+
         if (panel.Kind != ScreenPanelKind.Terminal)
         {
             return new UnavailableRuntimePanelViewModel(
@@ -11365,7 +11538,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ConnectionProfile connection,
         string title,
         PanelStartupBehavior startup,
-        PanelInstanceId? panelId = null)
+        PanelInstanceId? panelId = null,
+        PanelInstanceId? ownerPanelId = null,
+        PanelSessionRole sessionRole = PanelSessionRole.Primary)
     {
         var resolvedPanelId = panelId ?? PanelInstanceId.New();
         var terminalProfile = ActiveTerminalProfile;
@@ -11382,7 +11557,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 WindowId,
                 workspaceId,
                 tabId,
-                resolvedPanelId),
+                ownerPanelId ?? resolvedPanelId),
             startup,
             terminalProfile is not null
                 ? TerminalRenderProfileSnapshot.FromProfile(terminalProfile)
@@ -11393,7 +11568,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _connectionSecurityRuntime,
             keymap: terminalKeymap is null
                 ? null
-                : TerminalKeymapSnapshot.FromProfile(terminalKeymap));
+                : TerminalKeymapSnapshot.FromProfile(terminalKeymap),
+            sessionRole: sessionRole);
     }
 
     private static KeymapProfile? ResolveTerminalKeymap(
@@ -11484,7 +11660,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         TabInstanceId tabId,
         PanelInstanceId panelId,
         string title,
-        BrowserAddress initialAddress)
+        BrowserAddress initialAddress,
+        ConnectionProfile? connection = null)
     {
         if (_browserRendererViewFactory is null)
         {
@@ -11496,19 +11673,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 "The embedded browser is unavailable in this build.");
         }
 
-        BrowserRendererView rendererView;
-        try
-        {
-            rendererView = _browserRendererViewFactory.Create();
-        }
-        catch (Exception)
+        connection ??= LocalConnection() ?? BuiltInConnections.Local;
+        if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
         {
             return new UnavailableRuntimePanelViewModel(
                 panelId,
                 PanelKind.Browser,
                 title,
                 "Browser",
-                "The embedded browser could not be initialized.");
+                "This browser route is not a local or SSH connection.");
         }
 
         return new BrowserRuntimePanelViewModel(
@@ -11523,7 +11696,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             initialAddress,
             SessionClient,
             ClientId,
-            rendererView);
+            connection,
+            _browserRendererViewFactory);
     }
 
     private RuntimePanelViewModel CreateMonitorPanel(
@@ -11594,6 +11768,207 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 ResolveDatabasePasswordAsync,
                 initialObject: initialObject,
                 sqlLanguageService: _sqlLanguageService);
+
+    private RuntimePanelViewModel CreateDockerPanel(
+        PanelInstanceId panelId,
+        string title,
+        ConnectionProfile? connection = null)
+    {
+        if (_dockerEngineClient is null)
+        {
+            return new UnavailableRuntimePanelViewModel(
+                panelId,
+                PanelKind.Docker,
+                title,
+                "Docker",
+                "Docker support is unavailable in this build.");
+        }
+
+        connection ??= LocalConnection() ?? BuiltInConnections.Local;
+        if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+        {
+            return new UnavailableRuntimePanelViewModel(
+                panelId,
+                PanelKind.Docker,
+                title,
+                "Docker",
+                "Docker panels can use only a local or SSH connection.");
+        }
+
+        return new DockerRuntimePanelViewModel(
+            panelId,
+            title,
+            _dockerEngineClient,
+            connection);
+    }
+
+    /// <summary>
+    /// Opens an interactive shell in a new tab. The terminal uses
+    /// the same local or SSH connection as the panel, then sends one quoted
+    /// docker-exec command through the normal audited startup-command path.
+    /// </summary>
+    public async Task<bool> OpenDockerContainerShellAsync(
+        DockerRuntimePanelViewModel source,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ClearError();
+        if (source.SelectedResource?.Container is not { IsRunning: true } container)
+        {
+            SetError("Select a running container before opening a shell.");
+            return false;
+        }
+
+        var workspace = RuntimeWorkspace;
+        if (workspace is null
+            || workspace.Tabs.All(candidate => !candidate.Panels.Contains(source)))
+        {
+            SetError("That Docker panel is no longer open.");
+            return false;
+        }
+
+        var shellPath = await ResolveDockerContainerShellAsync(
+            source,
+            container.Id,
+            cancellationToken);
+        if (shellPath is null
+            || !ReferenceEquals(RuntimeWorkspace, workspace)
+            || workspace.Tabs.All(candidate => !candidate.Panels.Contains(source)))
+        {
+            return false;
+        }
+
+        return await AppendRuntimeTabAsync(
+            workspace,
+            runtime =>
+            {
+                var tab = new RuntimeTabViewModel(
+                    TabInstanceId.New(),
+                    $"{container.Name} shell",
+                    source.ConnectionDisplayName,
+                    historySource: new RuntimeHistorySource(
+                        source.Connection.Key,
+                        source.Connection.Name));
+                AddPanelOrDispose(
+                    tab,
+                    CreateTerminalPanel(
+                        runtime.Id,
+                        tab.Id,
+                        source.Connection,
+                        $"{container.Name} shell",
+                        new PanelStartupBehavior(
+                            commands:
+                            [
+                                DockerContainerShellCommand.Build(
+                                    container.Id,
+                                    shellPath),
+                            ])));
+                return tab;
+            },
+            "container shell tab creation",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Hosts a container shell inside its Docker inspector. The terminal view model has its own
+    /// presentation identity, while the hosted session is owned by the Docker panel so panel/tab/
+    /// window close scopes still discover and close it.
+    /// </summary>
+    public async Task<bool> OpenDockerContainerInlineShellAsync(
+        DockerRuntimePanelViewModel source,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        cancellationToken.ThrowIfCancellationRequested();
+        ClearError();
+        if (source.HasInlineShell)
+        {
+            return true;
+        }
+
+        if (source.SelectedResource?.Container is not { IsRunning: true } container)
+        {
+            SetError("Select a running container before opening a shell.");
+            return false;
+        }
+
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.Tabs.FirstOrDefault(candidate => candidate.Panels.Contains(source));
+        if (workspace is null || tab is null)
+        {
+            SetError("That Docker panel is no longer open.");
+            return false;
+        }
+
+        var shellPath = await ResolveDockerContainerShellAsync(
+            source,
+            container.Id,
+            cancellationToken);
+        if (shellPath is null
+            || !ReferenceEquals(RuntimeWorkspace, workspace)
+            || !tab.Panels.Contains(source)
+            || source.SelectedResource?.Container?.Id != container.Id)
+        {
+            return false;
+        }
+
+        if (source.HasInlineShell)
+        {
+            return true;
+        }
+
+        var shell = CreateTerminalPanel(
+            workspace.Id,
+            tab.Id,
+            source.Connection,
+            $"{container.Name} shell",
+            new PanelStartupBehavior(
+                commands:
+                [
+                    DockerContainerShellCommand.Build(container.Id, shellPath),
+                ]),
+            ownerPanelId: source.Id,
+            sessionRole: PanelSessionRole.Embedded);
+        source.AttachInlineShell(container.Id, shell);
+        return true;
+    }
+
+    private async Task<string?> ResolveDockerContainerShellAsync(
+        DockerRuntimePanelViewModel source,
+        string containerId,
+        CancellationToken cancellationToken)
+    {
+        source.BeginShellResolution(containerId);
+        if (_dockerEngineClient is null)
+        {
+            source.PresentShellResolutionFailure(
+                containerId,
+                new DockerError(
+                    DockerErrorCode.RuntimeUnavailable,
+                    "Docker support is unavailable in this build.",
+                    false));
+            return null;
+        }
+
+        var result = await _dockerEngineClient.ResolveContainerShellAsync(
+            source.Connection,
+            containerId,
+            cancellationToken);
+        if (result is DockerResult<string>.Success success)
+        {
+            source.CompleteShellResolution(containerId);
+            return success.Value;
+        }
+
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            source.PresentShellResolutionFailure(
+                containerId,
+                ((DockerResult<string>.Failure)result).Error);
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// A twin of a live database panel: same connection, tunnel and all,
@@ -12078,7 +12453,37 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _ = files.StartInitialization();
         }
 
+        if (panel is BrowserRuntimePanelViewModel browser)
+        {
+            _ = TrackBrowserAfterInitializationAsync(
+                browser,
+                browser.StartInitialization());
+        }
+
         StartMonitorPanel(panel);
+    }
+
+    private async Task TrackBrowserAfterInitializationAsync(
+        BrowserRuntimePanelViewModel panel,
+        Task initialization)
+    {
+        try
+        {
+            await initialization;
+        }
+        catch (OperationCanceledException) when (_shutdownStarted)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (!panel.HasRouteError)
+            {
+                SetError(exception.Message);
+                return;
+            }
+
+            SetError(panel.RouteErrorMessage!);
+        }
     }
 
     private void StartMonitorPanel(RuntimePanelViewModel panel)
@@ -12564,6 +12969,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ScreenPanelKind.Statistics => "Statistics",
         ScreenPanelKind.ProcessMonitor => "Processes",
         ScreenPanelKind.DatabaseViewer => "Database",
+        ScreenPanelKind.Docker => "Docker",
         _ => "Panel",
     };
 
@@ -12575,6 +12981,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.Statistics => "Statistics",
         PanelKind.ProcessMonitor => "Process Monitor",
         PanelKind.DatabaseViewer => "Database",
+        PanelKind.Docker => "Docker",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -12586,6 +12993,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ScreenPanelKind.Statistics => PanelKind.Statistics,
         ScreenPanelKind.ProcessMonitor => PanelKind.ProcessMonitor,
         ScreenPanelKind.DatabaseViewer => PanelKind.DatabaseViewer,
+        ScreenPanelKind.Docker => PanelKind.Docker,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -12601,6 +13009,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             "STATISTICS" => PanelKind.Statistics,
             "PROCESSMONITOR" => PanelKind.ProcessMonitor,
             "DATABASE" or "DATABASEVIEWER" => PanelKind.DatabaseViewer,
+            "DOCKER" => PanelKind.Docker,
             _ => throw new InvalidOperationException(
                 "The recovered panel kind is not supported by this build."),
         };

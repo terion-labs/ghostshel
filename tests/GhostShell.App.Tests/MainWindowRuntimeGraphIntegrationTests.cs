@@ -7,6 +7,7 @@ using GhostShell.App;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Docker;
 
 namespace GhostShell.App.Tests;
 
@@ -447,6 +448,74 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 panel => panel.Id == activeTab.ActivePanelId).Kind);
     }
 
+    [Fact]
+    public async Task Browser_selector_offers_local_and_ssh_routes_and_switch_preserves_address()
+    {
+        var ssh = new ConnectionProfile(
+            new ConnectionId("browser-ssh"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Browser bastion",
+            new ConnectionEndpoint.Ssh("bastion.example.test", username: "ops"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        var docker = new ConnectionProfile(
+            new ConnectionId("browser-docker"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Browser container",
+            new ConnectionEndpoint.Docker("app"),
+            new ConnectionAuthentication.None(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.NotApplicable);
+        var snapshot = CreateCatalogSnapshot();
+        snapshot = snapshot with
+        {
+            Connections = snapshot.Connections
+                .Append(Store(ssh))
+                .Append(Store(docker))
+                .ToArray(),
+        };
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            browserRendererFactory: browserFactory);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var current = Assert.IsType<BrowserRuntimePanelViewModel>(
+            Assert.Single(viewModel.RuntimeWorkspace!.ActiveTab!.Panels,
+                panel => panel.Kind == PanelKind.Browser));
+        var address = new BrowserAddress(
+            new Uri("https://internal.example.test/app"));
+        current.ApplyBrowserState(new BrowserSessionState(
+            address,
+            "Internal",
+            BrowserLoadState.Ready,
+            canGoBack: false,
+            canGoForward: false,
+            documentRevision: 1));
+
+        var routeIds = viewModel.BrowserConnectionOptions
+            .Select(option => Assert.IsType<PanelConnectionOptionViewModel.Target.Connection>(
+                option.Selection).Id)
+            .ToHashSet();
+        Assert.Equal(2, routeIds.Count);
+        Assert.Contains(new ConnectionId("runtime-graph-local"), routeIds);
+        Assert.Contains(ssh.Id, routeIds);
+        Assert.DoesNotContain(docker.Id, routeIds);
+        Assert.True(viewModel.ReplacePanelConnection(current, ssh));
+
+        var replacement = Assert.IsType<BrowserRuntimePanelViewModel>(
+            Assert.Single(viewModel.RuntimeWorkspace.ActiveTab.Panels,
+                panel => panel.Id == current.Id));
+        Assert.Equal(ssh.Id, replacement.ConnectionId);
+        Assert.Equal(address, replacement.CurrentAddress);
+        await replacement.StartInitialization();
+        Assert.Equal(ssh.Id, browserFactory.CreatedConnections[^1]);
+    }
+
     [Theory]
     [InlineData(PanelKind.Browser)]
     [InlineData(PanelKind.FileViewer)]
@@ -639,7 +708,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.Null(recorder.CurrentWorkspace);
-        Assert.Equal(1, browserFactory.DisposeCount);
+        Assert.Equal(0, browserFactory.CreateCount);
+        Assert.Equal(0, browserFactory.DisposeCount);
     }
 
     [Fact]
@@ -658,7 +728,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.Null(recorder.CurrentWorkspace);
-        Assert.Equal(1, browserFactory.DisposeCount);
+        Assert.Equal(0, browserFactory.CreateCount);
+        Assert.Equal(0, browserFactory.DisposeCount);
     }
 
     [Fact]
@@ -676,7 +747,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         Assert.Null(viewModel.RuntimeWorkspace);
         Assert.Null(recorder.CurrentWorkspace);
-        Assert.Equal(1, browserFactory.DisposeCount);
+        Assert.Equal(0, browserFactory.CreateCount);
+        Assert.Equal(0, browserFactory.DisposeCount);
     }
 
     [Fact]
@@ -715,7 +787,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         Assert.Null(recovered.RuntimeWorkspace);
         Assert.Null(recorder.CurrentWorkspace);
-        Assert.Equal(1, browserFactory.DisposeCount);
+        Assert.Equal(0, browserFactory.CreateCount);
+        Assert.Equal(0, browserFactory.DisposeCount);
     }
 
     [Fact]
@@ -1317,6 +1390,147 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task DockerShellButtonOpensAFullTerminalTab()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            dockerEngineClient: new SingleContainerDockerClient());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddDockerPanelAsync());
+        var docker = Assert.IsType<DockerRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        await docker.Initialization;
+        var before = viewModel.RuntimeWorkspace.Tabs.Count;
+
+        Assert.True(await viewModel.OpenDockerContainerShellAsync(docker));
+
+        Assert.Equal(before + 1, viewModel.RuntimeWorkspace.Tabs.Count);
+        var shell = Assert.IsType<TerminalRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace.ActiveTab!.ActivePanel);
+        await shell.Initialization;
+        Assert.Equal("api shell", viewModel.RuntimeWorkspace.ActiveTab.Title);
+        Assert.Equal(
+            TerminalShellActivityFallback.PromptShape,
+            shell.SessionRequest?.Launch.ShellActivityFallback);
+        Assert.Equal(
+            [DockerContainerShellCommand.Build("container-api", "/bin/ash")],
+            shell.StartupCommands);
+    }
+
+    [Fact]
+    public async Task DockerInlineShellUsesTheDockerPanelAsItsCloseScopeOwner()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            dockerEngineClient: new SingleContainerDockerClient());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddDockerPanelAsync());
+        var docker = Assert.IsType<DockerRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        await docker.Initialization;
+
+        Assert.True(await viewModel.OpenDockerContainerInlineShellAsync(docker));
+
+        var shell = Assert.IsType<TerminalRuntimePanelViewModel>(docker.InlineShell);
+        await shell.Initialization;
+        var owner = Assert.IsType<SessionOwner>(typeof(TerminalRuntimePanelViewModel)
+            .GetField("_owner", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(shell));
+        Assert.Equal(docker.Id, owner.PanelId);
+        Assert.Equal(PanelSessionRole.Embedded, shell.SessionRole);
+        Assert.Equal(PanelSessionRole.Embedded, shell.SessionRequest?.Role);
+        Assert.Equal(
+            TerminalShellActivityFallback.PromptShape,
+            shell.SessionRequest?.Launch.ShellActivityFallback);
+        Assert.Equal(docker.Id, shell.StartupCommandDispatchState.PanelId);
+        Assert.Equal(
+            [DockerContainerShellCommand.Build("container-api", "/bin/ash")],
+            shell.StartupCommands);
+    }
+
+    [Fact]
+    public async Task DockerRemoteSwitchUsesTheSshTargetForInventoryAndInlineShell()
+    {
+        var ssh = new ConnectionProfile(
+            new ConnectionId("docker-ssh"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Remote Docker",
+            new ConnectionEndpoint.Ssh("docker.example.test", username: "ops"),
+            new ConnectionAuthentication.None(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        var snapshot = CreateCatalogSnapshot();
+        snapshot = snapshot with
+        {
+            Connections = snapshot.Connections.Append(Store(ssh)).ToArray(),
+        };
+        var dockerClient = new SingleContainerDockerClient();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            dockerEngineClient: dockerClient);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddDockerPanelAsync());
+        var local = Assert.IsType<DockerRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        await local.Initialization;
+
+        Assert.True(viewModel.ReplacePanelConnection(local, ssh));
+
+        var remote = Assert.IsType<DockerRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace.ActiveTab.ActivePanel);
+        await remote.Initialization;
+        Assert.Equal(ssh.Id, remote.ConnectionId);
+        Assert.Equal(ssh.Id, dockerClient.ReadConnections[^1]);
+
+        Assert.True(await viewModel.OpenDockerContainerInlineShellAsync(remote));
+
+        var shell = Assert.IsType<TerminalRuntimePanelViewModel>(remote.InlineShell);
+        await shell.Initialization;
+        Assert.Equal(ssh.Id, shell.ConnectionId);
+        Assert.Equal(PanelSessionRole.Embedded, shell.SessionRequest?.Role);
+        Assert.Equal(
+            TerminalShellActivityFallback.PromptShape,
+            shell.SessionRequest?.Launch.ShellActivityFallback);
+        Assert.Equal(remote.Id, shell.StartupCommandDispatchState.PanelId);
+    }
+
+    [Fact]
+    public async Task MissingContainerShellIsPresentedInsideTheDockerViewport()
+    {
+        var unavailable = new DockerError(
+            DockerErrorCode.ShellUnavailable,
+            "This container has no supported interactive shell.",
+            false);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            dockerEngineClient: new SingleContainerDockerClient(
+                new DockerResult<string>.Failure(unavailable)));
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddDockerPanelAsync());
+        var docker = Assert.IsType<DockerRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        await docker.Initialization;
+
+        Assert.False(await viewModel.OpenDockerContainerInlineShellAsync(docker));
+
+        Assert.Null(viewModel.OperationError);
+        Assert.Null(docker.InlineShell);
+        Assert.True(docker.IsShellDetail);
+        Assert.Equal("No interactive shell found", docker.ShellStateTitle);
+        Assert.Equal(unavailable.Message, docker.ShellStateMessage);
+        Assert.True(docker.CanRetryShell);
+    }
+
+    [Fact]
     public async Task Opening_a_deleted_connection_as_a_panel_reports_it_and_adds_nothing()
     {
         var (client, _) = CreateSessionClient();
@@ -1833,7 +2047,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 && target.Id == sshId);
         Assert.Equal(PanelKind.Terminal, sshShortcut.DefaultLaunch.Panel);
         Assert.Equal(
-            [PanelKind.FileViewer, PanelKind.Statistics, PanelKind.ProcessMonitor],
+            [PanelKind.FileViewer, PanelKind.Statistics, PanelKind.ProcessMonitor, PanelKind.Docker],
             sshShortcut.AlternativeLaunches.Select(launch => launch.Panel));
         Assert.True(sshShortcut.HasAlternatives);
 
@@ -3444,7 +3658,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IBrowserRendererViewFactory? browserRendererFactory = null,
         IConnectionRuntime? connectionRuntime = null,
         IFilePanelClient? filePanelClient = null,
-        IFileTransferQueueClient? fileTransferQueueClient = null) =>
+        IFileTransferQueueClient? fileTransferQueueClient = null,
+        IDockerEngineClient? dockerEngineClient = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -3455,7 +3670,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             browserRendererFactory,
             connectionRuntime,
             filePanelClient,
-            fileTransferQueueClient);
+            fileTransferQueueClient,
+            dockerEngineClient);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -3467,7 +3683,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IBrowserRendererViewFactory? browserRendererFactory = null,
         IConnectionRuntime? connectionRuntime = null,
         IFilePanelClient? filePanelClient = null,
-        IFileTransferQueueClient? fileTransferQueueClient = null)
+        IFileTransferQueueClient? fileTransferQueueClient = null,
+        IDockerEngineClient? dockerEngineClient = null)
     {
         var files = new EmptyFileClients();
         return new MainWindowViewModel(
@@ -3482,7 +3699,102 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             aiProviderRuntime: aiProfiles,
             agentChatRuntime: agentRuntime,
             agentApprovalPrincipal: approvalPrincipal,
-            browserRendererViewFactory: browserRendererFactory);
+            browserRendererViewFactory: browserRendererFactory,
+            dockerEngineClient: dockerEngineClient);
+    }
+
+    private sealed class SingleContainerDockerClient : IDockerEngineClient
+    {
+        private static readonly DockerContainerSummary Container = new(
+            "container-api",
+            "api",
+            "demo/api:latest",
+            "running",
+            "Up 2 hours",
+            "8080/tcp",
+            "2 hours ago",
+            "1%",
+            "64 MiB",
+            "—",
+            "—",
+            "demo",
+            "api");
+        private readonly DockerResult<string> _shellResult;
+
+        public SingleContainerDockerClient(DockerResult<string>? shellResult = null)
+        {
+            _shellResult = shellResult
+                ?? new DockerResult<string>.Success("/bin/ash");
+        }
+
+        public List<ConnectionId> ReadConnections { get; } = [];
+
+        public ValueTask<DockerResult<DockerEngineSnapshot>> ReadSnapshotAsync(
+            ConnectionProfile connection,
+            CancellationToken cancellationToken)
+        {
+            ReadConnections.Add(connection.Id);
+            return ValueTask.FromResult<DockerResult<DockerEngineSnapshot>>(
+                new DockerResult<DockerEngineSnapshot>.Success(new DockerEngineSnapshot(
+                    new DockerEngineSummary("28.3.0", "linux", "arm64", "1.51"),
+                    [Container],
+                    [],
+                    [],
+                    [],
+                    DateTimeOffset.UtcNow)));
+        }
+
+        public ValueTask<DockerResult<IReadOnlyList<DockerVolumeUsage>>> ReadVolumeUsageAsync(
+            ConnectionProfile connection,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<DockerResult<IReadOnlyList<DockerVolumeUsage>>>(
+                new DockerResult<IReadOnlyList<DockerVolumeUsage>>.Success([]));
+
+        public ValueTask<DockerResult<DockerResourceInspection>> InspectAsync(
+            ConnectionProfile connection,
+            DockerResourceReference resource,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<DockerResult<DockerResourceInspection>>(
+                new DockerResult<DockerResourceInspection>.Success(
+                    new DockerResourceInspection(resource, [], "{}")));
+
+        public ValueTask<DockerResult<DockerContainerLogPage>> ReadContainerLogsAsync(
+            ConnectionProfile connection,
+            DockerContainerLogRequest request,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<DockerResult<DockerContainerLogPage>>(
+                new DockerResult<DockerContainerLogPage>.Success(
+                    new DockerContainerLogPage([], false, null, null)));
+
+        public ValueTask<DockerResult<bool>> DownloadContainerLogsAsync(
+            ConnectionProfile connection,
+            string containerId,
+            Stream destination,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<DockerResult<bool>>(new DockerResult<bool>.Success(true));
+
+        public ValueTask<DockerResult<string>> ResolveContainerShellAsync(
+            ConnectionProfile connection,
+            string containerId,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(_shellResult);
+
+        public ValueTask<DockerResult<DockerFileListing>> ListFilesAsync(
+            ConnectionProfile connection,
+            DockerResourceReference resource,
+            string path,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<DockerResult<DockerFileListing>>(
+                new DockerResult<DockerFileListing>.Success(
+                    new DockerFileListing(resource, path, [])));
+
+        public ValueTask<DockerResult<bool>> RunContainerActionAsync(
+            ConnectionProfile connection,
+            string containerId,
+            DockerContainerAction action,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult<DockerResult<bool>>(
+                new DockerResult<bool>.Success(true));
     }
 
     private static IDefinitionCatalog CreateFixedCatalog(DefinitionCatalogSnapshot snapshot)
@@ -4030,6 +4342,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     {
         private readonly List<RecordingBrowserRendererLifetime> _lifetimes = [];
 
+        public List<ConnectionId> CreatedConnections { get; } = [];
+
         public int CreateCount { get; private set; }
 
         public int DisposeCount => _lifetimes.Sum(lifetime => lifetime.DisposeCount);
@@ -4043,6 +4357,15 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 new Border(),
                 new RecordingBrowserRenderer(),
                 lifetime);
+        }
+
+        public ValueTask<BrowserRendererView> CreateAsync(
+            ConnectionProfile connection,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CreatedConnections.Add(connection.Id);
+            return ValueTask.FromResult(Create());
         }
     }
 

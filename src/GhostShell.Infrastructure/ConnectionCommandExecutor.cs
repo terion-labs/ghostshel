@@ -72,7 +72,10 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
             process.StandardOutput,
             request.MaximumOutputCharacters,
             linked.Token);
-        var stderr = DrainAsync(process.StandardError, linked.Token);
+        var stderr = ReadBoundedAsync(
+            process.StandardError,
+            request.MaximumOutputCharacters,
+            linked.Token);
         try
         {
             await Task.WhenAll(
@@ -80,10 +83,14 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
                     stdout,
                     stderr)
                 .ConfigureAwait(false);
+            var standardOutput = await stdout.ConfigureAwait(false);
+            var standardError = await stderr.ConfigureAwait(false);
             return new ConnectionCommandResult(
                 ConnectionCommandOutcome.Exited,
                 process.ExitCode,
-                await stdout.ConfigureAwait(false));
+                standardOutput.Text,
+                standardError.Text,
+                standardOutput.Truncated || standardError.Truncated);
         }
         catch (OperationCanceledException)
         {
@@ -98,9 +105,140 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
         }
     }
 
+    public async ValueTask<ConnectionBinaryCommandResult> ExecuteBinaryAsync(
+        ConnectionBinaryCommand request,
+        CancellationToken cancellationToken)
+    {
+        var result = await ExecuteStreamingAsync<BinaryOutput>(
+            request,
+            (stream, token) => new ValueTask<BinaryOutput>(ReadBoundedBytesAsync(
+                stream,
+                request.MaximumOutputBytes,
+                token)),
+            cancellationToken).ConfigureAwait(false);
+        var bytes = result.Value is { } output
+            ? output.Bytes
+            : ReadOnlyMemory<byte>.Empty;
+        return new ConnectionBinaryCommandResult(
+            result.Outcome,
+            result.ExitCode,
+            bytes,
+            result.StandardError,
+            result.Value?.Truncated == true);
+    }
+
+    public async ValueTask<ConnectionStreamingCommandResult<T>> ExecuteStreamingAsync<T>(
+        ConnectionBinaryCommand request,
+        Func<Stream, CancellationToken, ValueTask<T>> consumeOutput,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(consumeOutput);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return StreamingCancelled<T>();
+        }
+
+        var planResult = await connectionRuntime
+            .PlanOpenAsync(request.Connection, progress: null, cancellationToken)
+            .ConfigureAwait(false);
+        if (planResult is not ConnectionRuntimeResult<ConnectionOpenPlan>.Success success)
+        {
+            return new ConnectionStreamingCommandResult<T>(
+                ConnectionCommandOutcome.ConnectionFailed,
+                null,
+                default);
+        }
+
+        var start = CreateStartInfo(success.Value.Launch, request);
+        using var process = new Process { StartInfo = start };
+        try
+        {
+            var started = await Task.Run(process.Start, cancellationToken)
+                .ConfigureAwait(false);
+            if (!started)
+            {
+                return StreamingStartFailed<T>();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return StreamingCancelled<T>();
+        }
+        catch (Exception exception) when (exception is
+            Win32Exception or FileNotFoundException or UnauthorizedAccessException)
+        {
+            return StreamingStartFailed<T>();
+        }
+
+        using var timeout = new CancellationTokenSource(request.Timeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeout.Token);
+        var stdout = consumeOutput(process.StandardOutput.BaseStream, linked.Token).AsTask();
+        var stderr = ReadBoundedAsync(process.StandardError, 64 * 1024, linked.Token);
+        var exit = process.WaitForExitAsync(linked.Token);
+        try
+        {
+            await Task.WhenAll(exit, stdout, stderr).ConfigureAwait(false);
+            return new ConnectionStreamingCommandResult<T>(
+                ConnectionCommandOutcome.Exited,
+                process.ExitCode,
+                await stdout.ConfigureAwait(false),
+                (await stderr.ConfigureAwait(false)).Text);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            await AwaitDrainAsync(exit, stdout, stderr).ConfigureAwait(false);
+            return cancellationToken.IsCancellationRequested
+                ? StreamingCancelled<T>()
+                : new ConnectionStreamingCommandResult<T>(
+                    ConnectionCommandOutcome.TimedOut,
+                    null,
+                    default);
+        }
+        catch
+        {
+            linked.Cancel();
+            TryKill(process);
+            await AwaitDrainAsync(exit, stderr).ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private static ProcessStartInfo CreateStartInfo(
         TerminalLaunchRequest launch,
         ConnectionCommand request)
+    {
+        var start = new ProcessStartInfo
+        {
+            FileName = request.Connection.ConnectionKind == ConnectionKind.Local
+                ? request.Executable
+                : launch.Executable
+                    ?? throw new InvalidOperationException("The connection plan has no executable."),
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in CommandArguments(launch, request))
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        foreach (var (name, value) in launch.Environment)
+        {
+            start.Environment[name] = value;
+        }
+
+        return start;
+    }
+
+    private static ProcessStartInfo CreateStartInfo(
+        TerminalLaunchRequest launch,
+        ConnectionBinaryCommand request)
     {
         var start = new ProcessStartInfo
         {
@@ -149,9 +287,43 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
                 "The connection kind cannot execute structured commands."),
         };
 
+    private static IReadOnlyList<string> CommandArguments(
+        TerminalLaunchRequest launch,
+        ConnectionBinaryCommand request) =>
+        request.Connection.ConnectionKind switch
+        {
+            ConnectionKind.Local =>
+                request.Arguments,
+            ConnectionKind.Ssh =>
+                SshArgumentsCore(
+                    launch.Arguments,
+                    request.Executable,
+                    request.Arguments,
+                    SshControlPath(request.Connection)),
+            ConnectionKind.Docker =>
+                DockerArgumentsCore(launch.Arguments, request.Executable, request.Arguments),
+            ConnectionKind.Wsl =>
+                [.. launch.Arguments, "--exec", request.Executable, .. request.Arguments],
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(request),
+                request.Connection.ConnectionKind,
+                "The connection kind cannot execute structured commands."),
+        };
+
     internal static IReadOnlyList<string> SshArguments(
         IReadOnlyList<string> launchArguments,
         ConnectionCommand request,
+        string? controlPath) =>
+        SshArgumentsCore(
+            launchArguments,
+            request.Executable,
+            request.Arguments,
+            controlPath);
+
+    private static IReadOnlyList<string> SshArgumentsCore(
+        IReadOnlyList<string> launchArguments,
+        string executable,
+        IReadOnlyList<string> commandArguments,
         string? controlPath)
     {
         var boundary = -1;
@@ -190,8 +362,8 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
 
         arguments.Add(launchArguments[boundary]);
         arguments.Add(launchArguments[boundary + 1]);
-        var command = new[] { request.Executable }
-            .Concat(request.Arguments)
+        var command = new[] { executable }
+            .Concat(commandArguments)
             .Select(QuotePosixShellWord);
         arguments.Add(string.Join(' ', command));
         return Array.AsReadOnly(arguments.ToArray());
@@ -246,7 +418,13 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
 
     private static IReadOnlyList<string> DockerArguments(
         IReadOnlyList<string> launchArguments,
-        ConnectionCommand request)
+        ConnectionCommand request) =>
+        DockerArgumentsCore(launchArguments, request.Executable, request.Arguments);
+
+    private static IReadOnlyList<string> DockerArgumentsCore(
+        IReadOnlyList<string> launchArguments,
+        string executable,
+        IReadOnlyList<string> commandArguments)
     {
         var arguments = launchArguments
             .Where(argument => argument is not "--interactive" and not "--tty")
@@ -257,36 +435,65 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
         }
 
         arguments.RemoveAt(arguments.Count - 1);
-        arguments.Add(request.Executable);
-        arguments.AddRange(request.Arguments);
+        arguments.Add(executable);
+        arguments.AddRange(commandArguments);
         return Array.AsReadOnly(arguments.ToArray());
     }
 
     private static string QuotePosixShellWord(string value) =>
         $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
 
-    private static async Task<string> ReadBoundedAsync(
+    private static async Task<BoundedText> ReadBoundedAsync(
         StreamReader reader,
         int maximumCharacters,
         CancellationToken cancellationToken)
     {
-        var result = new char[maximumCharacters];
+        var result = new StringBuilder(Math.Min(maximumCharacters, 64 * 1024));
         var scratch = new char[4096];
-        var written = 0;
+        var truncated = false;
         while (true)
         {
             var read = await reader.ReadAsync(scratch, cancellationToken).ConfigureAwait(false);
             if (read == 0)
             {
-                return new string(result, 0, written);
+                return new BoundedText(result.ToString(), truncated);
             }
 
-            var copy = Math.Min(read, maximumCharacters - written);
+            var copy = Math.Min(read, maximumCharacters - result.Length);
             if (copy > 0)
             {
-                scratch.AsSpan(0, copy).CopyTo(result.AsSpan(written));
-                written += copy;
+                result.Append(scratch, 0, copy);
             }
+
+            truncated |= copy < read;
+        }
+    }
+
+    private static async Task<BinaryOutput> ReadBoundedBytesAsync(
+        Stream stream,
+        int maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        using var output = new MemoryStream(Math.Min(maximumBytes, 1024 * 1024));
+        var scratch = new byte[64 * 1024];
+        var truncated = false;
+        while (true)
+        {
+            var read = await stream.ReadAsync(scratch, cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                return new BinaryOutput(output.ToArray(), truncated);
+            }
+
+            var remaining = maximumBytes - checked((int)output.Length);
+            var copy = Math.Min(read, Math.Max(remaining, 0));
+            if (copy > 0)
+            {
+                await output.WriteAsync(scratch.AsMemory(0, copy), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            truncated |= copy < read;
         }
     }
 
@@ -330,4 +537,14 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
 
     private static ConnectionCommandResult Cancelled() =>
         new(ConnectionCommandOutcome.Cancelled, null, string.Empty);
+
+    private static ConnectionStreamingCommandResult<T> StreamingStartFailed<T>() =>
+        new(ConnectionCommandOutcome.StartFailed, null, default);
+
+    private static ConnectionStreamingCommandResult<T> StreamingCancelled<T>() =>
+        new(ConnectionCommandOutcome.Cancelled, null, default);
+
+    private sealed record BinaryOutput(byte[] Bytes, bool Truncated);
+
+    private sealed record BoundedText(string Text, bool Truncated);
 }

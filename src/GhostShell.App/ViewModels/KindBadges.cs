@@ -22,6 +22,7 @@ internal static class KindBadges
         PanelKind.FileViewer => "Files",
         PanelKind.ProcessMonitor => "Process monitor",
         PanelKind.DatabaseViewer => "Database",
+        PanelKind.Docker => "Docker",
         _ => kind.ToString(),
     };
 
@@ -30,6 +31,7 @@ internal static class KindBadges
         ScreenPanelKind.FileViewer => "Files",
         ScreenPanelKind.ProcessMonitor => "Process monitor",
         ScreenPanelKind.DatabaseViewer => "Database",
+        ScreenPanelKind.Docker => "Docker",
         _ => kind.ToString(),
     };
 

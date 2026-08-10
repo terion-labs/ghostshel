@@ -57,8 +57,10 @@ public sealed partial class InMemorySessionHostClient
             }
 
             var liveSessions = sessions
-                .Select(session => session.Snapshot().Descriptor)
-                .Where(descriptor => descriptor.Lifecycle is
+                .Select(session => new LiveWorkspaceSession(
+                    session.Snapshot().Descriptor,
+                    session.Role))
+                .Where(session => session.Descriptor.Lifecycle is
                     SessionLifecycle.Starting or
                     SessionLifecycle.Active or
                     SessionLifecycle.Closing)

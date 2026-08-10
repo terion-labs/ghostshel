@@ -157,6 +157,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
             StatisticsRuntimePanelViewModel => RuntimePanelRecoveryKind.Statistics,
             ProcessMonitorRuntimePanelViewModel => RuntimePanelRecoveryKind.ProcessMonitor,
             DatabaseRuntimePanelViewModel => RuntimePanelRecoveryKind.DatabaseViewer,
+            DockerRuntimePanelViewModel => RuntimePanelRecoveryKind.Docker,
             PanelPlaceholderViewModel => RuntimePanelRecoveryKind.Placeholder,
             _ => RuntimePanelRecoveryKind.Unavailable,
         };
@@ -166,15 +167,18 @@ internal static class RuntimeWorkspaceRecoveryCodec
         var file = panel as FileRuntimePanelViewModel;
         var statistics = panel as StatisticsRuntimePanelViewModel;
         var processes = panel as ProcessMonitorRuntimePanelViewModel;
+        var docker = panel as DockerRuntimePanelViewModel;
         return new RuntimePanelRecoveryPayload(
             panel.Id.Value,
             kind,
             panel.Title,
             kind == RuntimePanelRecoveryKind.Unavailable ? panel.KindLabel : null,
             terminal?.ConnectionId.Value
+                ?? browser?.ConnectionId.Value
                 ?? file?.ConnectionId.Value
                 ?? statistics?.ConnectionId.Value
                 ?? processes?.ConnectionId.Value
+                ?? docker?.ConnectionId.Value
                 ?? database?.TunnelConnectionId?.Value,
             terminal?.RecoveryStartupLocation
                 ?? browser?.CurrentAddress.ToString()
@@ -367,7 +371,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
                     || panel.FileLocation.TryValidate(panel.FileProviderProfileId, out _))
                 && IsOptionalText(panel.Filter, 1_024),
             RuntimePanelRecoveryKind.Browser =>
-                panel.ConnectionId is null
+                IsOptionalIdentifier(panel.ConnectionId)
                 && panel.StartupLocation is { } browserAddress
                 && BrowserAddress.TryParse(browserAddress, out _)
                 && panel.FileProviderProfileId is null
@@ -398,6 +402,14 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 panel.KindLabel is null
                 && IsOptionalIdentifier(panel.ConnectionId)
                 && IsOptionalText(panel.StartupLocation, 4_096)
+                && panel.FileProviderProfileId is null
+                && panel.FileLocation is null
+                && !panel.ShowHidden
+                && panel.Filter is null,
+            RuntimePanelRecoveryKind.Docker =>
+                panel.KindLabel is null
+                && IsIdentifier(panel.ConnectionId)
+                && panel.StartupLocation is null
                 && panel.FileProviderProfileId is null
                 && panel.FileLocation is null
                 && !panel.ShowHidden
@@ -622,6 +634,7 @@ internal enum RuntimePanelRecoveryKind
     Browser = 5,
     Placeholder = 6,
     DatabaseViewer = 7,
+    Docker = 8,
 }
 
 internal sealed record RuntimePanelRecoveryPayload(

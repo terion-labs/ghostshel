@@ -3,6 +3,10 @@ using GhostShell.Core;
 
 namespace GhostShell.SessionHost;
 
+internal sealed record LiveWorkspaceSession(
+    SessionDescriptor Descriptor,
+    PanelSessionRole Role);
+
 internal sealed class WorkspaceGraphRegistry
 {
     private readonly object _gate = new();
@@ -63,7 +67,7 @@ internal sealed class WorkspaceGraphRegistry
         RegisterWorkspaceGraphRequest request,
         ClientId? ownerClientId,
         long? expectedRevision,
-        IReadOnlyList<SessionDescriptor> liveSessions)
+        IReadOnlyList<LiveWorkspaceSession> liveSessions)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(liveSessions);
@@ -218,7 +222,8 @@ internal sealed class WorkspaceGraphRegistry
 
     public HostResult<WorkspaceGraphSnapshot>? ValidateSessionOwner(
         SessionOwner owner,
-        PanelKind kind)
+        PanelKind kind,
+        PanelSessionRole role = PanelSessionRole.Primary)
     {
         ArgumentNullException.ThrowIfNull(owner);
         lock (_gate)
@@ -233,14 +238,20 @@ internal sealed class WorkspaceGraphRegistry
                 return null;
             }
 
-            return graph.ValidateSessionOwner(owner.TabId, owner.PanelId, kind);
+            var ownerKind = OwnerPanelKind(kind, role);
+            return ownerKind is { } expectedKind
+                ? graph.ValidateSessionOwner(owner.TabId, owner.PanelId, expectedKind)
+                : InvalidSessionOwner(
+                    graph.Revision,
+                    "That session kind cannot be embedded in another panel.");
         }
     }
 
     public HostResult<WorkspaceGraphSnapshot>? LinkSession(
         SessionOwner owner,
         PanelKind kind,
-        SessionId sessionId)
+        SessionId sessionId,
+        PanelSessionRole role = PanelSessionRole.Primary)
     {
         ArgumentNullException.ThrowIfNull(owner);
         lock (_gate)
@@ -255,19 +266,35 @@ internal sealed class WorkspaceGraphRegistry
                 return null;
             }
 
-            return graph.LinkSession(owner.TabId, owner.PanelId, kind, sessionId);
+            var ownerKind = OwnerPanelKind(kind, role);
+            if (ownerKind is null)
+            {
+                return InvalidSessionOwner(
+                    graph.Revision,
+                    "That session kind cannot be embedded in another panel.");
+            }
+
+            var validated = graph.ValidateSessionOwner(
+                owner.TabId,
+                owner.PanelId,
+                ownerKind.Value);
+            return role == PanelSessionRole.Embedded
+                ? validated
+                : graph.LinkSession(owner.TabId, owner.PanelId, kind, sessionId);
         }
     }
 
     public void UnlinkSession(
         SessionOwner owner,
         PanelKind kind,
-        SessionId sessionId)
+        SessionId sessionId,
+        PanelSessionRole role = PanelSessionRole.Primary)
     {
         ArgumentNullException.ThrowIfNull(owner);
         lock (_gate)
         {
-            if (!_workspaces.TryGetValue(owner.WorkspaceId, out var graph)
+            if (role == PanelSessionRole.Embedded
+                || !_workspaces.TryGetValue(owner.WorkspaceId, out var graph)
                 || graph.WindowId != owner.WindowId)
             {
                 return;
@@ -450,7 +477,7 @@ internal sealed class WorkspaceGraphRegistry
     private static bool TryReconcileSessionLinks(
         WindowInstanceId windowId,
         WorkspaceInstance workspace,
-        IReadOnlyList<SessionDescriptor> liveSessions,
+        IReadOnlyList<LiveWorkspaceSession> liveSessions,
         WorkspaceInstance? currentWorkspace,
         out WorkspaceInstance reconciled,
         out HostError? error)
@@ -460,9 +487,10 @@ internal sealed class WorkspaceGraphRegistry
         // claiming this *window* too and then reject whatever did not also match
         // the workspace — which was fine while a window held one workspace, and
         // rejects every registration the moment it holds two.
-        foreach (var session in liveSessions.Where(session =>
-                     session.Owner.WorkspaceId == workspace.Id))
+        foreach (var liveSession in liveSessions.Where(session =>
+                     session.Descriptor.Owner.WorkspaceId == workspace.Id))
         {
+            var session = liveSession.Descriptor;
             if (session.Owner.WindowId != windowId)
             {
                 reconciled = workspace;
@@ -485,13 +513,19 @@ internal sealed class WorkspaceGraphRegistry
                 return false;
             }
 
-            if (panel.Kind != session.Kind)
+            var ownerKind = OwnerPanelKind(session.Kind, liveSession.Role);
+            if (ownerKind is null || panel.Kind != ownerKind)
             {
                 reconciled = workspace;
                 error = HostError.Create(
                     HostErrorCode.InvalidRequest,
-                    "A live session kind does not match its owner panel kind.");
+                    "A live session kind and role do not match its owner panel kind.");
                 return false;
+            }
+
+            if (liveSession.Role == PanelSessionRole.Embedded)
+            {
+                continue;
             }
 
             if (!sessionsByPanel.TryGetValue(panel.Id, out var panelSessions))
@@ -544,6 +578,15 @@ internal sealed class WorkspaceGraphRegistry
         error = null;
         return true;
     }
+
+    private static PanelKind? OwnerPanelKind(PanelKind sessionKind, PanelSessionRole role) =>
+        role switch
+        {
+            PanelSessionRole.Primary => sessionKind,
+            PanelSessionRole.Embedded when sessionKind == PanelKind.Terminal => PanelKind.Docker,
+            PanelSessionRole.Embedded => null,
+            _ => null,
+        };
 
     private static HostResult<WorkspaceGraphSnapshot> InvalidSessionOwner(
         long revision,

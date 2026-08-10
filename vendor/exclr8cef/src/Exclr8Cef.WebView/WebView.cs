@@ -894,7 +894,17 @@ public class WebView : Control, IWebView, IDisposable
 
         var visualSize = new Vector(size.Width, size.Height);
         _acceleratedRootVisual.Size = visualSize;
-        _acceleratedMainVisual.Size = visualSize;
+        // Once a shared-texture frame has been presented, its visual size
+        // must continue to describe that frame rather than the latest
+        // control bounds. During an interactive splitter drag CEF produces
+        // the newly sized IOSurface asynchronously; resizing this visual in
+        // advance stretches the previous frame until that surface arrives.
+        // Keep the old frame pixel-correct (the control clips it) and switch
+        // to the new dimensions together with the new frame instead.
+        if (!HasPresentedAcceleratedFrame)
+        {
+            _acceleratedMainVisual.Size = visualSize;
+        }
         _acceleratedPopupVisual.Offset = new Vector3D(_popupX, _popupY, 0);
         _acceleratedPopupVisual.Size = new Vector(_popupW, _popupH);
         _acceleratedPopupVisual.Visible = _popupVisible;
@@ -937,7 +947,10 @@ public class WebView : Control, IWebView, IDisposable
         Interlocked.Add(ref _acceleratedCopyTicks, copyTicks);
         RecordMaximum(ref _acceleratedCopyMaxTicks, copyTicks);
 
-        var pending = new PendingAcceleratedPaint(paint.ElementType, frame);
+        var pending = new PendingAcceleratedPaint(
+            paint.ElementType,
+            frame,
+            Volatile.Read(ref _renderScale));
         lock (_acceleratedPaintGate)
         {
             if (paint.ElementType == Cef.PaintElementType.Popup)
@@ -1039,6 +1052,36 @@ public class WebView : Control, IWebView, IDisposable
         try
         {
             var frame = pending.Frame;
+            int frameWidth = frame.Width;
+            int frameHeight = frame.Height;
+            double frameScale = pending.RenderScale;
+            if (pending.ElementType == Cef.PaintElementType.Main)
+            {
+                int requestedWidth = Volatile.Read(ref _browserWidth);
+                int requestedHeight = Volatile.Read(ref _browserHeight);
+                double currentScale = Volatile.Read(ref _renderScale);
+                frameScale = currentScale;
+                if (!AcceleratedFrameMatchesView(
+                        frameWidth,
+                        frameHeight,
+                        requestedWidth,
+                        requestedHeight,
+                        currentScale))
+                {
+                    if (AccelerationDiagnosticsEnabled())
+                    {
+                        Console.Error.WriteLine(
+                            "[exclr8cef] Ignored stale accelerated frame " +
+                            "{0}x{1}; current view is {2}x{3} at {4:F2}x.",
+                            frameWidth,
+                            frameHeight,
+                            requestedWidth,
+                            requestedHeight,
+                            currentScale);
+                    }
+                    return;
+                }
+            }
             ulong readyValue = frame.ReadyValue;
             var format = frame.Format switch
             {
@@ -1055,8 +1098,8 @@ public class WebView : Control, IWebView, IDisposable
                     KnownPlatformGraphicsExternalImageHandleTypes.IOSurfaceRef),
                 new PlatformGraphicsExternalImageProperties
                 {
-                    Width = frame.Width,
-                    Height = frame.Height,
+                    Width = frameWidth,
+                    Height = frameHeight,
                     Format = format,
                     TopLeftOrigin = true,
                 });
@@ -1064,6 +1107,19 @@ public class WebView : Control, IWebView, IDisposable
                 new PlatformHandle(
                     frame.ReadyEvent,
                     KnownPlatformGraphicsExternalSemaphoreHandleTypes.MetalSharedEvent));
+
+            if (pending.ElementType == Cef.PaintElementType.Main
+                && _acceleratedMainVisual is not null)
+            {
+                // Commit the texture and the visual's corresponding DIP size
+                // in the same compositor batch. This prevents both resize
+                // distortion and a one-commit flash of the new frame at the
+                // previous frame's dimensions.
+                _acceleratedMainVisual.Size = AcceleratedFrameVisualSize(
+                    frameWidth,
+                    frameHeight,
+                    frameScale);
+            }
 
             // Avalonia's macOS handle wrapper retained both ref-counted
             // objects synchronously during Import*, so the native copy can
@@ -1116,6 +1172,32 @@ public class WebView : Control, IWebView, IDisposable
                 await image.DisposeAsync();
             }
         }
+    }
+
+    internal static Vector AcceleratedFrameVisualSize(
+        int physicalWidth,
+        int physicalHeight,
+        double renderScale)
+    {
+        double effectiveScale = renderScale > 0 ? renderScale : 1.0;
+        return new Vector(
+            physicalWidth / effectiveScale,
+            physicalHeight / effectiveScale);
+    }
+
+    internal static bool AcceleratedFrameMatchesView(
+        int physicalWidth,
+        int physicalHeight,
+        int logicalWidth,
+        int logicalHeight,
+        double renderScale)
+    {
+        double effectiveScale = renderScale > 0 ? renderScale : 1.0;
+        const double roundingTolerance = 1.0;
+        return Math.Abs(physicalWidth - logicalWidth * effectiveScale)
+                <= roundingTolerance
+            && Math.Abs(physicalHeight - logicalHeight * effectiveScale)
+                <= roundingTolerance;
     }
 
     private void ReportAcceleratedRenderingFailure(
@@ -1886,7 +1968,8 @@ public class WebView : Control, IWebView, IDisposable
 
     private sealed record PendingAcceleratedPaint(
         Cef.PaintElementType ElementType,
-        MacAcceleratedFrame Frame);
+        MacAcceleratedFrame Frame,
+        double RenderScale);
 
     // ---- Popup overlay handling ----------------------------------------
 

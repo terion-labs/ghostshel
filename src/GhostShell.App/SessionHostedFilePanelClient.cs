@@ -666,7 +666,9 @@ public sealed class SessionHostedFilePanelClient :
                         metadata.TrustedRoot,
                         metadata.Capabilities,
                         metadata.MaximumListPageSize,
-                        metadata.MaximumPreviewBytes),
+                        metadata.MaximumPreviewBytes,
+                        RequiresHostTransferForPreview:
+                            initialProfile.RequiresHostTransferForPreview),
                 ];
         }
 

@@ -244,9 +244,9 @@
                       <TextBlock FontWeight="SemiBold" Text="Panel title" />
                       <TextBox Text="{Binding Title}" AutomationProperties.Name="{Binding PanelLabel, StringFormat=Title for {0}}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding IsTerminal}">
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding SupportsConnection}">
                       <TextBlock FontWeight="SemiBold" Text="Connection" />
-                      <ComboBox ItemsSource="{Binding ConnectionOptions}" SelectedItem="{Binding SelectedConnection}" AutomationProperties.Name="{Binding PanelLabel, StringFormat=Connection for {0}}">
+                      <ComboBox ItemsSource="{Binding ApplicableConnectionOptions}" SelectedItem="{Binding SelectedConnection}" AutomationProperties.Name="{Binding PanelLabel, StringFormat=Connection for {0}}">
                         <ComboBox.ItemTemplate>
                           <DataTemplate>
                             <TextBlock Text="{Binding DisplayName}" />

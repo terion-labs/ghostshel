@@ -1456,7 +1456,7 @@ public sealed class FileRuntimePanelViewModelTests
         panel.SelectedEntry = Assert.Single(panel.Entries);
         await panel.PreviewSelectedAsync();
 
-        Assert.False(panel.IsRemoteProvider);
+        Assert.False(panel.RequiresHostTransferForPreview);
         Assert.False(panel.ShowPreviewDownloadPrompt);
         Assert.NotNull(client.LastPreviewRequest);
     }
@@ -1481,7 +1481,7 @@ public sealed class FileRuntimePanelViewModelTests
             client,
             initialProfileId: new FileProviderProfileId(remote.Id));
         await panel.Initialization;
-        Assert.True(panel.IsRemoteProvider);
+        Assert.True(panel.RequiresHostTransferForPreview);
         return (panel, client);
     }
 

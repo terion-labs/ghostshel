@@ -30,6 +30,8 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     public event EventHandler<RoutedEventArgs>? DatabaseRequested;
 
+    public event EventHandler<RoutedEventArgs>? DockerRequested;
+
     public event EventHandler<RoutedEventArgs>? FileViewerRequested;
 
     public event EventHandler<RoutedEventArgs>? ProcessMonitorRequested;
@@ -73,6 +75,9 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     private void OnChooseDatabaseClick(object? sender, RoutedEventArgs e) =>
         DatabaseRequested?.Invoke(sender, e);
+
+    private void OnChooseDockerClick(object? sender, RoutedEventArgs e) =>
+        DockerRequested?.Invoke(sender, e);
 
     private void OnChooseFileViewerClick(object? sender, RoutedEventArgs e) =>
         FileViewerRequested?.Invoke(sender, e);

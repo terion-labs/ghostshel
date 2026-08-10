@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using GhostShell.App.Controls;
 using GhostShell.Application;
+using GhostShell.App.Views.Components;
 
 using GhostShell.App.ViewModels;
 
@@ -24,6 +25,10 @@ public sealed partial class BrowserRuntimePanelView : UserControl
     public event EventHandler<BrowserStateChangedEventArgs>? BrowserStateChanged;
 
     public event EventHandler<RoutedEventArgs>? CloseRequested;
+
+    public event EventHandler<PanelConnectionSelectedEventArgs>? ConnectionSelected;
+
+    public event EventHandler<RoutedEventArgs>? NewConnectionRequested;
 
     /// <summary>
     /// Splitting places an empty panel beside this one; what it becomes is chosen
@@ -82,6 +87,14 @@ public sealed partial class BrowserRuntimePanelView : UserControl
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) =>
         CloseRequested?.Invoke(sender, e);
+
+    private void OnConnectionSelected(
+        object? sender,
+        PanelConnectionSelectedEventArgs e) =>
+        ConnectionSelected?.Invoke(this, e);
+
+    private void OnNewConnectionRequested(object? sender, RoutedEventArgs e) =>
+        NewConnectionRequested?.Invoke(this, e);
 
     private void OnSplitRequested(object? sender, PanelSplitOrientation orientation) =>
         SplitRequested?.Invoke(sender, orientation);

@@ -3,6 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     Classes="RuntimePanelFocusTarget"
     Focusable="True"
@@ -28,6 +29,14 @@
           Height="7"
           Fill="{Binding StatusBrush, ElementName=RuntimeBrowser}" />
     </controls:PanelChrome.Status>
+
+    <controls:PanelChrome.Leading>
+      <components:PanelConnectionSelectorView
+          Options="{Binding $parent[Window].DataContext.BrowserConnectionOptions}"
+          SelectedLabel="{Binding ConnectionDisplayName}"
+          ConnectionSelected="OnConnectionSelected"
+          NewConnectionRequested="OnNewConnectionRequested" />
+    </controls:PanelChrome.Leading>
 
     <controls:PanelChrome.HeaderContent>
       <Grid
@@ -133,6 +142,28 @@
               Classes="Muted"
               FontSize="{DynamicResource ShellFontSize11}"
               Text="{Binding StatusMessage, ElementName=RuntimeBrowser}"
+              TextAlignment="Center"
+              TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+      <Border
+          Margin="1"
+          Padding="{controls:Inset Xl}"
+          Background="{DynamicResource ShellBackgroundBrush}"
+          IsVisible="{Binding HasRouteError}">
+        <StackPanel
+            MaxWidth="440"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="{DynamicResource ShellSpaceSm}">
+          <icons:SymbolIcon
+              FontSize="24"
+              Foreground="{DynamicResource ShellDangerBrush}"
+              Symbol="ErrorCircle" />
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize11}"
+              Text="{Binding RouteErrorMessage}"
               TextAlignment="Center"
               TextWrapping="Wrap" />
         </StackPanel>

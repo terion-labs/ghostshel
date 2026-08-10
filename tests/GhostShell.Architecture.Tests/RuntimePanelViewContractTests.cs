@@ -8,6 +8,614 @@ public sealed class RuntimePanelViewContractTests
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();
 
+    [Fact]
+    public void Docker_files_embed_the_file_viewer_instead_of_declaring_another_browser()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var sharedViewer = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "FileRuntimePanelView");
+
+        Assert.Equal("True", AttributeValue(sharedViewer, "IsEmbedded"));
+        Assert.DoesNotContain(
+            root.DescendantsAndSelf().Attributes(),
+            attribute => attribute.Value.Contains("Docker files and folders", StringComparison.Ordinal)
+                || attribute.Value.Contains("DockerFile", StringComparison.Ordinal));
+        Assert.False(File.Exists(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "ViewModels",
+            "DockerFileBrowserViewModel.cs")));
+    }
+
+    [Fact]
+    public void Docker_json_uses_the_shared_highlighted_code_preview()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var preview = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "CodePreviewView"
+                && AttributeValue(element, "Text") == "{Binding Inspection.Json}");
+
+        Assert.Equal("inspection.json", AttributeValue(preview, "FileName"));
+        Assert.Equal("False", AttributeValue(preview, "WordWrap"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBox"
+                && AttributeValue(element, "Text") == "{Binding Inspection.Json}");
+    }
+
+    [Fact]
+    public void Docker_image_navigation_uses_archive_icons()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var imageButtons = root.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Where(element =>
+                element.Descendants().Any(descendant =>
+                    descendant.Name.LocalName == "TextBlock"
+                    && AttributeValue(descendant, "Text") == "Images")
+                || AttributeValue(element, "ToolTip.Tip") == "Images")
+            .ToArray();
+
+        Assert.NotEmpty(imageButtons);
+        Assert.All(
+            imageButtons,
+            button => Assert.Contains(
+                button.Descendants(),
+                element => element.Name.LocalName == "SymbolIcon"
+                    && AttributeValue(element, "Symbol") == "Archive"));
+    }
+
+    [Fact]
+    public void Docker_logs_use_a_virtualized_paged_surface_with_remote_controls()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var logList = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ListBox"
+                && AttributeValue(element, "Name") == "LogList");
+
+        Assert.Contains(
+            logList.Descendants(),
+            element => element.Name.LocalName == "VirtualizingStackPanel");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBox"
+                && AttributeValue(element, "PlaceholderText") == "Search all container logs");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "ToggleSwitch"
+                && AttributeValue(element, "AutomationProperties.Name") == "Follow container logs");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "Download complete container logs");
+    }
+
+    [Fact]
+    public void Docker_container_actions_use_accessible_icons_and_name_the_terminal_action_shell()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var actions = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "StackPanel"
+                && HasClass(element, "DockerContainerActions"));
+        var expectedActions = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["{Binding StartCommand}"] = "Play",
+            ["{Binding StopCommand}"] = "Stop",
+            ["{Binding RestartCommand}"] = "ArrowClockwise",
+            ["{Binding PauseCommand}"] = "Pause",
+            ["{Binding ResumeCommand}"] = "PauseOff",
+        };
+        var expectedEnabledBindings = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["{Binding StartCommand}"] = "{Binding CanStartSelectedContainer}",
+            ["{Binding StopCommand}"] = "{Binding CanStopSelectedContainer}",
+            ["{Binding RestartCommand}"] = "{Binding CanRestartSelectedContainer}",
+            ["{Binding PauseCommand}"] = "{Binding CanPauseSelectedContainer}",
+            ["{Binding ResumeCommand}"] = "{Binding CanResumeSelectedContainer}",
+        };
+
+        foreach (var (command, symbol) in expectedActions)
+        {
+            var button = Assert.Single(
+                actions.Descendants(),
+                element => element.Name.LocalName == "Button"
+                    && AttributeValue(element, "Command") == command);
+            Assert.True(HasClass(button, "IconButton"));
+            Assert.NotNull(AttributeValue(button, "ToolTip.Tip"));
+            Assert.NotNull(AttributeValue(button, "AutomationProperties.Name"));
+            Assert.Equal(
+                expectedEnabledBindings[command],
+                AttributeValue(button, "IsEnabled"));
+            Assert.Contains(
+                button.Descendants(),
+                element => element.Name.LocalName == "SymbolIcon"
+                    && AttributeValue(element, "Symbol") == symbol);
+        }
+
+        var actionToggles = actions.Elements()
+            .Where(element => element.Name.LocalName == "Grid"
+                && AttributeValue(element, "Width") == "32"
+                && AttributeValue(element, "Height") == "32")
+            .ToArray();
+        Assert.Equal(2, actionToggles.Length);
+        var startStopToggle = Assert.Single(
+            actionToggles,
+            element => element.Descendants().Any(button =>
+                AttributeValue(button, "Command") == "{Binding StartCommand}"));
+        Assert.Equal(2, startStopToggle.Elements().Count(element =>
+            element.Name.LocalName == "Button"));
+        Assert.Contains(
+            startStopToggle.Elements(),
+            element => AttributeValue(element, "Command") == "{Binding StartCommand}"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding SelectedContainerIsStopped}");
+        Assert.Contains(
+            startStopToggle.Elements(),
+            element => AttributeValue(element, "Command") == "{Binding StopCommand}"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding SelectedContainerIsActive}");
+
+        var pauseToggle = Assert.Single(
+            actionToggles,
+            element => element.Descendants().Any(button =>
+                AttributeValue(button, "Command") == "{Binding PauseCommand}"));
+        Assert.Equal(2, pauseToggle.Elements().Count(element =>
+            element.Name.LocalName == "Button"));
+        Assert.Contains(
+            pauseToggle.Elements(),
+            element => AttributeValue(element, "Command") == "{Binding PauseCommand}"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding !SelectedResource.IsPaused}");
+        Assert.Contains(
+            pauseToggle.Elements(),
+            element => AttributeValue(element, "Command") == "{Binding ResumeCommand}"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding SelectedResource.IsPaused}");
+
+        var lifecycleSurface = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "Button.IconButton.DockerToolbarAction /template/ ContentPresenter");
+        Assert.Contains(
+            lifecycleSurface.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "Background"
+                && AttributeValue(element, "Value")
+                    == "{DynamicResource ShellControlSurfaceBrush}");
+
+        var disabledLifecycleSurface = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "Button.IconButton.DockerToolbarAction:disabled /template/ ContentPresenter");
+        Assert.Contains(
+            disabledLifecycleSurface.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "Background"
+                && AttributeValue(element, "Value")
+                    == "{DynamicResource ShellControlSurfaceBrush}");
+
+        var shell = Assert.Single(
+            actions.Elements(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Click") == "OnOpenShellClick");
+        Assert.Contains(
+            shell.Descendants(),
+            element => element.Name.LocalName == "SymbolIcon"
+                && AttributeValue(element, "Symbol") == "Open");
+        Assert.Contains(
+            shell.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "Text") == "Shell");
+        Assert.DoesNotContain(
+            shell.Descendants(),
+            element => AttributeValue(element, "Text") == "New tab");
+    }
+
+    [Fact]
+    public void Docker_volume_size_loading_is_visible_and_accessible()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var indicator = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ProgressBar"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding ShowResourceProgress}");
+
+        Assert.True(HasClass(indicator, "WorkingStripe"));
+        Assert.Equal("Bottom", AttributeValue(indicator, "VerticalAlignment"));
+        Assert.Equal(
+            "Loading Docker resources",
+            AttributeValue(indicator, "AutomationProperties.Name"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "ProgressBar"
+                && AttributeValue(element, "IsVisible") == "{Binding ShowLoading}");
+    }
+
+    [Fact]
+    public void Docker_detail_tabs_collapse_to_an_accessible_menu_in_narrow_panels()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var tabs = root.Descendants()
+            .Where(element => element.Name.LocalName == "Button"
+                && HasClass(element, "DockerTab"))
+            .ToArray();
+
+        Assert.Equal(6, tabs.Length);
+        Assert.All(
+            tabs,
+            tab =>
+            {
+                Assert.NotNull(AttributeValue(tab, "AutomationProperties.Name"));
+                Assert.Contains(
+                    tab.Descendants(),
+                    element => element.Name.LocalName == "SymbolIcon");
+                Assert.Contains(
+                    tab.Descendants(),
+                    element => element.Name.LocalName == "TextBlock"
+                        && HasClass(element, "DockerTabLabel"));
+            });
+
+        var tabHost = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "StackPanel"
+                && HasClass(element, "DockerDetailTabs"));
+        Assert.Equal(6, tabHost.Elements().Count(element =>
+            element.Name.LocalName == "Button" && HasClass(element, "DockerTab")));
+
+        var menuButton = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && HasClass(element, "DockerDetailMenuButton"));
+        Assert.Equal(
+            "Open container view menu",
+            AttributeValue(menuButton, "AutomationProperties.Name"));
+        Assert.Contains(
+            menuButton.Descendants(),
+            element => element.Name.LocalName == "SymbolIcon"
+                && AttributeValue(element, "Symbol") == "Navigation");
+        var menu = Assert.Single(
+            menuButton.Descendants(),
+            element => element.Name.LocalName == "MenuFlyout");
+        var menuItems = menu.Elements()
+            .Where(element => element.Name.LocalName == "MenuItem")
+            .ToArray();
+        Assert.Equal(6, menuItems.Length);
+        Assert.All(menuItems, item =>
+        {
+            Assert.NotNull(AttributeValue(item, "Click"));
+            Assert.NotNull(AttributeValue(item, "IsVisible"));
+            Assert.NotNull(AttributeValue(item, "AutomationProperties.Name"));
+        });
+
+        var hideTabsStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "Grid.compactDetails StackPanel.DockerDetailTabs");
+        Assert.Contains(
+            hideTabsStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "IsVisible"
+                && AttributeValue(element, "Value") == "False");
+        var showMenuStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "Grid.compactDetails Button.DockerDetailMenuButton.hasSelection");
+        Assert.Contains(
+            showMenuStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "IsVisible"
+                && AttributeValue(element, "Value") == "True");
+    }
+
+    [Fact]
+    public void Docker_family_rail_is_wide_and_aligns_count_chips_to_its_right_edge()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var railStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector") == "Border.DockerFamilyRail");
+        var width = Assert.Single(
+            railStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "Width");
+        Assert.Equal("180", AttributeValue(width, "Value"));
+
+        var navigationStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector") == "Button.DockerNav");
+        var horizontalAlignment = Assert.Single(
+            navigationStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "HorizontalAlignment");
+        Assert.Equal("Stretch", AttributeValue(horizontalAlignment, "Value"));
+
+        var navigationButtons = root.Descendants()
+            .Where(element => element.Name.LocalName == "Button"
+                && HasClass(element, "DockerNav"))
+            .ToArray();
+        Assert.Equal(4, navigationButtons.Length);
+        Assert.All(
+            navigationButtons,
+            button =>
+            {
+                var count = Assert.Single(
+                    button.Descendants(),
+                    element => element.Name.LocalName == "StatusChip");
+                Assert.Null(AttributeValue(count, "Width"));
+                Assert.Equal("28", AttributeValue(count, "MinWidth"));
+                Assert.Equal("Right", AttributeValue(count, "HorizontalAlignment"));
+                Assert.All(
+                    button.Descendants().Where(element => element.Name.LocalName is
+                        "SymbolIcon" or "TextBlock" or "StatusChip"),
+                    element => Assert.Equal(
+                        "Center",
+                        AttributeValue(element, "VerticalAlignment")));
+            });
+    }
+
+    [Fact]
+    public void Docker_typography_uses_scaled_line_heights_and_inspection_values_wrap()
+    {
+        var root = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+
+        var explicitlySizedText = root.Descendants()
+            .Where(element => element.Name.LocalName == "TextBlock")
+            .Select(element => new
+            {
+                Element = element,
+                FontSize = AttributeValue(element, "FontSize") ?? string.Empty,
+            })
+            .Where(item => item.FontSize.StartsWith(
+                "{DynamicResource ShellFontSize",
+                StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(explicitlySizedText);
+        Assert.All(
+            explicitlySizedText,
+            item => Assert.Equal(
+                item.FontSize.Replace("ShellFontSize", "ShellLineHeight", StringComparison.Ordinal),
+                AttributeValue(item.Element, "LineHeight")));
+
+        var propertyValue = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && HasClass(element, "DockerPropertyValue"));
+        Assert.Equal("Wrap", AttributeValue(propertyValue, "TextWrapping"));
+        Assert.Equal(
+            "{DynamicResource ShellLineHeight12}",
+            AttributeValue(propertyValue, "LineHeight"));
+        Assert.Null(AttributeValue(propertyValue, "TextTrimming"));
+    }
+
+    [Fact]
+    public void Docker_vertical_collections_use_adaptive_full_width_item_containers()
+    {
+        var docker = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
+        var verticalCollections = docker.Descendants()
+            .Where(element => element.Name.LocalName == "ItemsControl")
+            .Where(element => AttributeValue(element, "ItemsSource") is
+                "{Binding ContainerStacks}"
+                or "{Binding Containers}"
+                or "{Binding Inspection.Properties}")
+            .ToArray();
+
+        Assert.Equal(3, verticalCollections.Length);
+        Assert.All(verticalCollections, collection =>
+            Assert.True(HasClass(collection, "StretchItems")));
+
+        var stackHeaderBackground = Assert.Single(
+            docker.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector") == "Border.DockerStackHeaderSurface");
+        Assert.Contains(
+            stackHeaderBackground.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "Background"
+                && AttributeValue(element, "Value")
+                    == "{DynamicResource ShellSurfaceHoverBrush}");
+        Assert.Contains(
+            stackHeaderBackground.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "BorderBrush"
+                && AttributeValue(element, "Value")
+                    == "{DynamicResource ShellAccentBrush}");
+
+        var stackHeader = Assert.Single(
+            docker.Descendants(),
+            element => element.Name.LocalName == "Grid"
+                && HasClass(element, "DockerStackHeader"));
+        Assert.Equal(
+            "{controls:Inset Horizontal=Sm, Vertical=Xs}",
+            AttributeValue(stackHeader, "Margin"));
+        Assert.Equal("Auto,*,Auto", AttributeValue(stackHeader, "ColumnDefinitions"));
+        var stackToggle = Assert.Single(
+            stackHeader.Elements(),
+            element => element.Name.LocalName == "Button"
+                && HasClass(element, "DockerStackToggle"));
+        Assert.Equal("0", AttributeValue(stackToggle, "Grid.Column"));
+        var stackActionsHost = Assert.Single(
+            stackHeader.Elements(),
+            element => element.Name.LocalName == "StackPanel"
+                && AttributeValue(element, "Grid.Column") == "2");
+        Assert.Equal("Right", AttributeValue(stackActionsHost, "HorizontalAlignment"));
+        Assert.DoesNotContain(
+            stackHeader.Elements(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "Width") == "2");
+        var resourceRowTemplate = Assert.Single(
+            docker.Descendants(),
+            element => element.Name.LocalName == "DataTemplate"
+                && AttributeValue(element, "Key") == "DockerResourceItemTemplate");
+        var resourceRow = Assert.Single(
+            resourceRowTemplate.Descendants(),
+            element => element.Name.LocalName == "ListItem"
+                && HasClass(element, "DockerResourceListItem"));
+        Assert.Equal("12,8", AttributeValue(resourceRow, "ContentPadding"));
+        Assert.Equal("{Binding Title}", AttributeValue(resourceRow, "Title"));
+        Assert.Equal("{Binding Subtitle}", AttributeValue(resourceRow, "Detail"));
+        Assert.Equal("{Binding Tertiary}", AttributeValue(resourceRow, "Metadata"));
+
+        var containerResourceRow = Assert.Single(
+            docker.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && HasClass(element, "DockerResourceRow"));
+        Assert.Equal(
+            "{StaticResource DockerResourceItemTemplate}",
+            AttributeValue(containerResourceRow, "ContentTemplate"));
+        var flatResourceList = Assert.Single(
+            docker.Descendants(),
+            element => element.Name.LocalName == "ListBox"
+                && HasClass(element, "DockerResources"));
+        Assert.Equal(
+            "{StaticResource DockerResourceItemTemplate}",
+            AttributeValue(flatResourceList, "ItemTemplate"));
+        Assert.DoesNotContain(
+            docker.Descendants(),
+            element => HasClass(element, "DockerStackRowContent"));
+
+        var stackActions = stackActionsHost.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Where(element => AttributeValue(element, "AutomationProperties.Name")
+                ?.EndsWith(" stack", StringComparison.Ordinal) == true)
+            .ToArray();
+        Assert.Equal(5, stackActions.Length);
+        Assert.Equal(
+            ["Start stack", "Stop stack", "Restart stack", "Pause stack", "Resume stack"],
+            stackActions.Select(button => AttributeValue(button, "AutomationProperties.Name")));
+        var stackActionToggles = stackActionsHost.Elements()
+            .Where(element => element.Name.LocalName == "Grid"
+                && AttributeValue(element, "Width") == "24"
+                && AttributeValue(element, "Height") == "24")
+            .ToArray();
+        Assert.Equal(2, stackActionToggles.Length);
+        var stackStartStopToggle = Assert.Single(
+            stackActionToggles,
+            element => element.Descendants().Any(button =>
+                AttributeValue(button, "Click") == "OnStartStackClick"));
+        Assert.Contains(
+            stackStartStopToggle.Elements(),
+            element => AttributeValue(element, "Click") == "OnStartStackClick"
+                && AttributeValue(element, "IsVisible") == "{Binding !CanStop}");
+        Assert.Contains(
+            stackStartStopToggle.Elements(),
+            element => AttributeValue(element, "Click") == "OnStopStackClick"
+                && AttributeValue(element, "IsVisible") == "{Binding CanStop}");
+        var stackPauseResumeToggle = Assert.Single(
+            stackActionToggles,
+            element => element.Descendants().Any(button =>
+                AttributeValue(button, "Click") == "OnPauseStackClick"));
+        Assert.Contains(
+            stackPauseResumeToggle.Elements(),
+            element => AttributeValue(element, "Click") == "OnPauseStackClick"
+                && AttributeValue(element, "IsVisible") == "{Binding CanPause}");
+        Assert.Contains(
+            stackPauseResumeToggle.Elements(),
+            element => AttributeValue(element, "Click") == "OnResumeStackClick"
+                && AttributeValue(element, "IsVisible") == "{Binding !CanPause}");
+
+        var statusTiles = docker.Descendants()
+            .Where(element => element.Name.LocalName == "IdentityTile"
+                && AttributeValue(element, "Tint") == "{Binding StatusColor}")
+            .ToArray();
+        Assert.Single(statusTiles);
+        Assert.DoesNotContain(
+            docker.Descendants(),
+            element => element.Name.LocalName == "Ellipse"
+                && AttributeValue(element, "Fill") == "{Binding StatusColor}");
+
+        var resourceRowStyle = Assert.Single(
+            docker.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector") == "Button.DockerResourceRow");
+        Assert.Contains(
+            resourceRowStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "Margin"
+                && AttributeValue(element, "Value")
+                    == "{controls:Inset Horizontal=Sm}");
+        Assert.Contains(
+            resourceRowStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "HorizontalAlignment"
+                && AttributeValue(element, "Value") == "Stretch");
+
+        var designSystem = Assert.IsType<XElement>(
+            XDocument.Load(Path.Combine(
+                ApplicationViews.RepositoryRoot,
+                "src",
+                "GhostShell.App",
+                "Styles",
+                "DesignSystem.axaml")).Root);
+        var generatedItemStyle = Assert.Single(
+            designSystem.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "ItemsControl.StretchItems > ContentPresenter");
+        Assert.Contains(
+            generatedItemStyle.Elements(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "HorizontalAlignment"
+                && AttributeValue(element, "Value") == "Stretch");
+    }
+
+    [Fact]
+    public void List_selection_surfaces_keep_one_consistent_side_gutter()
+    {
+        var theme = Assert.IsType<XElement>(
+            XDocument.Load(Path.Combine(
+                ApplicationViews.RepositoryRoot,
+                "src",
+                "GhostShell.App",
+                "Styles",
+                "GhostShellTheme.axaml")).Root);
+
+        foreach (var selector in new[] { "ListBoxItem", "Button.ListRow" })
+        {
+            var style = Assert.Single(
+                theme.Descendants(),
+                element => element.Name.LocalName == "Style"
+                    && AttributeValue(element, "Selector") == selector);
+            Assert.Contains(
+                style.Elements(),
+                element => element.Name.LocalName == "Setter"
+                    && AttributeValue(element, "Property") == "Margin"
+                    && AttributeValue(element, "Value")
+                        == "{controls:Inset Horizontal=Xs}");
+        }
+
+        var processMonitor = Assert.IsType<XElement>(
+            XDocument.Load(RuntimePanelPath("ProcessMonitorRuntimePanelView", ".axaml")).Root);
+        var processList = Assert.Single(
+            processMonitor.Descendants(),
+            element => element.Name.LocalName == "ListBox"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "Bounded process list");
+        Assert.Equal("{controls:Inset Xs}", AttributeValue(processList, "Margin"));
+    }
+
     /// <summary>
     /// Every panel wears the same chrome, and it comes from the component rather
     /// than from the view.

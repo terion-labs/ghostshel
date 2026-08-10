@@ -34,6 +34,7 @@
             AddConnectionRequested="OnAddConnectionClick"
             NewBrowserRequested="OnChooseBrowserClick"
             NewDatabaseRequested="OnChooseDatabaseClick"
+            NewDockerRequested="OnChooseDockerClick"
             NewFileViewerRequested="OnChooseFileViewerClick"
             NewLocalTerminalRequested="OnChooseTerminalClick"
             NewProcessMonitorRequested="OnChooseProcessMonitorClick"

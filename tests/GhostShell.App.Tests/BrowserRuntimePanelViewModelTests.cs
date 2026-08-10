@@ -202,10 +202,11 @@ public sealed class BrowserRuntimePanelViewModelTests
     }
 
     [Fact]
-    public void BrowserStateFlowsIntoRecoveryAndRendererLifetimeIsReleasedOnce()
+    public async Task BrowserStateFlowsIntoRecoveryAndRendererLifetimeIsReleasedOnce()
     {
         var lifetime = new RecordingLifetime();
         var renderer = new RecordingBrowserRenderer();
+        var rendererView = new BrowserRendererView(new Border(), renderer, lifetime);
         var panel = new BrowserRuntimePanelViewModel(
             new PanelInstanceId("browser-panel"),
             "Documentation",
@@ -218,7 +219,9 @@ public sealed class BrowserRuntimePanelViewModelTests
             BrowserAddress.Blank,
             DispatchProxy.Create<ISessionHostClient, NoopSessionClient>(),
             new ClientId("client"),
-            new BrowserRendererView(new Border(), renderer, lifetime));
+            BuiltInConnections.Local,
+            new RecordingBrowserRendererViewFactory(rendererView));
+        await panel.StartInitialization();
         var address = Address("https://docs.example.test/guide");
         panel.ApplyBrowserState(new BrowserSessionState(
             address,
@@ -256,7 +259,7 @@ public sealed class BrowserRuntimePanelViewModelTests
             Assert.Single(recovery!.Workspace!.Tabs).Panels);
         Assert.Equal(RuntimePanelRecoveryKind.Browser, recoveredPanel.Kind);
         Assert.Equal(address.ToString(), recoveredPanel.StartupLocation);
-        Assert.Null(recoveredPanel.ConnectionId);
+        Assert.Equal(BuiltInConnections.Local.Id.Value, recoveredPanel.ConnectionId);
         Assert.Null(recoveredPanel.FileLocation);
 
         panel.Dispose();
@@ -275,6 +278,20 @@ public sealed class BrowserRuntimePanelViewModelTests
         public int DisposeCount { get; private set; }
 
         public void Dispose() => DisposeCount++;
+    }
+
+    private sealed class RecordingBrowserRendererViewFactory(
+        BrowserRendererView rendererView) : IBrowserRendererViewFactory
+    {
+        public BrowserRendererView Create() => rendererView;
+
+        public ValueTask<BrowserRendererView> CreateAsync(
+            ConnectionProfile connection,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(rendererView);
+        }
     }
 
     private sealed class RecordingBrowserRenderer : IBrowserRenderer

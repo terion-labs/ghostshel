@@ -9,7 +9,8 @@ public sealed record ScreenConnectionOption(
     ConnectionId Id,
     string Name,
     string Kind,
-    bool IsAvailable)
+    bool IsAvailable,
+    ConnectionKind? ConnectionKind = null)
 {
     public string DisplayName => IsAvailable ? $"{Name} · {Kind}" : $"Missing · {Name}";
 }
@@ -647,7 +648,8 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
                 connection.Id,
                 connection.Name,
                 KindBadges.Connection(connection.ConnectionKind),
-                true))
+                true,
+                connection.ConnectionKind))
             .ToList();
         foreach (var missingId in screen.Panels
             .Select(panel => panel.ConnectionId)
@@ -708,6 +710,7 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         new(ScreenPanelKind.Statistics, "Statistics"),
         new(ScreenPanelKind.ProcessMonitor, "Process monitor"),
         new(ScreenPanelKind.DatabaseViewer, "Database"),
+        new(ScreenPanelKind.Docker, "Docker"),
     ];
 
     private readonly ScreenPanelDefinition _original;
@@ -730,10 +733,13 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
             ?? throw new ArgumentNullException(nameof(fileProviderOptions));
         _selectedKind = KindOptions.Single(option => option.Kind == panel.Kind);
         _title = panel.Title ?? panel.Kind.ToString();
-        _selectedConnection = panel.Kind == ScreenPanelKind.Terminal
+        _selectedConnection = SupportsConnection
             && panel.ConnectionId is { } connectionId
             ? ConnectionOptions.SingleOrDefault(option => option.Id == connectionId)
-            : null;
+            : panel.Kind == ScreenPanelKind.Browser
+                ? ConnectionOptions.FirstOrDefault(option =>
+                    option.IsAvailable && option.ConnectionKind == ConnectionKind.Local)
+                : null;
         FileProviderProfileId? fileProviderId = panel.Kind == ScreenPanelKind.FileViewer
             ? panel.FileProviderProfileId ?? BuiltInFileProviders.HomeId
             : null;
@@ -783,6 +789,14 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
 
     public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
 
+    public IReadOnlyList<ScreenConnectionOption> ApplicableConnectionOptions =>
+        Kind == ScreenPanelKind.Browser
+            ? ConnectionOptions
+                .Where(option => option.ConnectionKind is ConnectionKind.Local or ConnectionKind.Ssh
+                    || !option.IsAvailable && option.Id == _original.ConnectionId)
+                .ToArray()
+            : ConnectionOptions;
+
     public IReadOnlyList<ScreenFileProviderOption> FileProviderOptions { get; }
 
     public string Title
@@ -796,7 +810,9 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         get => _selectedConnection;
         set
         {
-            var compatible = IsTerminal ? value : null;
+            var compatible = SupportsConnection && IsApplicableConnection(value)
+                ? value
+                : null;
             if (SetProperty(ref _selectedConnection, compatible))
             {
                 PublishReferenceState();
@@ -854,7 +870,9 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         }
     }
 
-    public bool HasMissingConnection => IsTerminal && SelectedConnection?.IsAvailable != true;
+    public bool HasMissingConnection => SupportsConnection
+        && (SelectedConnection?.IsAvailable != true
+            || !IsApplicableConnection(SelectedConnection));
 
     public bool HasMissingFileProvider => IsFileViewer && SelectedFileProvider?.IsAvailable != true;
 
@@ -868,6 +886,10 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
     public bool IsTerminal => Kind == ScreenPanelKind.Terminal;
 
     public bool IsFileViewer => Kind == ScreenPanelKind.FileViewer;
+
+    public bool SupportsConnection => Kind is ScreenPanelKind.Terminal
+        or ScreenPanelKind.Browser
+        or ScreenPanelKind.Docker;
 
     public bool SupportsLocation => Kind is ScreenPanelKind.Terminal
         or ScreenPanelKind.Browser
@@ -888,7 +910,7 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
             SlotId,
             Kind,
             string.IsNullOrWhiteSpace(Title) ? null : Title.Trim(),
-            IsTerminal ? SelectedConnection?.Id : null,
+            SupportsConnection ? SelectedConnection?.Id : null,
             new PanelStartupBehavior(
                 SupportsLocation ? StartupLocation : null,
                 commands,
@@ -900,11 +922,13 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
 
     private void NormalizeKindSpecificState()
     {
-        if (IsTerminal)
+        if (SupportsConnection)
         {
-            if (_selectedConnection?.IsAvailable != true)
+            if (_selectedConnection?.IsAvailable != true
+                || !IsApplicableConnection(_selectedConnection))
             {
-                _selectedConnection = ConnectionOptions.FirstOrDefault(option => option.IsAvailable);
+                _selectedConnection = ApplicableConnectionOptions.FirstOrDefault(option =>
+                    option.IsAvailable);
                 OnPropertyChanged(nameof(SelectedConnection));
             }
         }
@@ -958,6 +982,8 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(PanelLabel));
         OnPropertyChanged(nameof(IsTerminal));
         OnPropertyChanged(nameof(IsFileViewer));
+        OnPropertyChanged(nameof(SupportsConnection));
+        OnPropertyChanged(nameof(ApplicableConnectionOptions));
         OnPropertyChanged(nameof(SupportsLocation));
         OnPropertyChanged(nameof(HasInvalidBrowserAddress));
         PublishReferenceState();
@@ -969,4 +995,10 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(HasMissingFileProvider));
         OnPropertyChanged(nameof(HasMissingDefinition));
     }
+
+    private bool IsApplicableConnection(ScreenConnectionOption? option) =>
+        option is null
+        || Kind is not (ScreenPanelKind.Browser or ScreenPanelKind.Docker)
+        || option.ConnectionKind is ConnectionKind.Local or ConnectionKind.Ssh
+        || !option.IsAvailable && option.Id == _original.ConnectionId;
 }

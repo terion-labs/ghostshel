@@ -1,5 +1,6 @@
 <UserControl
     x:Class="GhostShell.App.Views.RuntimePanels.FileRuntimePanelView"
+    x:Name="FileRuntimePanelRoot"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
@@ -40,8 +41,24 @@
     <Style Selector="ListBoxItem.transferDropTarget /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
     </Style>
+    <!-- The Docker panel hosts this exact view inside its own panel chrome. In
+         embedded mode only that outer chrome disappears; the toolbar, layouts,
+         listing, preview, states, menus, and interaction code remain this same
+         component. -->
+    <Style Selector="controls|PanelChrome.embedded /template/ Border.PanelHeader">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="controls|PanelChrome.embedded /template/ Border.PanelFooter">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="controls|PanelChrome.embedded /template/ controls|SurfaceCard">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
   </UserControl.Styles>
   <controls:PanelChrome
+      Classes.embedded="{Binding IsEmbedded, ElementName=FileRuntimePanelRoot}"
       CloseLabel="Close File Viewer panel"
       CloseRequested="OnCloseClick"
       IsActive="{Binding IsActive}"
@@ -441,14 +458,14 @@
             <Border Background="{DynamicResource ShellSurfaceBrush}">
               <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding PreviewTitle}" TextTrimming="CharacterEllipsis" />
-                <!-- Only remote providers download anything, so the choice is
-                     offered only where it costs something. -->
+                <!-- Only providers that transfer preview bytes onto the host
+                     need this choice. -->
                 <StackPanel
                     Grid.Column="1"
                     Orientation="Horizontal"
                     VerticalAlignment="Center"
                     Spacing="{DynamicResource ShellSpaceSm}"
-                    IsVisible="{Binding IsRemoteProvider}">
+                    IsVisible="{Binding RequiresHostTransferForPreview}">
                   <TextBlock
                       VerticalAlignment="Center"
                       Classes="Muted"

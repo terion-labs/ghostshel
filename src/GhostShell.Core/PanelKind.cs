@@ -17,4 +17,7 @@ public enum PanelKind
 
     /// <summary>Appended after Placeholder so persisted history keeps its values.</summary>
     DatabaseViewer,
+
+    /// <summary>Appended so persisted session history keeps every existing numeric value.</summary>
+    Docker,
 }

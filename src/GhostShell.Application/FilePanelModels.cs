@@ -52,7 +52,8 @@ public sealed record FileProviderProfileDescriptor
         FilePanelCapability Capabilities,
         int MaximumPageSize,
         long MaximumPreviewBytes,
-        FilePanelLocation? StartLocation = null)
+        FilePanelLocation? StartLocation = null,
+        bool RequiresHostTransferForPreview = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Id);
         ArgumentException.ThrowIfNullOrWhiteSpace(Name);
@@ -83,6 +84,12 @@ public sealed record FileProviderProfileDescriptor
         this.Capabilities = Capabilities;
         this.MaximumPageSize = MaximumPageSize;
         this.MaximumPreviewBytes = MaximumPreviewBytes;
+        this.RequiresHostTransferForPreview = RequiresHostTransferForPreview
+            || Family is FileProviderFamily.S3
+                or FileProviderFamily.Sftp
+                or FileProviderFamily.Ftp
+                or FileProviderFamily.Smb
+                or FileProviderFamily.WebDav;
         if (StartLocation is not null && StartLocation.ProviderProfileId != Id)
         {
             throw new ArgumentException(
@@ -113,6 +120,13 @@ public sealed record FileProviderProfileDescriptor
     public int MaximumPageSize { get; }
 
     public long MaximumPreviewBytes { get; }
+
+    /// <summary>
+    /// Previewing this provider's files materializes content on the host. The
+    /// viewer uses this transport fact—not the provider's protocol name—to
+    /// apply its size gate and explicit-load toggle.
+    /// </summary>
+    public bool RequiresHostTransferForPreview { get; }
 
     public override string ToString() => Name;
 

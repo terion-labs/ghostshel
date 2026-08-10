@@ -4,6 +4,8 @@
 #ifndef EXCLR8CEF_OSR_H_
 #define EXCLR8CEF_OSR_H_
 
+#include <atomic>
+#include <cstdint>
 #include <mutex>
 
 #include "include/cef_client.h"
@@ -381,8 +383,14 @@ public:
                                  bool fullscreen) override;
 
     int id() const { return id_; }
-    int width() const { return width_; }
-    int height() const { return height_; }
+    int width() const {
+        std::lock_guard<std::mutex> lock(size_mu_);
+        return width_;
+    }
+    int height() const {
+        std::lock_guard<std::mutex> lock(size_mu_);
+        return height_;
+    }
     float device_scale_factor() const { return device_scale_factor_; }
     // browser_ is written on the CEF UI thread (OnAfterCreated /
     // OnBeforeClose) but read from the host's caller thread and the CEF IO
@@ -395,6 +403,10 @@ public:
     }
 
     void SetSize(int width, int height);
+    // Runs only on CEF's UI thread. Public so the ref-counted CefTask used
+    // to marshal/coalesce host resize requests can invoke it safely.
+    void ApplyPendingSizeOnUi();
+    void ApplySettledSizeOnUi(uint64_t scheduled_generation);
     void SetDeviceScaleFactor(float scale);
 
     // Drag-and-drop bookkeeping. The shim handles internal-page DnD entirely
@@ -411,9 +423,19 @@ public:
     }
 
 private:
+    void QueuePendingSizeOnUi();
+    void QueueSettledSizeOnUi();
+    bool PostSettledSizeTask(uint64_t generation);
+
     int id_;
-    int width_;   // DIP / CSS-pixel size of the view rect.
+    // Requested DIP / CSS-pixel size. Avalonia writes these on its UI
+    // thread while CEF reads them on TID_UI in GetViewRect/GetScreenInfo.
+    mutable std::mutex size_mu_;
+    int width_;
     int height_;
+    std::atomic<bool> resize_task_pending_{false};
+    std::atomic<uint64_t> resize_generation_{0};
+    std::atomic<bool> settled_resize_task_pending_{false};
     float device_scale_factor_;
     excef_paint_callback_t paint_cb_;
     mutable std::mutex browser_mu_;

@@ -1,9 +1,9 @@
 namespace GhostShell.Application;
 
 /// <summary>
-/// How previews of remote files spend the user's bandwidth and disk.
+/// How previews transferred onto the host spend the user's bandwidth and disk.
 ///
-/// One threshold carries two decisions on purpose. Below it a remote file is
+/// One threshold carries two decisions on purpose. Below it a transferred file is
 /// fetched the moment it is selected and its bytes live in memory; above it
 /// the preview waits to be asked for, and once asked for, the bytes go to the
 /// on-disk cache. A small file is cheap to fetch and cheap to hold; a large

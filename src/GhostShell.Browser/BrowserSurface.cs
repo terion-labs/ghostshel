@@ -32,6 +32,7 @@ public sealed class BrowserSurface :
     private readonly Func<IEmbeddedBrowserView>? _nativeViewReplacementFactory;
     private readonly Action<Control>? _nativeViewReplacementPresenter;
     private readonly TimeProvider _timeProvider;
+    private readonly IDisposable? _networkLifetime;
     private readonly TimeSpan _nativeSnapshotDeadline;
     private readonly object _snapshotReferenceGate = new();
     private Dictionary<string, SnapshotReferenceLease> _snapshotReferences = [];
@@ -61,6 +62,33 @@ public sealed class BrowserSurface :
     {
     }
 
+    /// <summary>
+    /// Creates an isolated browser whose TCP traffic leaves through a local
+    /// SOCKS5 endpoint. The request context is shared with replacement native
+    /// views so renderer recovery cannot silently fall back to the local route.
+    /// </summary>
+    public BrowserSurface(
+        BrowserCapabilityProfile capabilityProfile,
+        int socksProxyPort)
+        : this(
+            CefBrowserNetworkContext.Create(socksProxyPort),
+            capabilityProfile)
+    {
+    }
+
+    private BrowserSurface(
+        CefBrowserNetworkContext network,
+        BrowserCapabilityProfile capabilityProfile)
+        : this(
+            network.CreateView(),
+            AvaloniaBrowserUiDispatcher.Instance,
+            network.CreateView,
+            timeProvider: TimeProvider.System,
+            capabilityProfile: capabilityProfile,
+            networkLifetime: network)
+    {
+    }
+
     internal BrowserSurface(
         IEmbeddedBrowserView nativeView,
         IBrowserUiDispatcher? dispatcher = null,
@@ -68,7 +96,8 @@ public sealed class BrowserSurface :
         Action<Control>? nativeViewReplacementPresenter = null,
         TimeProvider? timeProvider = null,
         TimeSpan? nativeSnapshotDeadline = null,
-        BrowserCapabilityProfile? capabilityProfile = null)
+        BrowserCapabilityProfile? capabilityProfile = null,
+        IDisposable? networkLifetime = null)
     {
         _nativeView = nativeView ?? throw new ArgumentNullException(nameof(nativeView));
         _dispatcher = dispatcher ?? AvaloniaBrowserUiDispatcher.Instance;
@@ -76,6 +105,7 @@ public sealed class BrowserSurface :
         _nativeViewReplacementPresenter =
             nativeViewReplacementPresenter;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _networkLifetime = networkLifetime;
         CapabilityProfile = capabilityProfile
             ?? BrowserCapabilityProfile.Production;
         _nativeSnapshotDeadline =
@@ -139,7 +169,14 @@ public sealed class BrowserSurface :
         nativeView.NavigationRejected -= OnNavigationRejected;
         nativeView.RenderProcessFailed -= OnRenderProcessFailed;
         Content = null;
-        nativeView.Dispose();
+        try
+        {
+            nativeView.Dispose();
+        }
+        finally
+        {
+            _networkLifetime?.Dispose();
+        }
     }
 
     protected override void OnGotFocus(FocusChangedEventArgs e)

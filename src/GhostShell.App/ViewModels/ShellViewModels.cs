@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using GhostShell.App;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Docker;
 using FluentIcons.Common;
 
 namespace GhostShell.App.ViewModels;
@@ -2587,7 +2588,8 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         IConnectionSecurityRuntime? connectionSecurityRuntime = null,
         ConnectionReconnectPolicy? reconnectPolicy = null,
         Func<TimeSpan, CancellationToken, Task>? reconnectDelay = null,
-        TerminalKeymapSnapshot? keymap = null)
+        TerminalKeymapSnapshot? keymap = null,
+        PanelSessionRole sessionRole = PanelSessionRole.Primary)
         : base(
             id,
             PanelKind.Terminal,
@@ -2602,6 +2604,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         _owner = owner;
         _renderProfile = renderProfile;
         _keymap = keymap;
+        SessionRole = sessionRole;
         _reconnectPolicy = reconnectPolicy ?? ConnectionReconnectPolicy.InteractiveDefault;
         _reconnectDelay = reconnectDelay ?? ((delay, token) => Task.Delay(delay, token));
         _reconnectMode = connection.ConnectionKind == ConnectionKind.Local
@@ -2616,7 +2619,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         StartupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         StartupCommandDispatchState = new TerminalStartupCommandDispatchState(
-            id,
+            _owner.PanelId,
             _startupCommands,
             StartupCommandContext,
             failurePolicy: startup.DeliveryFailurePolicy);
@@ -2743,6 +2746,8 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     }
 
     public ISessionHostClient SessionClient { get; }
+
+    public PanelSessionRole SessionRole { get; }
 
     public ClientId ClientId { get; }
 
@@ -3386,11 +3391,20 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         var launch = plan.Launch.WithPresentationProfiles(
             _renderProfile,
             _keymap);
+        var startupCommands = StartupCommandDispatchState.Commands;
+        if (startupCommands.Count == 1
+            && DockerContainerShellCommand.IsContainerShellCommand(startupCommands[0]))
+        {
+            launch = launch.WithShellActivityFallback(
+                TerminalShellActivityFallback.PromptShape);
+        }
+
         return ConnectionAttemptOutcome.Succeed(new EnsureTerminalSessionRequest(
             SessionId.New(),
             _owner,
             Title,
-            launch));
+            launch,
+            SessionRole));
     }
 
     private async Task<ConnectionRuntimeError?> PrepareHostKeyAsync(

@@ -26,11 +26,12 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private bool _ignoreInitialBlank = true;
     private bool _disposed;
 
-    public CefBrowserView()
+    public CefBrowserView(CefRequestContext? requestContext = null)
     {
         _webView = new CefWebView
         {
             Url = BrowserAddress.Blank.Value.AbsoluteUri,
+            RequestContext = requestContext,
         };
         _webView.BrowserReady += OnBrowserReady;
     }

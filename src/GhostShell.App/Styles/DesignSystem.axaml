@@ -647,10 +647,14 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Template">
         <ControlTemplate>
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <ContentPresenter VerticalAlignment="Center" Content="{TemplateBinding Leading}" />
+          <Grid
+              Margin="{TemplateBinding ContentPadding}"
+              ColumnDefinitions="Auto,*,Auto"
+              ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <ContentPresenter Name="PART_Leading" VerticalAlignment="Center" Content="{TemplateBinding Leading}" />
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
               <TextBlock
+                  Name="PART_Title"
                   FontWeight="SemiBold"
                   Text="{TemplateBinding Title}"
                   TextTrimming="CharacterEllipsis" />
@@ -661,8 +665,16 @@
                   Text="{TemplateBinding Detail}"
                   TextTrimming="CharacterEllipsis"
                   IsVisible="False" />
+              <TextBlock
+                  Name="PART_Metadata"
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellPillFontSize}"
+                  Text="{TemplateBinding Metadata}"
+                  TextTrimming="CharacterEllipsis"
+                  IsVisible="False" />
             </StackPanel>
             <ContentPresenter
+                Name="PART_Trailing"
                 Grid.Column="2"
                 VerticalAlignment="Center"
                 Content="{TemplateBinding Trailing}" />
@@ -671,6 +683,9 @@
       </Setter>
 
       <Style Selector="^:detailed /template/ TextBlock#PART_Detail">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:metadata /template/ TextBlock#PART_Metadata">
         <Setter Property="IsVisible" Value="True" />
       </Style>
     </ControlTheme>
@@ -953,4 +968,16 @@
     </ControlTheme>
 
   </Styles.Resources>
+
+  <!-- A vertical ItemsControl does not generate ListBoxItem containers, so it
+       does not inherit the shell's normal full-width list-row alignment. Apply
+       this class to list-shaped ItemsControls; horizontal strips and wrapping
+       galleries intentionally keep their content-sized presenters. -->
+  <Style Selector="ItemsControl.StretchItems">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+
+  <Style Selector="ItemsControl.StretchItems > ContentPresenter">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
 </Styles>

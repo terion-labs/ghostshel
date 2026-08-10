@@ -392,6 +392,51 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task DockerExecShellAtContainerPromptClosesWithoutFalseWorkingWarning()
+    {
+        var harness = await CreateAsync(new TerminalLaunchRequest(
+            Environment.CurrentDirectory,
+            shellActivityFallback: TerminalShellActivityFallback.PromptShape));
+        await using var session = harness.Session;
+        await harness.Pty.WriteOutputAsync(
+            "\u001b]133;A\u0007host% \u001b]133;B\u0007"
+            + "docker exec --interactive --tty grafana /bin/sh\u001b]133;C\u0007"
+            + "\r\n/usr/share/grafana $ ");
+        _ = await WaitForScreenAsync(
+            session,
+            current => current.ShellIntegrationEvents.Count == 3
+                && current.PlainText.Contains("/usr/share/grafana $", StringComparison.Ordinal));
+
+        var snapshot = await session.SnapshotAsync(default);
+
+        Assert.False(snapshot.HasActiveWork);
+        Assert.Equal(
+            PanelCloseOutcome.GracefullyClosed,
+            await session.CloseAsync(PanelCloseMode.Graceful, default));
+    }
+
+    [Fact]
+    public async Task OrdinaryRunningCommandThatPrintsPromptShapeStillRequiresConfirmation()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await harness.Pty.WriteOutputAsync(
+            "\u001b]133;A\u0007$ \u001b]133;B\u0007"
+            + "printf '$ '\u001b]133;C\u0007");
+        _ = await WaitForScreenAsync(
+            session,
+            current => current.ShellIntegrationEvents.Count == 3
+                && current.PlainText.Contains("$", StringComparison.Ordinal));
+
+        var snapshot = await session.SnapshotAsync(default);
+
+        Assert.True(snapshot.HasActiveWork);
+        Assert.Equal(
+            PanelCloseOutcome.ConfirmationRequired,
+            await session.CloseAsync(PanelCloseMode.Graceful, default));
+    }
+
+    [Fact]
     public async Task Kitty_image_content_and_placement_follow_the_terminal_storage_lifecycle()
     {
         var harness = await CreateAsync();
@@ -677,14 +722,15 @@ public sealed class GhosttyVtTerminalSessionTests
         Assert.EndsWith("q", ptyFactory.Connection.WrittenText, StringComparison.Ordinal);
     }
 
-    private static async Task<GhosttyVtHarness> CreateAsync()
+    private static async Task<GhosttyVtHarness> CreateAsync(
+        TerminalLaunchRequest? launch = null)
     {
         _ = GhosttyVtTestRuntime.RequireStagedRuntime();
         var ptyFactory = new FakePortablePtyFactory();
         var factory = new GhosttyVtTerminalSessionFactory(ptyFactory);
         var session = await factory.CreateAsync(
             SessionId.New(),
-            new TerminalLaunchRequest(Environment.CurrentDirectory),
+            launch ?? new TerminalLaunchRequest(Environment.CurrentDirectory),
             default);
         return new GhosttyVtHarness(
             Assert.IsType<GhosttyVtTerminalSession>(session),

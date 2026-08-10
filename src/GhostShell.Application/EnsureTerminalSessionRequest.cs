@@ -6,4 +6,5 @@ public sealed record EnsureTerminalSessionRequest(
     SessionId SessionId,
     SessionOwner Owner,
     string Title,
-    TerminalLaunchRequest Launch);
+    TerminalLaunchRequest Launch,
+    PanelSessionRole Role = PanelSessionRole.Primary);

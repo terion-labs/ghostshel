@@ -661,6 +661,46 @@ public sealed class WorkspaceGraphOperationTests
     }
 
     [Fact]
+    public async Task Embedded_terminal_is_owned_by_a_docker_panel_without_claiming_its_primary_link()
+    {
+        await using var harness = new SessionHostTestHarness();
+        var workspace = OwnedWorkspace(harness, PanelKind.Docker);
+        _ = (await RegisterAsync(harness, harness.WindowId, workspace)).Value();
+
+        var opened = await harness.Client.EnsureTerminalSessionAsync(
+            new EnsureTerminalSessionRequest(
+                harness.SessionId,
+                Owner(harness),
+                "Container shell",
+                new TerminalLaunchRequest("/tmp"),
+                PanelSessionRole.Embedded),
+            harness.HumanContext(),
+            CancellationToken.None);
+
+        Assert.Equal(harness.SessionId, opened.Value().Descriptor.Id);
+        var afterOpen = (await harness.Client.GetWorkspaceGraphAsync(
+            workspace.Id,
+            harness.HumanContext(),
+            CancellationToken.None)).Value();
+        Assert.Null(Assert.Single(Assert.Single(afterOpen.Workspace.Tabs).Panels).SessionId);
+
+        var replaced = await RegisterAsync(
+            harness,
+            harness.WindowId,
+            workspace,
+            afterOpen.Revision);
+        Assert.Null(Assert.Single(Assert.Single(
+            replaced.Value().Workspace.Tabs).Panels).SessionId);
+
+        var closed = (await harness.Client.CloseAsync(
+            CloseScopeRequest.Panel(harness.PanelId, CloseDecision.Request),
+            harness.HumanContext(),
+            CancellationToken.None)).Value();
+        var completed = Assert.IsType<CloseScopeResult.Completed>(closed);
+        Assert.Equal(harness.SessionId, Assert.Single(completed.Sessions).SessionId);
+    }
+
+    [Fact]
     public async Task Registration_rejects_an_already_live_session_with_an_invalid_panel_reference()
     {
         await using var harness = new SessionHostTestHarness();

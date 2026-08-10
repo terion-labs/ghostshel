@@ -282,7 +282,7 @@ public sealed class TransientOverlayViewContractTests
                 "ChooserButton",
                 "LauncherTile"))
             .ToArray();
-        Assert.Equal(6, choices.Length);
+        Assert.Equal(7, choices.Length);
 
         var initialAction = FindNamedElement(catalogRoot, "NewTerminalButton");
         Assert.Equal(
@@ -401,7 +401,7 @@ public sealed class TransientOverlayViewContractTests
                 "ChooserButton",
                 "PanelChooser"))
             .ToArray();
-        Assert.Equal(6, choices.Length);
+        Assert.Equal(7, choices.Length);
 
         var initialAction = FindNamedElement(root, "NewPanelTerminalButton");
         Assert.Equal(
