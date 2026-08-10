@@ -24,6 +24,20 @@ public sealed partial class RuntimeTabStripView : UserControl
             nameof(Orientation),
             Orientation.Horizontal);
 
+    /// <summary>
+    /// Whether an overflowing strip draws a hairline after its add button.
+    /// Only the title-bar strip wants it — that is the one place something
+    /// else sits immediately beyond the strip's end.
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowsOverflowSeparatorProperty =
+        AvaloniaProperty.Register<RuntimeTabStripView, bool>(nameof(ShowsOverflowSeparator));
+
+    public bool ShowsOverflowSeparator
+    {
+        get => GetValue(ShowsOverflowSeparatorProperty);
+        set => SetValue(ShowsOverflowSeparatorProperty, value);
+    }
+
     public RuntimeTabStripView()
     {
         InitializeComponent();
@@ -92,6 +106,10 @@ public sealed partial class RuntimeTabStripView : UserControl
             SyncAddButtonDock();
             UpdateOverflowFade();
         }
+        else if (change.Property == ShowsOverflowSeparatorProperty)
+        {
+            UpdateOverflowFade();
+        }
     }
 
     /// <summary>The add button sits past the strip's growing end, outside the scroll.</summary>
@@ -124,6 +142,9 @@ public sealed partial class RuntimeTabStripView : UserControl
             ? TabScrollViewer.Viewport.Width
             : TabScrollViewer.Viewport.Height;
         var offset = horizontal ? TabScrollViewer.Offset.X : TabScrollViewer.Offset.Y;
+        OverflowSeparator.IsVisible = ShowsOverflowSeparator
+            && horizontal
+            && extent - viewport > 1;
         var fadeStart = offset > 1;
         var fadeEnd = extent - viewport - offset > 1;
         if (viewport <= 0 || (!fadeStart && !fadeEnd))

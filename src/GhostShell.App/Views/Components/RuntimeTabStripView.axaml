@@ -11,8 +11,21 @@
     VerticalContentAlignment="Stretch">
   <!-- The add button lives outside the scroll: it is always reachable, no
        matter how many tabs overflowed. The scrollbar is hidden — overflow
-       announces itself as a fade at the strip's edge instead of a bar. -->
+       announces itself as a fade at the strip's edge instead of a bar.
+
+       The strip shrinks to its tabs, so while they fit the button rides the
+       last tab's edge; only an overflowing strip pins it to the far end,
+       where this hairline steps it off from whatever sits beyond. -->
   <DockPanel>
+    <Border
+        x:Name="OverflowSeparator"
+        DockPanel.Dock="Right"
+        Width="1"
+        Height="14"
+        Margin="{controls:Inset Left=Sm}"
+        VerticalAlignment="Center"
+        Background="{DynamicResource ShellBorderBrush}"
+        IsVisible="False" />
     <Button
         x:Name="AddTabButton"
         DockPanel.Dock="Right"

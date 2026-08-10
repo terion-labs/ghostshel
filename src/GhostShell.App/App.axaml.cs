@@ -231,6 +231,18 @@ public sealed partial class App : Avalonia.Application
         QuickTerminalController.Toggle();
     }
 
+    /// <summary>
+    /// Cmd+T opens a tab the way the strip's plus does — the launcher chooses
+    /// what goes in it. The straight-to-terminal path keeps its own entry a
+    /// shift away.
+    /// </summary>
+    private async void OnNewTabMenuClick(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await MainWindow.ShowNewItemLauncherAsync();
+    }
+
     private async void OnNewTerminalMenuClick(object? sender, EventArgs e)
     {
         _ = sender;

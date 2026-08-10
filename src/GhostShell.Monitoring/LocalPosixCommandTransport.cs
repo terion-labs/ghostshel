@@ -23,8 +23,8 @@ public sealed class LocalPosixCommandTransport : IPosixCommandTransport
         try
         {
             // Process.Start performs fork/exec synchronously on Unix. Running it
-            // on Avalonia's main thread can stall every composited panel while
-            // the runtime and allocator prepare the child process.
+            // on the UI thread can stall every composited panel while the
+            // runtime and allocator prepare the child process.
             var started = await Task.Run(process.Start, cancellationToken)
                 .ConfigureAwait(false);
             if (!started)

@@ -135,8 +135,10 @@
         <components:RuntimeTabStripView
             x:Name="RuntimeTabStrip"
             Grid.Column="1"
+            HorizontalAlignment="Left"
             Tabs="{Binding RuntimeWorkspace.Tabs}"
             Orientation="Horizontal"
+            ShowsOverflowSeparator="True"
             IsVisible="{Binding IsTabStripVisibleOnTop}"
             WindowDecorationProperties.ElementRole="User"
             AutomationProperties.Name="Open runtime tabs"
@@ -227,6 +229,7 @@
       <components:RuntimeTabStripView
           x:Name="RuntimeTabStripBottom"
           Margin="{controls:Inset Horizontal=Md}"
+          HorizontalAlignment="Left"
           Tabs="{Binding RuntimeWorkspace.Tabs}"
           Orientation="Horizontal"
           AutomationProperties.Name="Open runtime tabs"

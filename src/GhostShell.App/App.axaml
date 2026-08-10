@@ -24,8 +24,12 @@
           Click="OnQuickTerminalMenuClick" />
       <NativeMenuItemSeparator />
       <NativeMenuItem
-          Header="New Terminal Tab"
+          Header="New Tab"
           Gesture="Meta+T"
+          Click="OnNewTabMenuClick" />
+      <NativeMenuItem
+          Header="New Terminal Tab"
+          Gesture="Meta+Shift+T"
           Click="OnNewTerminalMenuClick" />
       <NativeMenuItem
           Header="Add Panel…"
