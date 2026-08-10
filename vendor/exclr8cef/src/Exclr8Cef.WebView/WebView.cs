@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -49,6 +50,7 @@ public class WebView : Control, IWebView, IDisposable
         _browserReady = false;
         IsAcceleratedRenderingActive = false;
         StopExternalFramePacing();
+        StopPerformanceDiagnostics();
         if (_browser is not null)
         {
             UnsubscribeBrowserEvents(_browser);
@@ -254,7 +256,9 @@ public class WebView : Control, IWebView, IDisposable
     private CompositionSurfaceVisual? _acceleratedPopupVisual;
     private CompositionDrawingSurface? _acceleratedMainSurface;
     private CompositionDrawingSurface? _acceleratedPopupSurface;
+    private bool _usesExternalFramePacing;
     private bool _externalFramePacingActive;
+    private CancellationTokenSource? _performanceDiagnosticsCancellation;
     private ContextMenu? _browserContextMenu;
     private ContextMenuEventArgs? _browserContextMenuRequest;
     private long _acceleratedFramesReceived;
@@ -272,10 +276,18 @@ public class WebView : Control, IWebView, IDisposable
     private long _diagnosticsWindowDroppedFrames;
     private long _diagnosticsWindowPresentedFrames;
     private long _diagnosticsWindowPresentationTicks;
+    private readonly FrameCadenceDiagnostics? _receivedFrameCadence;
+    private readonly FrameCadenceDiagnostics? _presentedFrameCadence;
     private bool _disposed;
 
     public WebView()
     {
+        if (AccelerationDiagnosticsEnabled())
+        {
+            _receivedFrameCadence = new FrameCadenceDiagnostics();
+            _presentedFrameCadence = new FrameCadenceDiagnostics();
+        }
+
         ClipToBounds = true;
         Focusable = true;
 
@@ -512,6 +524,7 @@ public class WebView : Control, IWebView, IDisposable
         catch { /* a misbehaving handler doesn't get to wedge teardown */ }
         if (args.Cancel) return false;
         StopExternalFramePacing();
+        StopPerformanceDiagnostics();
         UnsubscribeBrowserEvents(_browser);
         _browser.Close(force: true);
         _browser = null;
@@ -544,6 +557,10 @@ public class WebView : Control, IWebView, IDisposable
         }
 
         StartExternalFramePacingIfReady();
+        if (_browserReady && _browser is not null)
+        {
+            StartPerformanceDiagnostics(_browser);
+        }
         BeginAcceleratedPresentationInitialization();
     }
 
@@ -551,6 +568,7 @@ public class WebView : Control, IWebView, IDisposable
     {
         _attached = false;
         StopExternalFramePacing();
+        StopPerformanceDiagnostics();
         _browser?.WasHidden(true);
 
         if (_hostedWindow is not null)
@@ -606,7 +624,10 @@ public class WebView : Control, IWebView, IDisposable
             _browserWidth = w;
             _browserHeight = h;
             _renderScale = scale;
-            var flags = BrowserCreationFlags(_gpuInterop is not null);
+            bool accelerated = _gpuInterop is not null;
+            bool displayLinked = accelerated
+                && DisplayLinkedFramePacingEnabled();
+            var flags = BrowserCreationFlags(accelerated, displayLinked);
             var browser = Cef.CreateOffscreenBrowserEx(
                 w,
                 h,
@@ -619,11 +640,17 @@ public class WebView : Control, IWebView, IDisposable
                 _browser = browser;
                 IsAcceleratedRenderingActive =
                     (flags & Cef.OffscreenFlags.SharedTexture) != 0;
+                _usesExternalFramePacing =
+                    (flags & Cef.OffscreenFlags.ExternalBeginFrame) != 0;
                 if (AccelerationDiagnosticsEnabled())
                 {
                     Console.Error.WriteLine(
                         IsAcceleratedRenderingActive
-                            ? "[exclr8cef] CEF shared-texture mode is active."
+                            ? _usesExternalFramePacing
+                                ? "[exclr8cef] CEF shared-texture mode uses " +
+                                    "CoreVideo display-link pacing."
+                                : "[exclr8cef] CEF shared-texture mode uses " +
+                                    "the fixed 60 fps CEF timer."
                             : "[exclr8cef] CEF is using the CPU paint fallback.");
                 }
                 SubscribeBrowserEvents(browser);
@@ -639,8 +666,13 @@ public class WebView : Control, IWebView, IDisposable
                     {
                         browser.WindowlessFrameRate = CpuFallbackFrameRate;
                     }
+                    else if (!_usesExternalFramePacing)
+                    {
+                        browser.WindowlessFrameRate = 60;
+                    }
                     _browserReady = true;
                     StartExternalFramePacingIfReady();
+                    StartPerformanceDiagnostics(browser);
                     _browserReadyHandlers?.Invoke(this, EventArgs.Empty);
                 };
             }
@@ -663,11 +695,20 @@ public class WebView : Control, IWebView, IDisposable
         return size;
     }
 
-    internal static Cef.OffscreenFlags BrowserCreationFlags(bool accelerated) =>
-        accelerated
+    internal static Cef.OffscreenFlags BrowserCreationFlags(
+        bool accelerated,
+        bool displayLinked = true)
+    {
+        if (!accelerated)
+        {
+            return Cef.OffscreenFlags.None;
+        }
+
+        return displayLinked
             ? Cef.OffscreenFlags.SharedTexture
                 | Cef.OffscreenFlags.ExternalBeginFrame
-            : Cef.OffscreenFlags.None;
+            : Cef.OffscreenFlags.SharedTexture;
+    }
 
     internal const int CpuFallbackFrameRate = 30;
 
@@ -869,6 +910,7 @@ public class WebView : Control, IWebView, IDisposable
         }
 
         Interlocked.Increment(ref _acceleratedFramesReceived);
+        _receivedFrameCadence?.Record(Stopwatch.GetTimestamp());
 
         MacAcceleratedFrame? frame;
         long copyStartedAt = Stopwatch.GetTimestamp();
@@ -1042,6 +1084,7 @@ public class WebView : Control, IWebView, IDisposable
             long presentationTicks =
                 Stopwatch.GetTimestamp() - presentationStartedAt;
             Interlocked.Increment(ref _acceleratedFramesPresented);
+            _presentedFrameCadence?.Record(Stopwatch.GetTimestamp());
             Interlocked.Add(
                 ref _acceleratedPresentationTicks,
                 presentationTicks);
@@ -1101,6 +1144,17 @@ public class WebView : Control, IWebView, IDisposable
                 "EXCLR8CEF_ACCELERATION_DIAGNOSTICS"),
             "1",
             StringComparison.Ordinal);
+
+    private static bool DisplayLinkedFramePacingEnabled() =>
+        DisplayLinkedFramePacingEnabled(
+            Environment.GetEnvironmentVariable("EXCLR8CEF_FRAME_PACING"));
+
+    internal static bool DisplayLinkedFramePacingEnabled(
+        string? requestedMode) =>
+        string.Equals(
+            requestedMode,
+            "display-link",
+            StringComparison.OrdinalIgnoreCase);
 
     private void ReportAccelerationDiagnosticsIfNeeded()
     {
@@ -1168,6 +1222,8 @@ public class WebView : Control, IWebView, IDisposable
             maximumCopyTicks * 1000d / Stopwatch.Frequency;
         double maximumPresentationMilliseconds =
             maximumPresentationTicks * 1000d / Stopwatch.Frequency;
+        var receivedCadence = _receivedFrameCadence?.TakeSnapshot();
+        var presentedCadence = _presentedFrameCadence?.TakeSnapshot();
 
         Console.Error.WriteLine(
             "[exclr8cef] Frame pacing: received {0:F1}/s, " +
@@ -1180,6 +1236,8 @@ public class WebView : Control, IWebView, IDisposable
             maximumCopyMilliseconds,
             averagePresentationMilliseconds,
             maximumPresentationMilliseconds);
+        ReportCadence("CEF paint", receivedCadence);
+        ReportCadence("presented", presentedCadence);
 
         _diagnosticsWindowStartedAt = now;
         _diagnosticsWindowReceivedFrames = receivedFrames;
@@ -1206,6 +1264,234 @@ public class WebView : Control, IWebView, IDisposable
             observed = previous;
         }
     }
+
+    private static void ReportCadence(
+        string stage,
+        FrameCadenceSnapshot? cadence)
+    {
+        if (cadence is not { IntervalCount: > 0 } value)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            "[exclr8cef] {0} cadence: {1:F1} fps, interval " +
+            "{2:F2} ± {3:F2} ms avg/stddev, {4:F2}/{5:F2} ms min/max.",
+            stage,
+            value.FramesPerSecond,
+            value.AverageMilliseconds,
+            value.StandardDeviationMilliseconds,
+            value.MinimumMilliseconds,
+            value.MaximumMilliseconds);
+    }
+
+    private void StartPerformanceDiagnostics(CefBrowser browser)
+    {
+        if (!AccelerationDiagnosticsEnabled())
+        {
+            return;
+        }
+
+        StopPerformanceDiagnostics();
+        _performanceDiagnosticsCancellation = new CancellationTokenSource();
+        _ = RunPerformanceDiagnosticsAsync(
+            browser,
+            _performanceDiagnosticsCancellation.Token);
+    }
+
+    private void StopPerformanceDiagnostics()
+    {
+        var cancellation = _performanceDiagnosticsCancellation;
+        _performanceDiagnosticsCancellation = null;
+        cancellation?.Cancel();
+    }
+
+    private static async Task RunPerformanceDiagnosticsAsync(
+        CefBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await browser.ExecuteDevToolsMethodAsync("Performance.enable")
+                .WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                await ReportPagePerformanceAsync(browser, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                "[exclr8cef] Page performance diagnostics stopped: {0}",
+                exception.Message);
+        }
+    }
+
+    private static async Task ReportPagePerformanceAsync(
+        CefBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        const string videoExpression = """
+            (() => ({
+              visibility: document.visibilityState,
+              videos: [...document.querySelectorAll('video')].map((video, index) => {
+                const quality = typeof video.getVideoPlaybackQuality === 'function'
+                  ? video.getVideoPlaybackQuality()
+                  : null;
+                return {
+                  index,
+                  paused: video.paused,
+                  ended: video.ended,
+                  readyState: video.readyState,
+                  networkState: video.networkState,
+                  currentTime: video.currentTime,
+                  duration: video.duration,
+                  playbackRate: video.playbackRate,
+                  width: video.videoWidth,
+                  height: video.videoHeight,
+                  totalVideoFrames: quality?.totalVideoFrames ?? video.webkitDecodedFrameCount ?? null,
+                  droppedVideoFrames: quality?.droppedVideoFrames ?? video.webkitDroppedFrameCount ?? null,
+                  corruptedVideoFrames: quality?.corruptedVideoFrames ?? null
+                };
+              })
+            }))()
+            """;
+        string videoParameters = JsonSerializer.Serialize(new
+        {
+            expression = videoExpression,
+            returnByValue = true,
+        });
+        string videoReply = await browser.ExecuteDevToolsMethodAsync(
+                "Runtime.evaluate",
+                videoParameters)
+            .WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+        string performanceReply = await browser.ExecuteDevToolsMethodAsync(
+                "Performance.getMetrics")
+            .WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+
+        Console.Error.WriteLine(
+            "[exclr8cef] Page video: {0}",
+            ReadRuntimeValue(videoReply));
+        Console.Error.WriteLine(
+            "[exclr8cef] Chromium metrics: {0}",
+            ReadPerformanceMetrics(performanceReply));
+    }
+
+    private static string ReadRuntimeValue(string reply)
+    {
+        using var document = JsonDocument.Parse(reply);
+        return document.RootElement
+            .GetProperty("result")
+            .GetProperty("result")
+            .GetProperty("value")
+            .GetRawText();
+    }
+
+    private static string ReadPerformanceMetrics(string reply)
+    {
+        HashSet<string> selectedNames =
+        [
+            "TaskDuration",
+            "ScriptDuration",
+            "LayoutDuration",
+            "RecalcStyleDuration",
+            "JSHeapUsedSize",
+            "Nodes",
+            "Frames",
+            "JSEventListeners",
+        ];
+        using var document = JsonDocument.Parse(reply);
+        var selected = new Dictionary<string, double>();
+        foreach (var metric in document.RootElement
+                     .GetProperty("result")
+                     .GetProperty("metrics")
+                     .EnumerateArray())
+        {
+            string? name = metric.GetProperty("name").GetString();
+            if (name is not null && selectedNames.Contains(name))
+            {
+                selected[name] = metric.GetProperty("value").GetDouble();
+            }
+        }
+        return JsonSerializer.Serialize(selected);
+    }
+
+    private sealed class FrameCadenceDiagnostics
+    {
+        private readonly object _gate = new();
+        private long _previousTimestamp;
+        private int _intervalCount;
+        private double _totalMilliseconds;
+        private double _squaredMilliseconds;
+        private double _minimumMilliseconds = double.MaxValue;
+        private double _maximumMilliseconds;
+
+        public void Record(long timestamp)
+        {
+            lock (_gate)
+            {
+                if (_previousTimestamp != 0)
+                {
+                    double milliseconds =
+                        (timestamp - _previousTimestamp) * 1000d
+                        / Stopwatch.Frequency;
+                    _intervalCount++;
+                    _totalMilliseconds += milliseconds;
+                    _squaredMilliseconds += milliseconds * milliseconds;
+                    _minimumMilliseconds = Math.Min(
+                        _minimumMilliseconds,
+                        milliseconds);
+                    _maximumMilliseconds = Math.Max(
+                        _maximumMilliseconds,
+                        milliseconds);
+                }
+                _previousTimestamp = timestamp;
+            }
+        }
+
+        public FrameCadenceSnapshot? TakeSnapshot()
+        {
+            lock (_gate)
+            {
+                if (_intervalCount == 0)
+                {
+                    return null;
+                }
+
+                double average = _totalMilliseconds / _intervalCount;
+                double variance = Math.Max(
+                    0,
+                    _squaredMilliseconds / _intervalCount
+                        - average * average);
+                var snapshot = new FrameCadenceSnapshot(
+                    _intervalCount,
+                    1000d / average,
+                    average,
+                    Math.Sqrt(variance),
+                    _minimumMilliseconds,
+                    _maximumMilliseconds);
+                _intervalCount = 0;
+                _totalMilliseconds = 0;
+                _squaredMilliseconds = 0;
+                _minimumMilliseconds = double.MaxValue;
+                _maximumMilliseconds = 0;
+                return snapshot;
+            }
+        }
+    }
+
+    private sealed record FrameCadenceSnapshot(
+        int IntervalCount,
+        double FramesPerSecond,
+        double AverageMilliseconds,
+        double StandardDeviationMilliseconds,
+        double MinimumMilliseconds,
+        double MaximumMilliseconds);
 
     // ---- Browser context menu -----------------------------------------
 
@@ -1392,6 +1678,7 @@ public class WebView : Control, IWebView, IDisposable
             || _disposed
             || !_browserReady
             || !IsAcceleratedRenderingActive
+            || !_usesExternalFramePacing
             || _browser is null)
         {
             return;

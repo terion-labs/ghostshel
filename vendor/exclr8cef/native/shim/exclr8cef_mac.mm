@@ -8,9 +8,13 @@
 #import <IOSurface/IOSurface.h>
 #import <Metal/Metal.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <mutex>
 
@@ -18,6 +22,7 @@
 #include "include/cef_application_mac.h"
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+#include "include/cef_task.h"
 #if defined(CEF_USE_SANDBOX)
 #include "include/cef_sandbox_mac.h"
 #endif
@@ -31,6 +36,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <vector>
 
 namespace {
 std::unique_ptr<CefScopedLibraryLoader> g_library_loader;
@@ -39,18 +45,94 @@ std::once_flag g_accelerated_copy_once;
 id<MTLDevice> g_accelerated_copy_device;
 id<MTLCommandQueue> g_accelerated_copy_queue;
 
-struct ExternalBeginFrameClock {
+struct ExternalBeginFrameClock :
+    public std::enable_shared_from_this<ExternalBeginFrameClock> {
     int browser_id = 0;
     CGDirectDisplayID display_id = 0;
     CVDisplayLinkRef display_link = nullptr;
+    std::atomic<bool> active{true};
+    std::atomic<bool> frame_task_pending{false};
     bool diagnostics = false;
     uint64_t diagnostic_ticks = 0;
     std::chrono::steady_clock::time_point diagnostic_started_at;
+    uint64_t previous_output_host_time = 0;
+    uint64_t interval_count = 0;
+    double interval_total_ms = 0;
+    double interval_squared_ms = 0;
+    double interval_minimum_ms = std::numeric_limits<double>::max();
+    double interval_maximum_ms = 0;
+    uint64_t late_intervals = 0;
+    double nominal_hz = 0;
+    double target_hz = 0;
+    double target_interval_host_ticks = 0;
+    double next_frame_host_time = 0;
+    uint64_t eligible_ticks = 0;
+    uint64_t coalesced_ticks = 0;
+    uint64_t post_failures = 0;
+    std::atomic<uint64_t> ui_send_count{0};
+    std::atomic<uint64_t> ui_send_total_ns{0};
+    std::atomic<uint64_t> ui_send_maximum_ns{0};
+    std::atomic<uint64_t> ui_dispatch_total_ns{0};
+    std::atomic<uint64_t> ui_dispatch_maximum_ns{0};
 };
 
 std::mutex g_external_begin_frame_clocks_mu;
-std::map<int, std::unique_ptr<ExternalBeginFrameClock>>
+std::map<int, std::shared_ptr<ExternalBeginFrameClock>>
     g_external_begin_frame_clocks;
+
+void RecordAtomicMaximum(
+    std::atomic<uint64_t>& target,
+    uint64_t value) {
+    uint64_t observed = target.load(std::memory_order_relaxed);
+    while (value > observed
+        && !target.compare_exchange_weak(
+            observed,
+            value,
+            std::memory_order_relaxed)) {
+    }
+}
+
+class ExternalBeginFrameTask final : public CefTask {
+public:
+    ExternalBeginFrameTask(
+        std::shared_ptr<ExternalBeginFrameClock> clock,
+        std::chrono::steady_clock::time_point posted_at)
+        : clock_(std::move(clock)),
+          posted_at_(posted_at) {}
+
+    void Execute() override {
+        const auto started_at = std::chrono::steady_clock::now();
+        const auto dispatch_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                started_at - posted_at_).count());
+        clock_->ui_dispatch_total_ns.fetch_add(
+            dispatch_ns,
+            std::memory_order_relaxed);
+        RecordAtomicMaximum(clock_->ui_dispatch_maximum_ns, dispatch_ns);
+
+        if (clock_->active.load(std::memory_order_acquire)) {
+            auto browser = exclr8cef::GetOsrBrowser(clock_->browser_id);
+            if (browser) {
+                browser->GetHost()->SendExternalBeginFrame();
+                const auto send_ns = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - started_at).count());
+                clock_->ui_send_count.fetch_add(1, std::memory_order_relaxed);
+                clock_->ui_send_total_ns.fetch_add(
+                    send_ns,
+                    std::memory_order_relaxed);
+                RecordAtomicMaximum(clock_->ui_send_maximum_ns, send_ns);
+            }
+        }
+
+        clock_->frame_task_pending.store(false, std::memory_order_release);
+    }
+
+private:
+    std::shared_ptr<ExternalBeginFrameClock> clock_;
+    std::chrono::steady_clock::time_point posted_at_;
+    IMPLEMENT_REFCOUNTING(ExternalBeginFrameTask);
+};
 
 void EnsureAcceleratedCopyDevice() {
     std::call_once(g_accelerated_copy_once, [] {
@@ -72,41 +154,183 @@ CGDirectDisplayID DisplayIdForWindow(void* window_handle) {
 CVReturn ExternalBeginFrameDisplayLinkCallback(
     CVDisplayLinkRef,
     const CVTimeStamp*,
-    const CVTimeStamp*,
+    const CVTimeStamp* output_time,
     CVOptionFlags,
     CVOptionFlags*,
     void* context) {
     auto* clock = static_cast<ExternalBeginFrameClock*>(context);
-    auto browser = exclr8cef::GetOsrBrowser(clock->browser_id);
-    if (browser) {
-        browser->GetHost()->SendExternalBeginFrame();
+    bool frame_due = true;
+    if ((output_time->flags & kCVTimeStampHostTimeValid) != 0
+        && clock->target_interval_host_ticks > 0) {
+        const double output_host_time = output_time->hostTime;
+        if (clock->next_frame_host_time == 0) {
+            clock->next_frame_host_time = output_host_time;
+        }
+
+        // Select the display callback closest to each 60 Hz deadline. CEF
+        // 150 stamps external begin frames with its fixed 60 Hz default
+        // interval and exposes no timestamp parameter, so issuing all 120 Hz
+        // ProMotion callbacks only floods its UI thread; it cannot produce
+        // truthful 120 Hz timing from this API.
+        const double half_callback_interval = clock->nominal_hz > 0
+            ? CVGetHostClockFrequency() / clock->nominal_hz / 2.0
+            : 0;
+        frame_due = output_host_time + half_callback_interval
+            >= clock->next_frame_host_time;
+        if (frame_due) {
+            do {
+                clock->next_frame_host_time +=
+                    clock->target_interval_host_ticks;
+            } while (clock->next_frame_host_time <= output_host_time);
+        }
+    }
+
+    if (frame_due) {
+        ++clock->eligible_ticks;
+        bool expected = false;
+        if (clock->active.load(std::memory_order_acquire)
+            && clock->frame_task_pending.compare_exchange_strong(
+                expected,
+                true,
+                std::memory_order_acq_rel)) {
+            auto task = CefRefPtr<CefTask>(new ExternalBeginFrameTask(
+                clock->shared_from_this(),
+                std::chrono::steady_clock::now()));
+            if (!CefPostTask(TID_UI, task)) {
+                ++clock->post_failures;
+                clock->frame_task_pending.store(
+                    false,
+                    std::memory_order_release);
+            }
+        } else {
+            ++clock->coalesced_ticks;
+        }
     }
 
     if (clock->diagnostics) {
+        if ((output_time->flags & kCVTimeStampHostTimeValid) != 0
+            && clock->previous_output_host_time != 0) {
+            const double interval_ms =
+                (output_time->hostTime - clock->previous_output_host_time)
+                * 1000.0 / CVGetHostClockFrequency();
+            ++clock->interval_count;
+            clock->interval_total_ms += interval_ms;
+            clock->interval_squared_ms += interval_ms * interval_ms;
+            clock->interval_minimum_ms = std::min(
+                clock->interval_minimum_ms,
+                interval_ms);
+            clock->interval_maximum_ms = std::max(
+                clock->interval_maximum_ms,
+                interval_ms);
+            if (clock->nominal_hz > 0
+                && interval_ms > 1500.0 / clock->nominal_hz) {
+                ++clock->late_intervals;
+            }
+        }
+        if ((output_time->flags & kCVTimeStampHostTimeValid) != 0) {
+            clock->previous_output_host_time = output_time->hostTime;
+        }
+
         ++clock->diagnostic_ticks;
         const auto now = std::chrono::steady_clock::now();
         const auto elapsed = now - clock->diagnostic_started_at;
         if (elapsed >= std::chrono::seconds(5)) {
             const double seconds =
                 std::chrono::duration<double>(elapsed).count();
+            const double average_ms = clock->interval_count == 0
+                ? 0
+                : clock->interval_total_ms / clock->interval_count;
+            const double variance_ms = clock->interval_count == 0
+                ? 0
+                : std::max(
+                    0.0,
+                    clock->interval_squared_ms / clock->interval_count
+                        - average_ms * average_ms);
+            const uint64_t send_count = clock->ui_send_count.exchange(
+                0,
+                std::memory_order_relaxed);
+            const uint64_t send_total_ns =
+                clock->ui_send_total_ns.exchange(0, std::memory_order_relaxed);
+            const uint64_t send_maximum_ns =
+                clock->ui_send_maximum_ns.exchange(0, std::memory_order_relaxed);
+            const uint64_t dispatch_total_ns =
+                clock->ui_dispatch_total_ns.exchange(
+                    0,
+                    std::memory_order_relaxed);
+            const uint64_t dispatch_maximum_ns =
+                clock->ui_dispatch_maximum_ns.exchange(
+                    0,
+                    std::memory_order_relaxed);
+            const double average_send_us = send_count == 0
+                ? 0
+                : send_total_ns / 1000.0 / send_count;
+            const double average_dispatch_us = send_count == 0
+                ? 0
+                : dispatch_total_ns / 1000.0 / send_count;
             std::fprintf(
                 stderr,
-                "[exclr8cef] CoreVideo display-link begin frames: %.1f/s.\n",
-                clock->diagnostic_ticks / seconds);
+                "[exclr8cef] CoreVideo display %u: %.1f callbacks/s "
+                "(nominal %.1f Hz), interval %.3f +/- %.3f ms avg/stddev, "
+                "%.3f/%.3f ms min/max, late %llu; %.1f eligible/s, "
+                "CEF UI %.1f/s, coalesced %llu, post failures %llu, "
+                "dispatch %.1f/%.1f us avg/max, send %.1f/%.1f us avg/max.\n",
+                clock->display_id,
+                clock->diagnostic_ticks / seconds,
+                clock->nominal_hz,
+                average_ms,
+                std::sqrt(variance_ms),
+                clock->interval_count == 0
+                    ? 0
+                    : clock->interval_minimum_ms,
+                clock->interval_maximum_ms,
+                static_cast<unsigned long long>(clock->late_intervals),
+                clock->eligible_ticks / seconds,
+                send_count / seconds,
+                static_cast<unsigned long long>(clock->coalesced_ticks),
+                static_cast<unsigned long long>(clock->post_failures),
+                average_dispatch_us,
+                dispatch_maximum_ns / 1000.0,
+                average_send_us,
+                send_maximum_ns / 1000.0);
             clock->diagnostic_ticks = 0;
             clock->diagnostic_started_at = now;
+            clock->interval_count = 0;
+            clock->interval_total_ms = 0;
+            clock->interval_squared_ms = 0;
+            clock->interval_minimum_ms =
+                std::numeric_limits<double>::max();
+            clock->interval_maximum_ms = 0;
+            clock->late_intervals = 0;
+            clock->eligible_ticks = 0;
+            clock->coalesced_ticks = 0;
+            clock->post_failures = 0;
         }
     }
     return kCVReturnSuccess;
 }
 
 void StopExternalBeginFrameClock(
-    std::unique_ptr<ExternalBeginFrameClock> clock) {
+    std::shared_ptr<ExternalBeginFrameClock> clock) {
     if (!clock) {
         return;
     }
+    clock->active.store(false, std::memory_order_release);
     CVDisplayLinkStop(clock->display_link);
     CVDisplayLinkRelease(clock->display_link);
+}
+
+void StopAllExternalBeginFrameClocks() {
+    std::vector<std::shared_ptr<ExternalBeginFrameClock>> clocks;
+    {
+        std::lock_guard<std::mutex> lock(g_external_begin_frame_clocks_mu);
+        for (auto& [browser_id, clock] : g_external_begin_frame_clocks) {
+            clocks.push_back(std::move(clock));
+        }
+        g_external_begin_frame_clocks.clear();
+    }
+    for (auto& clock : clocks) {
+        StopExternalBeginFrameClock(std::move(clock));
+    }
 }
 }
 
@@ -141,7 +365,7 @@ extern "C" int excef_start_external_begin_frame_clock(
     int browser_id,
     void* window_handle) {
     const CGDirectDisplayID display_id = DisplayIdForWindow(window_handle);
-    std::unique_ptr<ExternalBeginFrameClock> previous;
+    std::shared_ptr<ExternalBeginFrameClock> previous;
     {
         std::lock_guard<std::mutex> lock(g_external_begin_frame_clocks_mu);
         auto it = g_external_begin_frame_clocks.find(browser_id);
@@ -155,7 +379,7 @@ extern "C" int excef_start_external_begin_frame_clock(
     }
     StopExternalBeginFrameClock(std::move(previous));
 
-    auto clock = std::make_unique<ExternalBeginFrameClock>();
+    auto clock = std::make_shared<ExternalBeginFrameClock>();
     clock->browser_id = browser_id;
     clock->display_id = display_id;
     clock->diagnostics = std::getenv(
@@ -166,6 +390,29 @@ extern "C" int excef_start_external_begin_frame_clock(
             &clock->display_link) != kCVReturnSuccess
         || clock->display_link == nullptr) {
         return 0;
+    }
+    const CVTime nominal_period =
+        CVDisplayLinkGetNominalOutputVideoRefreshPeriod(clock->display_link);
+    if (nominal_period.timeValue > 0) {
+        clock->nominal_hz =
+            static_cast<double>(nominal_period.timeScale)
+            / nominal_period.timeValue;
+    }
+    clock->target_hz = clock->nominal_hz > 0
+        ? std::min(60.0, clock->nominal_hz)
+        : 60.0;
+    clock->target_interval_host_ticks =
+        CVGetHostClockFrequency() / clock->target_hz;
+    if (clock->diagnostics) {
+        std::fprintf(
+            stderr,
+            "[exclr8cef] CoreVideo selected display %u (%zu x %zu), "
+            "nominal %.1f Hz, CEF target %.1f Hz.\n",
+            display_id,
+            CGDisplayPixelsWide(display_id),
+            CGDisplayPixelsHigh(display_id),
+            clock->nominal_hz,
+            clock->target_hz);
     }
     if (CVDisplayLinkSetOutputCallback(
             clock->display_link,
@@ -187,7 +434,7 @@ extern "C" int excef_start_external_begin_frame_clock(
 }
 
 extern "C" void excef_stop_external_begin_frame_clock(int browser_id) {
-    std::unique_ptr<ExternalBeginFrameClock> clock;
+    std::shared_ptr<ExternalBeginFrameClock> clock;
     {
         std::lock_guard<std::mutex> lock(g_external_begin_frame_clocks_mu);
         auto it = g_external_begin_frame_clocks.find(browser_id);
@@ -248,6 +495,7 @@ extern "C" void excef_run_message_loop(void) {
 
 extern "C" void excef_shutdown(void) {
     @autoreleasepool {
+        StopAllExternalBeginFrameClocks();
         CefShutdown();
         exclr8cef::ResetApp();
         exclr8cef::SetSchedulePumpCallback(nullptr);

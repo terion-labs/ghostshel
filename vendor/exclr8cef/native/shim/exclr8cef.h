@@ -573,8 +573,11 @@ EXCEF_API void excef_send_touch_event(int browser_id,
 // (see excef_create_offscreen_browser_ex). Useful for deterministic
 // frame timing in record / replay / agent loops.
 EXCEF_API void excef_send_external_begin_frame(int browser_id);
-// Start/stop a platform display-link clock that issues one external begin
-// frame per hardware display callback. Currently supported on macOS.
+// Start/stop a platform display-link clock that phase-aligns external begin
+// frames to the hardware display and marshals them to CEF's UI thread. CEF
+// 150's API reports a fixed 60 Hz interval and accepts no caller timestamp,
+// so higher-refresh displays are sampled at 60 Hz. Currently supported on
+// macOS.
 EXCEF_API int excef_start_external_begin_frame_clock(int browser_id,
                                                       void* window_handle);
 EXCEF_API void excef_stop_external_begin_frame_clock(int browser_id);

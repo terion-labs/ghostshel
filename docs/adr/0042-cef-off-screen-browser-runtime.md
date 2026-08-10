@@ -61,6 +61,26 @@ sibling visuals. Pending frames are coalesced so neither accelerated nor
 CPU fallback rendering can build an unbounded queue. Linux DMA-BUF and Windows
 shared-handle presentation remain unqualified and use the CPU fallback.
 
+Setting `EXCLR8CEF_ACCELERATION_DIAGNOSTICS=1` records CoreVideo callback
+cadence and jitter, CEF paint and presentation cadence, GPU-copy/import
+latency, coalesced frames, Chromium task metrics, and HTML video decoded and
+dropped-frame counters. For controlled comparisons,
+`EXCLR8CEF_FRAME_PACING=display-link` enables the experimental CoreVideo clock;
+the production default keeps SharedTexture/IOSurface presentation while using
+CEF's 60 fps windowless timer.
+
+CEF 150's external-begin-frame API accepts neither the display timestamp nor
+the refresh interval and internally labels external frames with its 60 Hz
+default. On macOS the CoreVideo clock therefore selects display callbacks
+nearest to 60 Hz deadlines, coalesces pending work, and invokes CEF on
+`TID_UI`. This preserves display phase without flooding CEF with 120 Hz
+ProMotion callbacks or mutating compositor state from CoreVideo's thread.
+The mode remains experimental because an A/B trace on a 120 Hz display showed
+that CEF's timer decoded and presented a 30 fps YouTube stream with zero drops,
+while external begin frames caused CEF to drop roughly 12 percent before
+`OnAcceleratedPaint`. SharedTexture/IOSurface acceleration is unchanged in the
+default timer mode.
+
 The semantic snapshot/click/fill/check implementation is deliberately excluded
 from this migration. Existing application contracts remain, but the production
 CEF adapter fails those operations closed until the separate agentic-browser
