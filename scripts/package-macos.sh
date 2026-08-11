@@ -20,6 +20,7 @@ font_assets_directory="${repository_dir}/native/artifacts/common/fonts/JetBrains
 font_assets_build_receipt="${repository_dir}/native/artifacts/common/terminal-font-assets-build-receipt.json"
 declare_macos_sdk="${repository_dir}/scripts/declare-macos-sdk26.sh"
 sign_notarize_macos="${repository_dir}/scripts/sign-notarize-macos.sh"
+namespace_avalonia_native="${repository_dir}/scripts/namespace-avalonia-native-macos.sh"
 nuget_packages="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
 sql_language_artifact_directory="${repository_dir}/native/artifacts/osx-arm64"
 sql_language_worker="${sql_language_artifact_directory}/ghostshell-sql-language"
@@ -179,6 +180,10 @@ fi
 
 if [[ -n "${sign_identity}" && ! -x "${sign_notarize_macos}" ]]; then
     echo "The macOS signing helper is unavailable." >&2
+    exit 1
+fi
+if [[ ! -x "${namespace_avalonia_native}" ]]; then
+    echo "The Avalonia Native Objective-C namespace helper is unavailable." >&2
     exit 1
 fi
 
@@ -398,6 +403,7 @@ required_publish=(
     "${publish_dir}/GhostShell"
     "${publish_dir}/GhostShell.deps.json"
     "${publish_dir}/GhostShell.runtimeconfig.json"
+    "${publish_dir}/libAvaloniaNative.dylib"
     "${publish_dir}/libghostty-vt.dylib"
     "${publish_dir}/GHOSTTY-LICENSE"
     "${publish_dir}/ghostty-vt-required-exports.txt"
@@ -433,6 +439,11 @@ for required in "${required_publish[@]}"; do
         exit 1
     fi
 done
+
+# Apply the Objective-C class namespace fix before managed evidence and package
+# fingerprints are generated, so the inspected payload is the shipped payload.
+"${namespace_avalonia_native}" \
+    "${publish_dir}/libAvaloniaNative.dylib"
 
 published_sql_language_worker="${publish_dir}/runtimes/osx-arm64/native/ghostshell-sql-language"
 published_sql_language_receipt="${publish_dir}/runtimes/osx-arm64/native/build-receipt.json"

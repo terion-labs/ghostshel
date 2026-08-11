@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repository_dir="$(cd -- "${script_dir}/.." && pwd -P)"
+namespace_avalonia_native="${repository_dir}/scripts/namespace-avalonia-native-macos.sh"
 target_directory=""
 cef_runtime_root=""
 app_bundle=""
@@ -81,6 +82,10 @@ if [[ ! -f "${info_plist_template}" || -L "${info_plist_template}" ]]; then
     echo "The GhostSHELL Info.plist template is missing or linked." >&2
     exit 1
 fi
+if [[ ! -x "${namespace_avalonia_native}" ]]; then
+    echo "The Avalonia Native Objective-C namespace helper is unavailable." >&2
+    exit 1
+fi
 
 target_directory="$(cd -- "${target_directory}" && pwd -P)"
 cef_runtime_root="$(cd -- "${cef_runtime_root}" && pwd -P)"
@@ -142,6 +147,8 @@ mkdir -p -- "${macos_directory}" "${frameworks_directory}"
 
 echo "Assembling the macOS CEF development bundle..." >&2
 /usr/bin/ditto --clone --noqtn "${target_directory}" "${macos_directory}"
+"${namespace_avalonia_native}" \
+    "${macos_directory}/runtimes/osx/native/libAvaloniaNative.dylib"
 /usr/bin/sed \
     -e 's/__GHOSTSHELL_VERSION__/0.0.0/g' \
     -e 's/__GHOSTSHELL_BUILD_VERSION__/1/g' \
