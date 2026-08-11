@@ -39,7 +39,6 @@
           Label="Global hotkey"
           Description="{Binding QuickTerminalSettingsEditor.HotkeyHelpText}">
         <TextBox
-            
             Text="{Binding QuickTerminalSettingsEditor.HotkeyText}"
             AutomationProperties.Name="Quick Terminal global hotkey" />
       </controls:SettingRow>

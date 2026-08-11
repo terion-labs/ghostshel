@@ -9,28 +9,17 @@
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="Auto,*,Auto">
-    <Border Classes="TopChrome">
-      <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock
-            FontSize="{DynamicResource ShellFontSize15}"
-            FontWeight="SemiBold"
-            Text="{Binding ItemName}"
-            TextTrimming="CharacterEllipsis" />
-        <TextBlock
-            Classes="Muted"
-            FontSize="{DynamicResource ShellFontSize10}"
-            Text="{Binding Summary}"
-            TextWrapping="Wrap" />
-      </StackPanel>
-    </Border>
-
+  <controls:DialogShell
+      Chrome="Utility"
+      Title="{Binding ItemName}"
+      Subtitle="{Binding Summary}"
+      Scrolls="False">
     <!--
       One table for both models. A filesystem's three parties and an object
       store's accounts are the same question asked of different systems, so they
       are read the same way: a name, and what that name is allowed.
     -->
-    <Grid Grid.Row="1" Margin="{controls:Inset Lg}" RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*,Auto">
       <Grid ColumnDefinitions="*,150,Auto" Margin="{controls:Inset Horizontal=Md, Bottom=Xs}">
         <TextBlock Classes="Eyebrow" Text="Name" />
         <TextBlock Grid.Column="1" Classes="Eyebrow" Text="Privilege" />
@@ -47,7 +36,7 @@
             IsVisible="{Binding HasMode}" />
       </Grid>
 
-      <controls:SurfaceCard Grid.Row="1" Padding="0" VerticalAlignment="Top">
+      <controls:SurfaceCard Grid.Row="1" Padding="{controls:Inset None}" VerticalAlignment="Top">
         <ItemsControl ItemsSource="{Binding Rows}">
           <ItemsControl.ItemTemplate>
             <DataTemplate DataType="vm:FileAccessRowViewModel">
@@ -108,17 +97,16 @@
       </StackPanel>
     </Grid>
 
-    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelClick" Content="Close" />
+    <controls:DialogShell.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button Classes="SecondaryButton" Click="OnCancelClick" Content="Close" />
         <Button
-            Grid.Column="2"
             Classes="PrimaryButton"
             Click="OnApplyClick"
             Content="Apply"
             IsEnabled="{Binding CanEdit}"
             AutomationProperties.Name="Apply permission changes" />
-      </Grid>
-    </Border>
-  </Grid>
+      </StackPanel>
+    </controls:DialogShell.Footer>
+  </controls:DialogShell>
 </Window>

@@ -6,27 +6,32 @@
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:local="using:GhostShell.App.Views.Components"
     HorizontalContentAlignment="Stretch"
-    VerticalContentAlignment="Stretch">
+    VerticalContentAlignment="Stretch"
+    Container.Name="databaseWorkspace"
+    Container.Sizing="Width">
   <UserControl.Styles>
     <!-- The row-action strip adapts to its width: labels on a roomy panel,
-         glyphs on a narrow one. Both live in every button; the class on the
-         view decides which shows. -->
+         glyphs on a narrow one. Both live in every button; the panel's own
+         width decides which shows — declaratively, the way the File panel's
+         toolbar answers to its container. -->
     <Style Selector="local|DatabaseWorkspaceView icons|SymbolIcon.rowActionGlyph">
       <Setter Property="IsVisible" Value="False" />
     </Style>
-    <Style Selector="local|DatabaseWorkspaceView.narrowData icons|SymbolIcon.rowActionGlyph">
-      <Setter Property="IsVisible" Value="True" />
-    </Style>
-    <Style Selector="local|DatabaseWorkspaceView.narrowData TextBlock.rowActionLabel">
-      <Setter Property="IsVisible" Value="False" />
-    </Style>
-    <!-- Explanatory prose is the first thing a narrow panel can no longer
-         afford; the disabled buttons still say what it said. Opacity rather
-         than IsVisible, because the hint's visibility is already bound. -->
-    <Style Selector="local|DatabaseWorkspaceView.narrowData TextBlock.adaptiveHint">
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="MaxWidth" Value="0" />
-    </Style>
+    <ContainerQuery Name="databaseWorkspace" Query="max-width:680">
+      <Style Selector="icons|SymbolIcon.rowActionGlyph">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="TextBlock.rowActionLabel">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+      <!-- Explanatory prose is the first thing a narrow panel can no longer
+           afford; the disabled buttons still say what it said. Opacity rather
+           than IsVisible, because the hint's visibility is already bound. -->
+      <Style Selector="TextBlock.adaptiveHint">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="MaxWidth" Value="0" />
+      </Style>
+    </ContainerQuery>
 
     <!-- The SQL editor is a flat writing surface; the surrounding toolbar owns
          its border and focus geometry. -->
@@ -893,10 +898,7 @@
                       PointerMoved="OnInspectorResizeMoved"
                       PointerReleased="OnInspectorResizeReleased" />
                   <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*">
-                    <Border
-                        Background="{DynamicResource ShellSurfaceBrush}"
-                        BorderBrush="{DynamicResource ShellBorderBrush}"
-                        BorderThickness="0,0,0,1">
+                    <Border Classes="PanelToolbar">
                       <Grid Margin="{controls:Inset Left=Md, Right=Xs}" ColumnDefinitions="*,Auto">
                         <TextBlock
                             VerticalAlignment="Center"
@@ -1151,9 +1153,7 @@
 
     <Border
         Grid.Row="1"
-        Background="{DynamicResource ShellSurfaceBrush}"
-        BorderBrush="{DynamicResource ShellBorderBrush}"
-        BorderThickness="0,1,0,0">
+        Classes="PanelFooter">
       <Grid Margin="{controls:Inset Horizontal=Sm}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <TextBlock
             VerticalAlignment="Center"

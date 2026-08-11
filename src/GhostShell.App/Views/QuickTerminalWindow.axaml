@@ -41,28 +41,10 @@
                 x:Name="QuickTerminalPlaceholderBackground"
                 Background="{DynamicResource ShellBackgroundBrush}"
                 IsHitTestVisible="False" />
-            <StackPanel
-                MaxWidth="520"
-                Margin="{controls:Inset Xxl}"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Spacing="{DynamicResource ShellSpaceSm}">
-              <icons:SymbolIcon
-                  HorizontalAlignment="Center"
-                  Symbol="Warning"
-                  FontSize="28"
-                  Foreground="{DynamicResource ShellWarningBrush}" />
-              <TextBlock
-                  HorizontalAlignment="Center"
-                  FontSize="{DynamicResource ShellFontSize15}"
-                  FontWeight="SemiBold"
-                  Text="{Binding TerminalPlaceholderTitle}" />
-              <TextBlock
-                  Classes="Muted"
-                  Text="{Binding TerminalUnavailableMessage}"
-                  TextAlignment="Center"
-                  TextWrapping="Wrap" />
-            </StackPanel>
+            <controls:StateOverlay
+                Glyph="Warning"
+                Heading="{Binding TerminalPlaceholderTitle}"
+                Body="{Binding TerminalUnavailableMessage}" />
           </Grid>
         </Grid>
 
@@ -97,7 +79,7 @@
               Text="{Binding ProfileName, StringFormat={}Profile · {0}}" />
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}" VerticalAlignment="Center">
-            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{Binding ShortcutStatusBrush}" />
+            <Border Classes="StatusDot" Background="{Binding ShortcutStatusBrush}" />
             <TextBlock
                 VerticalAlignment="Center"
                 Classes="Muted"

@@ -118,6 +118,9 @@ public sealed class DockerRuntimePanelViewHeadlessTests
                 var rowContent = Assert.Single(
                     row.GetVisualDescendants().OfType<DockerListItem>(),
                     item => item.Classes.Contains("DockerResourceListItem"));
+                // Read while attached: the row inset comes from a dynamic
+                // resource now, and a detached element resolves it to zero.
+                var rowContentPadding = rowContent.ContentPadding;
                 var iconTile = Assert.Single(
                     row.GetVisualDescendants().OfType<IdentityTile>());
                 var title = Assert.Single(
@@ -195,7 +198,7 @@ public sealed class DockerRuntimePanelViewHeadlessTests
                     item => item.Classes.Contains("DockerResourceListItem"));
                 var flatIconTile = Assert.Single(
                     resourceItem.GetVisualDescendants().OfType<IdentityTile>());
-                Assert.Equal(rowContent.ContentPadding, flatRowContent.ContentPadding);
+                Assert.Equal(rowContentPadding, flatRowContent.ContentPadding);
                 Assert.InRange(
                     Math.Abs(rowContent.Bounds.Height - flatRowContent.Bounds.Height),
                     0,
@@ -228,7 +231,7 @@ public sealed class DockerRuntimePanelViewHeadlessTests
                     var sectionIcon = Assert.Single(
                         sectionItem.GetVisualDescendants().OfType<IdentityTile>());
 
-                    Assert.Equal(rowContent.ContentPadding, sectionRow.ContentPadding);
+                    Assert.Equal(rowContentPadding, sectionRow.ContentPadding);
                     Assert.InRange(
                         Math.Abs(rowContent.Bounds.Height - sectionRow.Bounds.Height),
                         0,

@@ -420,13 +420,13 @@ public sealed partial class RepositoryConventionTests
         Assert.Equal("OnOpened", AttributeValue(window, "Opened"));
         Assert.False(
             string.IsNullOrWhiteSpace(AttributeValue(window, "MaxHeight")));
-        Assert.Contains(
+        // The body scrolls through DialogShell, whose template hosts the
+        // auto-visibility ScrollViewer; a dialog that opted out with
+        // Scrolls="False" would stop reflowing at large text scales.
+        var shell = Assert.Single(
             dialog.Descendants(),
-            element => element.Name.LocalName == "ScrollViewer"
-                && string.Equals(
-                    AttributeValue(element, "VerticalScrollBarVisibility"),
-                    "Auto",
-                    StringComparison.Ordinal));
+            element => element.Name.LocalName == "DialogShell");
+        Assert.NotEqual("False", AttributeValue(shell, "Scrolls"));
         Assert.Contains(
             dialog.Descendants(),
             element => element.Name.LocalName == "CheckBox"

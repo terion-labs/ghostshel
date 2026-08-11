@@ -11,7 +11,7 @@
       Height="26"
       MinWidth="74"
       MaxWidth="180"
-      Padding="{controls:Inset Horizontal=Sm}"
+      Padding="{controls:Inset Horizontal=Md}"
       HorizontalContentAlignment="Stretch"
       Background="{DynamicResource ShellSurfaceRaisedBrush}"
       BorderBrush="{DynamicResource ShellBorderBrush}"
@@ -47,7 +47,7 @@
               HorizontalScrollBarVisibility="Disabled"
               VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <ItemsControl ItemsSource="{Binding FilteredOptions, ElementName=Root}">
+              <ItemsControl Classes="StretchItems" ItemsSource="{Binding FilteredOptions, ElementName=Root}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Button
@@ -60,26 +60,17 @@
                         Click="OnConnectionClick"
                         IsEnabled="{Binding CanOpen}"
                         AutomationProperties.Name="{Binding Name, StringFormat={}Use connection {0}}">
-                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                        <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                      <controls:ListItem
+                          Title="{Binding Name}"
+                          Detail="{Binding Detail}">
+                        <controls:ListItem.Trailing>
                           <TextBlock
-                              FontSize="{DynamicResource ShellFontSize10}"
-                              FontWeight="SemiBold"
-                              Text="{Binding Name}"
-                              TextTrimming="CharacterEllipsis" />
-                          <TextBlock
-                              Classes="Muted"
+                              VerticalAlignment="Center"
+                              Classes="Eyebrow"
                               FontSize="{DynamicResource ShellFontSize9}"
-                              Text="{Binding Detail}"
-                              TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                        <TextBlock
-                            Grid.Column="1"
-                            VerticalAlignment="Center"
-                            Classes="Eyebrow"
-                            FontSize="{DynamicResource ShellFontSize9}"
-                            Text="{Binding Kind}" />
-                      </Grid>
+                              Text="{Binding Kind}" />
+                        </controls:ListItem.Trailing>
+                      </controls:ListItem>
                     </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>

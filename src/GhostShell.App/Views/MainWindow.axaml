@@ -321,7 +321,7 @@
         WorkspaceSettingsRequested="OnWorkspaceSettingsClick" />
 
     <!-- Docked overlays. Runtime native views are hidden while these are open. -->
-    <Grid IsVisible="{Binding HasOverlay}" Background="#F20B0B0C">
+    <Grid IsVisible="{Binding HasOverlay}" Background="{DynamicResource ShellScrimBrush}">
       <overlays:CommandPaletteView
           x:Name="CommandPaletteOverlayView"
           ActivateSearchResultRequested="OnLauncherSearchResultClick"
@@ -397,25 +397,21 @@
       <TextBlock FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ApplicationKeySequenceHint}" TextWrapping="Wrap" />
     </controls:SurfaceCard>
 
-    <Border
+    <controls:Callout
         Margin="{controls:Inset Right=Lg, Bottom=Lg}"
-        Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
         HorizontalAlignment="Right"
         VerticalAlignment="Bottom"
         MaxWidth="520"
-        Background="{DynamicResource ShellDangerSoftBrush}"
-        BorderBrush="{DynamicResource ShellDangerBorderBrush}"
-        BorderThickness="1"
-        CornerRadius="{DynamicResource ShellCardCornerRadius}"
+        Tone="Danger"
+        Glyph="ErrorCircle"
+        Text="{Binding OperationError}"
         IsVisible="{Binding HasOperationError}"
         AutomationProperties.LiveSetting="Assertive"
         AutomationProperties.Name="Operation error">
-      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <icons:SymbolIcon Symbol="ErrorCircle" FontSize="15" Foreground="{DynamicResource ShellDangerBrush}" />
-        <TextBlock Grid.Column="1" Foreground="{DynamicResource ShellTextBrush}" Text="{Binding OperationError}" TextWrapping="Wrap" />
-        <Button Grid.Column="2" Classes="IconButton" Click="OnClearErrorClick" AutomationProperties.Name="Dismiss error"><icons:SymbolIcon Symbol="Dismiss" FontSize="12" /></Button>
-      </Grid>
-    </Border>
+      <controls:Callout.Action>
+        <Button Classes="IconButton" Click="OnClearErrorClick" AutomationProperties.Name="Dismiss error"><icons:SymbolIcon Symbol="Dismiss" FontSize="{DynamicResource ShellFontSize12}" /></Button>
+      </controls:Callout.Action>
+    </controls:Callout>
 
     <Canvas
         x:Name="DragGhostLayer"

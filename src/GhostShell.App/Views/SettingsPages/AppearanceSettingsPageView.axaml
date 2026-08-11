@@ -4,12 +4,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:converters="using:GhostShell.App.Converters"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
-  <UserControl.Resources>
-  </UserControl.Resources>
   <StackPanel Spacing="{DynamicResource ShellSpaceXl}">
     <components:SettingsPageHeader
         Heading="Appearance"
@@ -17,10 +14,9 @@
 
     <!-- Theme -->
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Theme" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Follow the host colour scheme or pin an explicit one." />
-      </StackPanel>
+      <components:SectionHeader
+          Heading="Theme"
+          Description="Follow the host colour scheme or pin an explicit one." />
       <!--
         The tile is the control. Each one previews the chrome its mode produces
         using that mode's literal surface, border, and text values.
@@ -112,10 +108,9 @@
     <!-- Terminal palette -->
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Terminal palette" />
-          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Pick a preset or start from a custom palette." />
-        </StackPanel>
+        <components:SectionHeader
+            Heading="Terminal palette"
+            Description="Pick a preset or start from a custom palette." />
         <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="1" VerticalAlignment="Center" Content="{Binding TerminalSettingsEditor.PaletteName}" />
       </Grid>
       <ItemsControl x:Name="TerminalPalettePresets" ItemsSource="{Binding TerminalSettingsEditor.PalettePresets}">
@@ -151,10 +146,9 @@
 
     <!-- Colors -->
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Colours" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Fine-tune the terminal palette and review its ANSI colours." />
-      </StackPanel>
+      <components:SectionHeader
+          Heading="Colours"
+          Description="Fine-tune the terminal palette and review its ANSI colours." />
       <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
@@ -166,7 +160,6 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Background">
               <TextBox
-                  
                   Text="{Binding TerminalSettingsEditor.Background}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -195,7 +188,6 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Foreground">
               <TextBox
-                  
                   Text="{Binding TerminalSettingsEditor.Foreground}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -224,7 +216,6 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Cursor">
               <TextBox
-                  
                   Text="{Binding TerminalSettingsEditor.Cursor}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -253,7 +244,6 @@
             <controls:LabeledField Grid.Column="1" VerticalAlignment="Center"
                 Label="Selection">
               <TextBox
-                  
                   Text="{Binding TerminalSettingsEditor.Selection}"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -276,10 +266,9 @@
     </StackPanel>
 
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Accent" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Where the interface accent comes from." />
-      </StackPanel>
+      <components:SectionHeader
+          Heading="Accent"
+          Description="Where the interface accent comes from." />
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
@@ -317,7 +306,6 @@
               <TextBox
                   x:Name="CustomAccentText"
                   Grid.Column="1"
-                  
                   TextChanged="OnCustomAccentTextChanged"
                   LostFocus="OnAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
@@ -343,10 +331,9 @@
     </StackPanel>
 
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Font" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="The terminal profile's typeface, size, and line height." />
-      </StackPanel>
+      <components:SectionHeader
+          Heading="Font"
+          Description="The terminal profile's typeface, size, and line height." />
       <Grid ColumnDefinitions="2*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
@@ -404,10 +391,9 @@
     </StackPanel>
 
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Typography" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Scale application text across every GhostSHELL window." />
-      </StackPanel>
+      <components:SectionHeader
+          Heading="Typography"
+          Description="Scale application text across every GhostSHELL window." />
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
@@ -436,10 +422,9 @@
     </StackPanel>
 
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Corners &amp; UI" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Window chrome, density and interface behavior." />
-      </StackPanel>
+      <components:SectionHeader
+          Heading="Corners &amp; UI"
+          Description="Window chrome, density and interface behavior." />
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
@@ -510,26 +495,16 @@
           </controls:LabeledField>
         </controls:SurfaceCard>
       </Grid>
+      <controls:SettingsGroup>
+        <controls:SettingRow Label="Show tab bar">
+          <ToggleSwitch x:Name="ShowTabBarSwitch" IsCheckedChanged="OnAppearanceChanged" AutomationProperties.Name="Show tab bar" />
+        </controls:SettingRow>
+        <controls:SettingRow Label="Blink cursor">
+          <ToggleSwitch IsChecked="{Binding TerminalSettingsEditor.CursorBlink}" IsCheckedChanged="OnAppearanceChanged" AutomationProperties.Name="Blink cursor" />
+        </controls:SettingRow>
+      </controls:SettingsGroup>
       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <StackPanel Classes="CardText" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Show tab bar" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #ShowTabBarSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
-            </StackPanel>
-            <ToggleSwitch x:Name="ShowTabBarSwitch" IsCheckedChanged="OnAppearanceChanged" Grid.Column="1" VerticalAlignment="Center" AutomationProperties.Name="Show tab bar" />
-          </Grid>
-        </controls:SurfaceCard>
-        <controls:SurfaceCard Tone="Raised" Grid.Column="1">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <StackPanel Classes="CardText" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Blink cursor" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TerminalSettingsEditor.CursorBlink, Converter={StaticResource OnOffConverter}}" />
-            </StackPanel>
-            <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" IsChecked="{Binding TerminalSettingsEditor.CursorBlink}" IsCheckedChanged="OnAppearanceChanged" AutomationProperties.Name="Blink cursor" />
-          </Grid>
-        </controls:SurfaceCard>
-        <controls:SurfaceCard Tone="Raised" Grid.Column="2">
           <controls:LabeledField
               Label="Cursor shape">
             <ComboBox ItemsSource="{Binding TerminalSettingsEditor.CursorStyles}" SelectedItem="{Binding TerminalSettingsEditor.CursorStyle}" SelectionChanged="OnAppearanceChanged" AutomationProperties.Name="Cursor shape" />
@@ -541,19 +516,14 @@
 
     <!-- Tabs & Workspaces -->
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Tabs &amp; Workspaces" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="Where the tab strip sits, plus how the workspaces panel is arranged." />
-      </StackPanel>
-      <controls:SurfaceCard Tone="Raised">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <StackPanel Classes="CardText" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-            <TextBlock FontSize="{DynamicResource ShellFontSize12}" FontWeight="SemiBold" Text="Show workspaces panel" />
-            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #ShowWorkspacesPanelSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
-          </StackPanel>
-          <ToggleSwitch x:Name="ShowWorkspacesPanelSwitch" IsCheckedChanged="OnAppearanceChanged" Grid.Column="1" VerticalAlignment="Center" AutomationProperties.Name="Show workspaces panel" />
-        </Grid>
-      </controls:SurfaceCard>
+      <components:SectionHeader
+          Heading="Tabs &amp; Workspaces"
+          Description="Where the tab strip sits, plus how the workspaces panel is arranged." />
+      <controls:SettingsGroup>
+        <controls:SettingRow Label="Show workspaces panel">
+          <ToggleSwitch x:Name="ShowWorkspacesPanelSwitch" IsCheckedChanged="OnAppearanceChanged" AutomationProperties.Name="Show workspaces panel" />
+        </controls:SettingRow>
+      </controls:SettingsGroup>
       <controls:SurfaceCard Tone="Raised">
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
           <StackPanel Classes="CardText" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
@@ -650,10 +620,9 @@
 
     <!-- Preview -->
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize14}" FontWeight="SemiBold" Text="Preview" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize12}" Text="The saved profile as the shell renders it right now." />
-      </StackPanel>
+      <components:SectionHeader
+          Heading="Preview"
+          Description="The saved profile as the shell renders it right now." />
       <controls:SurfaceCard Tone="Raised">
         <Border
             Height="168"
@@ -708,8 +677,8 @@
     </StackPanel>
 
     <!-- Stored profile -->
-    <controls:SurfaceCard Padding="0">
-      <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+    <controls:SurfaceCard>
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
         <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="SectionHeading" Text="Current stored profile" />
           <TextBlock Text="{Binding ThemeMode, StringFormat={}Mode: {0}}" />

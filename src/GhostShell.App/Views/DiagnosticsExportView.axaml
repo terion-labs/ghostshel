@@ -3,7 +3,6 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:icons="using:FluentIcons.Avalonia"
     MinWidth="560">
   <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
@@ -14,11 +13,12 @@
       <controls:StatusChip Grid.Column="1" VerticalAlignment="Center" Classes.Warning="{Binding IsWarning}" IsVisible="{Binding HasStatus}" Content="{Binding StatusLabel}" />
     </Grid>
 
-    <controls:SurfaceCard Padding="0">
-      <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+    <controls:SurfaceCard>
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
         <TextBlock Classes="SectionHeading" Text="Content and redaction" />
-        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock FontWeight="SemiBold" Text="Diagnostic detail" />
+        <controls:LabeledField
+            Label="Diagnostic detail"
+            Hint="{Binding SelectedRedactionDescription}">
           <ComboBox
               ItemsSource="{Binding RedactionOptions}"
               SelectedItem="{Binding SelectedRedactionOption, Mode=TwoWay}"
@@ -28,19 +28,14 @@
               <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding SelectedRedactionDescription}" TextWrapping="Wrap" />
-        </StackPanel>
+        </controls:LabeledField>
 
-        <controls:SurfaceCard Tone="Notice" Padding="0">
-          <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <icons:SymbolIcon Symbol="Shield" FontSize="16" Foreground="{DynamicResource ShellWarningBrush}" />
-            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" Text="Secret-safe by construction" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding RedactionAvailabilityMessage}" TextWrapping="Wrap" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Terminal contents, commands, credentials, environment values, and secret material are never eligible artifacts." TextWrapping="Wrap" />
-            </StackPanel>
-          </Grid>
-        </controls:SurfaceCard>
+        <controls:Callout
+            Tone="Notice"
+            Glyph="Shield"
+            Title="Secret-safe by construction"
+            Text="{Binding RedactionAvailabilityMessage}"
+            Footnote="Terminal contents, commands, credentials, environment values, and secret material are never eligible artifacts." />
 
         <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <Button
@@ -69,21 +64,16 @@
       </StackPanel>
     </controls:SurfaceCard>
 
-    <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding HasStatus}">
-      <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <icons:SymbolIcon Symbol="Info" FontSize="16" Foreground="{DynamicResource ShellAccentBrush}" />
-        <TextBlock
-            Grid.Column="1"
-            VerticalAlignment="Center"
-            Text="{Binding StatusMessage}"
-            TextWrapping="Wrap"
-            AutomationProperties.LiveSetting="Polite"
-            AutomationProperties.Name="{Binding StatusAutomationName}" />
-      </Grid>
-    </controls:SurfaceCard>
+    <controls:Callout Tone="Notice" Glyph="Info" IsVisible="{Binding HasStatus}">
+      <TextBlock
+          Text="{Binding StatusMessage}"
+          TextWrapping="Wrap"
+          AutomationProperties.LiveSetting="Polite"
+          AutomationProperties.Name="{Binding StatusAutomationName}" />
+    </controls:Callout>
 
-    <controls:SurfaceCard Padding="0" IsVisible="{Binding HasArtifact}">
-      <Grid Margin="{controls:Inset Lg}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+    <controls:SurfaceCard IsVisible="{Binding HasArtifact}">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="SectionHeading" Text="Last exported bundle" />
           <TextBlock FontWeight="SemiBold" Text="{Binding ArtifactDisplayName}" TextWrapping="Wrap" />

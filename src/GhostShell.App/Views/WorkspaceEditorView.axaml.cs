@@ -517,12 +517,12 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void ShowInteractionError(string message)
     {
         this.FindControl<TextBlock>("InteractionErrorText")!.Text = message;
-        this.FindControl<SurfaceCard>("InteractionErrorCard")!.IsVisible = true;
+        this.FindControl<Callout>("InteractionErrorCard")!.IsVisible = true;
     }
 
     private void ClearInteractionError()
     {
         this.FindControl<TextBlock>("InteractionErrorText")!.Text = string.Empty;
-        this.FindControl<SurfaceCard>("InteractionErrorCard")!.IsVisible = false;
+        this.FindControl<Callout>("InteractionErrorCard")!.IsVisible = false;
     }
 }

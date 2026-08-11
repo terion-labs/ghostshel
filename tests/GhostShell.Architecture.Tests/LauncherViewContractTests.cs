@@ -387,7 +387,7 @@ public sealed class LauncherViewContractTests
             "Foreground",
             "{DynamicResource ShellTextBrush}");
         AssertStyleSetter(navigationStyle, "MinHeight", "32");
-        AssertStyleSetter(navigationStyle, "Padding", "10,0");
+        AssertStyleSetter(navigationStyle, "Padding", "{controls:Inset Horizontal=Sm}");
         AssertStyleSetter(
             navigationStyle,
             "AutomationProperties.ItemStatus",

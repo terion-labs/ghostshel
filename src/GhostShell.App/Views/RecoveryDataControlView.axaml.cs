@@ -34,7 +34,7 @@ public sealed partial class RecoveryDataControlView : UserControl
             return;
         }
 
-        var confirmed = await new RecoveryDataClearDialog(
+        var confirmed = await Confirmations.RecoveryDataClear(
                 "Clear this saved recovery?",
                 $"{item.SnapshotLabel} from one previous run will be permanently removed.",
                 "Clear recovery")
@@ -56,7 +56,7 @@ public sealed partial class RecoveryDataControlView : UserControl
             return;
         }
 
-        var confirmed = await new RecoveryDataClearDialog().ShowDialog<bool>(owner);
+        var confirmed = await Confirmations.RecoveryDataClear().ShowDialog<bool>(owner);
         if (confirmed)
         {
             await viewModel.DiscardAllAsync();

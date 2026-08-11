@@ -9,15 +9,18 @@
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="Auto,*,Auto">
-    <Border Classes="TopChrome">
-      <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Record shortcut" />
-        <TextBlock x:Name="RecorderHelpText" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Conflicts are checked before the profile can be saved." />
+  <controls:DialogShell
+      x:Name="Shell"
+      Title="Record shortcut"
+      Subtitle="Conflicts are checked before the profile can be saved.">
+    <controls:DialogShell.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
+        <Button x:Name="UseShortcutButton" Classes="PrimaryButton" Click="OnUseShortcutClick" Content="Use shortcut" IsEnabled="False" />
       </StackPanel>
-    </Border>
+    </controls:DialogShell.Footer>
 
-    <StackPanel Grid.Row="1" Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <controls:SurfaceCard Tone="Notice"
           x:Name="CaptureArea"
           MinHeight="118"
@@ -37,12 +40,5 @@
         <Button x:Name="ClearButton" Classes="TextButton" Click="OnClearClick" Content="Clear" IsEnabled="False" />
       </StackPanel>
     </StackPanel>
-
-    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
-        <Button x:Name="UseShortcutButton" Grid.Column="2" Classes="PrimaryButton" Click="OnUseShortcutClick" Content="Use shortcut" IsEnabled="False" />
-      </Grid>
-    </Border>
-  </Grid>
+  </controls:DialogShell>
 </Window>

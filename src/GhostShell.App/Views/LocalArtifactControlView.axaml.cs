@@ -35,7 +35,7 @@ public sealed partial class LocalArtifactControlView : UserControl
             return;
         }
 
-        var confirmed = await new LocalArtifactClearDialog(item)
+        var confirmed = await Confirmations.LocalArtifactClear(item)
             .ShowDialog<bool>(owner);
         if (confirmed)
         {

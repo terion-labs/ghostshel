@@ -3,12 +3,31 @@
     x:Name="Root"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Focusable="False"
     Margin="{DynamicResource ShellTabStripTopClearance}"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
+  <UserControl.Styles>
+    <!-- The tab's size belongs to the strip's axis, not to the tab. A strip
+         running across the chrome deals in fixed-width chips at the chrome's
+         height; docked at the side it deals in rows — full width, control
+         height — and a chip-sized tab there sat squeezed in the middle of
+         its own column. -->
+    <Style Selector="components|RuntimeTabStripView[Orientation=Horizontal] Grid.RuntimeTabDropTarget">
+      <Setter Property="Width" Value="158" />
+      <Setter Property="Height" Value="22" />
+    </Style>
+    <Style Selector="components|RuntimeTabStripView[Orientation=Vertical] Grid.RuntimeTabDropTarget">
+      <Setter Property="Height" Value="{DynamicResource ShellControlMinHeight}" />
+    </Style>
+    <Style Selector="components|RuntimeTabStripView[Orientation=Vertical] Button#AddTabButton">
+      <Setter Property="Margin" Value="{controls:Inset Top=Xs}" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+  </UserControl.Styles>
   <!-- The add button lives outside the scroll: it is always reachable, no
        matter how many tabs overflowed. The scrollbar is hidden — overflow
        announces itself as a fade at the strip's edge instead of a bar.
@@ -58,8 +77,6 @@
                the old height it was the heaviest thing in the chrome and read
                as a banner rather than as one tab among several. -->
           <Grid
-              Width="158"
-              Height="22"
               Classes="RuntimeTabDropTarget"
               Classes.active="{Binding IsActive}"
               ColumnDefinitions="18,*,20"

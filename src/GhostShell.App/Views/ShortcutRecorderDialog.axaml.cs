@@ -120,7 +120,7 @@ public sealed partial class ShortcutRecorderDialog : Window
             : "No keys recorded";
         this.FindControl<TextBlock>("StrokeCountText")!.Text =
             $"{_strokes.Count} of {_maximumStrokes} {(_maximumStrokes == 1 ? "stroke" : "strokes")}";
-        this.FindControl<TextBlock>("RecorderHelpText")!.Text = _maximumStrokes == 1
+        this.FindControl<DialogShell>("Shell")!.Subtitle = _maximumStrokes == 1
             ? "Record one terminal stroke. Conflicts are checked before the profile can be saved."
             : $"Record up to {_maximumStrokes} strokes. Conflicts are checked before the profile can be saved.";
         this.FindControl<TextBlock>("RecorderStatusText")!.Text =

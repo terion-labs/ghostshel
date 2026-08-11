@@ -8,23 +8,21 @@
     CanResize="False"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="Auto,*,Auto">
-    <Border Classes="TopChrome">
-      <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock x:Name="Heading" FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" />
-        <TextBlock x:Name="Description" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Names are validated by the selected provider before anything changes." />
+  <controls:DialogShell
+      x:Name="Shell"
+      Subtitle="Names are validated by the selected provider before anything changes.">
+    <controls:DialogShell.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />
+        <Button x:Name="ConfirmButton" Classes="PrimaryButton" Click="OnConfirmClick" />
       </StackPanel>
-    </Border>
-    <StackPanel Grid.Row="1" Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
-      <TextBlock FontWeight="SemiBold" Text="Name" />
-      <TextBox x:Name="NameInput" KeyDown="OnNameKeyDown" />
+    </controls:DialogShell.Footer>
+
+    <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+      <controls:LabeledField Label="Name">
+        <TextBox x:Name="NameInput" KeyDown="OnNameKeyDown" />
+      </controls:LabeledField>
       <TextBlock x:Name="ValidationMessage" Foreground="{DynamicResource ShellDangerBrush}" IsVisible="False" TextWrapping="Wrap" />
     </StackPanel>
-    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />
-        <Button x:Name="ConfirmButton" Grid.Column="2" Classes="PrimaryButton" Click="OnConfirmClick" />
-      </Grid>
-    </Border>
-  </Grid>
+  </controls:DialogShell>
 </Window>

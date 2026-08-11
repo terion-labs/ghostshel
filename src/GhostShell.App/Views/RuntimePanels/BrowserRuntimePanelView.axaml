@@ -24,10 +24,9 @@
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
     <controls:PanelChrome.Status>
-      <Ellipse
-          Width="7"
-          Height="7"
-          Fill="{Binding StatusBrush, ElementName=RuntimeBrowser}" />
+      <Border
+          Classes="StatusDot"
+          Background="{Binding StatusBrush, ElementName=RuntimeBrowser}" />
     </controls:PanelChrome.Status>
 
     <controls:PanelChrome.Leading>
@@ -118,55 +117,29 @@
     <Grid>
       <controls:BrowserPresentationHost
           x:Name="RuntimeBrowser"
-          Margin="1"
+          Margin="{DynamicResource ShellHairline}"
           BrowserStateChanged="OnBrowserStateChanged"
           ClientId="{Binding ClientId}"
           RendererView="{Binding RendererView}"
           SessionClient="{Binding SessionClient}"
           SessionRequest="{Binding SessionRequest}" />
       <Border
-          Margin="1"
-          Padding="{controls:Inset Xl}"
+          Margin="{DynamicResource ShellHairline}"
           Background="{DynamicResource ShellBackgroundBrush}"
           IsVisible="{Binding ShowFallback, ElementName=RuntimeBrowser}">
-        <StackPanel
-            MaxWidth="440"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="{DynamicResource ShellSpaceSm}">
-          <icons:SymbolIcon
-              FontSize="24"
-              Foreground="{DynamicResource ShellMutedBrush}"
-              Symbol="Globe" />
-          <TextBlock
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize11}"
-              Text="{Binding StatusMessage, ElementName=RuntimeBrowser}"
-              TextAlignment="Center"
-              TextWrapping="Wrap" />
-        </StackPanel>
+        <controls:StateOverlay
+            Glyph="Globe"
+            Body="{Binding StatusMessage, ElementName=RuntimeBrowser}" />
       </Border>
       <Border
-          Margin="1"
-          Padding="{controls:Inset Xl}"
+          Margin="{DynamicResource ShellHairline}"
           Background="{DynamicResource ShellBackgroundBrush}"
           IsVisible="{Binding HasRouteError}">
-        <StackPanel
-            MaxWidth="440"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Spacing="{DynamicResource ShellSpaceSm}">
-          <icons:SymbolIcon
-              FontSize="24"
-              Foreground="{DynamicResource ShellDangerBrush}"
-              Symbol="ErrorCircle" />
-          <TextBlock
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize11}"
-              Text="{Binding RouteErrorMessage}"
-              TextAlignment="Center"
-              TextWrapping="Wrap" />
-        </StackPanel>
+        <controls:StateOverlay
+            Kind="Error"
+            Glyph="ErrorCircle"
+            Heading="Browser unavailable"
+            Body="{Binding RouteErrorMessage}" />
       </Border>
     </Grid>
   </controls:PanelChrome>

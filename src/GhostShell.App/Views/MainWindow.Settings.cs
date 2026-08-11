@@ -234,7 +234,7 @@ public sealed partial class MainWindow
         }
 
         if (ViewModel.KeybindingEditorSession?.IsDirty == true
-            && !await new DiscardChangesDialog(
+            && !await Confirmations.DiscardChanges(
                     "Discard keybinding changes?",
                     "The unsaved shortcuts, prefix, and conflict resolutions will be lost.")
                 .ShowDialog<bool>(this))
@@ -387,7 +387,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        var confirmed = await new DefinitionDeleteDialog("file provider", profile.Name)
+        var confirmed = await Confirmations.DefinitionDelete("file provider", profile.Name)
             .ShowDialog<bool>(this);
         if (!confirmed)
         {
@@ -446,7 +446,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        var confirmed = await new DefinitionDeleteDialog("AI provider", profile.Name)
+        var confirmed = await Confirmations.DefinitionDelete("AI provider", profile.Name)
             .ShowDialog<bool>(this);
         if (!confirmed)
         {
@@ -522,7 +522,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        var confirmed = await new DefinitionDeleteDialog(
+        var confirmed = await Confirmations.DefinitionDelete(
                 "MCP server",
                 profile.Name)
             .ShowDialog<bool>(this);
@@ -917,7 +917,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        var confirmed = await new DefinitionDeleteDialog("credential", secret.Label)
+        var confirmed = await Confirmations.DefinitionDelete("credential", secret.Label)
             .ShowDialog<bool>(this);
         if (confirmed)
         {

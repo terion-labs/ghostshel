@@ -96,6 +96,20 @@
           <SolidColorBrush x:Key="ShellWarningSoftBrush" Color="#32241A" />
           <SolidColorBrush x:Key="ShellWarningBorderBrush" Color="#75502F" />
           <SolidColorBrush x:Key="ShellNoticeBorderBrush" Color="#70492E" />
+          <!-- Fluent's own interaction states for text inputs and popups jump
+               to its stock light-on-dark values on hover, which read as a
+               harsh flash against the shell's quiet fields. The states stay
+               on the shell's palette: the fill holds still and only the
+               border admits the pointer. -->
+          <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#111111" />
+          <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#111111" />
+          <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#111111" />
+          <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#3E3E42" />
+          <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#3E3E42" />
+          <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#3E3E42" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
           <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#F2F3F0" />
@@ -127,6 +141,15 @@
           <SolidColorBrush x:Key="ShellWarningSoftBrush" Color="#FFF0D6" />
           <SolidColorBrush x:Key="ShellWarningBorderBrush" Color="#B46B20" />
           <SolidColorBrush x:Key="ShellNoticeBorderBrush" Color="#A06A36" />
+          <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#F2F3F0" />
+          <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#F2F3F0" />
+          <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#F2F3F0" />
+          <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#A8AAA6" />
+          <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#CBCCC9" />
+          <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#CBCCC9" />
+          <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#CBCCC9" />
+          <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#A8AAA6" />
+          <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#A8AAA6" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
 
@@ -176,13 +199,44 @@
       <Thickness x:Key="ShellInsetXl">24</Thickness>
       <Thickness x:Key="ShellInsetXxl">32</Thickness>
       <Thickness x:Key="ShellCardPadding">16</Thickness>
+      <!-- The tighter card inset, for cards that hold dense content — list
+           rows, code, tables. Every view used to zero the card's padding and
+           re-type its own inset on the child, which is how the same card came
+           to carry four different interior gaps. -->
+      <Thickness x:Key="ShellCardPaddingCompact">12</Thickness>
       <Thickness x:Key="ShellButtonPadding">16,10</Thickness>
       <Thickness x:Key="ShellPagePadding">16</Thickness>
       <Thickness x:Key="ShellRowPadding">16,12</Thickness>
+      <!-- A list row's inset — denser than a settings row, because a list is
+           scanned rather than read. As a resource, not an Inset markup use:
+           the one consumer is a shared DataTemplate, where the Inset
+           extension's parse-time resolution has proven unreliable. -->
+      <Thickness x:Key="ShellListRowPadding">12,8</Thickness>
       <Thickness x:Key="ShellPillPadding">8,4</Thickness>
       <Thickness x:Key="ShellTabStripTopClearance">0,1,0,0</Thickness>
       <Thickness x:Key="ShellToolbarSeparatorMargin">0,7</Thickness>
       <BoxShadows x:Key="ShellOverlayShadow">0 18 54 0 #A0000000</BoxShadows>
+      <!-- The wash behind every overlay. Deliberately near-black in both
+           themes: a scrim's job is to push the page back, and a pale scrim
+           over a pale page reads as a rendering fault rather than a layer. -->
+      <SolidColorBrush x:Key="ShellScrimBrush" Color="#F20B0B0C" />
+      <!-- The ground a warning toast stands on when it floats over arbitrary
+           content — a terminal, a native view — where no surface token can
+           promise contrast. Warm-tinted near-black so the warning text and
+           border stay legible over anything. -->
+      <SolidColorBrush x:Key="ShellWarningOverlayBrush" Color="#E6291D18" />
+      <!-- The layout designer's slot identities. Fixed, not themed: a slot's
+           colour is its name across sessions and themes, the way a tag colour
+           is, so these deliberately do not move with the palette. -->
+      <SolidColorBrush x:Key="ShellSlotBadgeOrangeBrush" Color="#FF8400" />
+      <SolidColorBrush x:Key="ShellSlotBadgeBlueBrush" Color="#3B82F6" />
+      <SolidColorBrush x:Key="ShellSlotBadgeGreenBrush" Color="#22C55E" />
+      <SolidColorBrush x:Key="ShellSlotBadgePinkBrush" Color="#EC4899" />
+      <!-- The three widths an overlay opens at. Content decides which of the
+           three it needs; nothing else about an overlay's size is a choice. -->
+      <x:Double x:Key="ShellOverlayWidthSm">680</x:Double>
+      <x:Double x:Key="ShellOverlayWidthMd">900</x:Double>
+      <x:Double x:Key="ShellOverlayWidthLg">1000</x:Double>
       <!-- A ring, not a drop: the flyout hangs over surfaces that are already
            near-black, where an offset shadow only ever peeks out at the
            corners. Soft spread on every edge plus a faint contact line — dense
@@ -196,6 +250,10 @@
            switch knob's travel inset and the colour well's frame. Deliberately
            not density-scaled — the host draws these controls at fixed size. -->
       <Thickness x:Key="ShellHairlineInset">2</Thickness>
+      <!-- One border width, as a margin: the inset that keeps content off a
+           card's own 1px stroke. Not density-scaled — it matches the border,
+           which never scales either. -->
+      <Thickness x:Key="ShellHairline">1</Thickness>
       <!-- The border the window's own edge stands in for.
 
            Every surface in the workspace draws a one-pixel border, so the gap

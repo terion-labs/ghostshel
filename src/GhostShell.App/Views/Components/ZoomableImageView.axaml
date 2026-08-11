@@ -59,7 +59,7 @@
             AutomationProperties.Name="Zoom in">
           <icons:SymbolIcon Symbol="ZoomIn" FontSize="12" />
         </Button>
-        <Border Width="1" Margin="2,3" Background="{DynamicResource ShellBorderBrush}" />
+        <Border Width="1" Margin="{DynamicResource ShellHairlineInset}" Background="{DynamicResource ShellBorderBrush}" />
         <Button
             Classes="IconButton"
             Click="OnRotateLeftClick"

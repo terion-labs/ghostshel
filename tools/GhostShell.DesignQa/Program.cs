@@ -1649,7 +1649,7 @@ internal sealed class QaApplication : Avalonia.Application
         // The design system itself, so a changed radius, gap, or tone shows up as a
         // diff in one image rather than as drift discovered later in a screenshot.
         ("design-system", static () => new DesignSystemGalleryWindow(), null),
-        ("dialog-definition-delete", () => new DefinitionDeleteDialog(
+        ("dialog-definition-delete", () => Confirmations.DefinitionDelete(
             "connection",
             QaData.Connections[0].Value.Name), null),
         // The same gallery at the two density extremes. The spacing scale, the

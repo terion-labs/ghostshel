@@ -3,12 +3,11 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:icons="using:FluentIcons.Avalonia"
     Focusable="False"
     HorizontalContentAlignment="Stretch">
   <controls:SurfaceCard Tone="Notice"
       x:Name="AgentPendingQuestion"
-      Padding="{controls:Inset Md}"
+      Padding="{DynamicResource ShellCardPaddingCompact}"
       Focusable="True"
       KeyboardNavigation.IsTabStop="True"
       IsVisible="{Binding AgentChat.HasPendingQuestion}"
@@ -33,22 +32,10 @@
           FontSize="{DynamicResource ShellFontSize9}"
           Text="{Binding AgentChat.PendingQuestion.ExpiresAt, StringFormat={}Expires · {0}}"
           TextWrapping="Wrap" />
-      <Border
-          Padding="{controls:Inset Sm}"
-          Background="{DynamicResource ShellWarningSoftBrush}"
-          BorderBrush="{DynamicResource ShellWarningBorderBrush}"
-          BorderThickness="1"
-          CornerRadius="{DynamicResource ShellControlCornerRadius}">
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <icons:SymbolIcon Symbol="Warning" FontSize="14" Foreground="{DynamicResource ShellWarningBrush}" />
-          <TextBlock
-              Grid.Column="1"
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize9}"
-              Text="{Binding AgentChat.PendingQuestion.ResponseWarning}"
-              TextWrapping="Wrap" />
-        </Grid>
-      </Border>
+      <controls:Callout
+          Tone="Warning"
+          Glyph="Warning"
+          Text="{Binding AgentChat.PendingQuestion.ResponseWarning}" />
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock Classes="Eyebrow" Text="Your answer" />
         <TextBox

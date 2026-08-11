@@ -17,12 +17,6 @@ namespace GhostShell.App.Views.Components;
 public sealed partial class DatabaseWorkspaceView : UserControl
 {
     private const double ObjectsListMinimumWorkspaceWidth = 520;
-
-    /// <summary>
-    /// Below this, the row-action strip trades its text labels for glyphs so
-    /// the actions, the read-only notice, and the pager still share one row.
-    /// </summary>
-    private const double RowActionLabelsMinimumWidth = 680;
     private const double ObjectsListMinimumWidth = 120;
     private const double ResultsMinimumWidth = 240;
 
@@ -117,8 +111,9 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
+        // The row-action labels fold by ContainerQuery; only the objects list,
+        // whose folding changes layout structure, still needs code.
         SetObjectsFolded(e.NewSize.Width < ObjectsListMinimumWorkspaceWidth);
-        Classes.Set("narrowData", e.NewSize.Width < RowActionLabelsMinimumWidth);
     }
 
     /// <summary>

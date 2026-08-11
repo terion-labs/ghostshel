@@ -61,7 +61,7 @@ public sealed partial class SecretEditorDialog : Window
         }
         catch (ArgumentException exception)
         {
-            if (this.FindControl<SurfaceCard>("ValidationCard") is { } card
+            if (this.FindControl<Callout>("ValidationCard") is { } card
                 && this.FindControl<TextBlock>("ValidationMessage") is { } message)
             {
                 message.Text = exception.Message;

@@ -837,11 +837,13 @@
       <Setter Property="Template">
         <ControlTemplate>
           <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+            <!-- The label carries the field's name in the same voice the
+                 application's forms always wrote it by hand: semibold, full
+                 text colour, base size. The kit's original muted small label
+                 lost to that idiom a hundred times over, so the idiom won. -->
             <TextBlock
                 Margin="{controls:Inset Horizontal=Xs}"
-                FontSize="{DynamicResource ShellFontSize12}"
-                Foreground="{DynamicResource ShellMutedBrush}"
-                LineHeight="{DynamicResource ShellLineHeight12}"
+                FontWeight="SemiBold"
                 Text="{TemplateBinding Label}"
                 TextTrimming="CharacterEllipsis" />
             <ContentPresenter
@@ -933,10 +935,13 @@
                   FontWeight="SemiBold"
                   LineHeight="{DynamicResource ShellLineHeight14}"
                   Text="{TemplateBinding Heading}" />
+              <!-- The same rank as SectionHeader's description, on purpose:
+                   these are the two components that head a group of content,
+                   and they disagreed by two points for no reason anyone chose. -->
               <TextBlock
                   Foreground="{DynamicResource ShellMutedBrush}"
-                  FontSize="{DynamicResource ShellFontSize10}"
-                  LineHeight="{DynamicResource ShellLineHeight10}"
+                  FontSize="{DynamicResource ShellFontSize12}"
+                  LineHeight="{DynamicResource ShellLineHeight12}"
                   Text="{TemplateBinding Description}"
                   TextWrapping="Wrap"
                   IsVisible="{TemplateBinding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -964,6 +969,359 @@
       </Style>
       <Style Selector="^:footed /template/ ContentPresenter#PART_Footer">
         <Setter Property="IsVisible" Value="True" />
+      </Style>
+    </ControlTheme>
+
+    <!--
+      A chooser tile sits on an overlay or launcher surface and reads as a
+      sunken card the pointer can light up. Focus is the accent ring, as on
+      every other interactive card.
+    -->
+    <ControlTheme x:Key="{x:Type controls:ChooserTile}" TargetType="controls:ChooserTile">
+      <Setter Property="MinHeight" Value="116" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
+      <Setter Property="Padding" Value="{DynamicResource ShellCardPadding}" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border
+              Name="PART_Surface"
+              Background="{TemplateBinding Background}"
+              CornerRadius="{TemplateBinding CornerRadius}">
+            <!-- Top-aligned, icon at the left: tiles in a row share one
+                 baseline whether their description runs one line or two. -->
+            <StackPanel
+                Margin="{TemplateBinding Padding}"
+                VerticalAlignment="Top"
+                Spacing="{DynamicResource ShellSpaceSm}">
+              <Border
+                  Classes="ChooserIconTile"
+                  HorizontalAlignment="Left"
+                  Width="{DynamicResource ShellTileSizeMd}"
+                  Height="{DynamicResource ShellTileSizeMd}">
+                <icons:SymbolIcon
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Symbol="{TemplateBinding Icon}"
+                    FontSize="{DynamicResource ShellFontSize18}" />
+              </Border>
+              <TextBlock FontWeight="SemiBold" Text="{TemplateBinding Title}" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  LineHeight="{DynamicResource ShellLineHeight10}"
+                  Text="{TemplateBinding Description}"
+                  TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:pointerover /template/ Border#PART_Surface">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#PART_Surface">
+        <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#PART_Surface">
+        <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
+        <Setter Property="BorderThickness" Value="2" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.48" />
+      </Style>
+    </ControlTheme>
+
+    <!--
+      The three not-content states share one control; which template it wears
+      is the Kind. Empty rests on EmptyStatePanel, loading is a working bar
+      with a sentence, and an error is a notice card with the way back.
+    -->
+    <ControlTheme x:Key="{x:Type controls:StateOverlay}" TargetType="controls:StateOverlay">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <controls:EmptyStatePanel
+              Glyph="{TemplateBinding Glyph}"
+              Heading="{TemplateBinding Heading}"
+              Body="{TemplateBinding Body}">
+            <StackPanel HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+              <ContentPresenter
+                  HorizontalAlignment="Center"
+                  Content="{TemplateBinding Content}"
+                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                  IsVisible="{TemplateBinding Content, Converter={x:Static ObjectConverters.IsNotNull}}" />
+              <Button
+                  Name="PART_Action"
+                  HorizontalAlignment="Center"
+                  Classes="SecondaryButton"
+                  Command="{TemplateBinding ActionCommand}"
+                  Content="{TemplateBinding ActionLabel}"
+                  IsVisible="{TemplateBinding ActionLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </controls:EmptyStatePanel>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:loading">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="{DynamicResource ShellSpaceSm}">
+              <ProgressBar
+                  Width="180"
+                  HorizontalAlignment="Center"
+                  IsIndeterminate="True" />
+              <TextBlock
+                  HorizontalAlignment="Center"
+                  FontWeight="SemiBold"
+                  Text="{TemplateBinding Heading}"
+                  TextAlignment="Center"
+                  TextWrapping="Wrap" />
+              <TextBlock
+                  MaxWidth="420"
+                  HorizontalAlignment="Center"
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize11}"
+                  LineHeight="{DynamicResource ShellLineHeight11}"
+                  Text="{TemplateBinding Body}"
+                  TextAlignment="Center"
+                  TextWrapping="Wrap"
+                  IsVisible="{TemplateBinding Body, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </ControlTemplate>
+        </Setter>
+      </Style>
+
+      <Style Selector="^:error">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <controls:SurfaceCard
+                Tone="Notice"
+                MaxWidth="430"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+              <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                <icons:SymbolIcon
+                    HorizontalAlignment="Left"
+                    Symbol="{TemplateBinding Glyph}"
+                    FontSize="{DynamicResource ShellFontSize24}"
+                    Foreground="{DynamicResource ShellDangerBrush}" />
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="{TemplateBinding Heading}"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize11}"
+                    LineHeight="{DynamicResource ShellLineHeight11}"
+                    Text="{TemplateBinding Body}"
+                    TextWrapping="Wrap"
+                    IsVisible="{TemplateBinding Body, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <ContentPresenter
+                    Content="{TemplateBinding Content}"
+                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                    IsVisible="{TemplateBinding Content, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                <Button
+                    Name="PART_Action"
+                    HorizontalAlignment="Left"
+                    Classes="SecondaryButton"
+                    Command="{TemplateBinding ActionCommand}"
+                    Content="{TemplateBinding ActionLabel}"
+                    IsVisible="{TemplateBinding ActionLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </controls:SurfaceCard>
+          </ControlTemplate>
+        </Setter>
+      </Style>
+    </ControlTheme>
+
+    <!--
+      A callout's surface is the card, so its tone vocabulary is the card's.
+      Only the glyph is coloured here: it carries the tone's voice at a glance
+      the way the border alone cannot.
+    -->
+    <ControlTheme x:Key="{x:Type controls:Callout}" TargetType="controls:Callout">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <controls:SurfaceCard
+              Tone="{TemplateBinding Tone}"
+              Padding="{DynamicResource ShellCardPaddingCompact}">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <icons:SymbolIcon
+                  Name="PART_Glyph"
+                  VerticalAlignment="Top"
+                  Symbol="{TemplateBinding Glyph}"
+                  FontSize="{DynamicResource ShellFontSize16}"
+                  Foreground="{DynamicResource ShellAccentBrush}"
+                  IsVisible="{TemplateBinding ShowsGlyph}" />
+              <ContentPresenter
+                  Grid.Column="2"
+                  VerticalAlignment="Center"
+                  Content="{TemplateBinding Action}"
+                  IsVisible="{TemplateBinding Action, Converter={x:Static ObjectConverters.IsNotNull}}" />
+              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="{TemplateBinding Title}"
+                    TextWrapping="Wrap"
+                    IsVisible="{TemplateBinding Title, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock
+                    Classes="Muted"
+                    Text="{TemplateBinding Text}"
+                    TextWrapping="Wrap"
+                    IsVisible="{TemplateBinding Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <ContentPresenter
+                    Content="{TemplateBinding Content}"
+                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                    IsVisible="{TemplateBinding Content, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    LineHeight="{DynamicResource ShellLineHeight10}"
+                    Text="{TemplateBinding Footnote}"
+                    TextWrapping="Wrap"
+                    IsVisible="{TemplateBinding Footnote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Grid>
+          </controls:SurfaceCard>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:tone-warning /template/ icons|SymbolIcon#PART_Glyph">
+        <Setter Property="Foreground" Value="{DynamicResource ShellWarningBrush}" />
+      </Style>
+      <Style Selector="^:tone-danger /template/ icons|SymbolIcon#PART_Glyph">
+        <Setter Property="Foreground" Value="{DynamicResource ShellDangerBrush}" />
+      </Style>
+      <Style Selector="^:tone-success /template/ icons|SymbolIcon#PART_Glyph">
+        <Setter Property="Foreground" Value="{DynamicResource ShellSuccessBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type controls:ToggleField}" TargetType="controls:ToggleField">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+            <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock
+                  FontWeight="SemiBold"
+                  Text="{TemplateBinding Label}"
+                  TextWrapping="Wrap" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  LineHeight="{DynamicResource ShellLineHeight10}"
+                  Text="{TemplateBinding StateText}" />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                IsChecked="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <!--
+      The dialog frame. The header band and the footer rule are the two pieces
+      every dialog rebuilt by hand, and the two that had drifted: subtitle sizes
+      apart, row heights in three variants, a close glyph that was a literal ×
+      in three files and an icon in the fourth.
+    -->
+    <ControlTheme x:Key="{x:Type controls:DialogShell}" TargetType="controls:DialogShell">
+      <Setter Property="Padding" Value="{DynamicResource ShellInsetLg}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid RowDefinitions="Auto,*,Auto">
+            <Border Grid.Row="0" Classes="TopChrome">
+              <Grid
+                  Margin="{controls:Inset Horizontal=Lg, Vertical=Md}"
+                  ColumnDefinitions="*,Auto,Auto"
+                  ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock
+                      Name="PART_Title"
+                      FontSize="{DynamicResource ShellFontSize15}"
+                      FontWeight="SemiBold"
+                      Text="{TemplateBinding Title}" />
+                  <TextBlock
+                      Name="PART_Subtitle"
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize10}"
+                      LineHeight="{DynamicResource ShellLineHeight10}"
+                      Text="{TemplateBinding Subtitle}"
+                      TextWrapping="Wrap"
+                      IsVisible="{TemplateBinding Subtitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+                <ContentPresenter
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Content="{TemplateBinding HeaderContent}"
+                    IsVisible="{TemplateBinding HeaderContent, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                <!-- IsCancel, so Escape reaches the dialogs whose only cancel
+                     affordance is this glyph — the editors lost Esc-to-close
+                     the first time their inline close buttons were replaced. -->
+                <Button
+                    Name="PART_Close"
+                    Grid.Column="2"
+                    Classes="IconButton"
+                    IsCancel="True"
+                    IsVisible="{TemplateBinding ShowsClose}"
+                    ToolTip.Tip="Close"
+                    AutomationProperties.Name="Close dialog">
+                  <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize14}" Symbol="Dismiss" />
+                </Button>
+              </Grid>
+            </Border>
+            <ScrollViewer
+                Grid.Row="1"
+                Name="PART_Scroll"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+              <ContentPresenter
+                  Name="PART_ContentPresenter"
+                  Margin="{TemplateBinding Padding}"
+                  Content="{TemplateBinding Content}"
+                  ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </ScrollViewer>
+            <Border
+                Grid.Row="2"
+                BorderBrush="{DynamicResource ShellBorderBrush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{TemplateBinding IsFooterVisible}">
+              <Grid
+                  Margin="{controls:Inset Horizontal=Lg, Vertical=Md}"
+                  ColumnDefinitions="*,Auto"
+                  ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    LineHeight="{DynamicResource ShellLineHeight10}"
+                    Text="{TemplateBinding FooterHint}"
+                    TextWrapping="Wrap"
+                    IsVisible="{TemplateBinding FooterHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <ContentPresenter
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Content="{TemplateBinding Footer}" />
+              </Grid>
+            </Border>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:editor /template/ TextBlock#PART_Title">
+        <Setter Property="FontSize" Value="{DynamicResource ShellFontSize18}" />
+      </Style>
+      <Style Selector="^[Scrolls=False] /template/ ScrollViewer#PART_Scroll">
+        <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
       </Style>
     </ControlTheme>
 

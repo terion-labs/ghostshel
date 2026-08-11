@@ -129,6 +129,16 @@
     <Setter Property="Height" Value="24" />
   </Style>
 
+  <!-- A panel's toolbar band: the strip under the chrome header that holds a
+       panel's own controls. One surface and one hairline, declared here,
+       because eleven views were rebuilding the same Border by hand and each
+       had its own opinion about which brush the hairline used. -->
+  <Style Selector="Border.PanelToolbar">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+
   <!-- File actions live inside one macOS-style toolbar capsule. Their disabled
        state must remain quiet; the Fluent template otherwise paints a separate
        rounded lozenge behind every unavailable action. -->
@@ -348,6 +358,20 @@
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
   </Style>
 
+  <!-- A list that is a reading surface, not a set of controls: no chrome of
+       its own, rows at their natural height. The preview views each carried
+       this as a local style block. -->
+  <Style Selector="ListBox.Dense">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="ListBox.Dense ListBoxItem">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+
   <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
   </Style>
@@ -360,7 +384,7 @@
     when the things are not themselves neutral.
   -->
   <Style Selector="ListBox.NeutralSelection > ListBoxItem">
-    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="Padding" Value="{DynamicResource ShellPillPadding}" />
   </Style>
 
   <Style Selector="ListBox.NeutralSelection > ListBoxItem:selected /template/ ContentPresenter">
@@ -379,7 +403,7 @@
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
     <Setter Property="MinHeight" Value="32" />
-    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
     <Setter Property="AutomationProperties.ItemStatus" Value="" />
   </Style>
 
@@ -407,47 +431,20 @@
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
 
-  <!-- Chooser tiles sit on overlay surfaces and read as sunken cards, the
-       same fill the workspace panels use — not as raised light controls. -->
-  <Style Selector="Button.ChooserButton">
-    <Setter Property="MinHeight" Value="116" />
-    <Setter Property="HorizontalAlignment" Value="Stretch" />
-    <Setter Property="HorizontalContentAlignment" Value="Left" />
-    <Setter Property="VerticalContentAlignment" Value="Center" />
-    <Setter Property="Padding" Value="16" />
-    <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
-  </Style>
-
-  <Style Selector="Button.ChooserButton:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
-  </Style>
-
-  <Style Selector="Button.ChooserButton.LauncherTile">
-    <Setter Property="MinHeight" Value="124" />
-    <Setter Property="Padding" Value="16" />
-    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
-  </Style>
-
-  <Style Selector="Button.ChooserButton.PanelChooser">
-    <Setter Property="MinHeight" Value="110" />
-    <Setter Property="Padding" Value="14" />
-    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
-  </Style>
-
   <Style Selector="Border.LayoutSlotBadge.orange">
-    <Setter Property="Background" Value="#FF8400" />
+    <Setter Property="Background" Value="{DynamicResource ShellSlotBadgeOrangeBrush}" />
   </Style>
 
   <Style Selector="Border.LayoutSlotBadge.blue">
-    <Setter Property="Background" Value="#3B82F6" />
+    <Setter Property="Background" Value="{DynamicResource ShellSlotBadgeBlueBrush}" />
   </Style>
 
   <Style Selector="Border.LayoutSlotBadge.green">
-    <Setter Property="Background" Value="#22C55E" />
+    <Setter Property="Background" Value="{DynamicResource ShellSlotBadgeGreenBrush}" />
   </Style>
 
   <Style Selector="Border.LayoutSlotBadge.pink">
-    <Setter Property="Background" Value="#EC4899" />
+    <Setter Property="Background" Value="{DynamicResource ShellSlotBadgePinkBrush}" />
   </Style>
 
   <Style Selector="TextBox, ComboBox, NumericUpDown">
@@ -522,7 +519,21 @@
 
   <Style Selector="ButtonSpinner /template/ RepeatButton /template/ ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellInnerCornerRadius}" />
+  </Style>
+
+  <!-- Disabled steppers disappear into the field rather than standing in
+       their own outlined boxes — a disabled numeric field otherwise grew a
+       pair of empty buttons beside it. -->
+  <Style Selector="ButtonSpinner /template/ RepeatButton:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="ButtonSpinner">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
   </Style>
 
   <Style Selector="ButtonSpinner /template/ RepeatButton:pointerover /template/ ContentPresenter">
@@ -740,85 +751,13 @@
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentForegroundBrush}" />
   </Style>
 
-  <!--
-    Launcher cards use the design's raised surface and 16px shape. The platform
-    card radius stays reserved for window chrome and settings surfaces.
-  -->
-
-  <!--
-    The card body is the primary target, so the whole surface activates. Secondary
-    actions sit above it and reveal on hover or keyboard focus, which keeps the
-    resting card as uncluttered as the design.
-  -->
-  <Style Selector="Button.CardSurface">
-    <Setter Property="Padding" Value="{DynamicResource ShellCardPadding}" />
-    <Setter Property="MinHeight" Value="0" />
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
-    <Setter Property="HorizontalAlignment" Value="Stretch" />
-    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-    <Setter Property="VerticalContentAlignment" Value="Top" />
-  </Style>
-
-  <!--
-    The card border owns the card's fill, so every Button visual state keeps its
-    own presenter transparent. Without this the theme's disabled and rest
-    backgrounds paint a lighter rectangle inside the card.
-  -->
-  <Style Selector="Button.CardSurface /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="CornerRadius" Value="{DynamicResource ShellCardCornerRadius}" />
-  </Style>
-
-  <Style Selector="Button.CardSurface:disabled /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent" />
-  </Style>
-
-  <Style Selector="Button.CardSurface:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
-  </Style>
-
-  <Style Selector="Button.CardSurface:disabled">
-    <Setter Property="Opacity" Value="0.62" />
-  </Style>
-
-  <!--
-    A launch card reveals its actions on hover or focus. This is the one card
-    behaviour the surface component does not model, because it is a statement
-    about the content rather than about the surface.
-
-    The ancestor is qualified by class, not left as the bare card. A descendant
-    selector is re-matched up the tree whenever anything it could match changes
-    state, so leaving it as every SurfaceCard put a tree walk behind every pointer
-    move over any of the 195 of them — which is what made hovering lag.
-  -->
-  <Style Selector="controls|SurfaceCard.LaunchCard:pointerover StackPanel.CardActions">
-    <Setter Property="Opacity" Value="1" />
-  </Style>
-
-  <Style Selector="controls|SurfaceCard.LaunchCard:focus-within StackPanel.CardActions">
-    <Setter Property="Opacity" Value="1" />
-  </Style>
-
-  <Style Selector="StackPanel.CardActions">
-    <Setter Property="IsVisible" Value="False" />
-  </Style>
-
-
-
-  <!-- Neutral kind/protocol badge: SSH, Local, Docker, WSL. -->
-
-
-  <!-- Free-form connection tag. -->
-
 
   <!-- Connection liveness/availability indicator. -->
   <Style Selector="Border.StatusDot">
     <Setter Property="Width" Value="8" />
     <Setter Property="Height" Value="8" />
     <Setter Property="VerticalAlignment" Value="Center" />
-    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
     <Setter Property="Background" Value="{DynamicResource ShellMutedBrush}" />
   </Style>
 
@@ -927,7 +866,7 @@
   -->
   <Style Selector="RadioButton.PresetCard">
     <Setter Property="Width" Value="212" />
-    <Setter Property="Padding" Value="12" />
+    <Setter Property="Padding" Value="{DynamicResource ShellCardPaddingCompact}" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="Template">
       <ControlTemplate>
@@ -988,7 +927,7 @@
     <Setter Property="Height" Value="30" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="Padding" Value="0" />
-    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
     <Setter Property="BorderThickness" Value="2" />
     <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
@@ -1062,6 +1001,13 @@
         </Border>
       </ControlTemplate>
     </Setter>
+  </Style>
+
+  <!-- A switch alone in a settings row sits at the control column's trailing
+       edge, where every other row's control ends — left-aligned it floated in
+       the middle of the column whenever the group fixed a width. -->
+  <Style Selector="controls|SettingRow > ToggleSwitch">
+    <Setter Property="HorizontalAlignment" Value="Right" />
   </Style>
 
   <Style Selector="ToggleSwitch:pointerover /template/ Border#SwitchTrack">
@@ -1153,7 +1099,7 @@
   <Style Selector="ColorPicker.Swatch.Round">
     <Setter Property="Width" Value="30" />
     <Setter Property="Height" Value="30" />
-    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
     <Setter Property="Content">
       <Template>
         <Border
@@ -1165,7 +1111,7 @@
   </Style>
 
   <Style Selector="ColorPicker.Swatch.Round /template/ DropDownButton">
-    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
   </Style>
 
   <Style Selector="ColorPicker.Swatch /template/ DropDownButton /template/ PathIcon">
@@ -1197,7 +1143,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
-    <Setter Property="Padding" Value="3" />
+    <Setter Property="Padding" Value="{DynamicResource ShellPreviewTileInset}" />
     <!-- The track owns the shape, so a segment can never paint outside it. -->
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
@@ -1210,17 +1156,20 @@
   <Style Selector="ToggleButton.Segment">
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="Margin" Value="0" />
-    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="Padding" Value="{controls:Inset Horizontal=Md, Vertical=Xs}" />
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize11}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="VerticalAlignment" Value="Stretch" />
     <Setter Property="Template">
       <ControlTemplate>
+        <!-- Inner radius, not the control radius: the segment sits inside the
+             track's own rounded frame, and two equal radii separated by the
+             track's inset read as corners that miss each other. -->
         <Border
             Name="SegmentRoot"
             Background="Transparent"
-            CornerRadius="{DynamicResource ShellControlCornerRadius}"
+            CornerRadius="{DynamicResource ShellInnerCornerRadius}"
             Padding="{TemplateBinding Padding}">
           <ContentPresenter
               Content="{TemplateBinding Content}"
@@ -1363,7 +1312,7 @@
   <Style Selector="Border.ScreenPreviewPanel">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
     <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellInnerCornerRadius}" />
   </Style>
 
   <Style Selector="Border.ScreenPreviewPanel.primary">
@@ -1379,7 +1328,7 @@
   -->
   <Style Selector="Border.Keycap">
     <Setter Property="VerticalAlignment" Value="Center" />
-    <Setter Property="Padding" Value="6,3" />
+    <Setter Property="Padding" Value="{DynamicResource ShellPillPadding}" />
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
@@ -1399,13 +1348,13 @@
   -->
   <Style Selector="Button.Chip, ComboBox.Chip">
     <Setter Property="MinHeight" Value="24" />
-    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="Padding" Value="{DynamicResource ShellPillPadding}" />
     <Setter Property="HorizontalAlignment" Value="Left" />
     <Setter Property="FontSize" Value="{DynamicResource ShellPillFontSize}" />
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceRaisedBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ShellPillCornerRadius}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellMutedBrush}" />
   </Style>
 

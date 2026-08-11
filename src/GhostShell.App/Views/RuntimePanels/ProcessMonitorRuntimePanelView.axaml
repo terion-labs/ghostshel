@@ -12,13 +12,18 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     IsVisible="{Binding IsVisibleInLayout}"
-    AutomationProperties.Name="Process monitor panel">
+    AutomationProperties.Name="Process monitor panel"
+    Container.Name="processPanel"
+    Container.Sizing="Width">
   <UserControl.Styles>
     <!-- Below the width where all five columns fit, the Started column folds
-         away; the code-behind toggles the class from the panel's own bounds. -->
-    <Style Selector="runtimePanels|ProcessMonitorRuntimePanelView.narrowPanel TextBlock.StartedCell">
-      <Setter Property="IsVisible" Value="False" />
-    </Style>
+         away. The panel's own width, not the window's: two panels can share
+         one window, and this one answers only for itself. -->
+    <ContainerQuery Name="processPanel" Query="max-width:560">
+      <Style Selector="TextBlock.StartedCell">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+    </ContainerQuery>
   </UserControl.Styles>
   <controls:PanelChrome
       CloseLabel="Close Process Monitor panel"
@@ -28,7 +33,7 @@
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
     <controls:PanelChrome.Status>
-      <Ellipse Width="7" Height="7" Fill="{Binding StatusColor}" />
+      <Border Classes="StatusDot" Background="{Binding StatusColor}" />
     </controls:PanelChrome.Status>
 
     <controls:PanelChrome.Leading>
@@ -66,14 +71,14 @@
     </controls:PanelChrome.Footer>
 
     <Grid RowDefinitions="46,28,*">
-      <Border Grid.Row="0" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+      <Border Grid.Row="0" Classes="PanelToolbar">
         <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,190" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <TextBox Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter processes" />
-          <ComboBox Grid.Column="1" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding Sort}" AutomationProperties.Name="Process sort order" />
+          <TextBox VerticalAlignment="Center" Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter processes" />
+          <ComboBox Grid.Column="1" VerticalAlignment="Center" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding Sort}" AutomationProperties.Name="Process sort order" />
         </Grid>
       </Border>
 
-      <Border Grid.Row="1" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+      <Border Grid.Row="1" Classes="PanelToolbar">
         <!-- Fixed-width cells docked from the right instead of grid columns:
              hiding a docked cell reclaims its width, so the Started column can
              fold away on narrow panels while every row stays aligned. -->
@@ -121,31 +126,38 @@
           </ListBox.ItemTemplate>
         </ListBox>
 
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowLoading}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Process monitor loading">
-          <ProgressBar Width="180" IsIndeterminate="True" />
-          <TextBlock FontWeight="SemiBold" Text="Waiting for first sample…" />
-          <TextBlock MaxWidth="430" Classes="Muted" TextAlignment="Center" Text="Process names and resource counters are bounded. Command lines, users, environments, and open files are excluded." TextWrapping="Wrap" />
-        </StackPanel>
+        <controls:StateOverlay
+            Kind="Loading"
+            Heading="Waiting for first sample…"
+            Body="Process names and resource counters are bounded. Command lines, users, environments, and open files are excluded."
+            IsVisible="{Binding ShowLoading}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="Process monitor loading" />
 
-        <controls:SurfaceCard Tone="Notice" Margin="{controls:Inset Lg}" Padding="{controls:Inset Lg}" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowTerminalError}" AutomationProperties.LiveSetting="Assertive" AutomationProperties.Name="Process monitor unavailable">
-          <StackPanel MaxWidth="430" Spacing="{DynamicResource ShellSpaceSm}">
-            <icons:SymbolIcon HorizontalAlignment="Center" Symbol="ErrorCircle" FontSize="24" Foreground="{DynamicResource ShellDangerBrush}" />
-            <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="{Binding IssueTitle}" />
-            <TextBlock Classes="Muted" Text="{Binding IssueMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-            <Button HorizontalAlignment="Center" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry process capture" />
-          </StackPanel>
-        </controls:SurfaceCard>
+        <controls:StateOverlay
+            Kind="Error"
+            Glyph="ErrorCircle"
+            Heading="{Binding IssueTitle}"
+            Body="{Binding IssueMessage}"
+            ActionLabel="Retry"
+            ActionCommand="{Binding RefreshCommand}"
+            IsVisible="{Binding ShowTerminalError}"
+            AutomationProperties.LiveSetting="Assertive"
+            AutomationProperties.Name="Process monitor unavailable" />
 
-        <controls:SurfaceCard Tone="Notice" Margin="{controls:Inset Md}" Padding="{controls:Inset Md}" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" IsVisible="{Binding ShowInlineIssue}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Process refresh status">
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <icons:SymbolIcon Symbol="Warning" FontSize="15" Foreground="{DynamicResource ShellWarningBrush}" />
-            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding IssueTitle}" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding IssueMessage}" TextWrapping="Wrap" />
-            </StackPanel>
-            <Button Grid.Column="2" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry process list" />
-          </Grid>
-        </controls:SurfaceCard>
+        <controls:Callout
+            Margin="{controls:Inset Md}"
+            VerticalAlignment="Bottom"
+            Glyph="Warning"
+            Title="{Binding IssueTitle}"
+            Text="{Binding IssueMessage}"
+            IsVisible="{Binding ShowInlineIssue}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="Process refresh status">
+          <controls:Callout.Action>
+            <Button Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" AutomationProperties.Name="Retry process list" />
+          </controls:Callout.Action>
+        </controls:Callout>
       </Grid>
 
     </Grid>

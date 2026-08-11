@@ -9,43 +9,43 @@
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner"
     Title="Queue transfer">
-  <Grid RowDefinitions="Auto,*,Auto">
-    <Border Classes="TopChrome">
-      <StackPanel Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Queue file transfer" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Transfers are bounded, cancellable, and preserve provider conflict semantics." />
+  <controls:DialogShell
+      Title="Queue file transfer"
+      Subtitle="Transfers are bounded, cancellable, and preserve provider conflict semantics.">
+    <controls:DialogShell.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />
+        <Button Classes="PrimaryButton" Click="OnQueueClick" Content="Queue transfer" />
       </StackPanel>
-    </Border>
+    </controls:DialogShell.Footer>
 
-    <StackPanel Grid.Row="1" Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceLg}">
-      <controls:SurfaceCard Tone="Notice" Padding="0" x:Name="ValidationCard" IsVisible="False"><TextBlock x:Name="ValidationMessage" Margin="{controls:Inset Md}" Foreground="{DynamicResource ShellDangerBrush}" TextWrapping="Wrap" /></controls:SurfaceCard>
-      <controls:SurfaceCard Tone="Notice" Padding="0">
-        <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
+    <StackPanel Spacing="{DynamicResource ShellSpaceLg}">
+      <controls:Callout x:Name="ValidationCard" Tone="Danger" Glyph="ErrorCircle" IsVisible="False">
+        <TextBlock x:Name="ValidationMessage" Foreground="{DynamicResource ShellDangerBrush}" TextWrapping="Wrap" />
+      </controls:Callout>
+      <controls:SurfaceCard Tone="Notice" Padding="{DynamicResource ShellCardPaddingCompact}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="Eyebrow" Text="Source" />
           <TextBlock Text="{Binding Source.Name}" />
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding SourceLocation}" />
         </StackPanel>
       </controls:SurfaceCard>
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="Operation" /><ComboBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Operation}" /></StackPanel>
-        <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock FontWeight="SemiBold" Text="When destination exists" /><ComboBox ItemsSource="{Binding ConflictPolicies}" SelectedItem="{Binding ConflictPolicy}" /></StackPanel>
+        <controls:LabeledField Label="Operation">
+          <ComboBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Operation}" />
+        </controls:LabeledField>
+        <controls:LabeledField Grid.Column="1" Label="When destination exists">
+          <ComboBox ItemsSource="{Binding ConflictPolicies}" SelectedItem="{Binding ConflictPolicy}" />
+        </controls:LabeledField>
       </Grid>
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontWeight="SemiBold" Text="Destination provider" />
+      <controls:LabeledField Label="Destination provider">
         <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedDestinationProfile}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-      </StackPanel>
-      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontWeight="SemiBold" Text="Destination location" />
+      </controls:LabeledField>
+      <controls:LabeledField
+          Label="Destination location"
+          Hint="The location is parsed into a structured provider address; it is never appended to a local command string.">
         <TextBox Text="{Binding Destination}" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The location is parsed into a structured provider address; it is never appended to a local command string." />
-      </StackPanel>
+      </controls:LabeledField>
     </StackPanel>
-
-    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />
-        <Button Grid.Column="2" Classes="PrimaryButton" Click="OnQueueClick" Content="Queue transfer" />
-      </Grid>
-    </Border>
-  </Grid>
+  </controls:DialogShell>
 </Window>

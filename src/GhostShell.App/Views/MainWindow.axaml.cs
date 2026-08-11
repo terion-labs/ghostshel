@@ -766,7 +766,7 @@ public sealed partial class MainWindow : Window
         if (ViewModel.IsLayoutDesignerVisible
             && ViewModel.LayoutDesignerEditor?.RequestCancel()
                 == LayoutDesignerCancelDisposition.ConfirmDiscard
-            && !await new DiscardChangesDialog().ShowDialog<bool>(this))
+            && !await Confirmations.DiscardChanges().ShowDialog<bool>(this))
         {
             return false;
         }
@@ -774,7 +774,7 @@ public sealed partial class MainWindow : Window
         if (ViewModel.IsDefinitionEditorVisible
             && ViewModel.WorkspaceEditor?.RequestCancel()
                 == WorkspaceEditorCancelDisposition.ConfirmDiscard
-            && !await new DiscardChangesDialog(
+            && !await Confirmations.DiscardChanges(
                     "Discard workspace changes?",
                     "The unsaved workspace order, tabs, panels, and startup settings will be lost.")
                 .ShowDialog<bool>(this))
@@ -999,7 +999,7 @@ public sealed partial class MainWindow : Window
             SavedConnectionFamily.Database => "database connection",
             _ => "connection",
         };
-        var confirmed = await new DefinitionDeleteDialog(noun, connection.Name)
+        var confirmed = await Confirmations.DefinitionDelete(noun, connection.Name)
             .ShowDialog<bool>(this);
         if (!confirmed)
         {
@@ -1119,13 +1119,14 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        var cutoff = await new HistoryClearDialog(ViewModel.CaptureRecentSessionClearCutoff)
-            .ShowDialog<RecentSessionClearCutoff?>(this);
-        if (cutoff is null)
+        if (!await Confirmations.HistoryClear().ShowDialog<bool>(this))
         {
             return;
         }
 
+        // Captured at confirmation time, as the old dialog did on its confirm
+        // click: rows added while the dialog was open are included.
+        var cutoff = ViewModel.CaptureRecentSessionClearCutoff();
         _ = await ViewModel.ClearRecentSessionsAsync(cutoff, _lifetime.Token);
     }
 
@@ -1145,7 +1146,7 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = e;
         if (!ViewModel.CanResetRecentSessionHistory
-            || !await new HistoryResetDialog().ShowDialog<bool>(this))
+            || !await Confirmations.HistoryReset().ShowDialog<bool>(this))
         {
             return;
         }
@@ -1170,7 +1171,7 @@ public sealed partial class MainWindow : Window
         }
 
         if (ViewModel.RequiresHistoryRetentionConfirmation
-            && !await new HistoryRetentionChangeDialog(selected).ShowDialog<bool>(this))
+            && !await Confirmations.HistoryRetentionChange(selected).ShowDialog<bool>(this))
         {
             return;
         }
@@ -1304,7 +1305,7 @@ public sealed partial class MainWindow : Window
 
         if (ViewModel.LayoutDesignerEditor?.RequestCancel()
                 == LayoutDesignerCancelDisposition.ConfirmDiscard
-            && !await new DiscardChangesDialog().ShowDialog<bool>(this))
+            && !await Confirmations.DiscardChanges().ShowDialog<bool>(this))
         {
             return;
         }
@@ -1487,7 +1488,7 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         if (e.Disposition == WorkspaceEditorCancelDisposition.ConfirmDiscard
-            && !await new DiscardChangesDialog(
+            && !await Confirmations.DiscardChanges(
                     "Discard workspace changes?",
                     "The unsaved workspace order, tabs, panels, and startup settings will be lost.")
                 .ShowDialog<bool>(this))
@@ -1506,12 +1507,12 @@ public sealed partial class MainWindow : Window
         {
             var key = new DefinitionKey(WorkspaceDefinition.Kind, workspace.Id.Value);
             var dialog = ViewModel.IsDefinitionOpen(key)
-                ? new DefinitionDeleteDialog(
+                ? Confirmations.DefinitionDelete(
                     "Delete the open workspace definition?",
                     $"“{workspace.Name}” is currently open. Its running tabs and sessions will remain alive, but this saved workspace can no longer be reopened after they close.",
                     "Close this dialog if you want to keep the definition or save a replacement before deleting it.",
                     "Delete and keep running")
-                : new DefinitionDeleteDialog("workspace", workspace.Name);
+                : Confirmations.DefinitionDelete("workspace", workspace.Name);
             var confirmed = await dialog
                 .ShowDialog<bool>(this);
             if (!confirmed)
@@ -1531,7 +1532,7 @@ public sealed partial class MainWindow : Window
         _ = e;
         if (sender is Control { DataContext: LauncherScreenViewModel screen })
         {
-            var confirmed = await new DefinitionDeleteDialog("saved screen", screen.Name)
+            var confirmed = await Confirmations.DefinitionDelete("saved screen", screen.Name)
                 .ShowDialog<bool>(this);
             if (!confirmed)
             {
@@ -2105,13 +2106,13 @@ public sealed partial class MainWindow : Window
 
         if (viewModel.LayoutDesignerEditor?.RequestCancel()
                 == LayoutDesignerCancelDisposition.ConfirmDiscard
-            && !await new DiscardChangesDialog().ShowDialog<bool>(this))
+            && !await Confirmations.DiscardChanges().ShowDialog<bool>(this))
         {
             return;
         }
 
         if (viewModel.KeybindingEditorSession?.IsDirty == true
-            && !await new DiscardChangesDialog(
+            && !await Confirmations.DiscardChanges(
                     "Discard keybinding changes?",
                     "The unsaved shortcuts, prefix, and conflict resolutions will be lost when GhostShell closes.")
                 .ShowDialog<bool>(this))
@@ -2121,7 +2122,7 @@ public sealed partial class MainWindow : Window
 
         if (viewModel.WorkspaceEditor?.RequestCancel()
                 == WorkspaceEditorCancelDisposition.ConfirmDiscard
-            && !await new DiscardChangesDialog(
+            && !await Confirmations.DiscardChanges(
                     "Discard workspace changes?",
                     "The unsaved workspace order, tabs, panels, and startup settings will be lost when GhostShell closes.")
                 .ShowDialog<bool>(this))
@@ -2258,13 +2259,13 @@ public sealed partial class MainWindow : Window
         Func<CloseDecision, CancellationToken, ValueTask<HostResult<CloseScopeResult>>> close)
         => await MainWindowCloseFlow.RunAsync(
             close,
-            confirmation => new CloseConfirmationDialog(confirmation).ShowDialog<bool>(this),
+            confirmation => Confirmations.CloseScope(confirmation).ShowDialog<bool>(this),
             ShowErrorAsync,
             RestoreFocusAfterCancelledClose,
             _lifetime.Token);
 
     private Task ShowErrorAsync(string message) =>
-        new OperationErrorDialog(message).ShowDialog(this);
+        Confirmations.OperationError(message).ShowDialog(this);
 
     private static class EmptyCommandArguments
     {

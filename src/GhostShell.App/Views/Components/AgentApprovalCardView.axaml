@@ -3,11 +3,10 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:icons="using:FluentIcons.Avalonia"
     Focusable="False"
     HorizontalContentAlignment="Stretch">
   <controls:SurfaceCard Tone="Notice"
-      Padding="{controls:Inset Md}"
+      Padding="{DynamicResource ShellCardPaddingCompact}"
       Focusable="True"
       KeyboardNavigation.TabNavigation="Local"
       AutomationProperties.LiveSetting="Assertive"
@@ -52,18 +51,11 @@
         </ItemsControl>
       </StackPanel>
       <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.PendingApproval.ExpiresAt, StringFormat={}Expires · {0}}" TextWrapping="Wrap" />
-      <Border
-          Padding="{controls:Inset Sm}"
-          Background="{DynamicResource ShellWarningSoftBrush}"
-          BorderBrush="{DynamicResource ShellWarningBorderBrush}"
-          BorderThickness="1"
-          CornerRadius="{DynamicResource ShellControlCornerRadius}"
-          IsVisible="{Binding AgentChat.PendingApproval.TemporarilyYieldsTerminalInput}">
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <icons:SymbolIcon Symbol="Warning" FontSize="14" Foreground="{DynamicResource ShellWarningBrush}" />
-          <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AgentChat.PendingApproval.InputYieldWarning}" TextWrapping="Wrap" />
-        </Grid>
-      </Border>
+      <controls:Callout
+          Tone="Warning"
+          Glyph="Warning"
+          Text="{Binding AgentChat.PendingApproval.InputYieldWarning}"
+          IsVisible="{Binding AgentChat.PendingApproval.TemporarilyYieldsTerminalInput}" />
       <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Button
             Classes="SecondaryButton"

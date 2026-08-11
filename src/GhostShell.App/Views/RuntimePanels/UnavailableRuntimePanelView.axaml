@@ -4,7 +4,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
-    xmlns:icons="using:FluentIcons.Avalonia"
     Classes="RuntimePanelFocusTarget"
     Focusable="True"
     HorizontalContentAlignment="Stretch"
@@ -16,10 +15,9 @@
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
-    <StackPanel MaxWidth="460" Margin="{controls:Inset Xxl}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
-      <icons:SymbolIcon Symbol="Warning" FontSize="28" Foreground="{DynamicResource ShellWarningBrush}" />
-      <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="SemiBold" Text="Adapter unavailable" TextAlignment="Center" />
-      <TextBlock Classes="Muted" Text="{Binding CapabilityMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-    </StackPanel>
+    <controls:StateOverlay
+        Glyph="Warning"
+        Heading="Adapter unavailable"
+        Body="{Binding CapabilityMessage}" />
   </controls:PanelChrome>
 </UserControl>

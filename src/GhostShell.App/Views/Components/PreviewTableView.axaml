@@ -50,17 +50,10 @@
              are realised, so a long table costs what a short one does. -->
         <ListBox
             Grid.Row="1"
+            Classes="Dense"
             ItemsSource="{Binding Rows}"
-            Background="Transparent"
-            BorderThickness="0"
             SelectionMode="Single"
             AutomationProperties.Name="Rows">
-          <ListBox.Styles>
-            <Style Selector="ListBoxItem">
-              <Setter Property="Padding" Value="0" />
-              <Setter Property="MinHeight" Value="0" />
-            </Style>
-          </ListBox.Styles>
           <ListBox.ItemTemplate>
               <DataTemplate>
                 <Border Classes="PreviewRow" Classes.even="{Binding IsEven}">

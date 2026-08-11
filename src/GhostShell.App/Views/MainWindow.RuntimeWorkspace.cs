@@ -2129,7 +2129,7 @@ public sealed partial class MainWindow
         }
 
         var kind = selected.IsDirectory ? "folder" : "file";
-        var confirmed = await new FileDeleteDialog(
+        var confirmed = await Confirmations.FileDelete(
                 kind,
                 selected.Name,
                 panel.SelectedProfile?.Name ?? "this provider",
@@ -2354,7 +2354,7 @@ public sealed partial class MainWindow
         var detail = dirtyPanels.Length == 1
             ? $"The unsaved row changes in {dirtyPanels[0].SelectedObjectName} will be lost."
             : $"Unsaved row changes in {dirtyPanels.Length} database panels will be lost.";
-        return await new DiscardChangesDialog(
+        return await Confirmations.DiscardChanges(
                 "Discard database changes?",
                 detail)
             .ShowDialog<bool>(this);

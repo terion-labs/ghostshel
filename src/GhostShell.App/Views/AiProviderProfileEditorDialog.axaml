@@ -11,102 +11,90 @@
     CanResize="True"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="62,*,72">
-    <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto">
-      <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-        <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="{Binding EditorTitle}" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ProfileId, StringFormat={}Profile: {0}}" />
+  <controls:DialogShell
+      Chrome="Editor"
+      ShowsClose="True"
+      CloseRequested="OnCancelClick"
+      Title="{Binding EditorTitle}"
+      Subtitle="{Binding ProfileId, StringFormat={}Profile: {0}}"
+      FooterHint="Tests perform one bounded model listing.">
+    <controls:DialogShell.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button Classes="SecondaryButton" Click="OnTestClick" Content="Test" IsEnabled="{Binding !IsTesting}" />
+        <Button Click="OnCancelClick" Content="Cancel" IsCancel="True" />
+        <Button Classes="PrimaryButton" Click="OnSaveClick" Content="Save provider" IsDefault="True" />
       </StackPanel>
-      <Button Grid.Column="1" Classes="IconButton" Click="OnCancelClick" Content="×" IsCancel="True" AutomationProperties.Name="Close AI-provider editor" />
-    </Grid>
+    </controls:DialogShell.Footer>
 
-    <ScrollViewer Grid.Row="1">
-      <StackPanel Margin="{controls:Inset Horizontal=Lg, Top=Sm, Bottom=Xl}" Spacing="{DynamicResource ShellSpaceMd}">
-        <controls:SurfaceCard Padding="0">
-          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-            <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="Name" />
-                <TextBox Text="{Binding Name}" PlaceholderText="Production OpenAI" />
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="Provider protocol" />
-                <ComboBox ItemsSource="{Binding ProviderKinds}" SelectedItem="{Binding Kind}" />
-              </StackPanel>
-            </Grid>
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock FontWeight="SemiBold" Text="API base endpoint" />
-              <TextBox Text="{Binding Endpoint}" PlaceholderText="https://api.example.com/v1/" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="HTTPS is required except for an exact loopback endpoint. Redirects, embedded credentials, queries, and fragments are rejected." TextWrapping="Wrap" />
-            </StackPanel>
-            <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="Default model" />
-                <TextBox Text="{Binding DefaultModel}" />
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="Fallback order" />
-                <NumericUpDown Minimum="0" Maximum="10000" Value="{Binding Order}" />
-              </StackPanel>
-            </Grid>
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" Text="Enable this provider for future agent selection" />
-                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding #ProviderEnabledSwitch.IsChecked, Converter={StaticResource OnOffConverter}}" />
-              </StackPanel>
-              <ToggleSwitch x:Name="ProviderEnabledSwitch" Grid.Column="1" IsChecked="{Binding IsEnabled}" AutomationProperties.Name="Enable this provider for future agent selection" />
-            </Grid>
-          </StackPanel>
-        </controls:SurfaceCard>
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+      <controls:SurfaceCard>
+        <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+          <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <controls:LabeledField Label="Name">
+              <TextBox Text="{Binding Name}" PlaceholderText="Production OpenAI" />
+            </controls:LabeledField>
+            <controls:LabeledField Grid.Column="1" Label="Provider protocol">
+              <ComboBox ItemsSource="{Binding ProviderKinds}" SelectedItem="{Binding Kind}" />
+            </controls:LabeledField>
+          </Grid>
+          <controls:LabeledField
+              Label="API base endpoint"
+              Hint="HTTPS is required except for an exact loopback endpoint. Redirects, embedded credentials, queries, and fragments are rejected.">
+            <TextBox Text="{Binding Endpoint}" PlaceholderText="https://api.example.com/v1/" />
+          </controls:LabeledField>
+          <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <controls:LabeledField Label="Default model">
+              <TextBox Text="{Binding DefaultModel}" />
+            </controls:LabeledField>
+            <controls:LabeledField Grid.Column="1" Label="Fallback order">
+              <NumericUpDown Minimum="0" Maximum="10000" Value="{Binding Order}" />
+            </controls:LabeledField>
+          </Grid>
+          <controls:ToggleField
+              Label="Enable this provider for future agent selection"
+              IsChecked="{Binding IsEnabled}"
+              AutomationProperties.Name="Enable this provider for future agent selection" />
+        </StackPanel>
+      </controls:SurfaceCard>
 
-        <controls:SurfaceCard Padding="0">
-          <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
-            <TextBlock Classes="SectionHeading" Text="Authentication" />
-            <CheckBox
-                IsVisible="{Binding CanDisableAuthentication}"
-                IsChecked="{Binding UseNoAuthentication}"
-                Content="No authentication (exact loopback endpoint only)" />
-            <StackPanel IsVisible="{Binding UsesCredential}" Spacing="{DynamicResource ShellSpaceSm}">
-              <ComboBox ItemsSource="{Binding SecretOptions}" SelectedItem="{Binding SelectedCredential}">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate>
-                    <TextBlock Text="{Binding DisplayName}" />
-                  </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The definition stores only an opaque reference. If the selected slot is new or missing, save the profile and store its API key from the AI-provider settings page." TextWrapping="Wrap" />
-            </StackPanel>
-          </StackPanel>
-        </controls:SurfaceCard>
-
-        <controls:SurfaceCard Tone="Notice" Padding="0">
-          <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
-            <TextBlock FontWeight="SemiBold" Text="{Binding TestStatus}" />
-            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TestDetail}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-            <ItemsControl ItemsSource="{Binding Models}">
-              <ItemsControl.ItemTemplate>
+      <controls:SurfaceCard>
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock Classes="SectionHeading" Text="Authentication" />
+          <CheckBox
+              IsVisible="{Binding CanDisableAuthentication}"
+              IsChecked="{Binding UseNoAuthentication}"
+              Content="No authentication (exact loopback endpoint only)" />
+          <StackPanel IsVisible="{Binding UsesCredential}" Spacing="{DynamicResource ShellSpaceSm}">
+            <ComboBox ItemsSource="{Binding SecretOptions}" SelectedItem="{Binding SelectedCredential}">
+              <ComboBox.ItemTemplate>
                 <DataTemplate>
-                  <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                    <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Id}" />
-                    <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayName}" />
-                  </Grid>
+                  <TextBlock Text="{Binding DisplayName}" />
                 </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The definition stores only an opaque reference. If the selected slot is new or missing, save the profile and store its API key from the AI-provider settings page." TextWrapping="Wrap" />
           </StackPanel>
-        </controls:SurfaceCard>
+        </StackPanel>
+      </controls:SurfaceCard>
 
-        <TextBlock x:Name="ValidationError" Foreground="{DynamicResource ShellDangerBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive" />
-      </StackPanel>
-    </ScrollViewer>
+      <controls:SurfaceCard Tone="Notice" Padding="{DynamicResource ShellCardPaddingCompact}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+          <TextBlock FontWeight="SemiBold" Text="{Binding TestStatus}" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding TestDetail}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+          <ItemsControl ItemsSource="{Binding Models}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                  <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Id}" />
+                  <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayName}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </controls:SurfaceCard>
 
-    <Border Grid.Row="2" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
-      <Grid Margin="{controls:Inset Horizontal=Lg}" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Tests perform one bounded model listing." />
-        <Button Grid.Column="1" MinWidth="100" Classes="SecondaryButton" Click="OnTestClick" Content="Test" IsEnabled="{Binding !IsTesting}" />
-        <Button Grid.Column="2" MinWidth="92" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
-        <Button Grid.Column="3" MinWidth="120" Classes="PrimaryButton" Click="OnSaveClick" Content="Save provider" IsDefault="True" />
-      </Grid>
-    </Border>
-  </Grid>
+      <TextBlock x:Name="ValidationError" Foreground="{DynamicResource ShellDangerBrush}" IsVisible="False" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive" />
+    </StackPanel>
+  </controls:DialogShell>
 </Window>

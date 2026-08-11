@@ -826,8 +826,10 @@ public sealed partial class App : Avalonia.Application
         // Named insets, for the three shapes that recur often enough that spelling
         // them out at each use site is how they drifted apart in the first place.
         Publish("ShellCardPadding", new Thickness(spacing.Large));
+        Publish("ShellCardPaddingCompact", new Thickness(spacing.Medium));
         Publish("ShellPagePadding", new Thickness(spacing.Large));
         Publish("ShellRowPadding", new Thickness(spacing.Large, spacing.Medium));
+        Publish("ShellListRowPadding", new Thickness(spacing.Medium, spacing.Small));
         Publish("ShellPillPadding", new Thickness(spacing.Small, spacing.ExtraSmall));
 
         // For a native child view that has to round its own layer because Avalonia

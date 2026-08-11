@@ -473,7 +473,7 @@ public sealed class RuntimePanelViewContractTests
             resourceRowTemplate.Descendants(),
             element => element.Name.LocalName == "ListItem"
                 && HasClass(element, "DockerResourceListItem"));
-        Assert.Equal("12,8", AttributeValue(resourceRow, "ContentPadding"));
+        Assert.Equal("{DynamicResource ShellListRowPadding}", AttributeValue(resourceRow, "ContentPadding"));
         Assert.Equal("{Binding Title}", AttributeValue(resourceRow, "Title"));
         Assert.Equal("{Binding Subtitle}", AttributeValue(resourceRow, "Detail"));
         Assert.Equal("{Binding Tertiary}", AttributeValue(resourceRow, "Metadata"));
@@ -1090,7 +1090,7 @@ public sealed class RuntimePanelViewContractTests
             element => element.Name.LocalName == "TerminalPresentationHost");
 
         Assert.Equal("RuntimeTerminal", AttributeValue(terminal, "Name"));
-        Assert.Equal("1", AttributeValue(terminal, "Margin"));
+        Assert.Equal("{DynamicResource ShellHairline}", AttributeValue(terminal, "Margin"));
         Assert.Equal("{Binding ClientId}", AttributeValue(terminal, "ClientId"));
         Assert.Equal(
             "{Binding SessionClient}",
@@ -1201,7 +1201,7 @@ public sealed class RuntimePanelViewContractTests
             element => element.Name.LocalName == "BrowserPresentationHost");
 
         Assert.Equal("RuntimeBrowser", AttributeValue(browser, "Name"));
-        Assert.Equal("1", AttributeValue(browser, "Margin"));
+        Assert.Equal("{DynamicResource ShellHairline}", AttributeValue(browser, "Margin"));
         Assert.Equal("{Binding ClientId}", AttributeValue(browser, "ClientId"));
         Assert.Equal(
             "{Binding RendererView}",

@@ -18,7 +18,7 @@
     <DataTemplate x:Key="DockerResourceItemTemplate">
       <controls:ListItem
           Classes="DockerResourceListItem"
-          ContentPadding="12,8"
+          ContentPadding="{DynamicResource ShellListRowPadding}"
           Title="{Binding Title}"
           Detail="{Binding Subtitle}"
           Metadata="{Binding Tertiary}">
@@ -236,7 +236,7 @@
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
     <controls:PanelChrome.Status>
-      <Ellipse Width="7" Height="7" Fill="{DynamicResource ShellSuccessBrush}" />
+      <Border Classes="StatusDot" Background="{DynamicResource ShellSuccessBrush}" />
     </controls:PanelChrome.Status>
 
     <controls:PanelChrome.Leading>
@@ -606,11 +606,11 @@
                 </ListBox.ItemTemplate>
               </ListBox>
 
-              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}" IsVisible="{Binding !HasLogs}">
-                <icons:SymbolIcon HorizontalAlignment="Center" Symbol="DocumentText" FontSize="28" Foreground="{DynamicResource ShellMutedBrush}" />
-                <TextBlock FontWeight="SemiBold" Text="No log rows" HorizontalAlignment="Center" />
-                <TextBlock Classes="Muted" Text="This container has no logs for the current view." HorizontalAlignment="Center" />
-              </StackPanel>
+              <controls:StateOverlay
+                  Glyph="DocumentText"
+                  Heading="No log rows"
+                  Body="This container has no logs for the current view."
+                  IsVisible="{Binding !HasLogs}" />
             </Grid>
 
             <Grid Grid.Row="2" MinHeight="28" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="*,Auto">
@@ -659,18 +659,16 @@
                 </DataTemplate>
               </ContentControl.ContentTemplate>
             </ContentControl>
-            <StackPanel
-                MaxWidth="360"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Spacing="{DynamicResource ShellSpaceSm}"
+            <controls:StateOverlay
+                Glyph="WindowConsole"
+                Heading="{Binding ShellStateTitle}"
+                Body="{Binding ShellStateMessage}"
                 IsVisible="{Binding !HasInlineShell}">
-              <icons:SymbolIcon HorizontalAlignment="Center" Symbol="WindowConsole" FontSize="28" Foreground="{DynamicResource ShellMutedBrush}" />
-              <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="{Binding ShellStateTitle}" />
-              <TextBlock Classes="Muted" Text="{Binding ShellStateMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-              <ProgressBar Width="180" IsIndeterminate="True" IsVisible="{Binding IsResolvingShell}" />
-              <Button HorizontalAlignment="Center" Classes="SecondaryButton" Click="OnOpenInlineShellClick" Content="Retry" IsVisible="{Binding CanRetryShell}" />
-            </StackPanel>
+              <StackPanel HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
+                <ProgressBar Width="180" IsIndeterminate="True" IsVisible="{Binding IsResolvingShell}" />
+                <Button HorizontalAlignment="Center" Classes="SecondaryButton" Click="OnOpenInlineShellClick" Content="Retry" IsVisible="{Binding CanRetryShell}" />
+              </StackPanel>
+            </controls:StateOverlay>
           </Grid>
 
           <ContentControl Content="{Binding FileBrowser}" IsVisible="{Binding IsFilesDetail}">
@@ -697,32 +695,27 @@
               Text="{Binding Inspection.Json}"
               WordWrap="False" />
 
-          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowLoading}">
-            <TextBlock FontWeight="SemiBold" Text="Reading Docker resources…" />
-            <TextBlock MaxWidth="420" Classes="Muted" Text="The same command boundary works locally and through saved SSH connections." TextAlignment="Center" TextWrapping="Wrap" />
-          </StackPanel>
+          <controls:StateOverlay
+              Kind="Loading"
+              Heading="Reading Docker resources…"
+              Body="The same command boundary works locally and through saved SSH connections."
+              IsVisible="{Binding ShowLoading}" />
 
-          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowEmptyState}">
-            <icons:SymbolIcon Symbol="Box" FontSize="28" Foreground="{DynamicResource ShellMutedBrush}" />
-            <TextBlock FontWeight="SemiBold" Text="No resources in this section" />
-            <TextBlock Classes="Muted" Text="Choose another resource type or refresh the engine." />
-          </StackPanel>
+          <controls:StateOverlay
+              Glyph="Box"
+              Heading="No resources in this section"
+              Body="Choose another resource type or refresh the engine."
+              IsVisible="{Binding ShowEmptyState}" />
 
-          <controls:SurfaceCard
-              Margin="{controls:Inset Lg}"
-              Padding="{controls:Inset Lg}"
-              HorizontalAlignment="Center"
-              VerticalAlignment="Center"
-              Tone="Notice"
+          <controls:StateOverlay
+              Kind="Error"
+              Glyph="ErrorCircle"
+              Heading="{Binding IssueTitle}"
+              Body="{Binding IssueMessage}"
+              ActionLabel="Retry"
+              ActionCommand="{Binding RefreshCommand}"
               IsVisible="{Binding HasIssue}"
-              AutomationProperties.LiveSetting="Assertive">
-            <StackPanel MaxWidth="430" Spacing="{DynamicResource ShellSpaceSm}">
-              <icons:SymbolIcon HorizontalAlignment="Center" Symbol="ErrorCircle" FontSize="24" Foreground="{DynamicResource ShellDangerBrush}" />
-              <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="{Binding IssueTitle}" />
-              <TextBlock Classes="Muted" Text="{Binding IssueMessage}" TextAlignment="Center" TextWrapping="Wrap" />
-              <Button HorizontalAlignment="Center" Classes="SecondaryButton" Command="{Binding RefreshCommand}" Content="Retry" />
-            </StackPanel>
-          </controls:SurfaceCard>
+              AutomationProperties.LiveSetting="Assertive" />
         </Grid>
       </Grid>
       </Border>

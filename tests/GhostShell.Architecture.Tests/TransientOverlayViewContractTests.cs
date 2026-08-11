@@ -88,7 +88,7 @@ public sealed class TransientOverlayViewContractTests
                     StringComparison.Ordinal)
                 && string.Equals(
                     AttributeValue(element, "Background"),
-                    "#F20B0B0C",
+                    "{DynamicResource ShellScrimBrush}",
                     StringComparison.Ordinal));
         var titleBar = Assert.Single(
             overlayHost.Elements(),
@@ -276,11 +276,7 @@ public sealed class TransientOverlayViewContractTests
                     StringComparison.Ordinal));
 
         var choices = catalogRoot.Descendants()
-            .Where(element => element.Name.LocalName == "Button")
-            .Where(element => HasClasses(
-                element,
-                "ChooserButton",
-                "LauncherTile"))
+            .Where(element => element.Name.LocalName == "ChooserTile")
             .ToArray();
         Assert.Equal(7, choices.Length);
 
@@ -395,11 +391,7 @@ public sealed class TransientOverlayViewContractTests
         Assert.Equal("900", AttributeValue(card, "Width"));
 
         var choices = root.Descendants()
-            .Where(element => element.Name.LocalName == "Button")
-            .Where(element => HasClasses(
-                element,
-                "ChooserButton",
-                "PanelChooser"))
+            .Where(element => element.Name.LocalName == "ChooserTile")
             .ToArray();
         Assert.Equal(7, choices.Length);
 
@@ -515,7 +507,7 @@ public sealed class TransientOverlayViewContractTests
         }
 
         Assert.Contains("private async Task<bool> TryCloseOverlayAsync()", mainWindowCode);
-        Assert.Contains("new DiscardChangesDialog()", mainWindowCode);
+        Assert.Contains("Confirmations.DiscardChanges()", mainWindowCode);
         Assert.Contains("ExecuteLauncherSearchTargetAsync(", mainWindowCode);
         Assert.Contains("ViewModel.AddLocalTerminalPanelAsync(", mainWindowCode);
         foreach (var adapter in new[]

@@ -66,7 +66,7 @@
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
     <controls:PanelChrome.Status>
-      <Ellipse Width="7" Height="7" Fill="{DynamicResource ShellSuccessBrush}" />
+      <Border Classes="StatusDot" Background="{DynamicResource ShellSuccessBrush}" />
     </controls:PanelChrome.Status>
 
     <controls:PanelChrome.Leading>
@@ -392,44 +392,57 @@
               IsVisible="{Binding ShowLoadingState}"
               AutomationProperties.LiveSetting="Polite"
               AutomationProperties.Name="File Viewer loading">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
-              <ProgressBar Width="180" IsIndeterminate="True" />
-              <TextBlock FontWeight="SemiBold" Text="{Binding ContentPresentation.Title}" />
-              <TextBlock Classes="Muted" Text="{Binding ContentPresentation.Message}" TextAlignment="Center" TextWrapping="Wrap" />
-            </StackPanel>
+            <controls:StateOverlay
+                Kind="Loading"
+                Heading="{Binding ContentPresentation.Title}"
+                Body="{Binding ContentPresentation.Message}" />
           </Border>
-          <controls:SurfaceCard Tone="Notice" Margin="{controls:Inset Lg}" Padding="{controls:Inset Lg}" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowErrorState}" AutomationProperties.LiveSetting="Assertive" AutomationProperties.Name="{Binding ContentPresentation.AccessibleName}">
-            <StackPanel MaxWidth="420" Spacing="{DynamicResource ShellSpaceSm}">
-              <icons:SymbolIcon HorizontalAlignment="Center" Symbol="ErrorCircle" FontSize="24" Foreground="{DynamicResource ShellDangerBrush}" />
-              <TextBlock FontWeight="SemiBold" Text="{Binding ContentPresentation.Title}" TextAlignment="Center" />
-              <TextBlock Classes="Muted" Text="{Binding ContentPresentation.Message}" TextAlignment="Center" TextWrapping="Wrap" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ContentPresentation.SuggestedAction}" TextAlignment="Center" TextWrapping="Wrap" />
-              <Button HorizontalAlignment="Center" Classes="SecondaryButton" Command="{Binding RetryCommand}" Content="Retry location" IsVisible="{Binding CanRetryContentState}" AutomationProperties.Name="Retry File Viewer location" />
+          <controls:StateOverlay
+              Kind="Error"
+              Glyph="ErrorCircle"
+              Heading="{Binding ContentPresentation.Title}"
+              Body="{Binding ContentPresentation.Message}"
+              IsVisible="{Binding ShowErrorState}"
+              AutomationProperties.LiveSetting="Assertive"
+              AutomationProperties.Name="{Binding ContentPresentation.AccessibleName}">
+            <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ContentPresentation.SuggestedAction}" TextWrapping="Wrap" />
+              <Button HorizontalAlignment="Left" Classes="SecondaryButton" Command="{Binding RetryCommand}" Content="Retry location" IsVisible="{Binding CanRetryContentState}" AutomationProperties.Name="Retry File Viewer location" />
             </StackPanel>
-          </controls:SurfaceCard>
-          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowEmptyLocationState}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="File Viewer empty location">
-            <icons:SymbolIcon HorizontalAlignment="Center" Symbol="Folder" FontSize="25" Foreground="{DynamicResource ShellMutedBrush}" />
-            <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="{Binding ContentPresentation.Title}" TextAlignment="Center" />
-            <TextBlock MaxWidth="360" HorizontalAlignment="Center" Classes="Muted" Text="{Binding ContentPresentation.Message}" TextAlignment="Center" TextWrapping="Wrap" />
+          </controls:StateOverlay>
+          <controls:StateOverlay
+              Glyph="Folder"
+              Heading="{Binding ContentPresentation.Title}"
+              Body="{Binding ContentPresentation.Message}"
+              IsVisible="{Binding ShowEmptyLocationState}"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="File Viewer empty location">
             <TextBlock MaxWidth="360" HorizontalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ContentPresentation.SuggestedAction}" TextAlignment="Center" TextWrapping="Wrap" />
-          </StackPanel>
-          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowSearchNoResultsState}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="File Viewer search has no results">
-            <icons:SymbolIcon HorizontalAlignment="Center" Symbol="Search" FontSize="25" Foreground="{DynamicResource ShellMutedBrush}" />
-            <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="{Binding ContentPresentation.Title}" TextAlignment="Center" />
-            <TextBlock MaxWidth="360" HorizontalAlignment="Center" Classes="Muted" Text="{Binding ContentPresentation.Message}" TextAlignment="Center" TextWrapping="Wrap" />
+          </controls:StateOverlay>
+          <controls:StateOverlay
+              Glyph="Search"
+              Heading="{Binding ContentPresentation.Title}"
+              Body="{Binding ContentPresentation.Message}"
+              IsVisible="{Binding ShowSearchNoResultsState}"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="File Viewer search has no results">
             <TextBlock MaxWidth="360" HorizontalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ContentPresentation.SuggestedAction}" TextAlignment="Center" TextWrapping="Wrap" />
-          </StackPanel>
-          <controls:SurfaceCard Tone="Notice" Margin="{controls:Inset Md}" Padding="{controls:Inset Md}" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" IsVisible="{Binding HasOperationIssue}" AutomationProperties.LiveSetting="Assertive" AutomationProperties.Name="File Viewer operation status">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-              <icons:SymbolIcon Symbol="ErrorCircle" FontSize="15" Foreground="{DynamicResource ShellDangerBrush}" />
-              <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                <TextBlock FontWeight="SemiBold" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding OperationIssue.Title}" />
-                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding OperationIssue.Message}" TextWrapping="Wrap" />
-                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding OperationIssue.SuggestedAction}" TextWrapping="Wrap" />
-              </StackPanel>
-              <Button Grid.Column="2" Classes="IconButton" Click="OnDismissOperationIssueClick" AutomationProperties.Name="Dismiss File Viewer operation status"><icons:SymbolIcon Symbol="Dismiss" FontSize="11" /></Button>
-            </Grid>
-          </controls:SurfaceCard>
+          </controls:StateOverlay>
+          <controls:Callout
+              Margin="{controls:Inset Md}"
+              VerticalAlignment="Bottom"
+              Tone="Danger"
+              Glyph="ErrorCircle"
+              Title="{Binding OperationIssue.Title}"
+              Text="{Binding OperationIssue.Message}"
+              Footnote="{Binding OperationIssue.SuggestedAction}"
+              IsVisible="{Binding HasOperationIssue}"
+              AutomationProperties.LiveSetting="Assertive"
+              AutomationProperties.Name="File Viewer operation status">
+            <controls:Callout.Action>
+              <Button Classes="IconButton" Click="OnDismissOperationIssueClick" AutomationProperties.Name="Dismiss File Viewer operation status"><icons:SymbolIcon Symbol="Dismiss" FontSize="{DynamicResource ShellFontSize11}" /></Button>
+            </controls:Callout.Action>
+          </controls:Callout>
           <ProgressBar Classes="WorkingStripe" IsVisible="{Binding ShowNavigationProgress}" />
         </Grid>
 
@@ -646,14 +659,14 @@
                   Classes="WorkingStripe"
                   IsVisible="{Binding IsPreviewLoading}"
                   AutomationProperties.Name="Preparing preview" />
-              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowPreviewProgressDetail}">
-                <ProgressBar Width="140" IsIndeterminate="True" />
-                <TextBlock Classes="Muted" Text="Reading preview…" />
-              </StackPanel>
-              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding ShowPreviewPlaceholder}">
-                <icons:SymbolIcon Symbol="Info" FontSize="22" Foreground="{DynamicResource ShellMutedBrush}" />
-                <TextBlock Classes="Muted" Text="Select a file to preview it." />
-              </StackPanel>
+              <controls:StateOverlay
+                  Kind="Loading"
+                  Heading="Reading preview…"
+                  IsVisible="{Binding ShowPreviewProgressDetail}" />
+              <controls:StateOverlay
+                  Glyph="Info"
+                  Body="Select a file to preview it."
+                  IsVisible="{Binding ShowPreviewPlaceholder}" />
 
               <!-- The preview of a remote file is a download, so it is offered
                    rather than taken. Space activates it because the file list
@@ -690,12 +703,15 @@
                     FontSize="{DynamicResource ShellFontSize9}"
                     Text="Press Space to preview" />
               </StackPanel>
-              <controls:SurfaceCard Tone="Notice" Margin="{controls:Inset Md}" Padding="{controls:Inset Md}" VerticalAlignment="Bottom" IsVisible="{Binding HasMetadataIssue}" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="File metadata status">
-                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-                  <TextBlock FontWeight="SemiBold" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding MetadataIssue.Title}" />
-                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding MetadataIssue.Message}" TextWrapping="Wrap" />
-                </StackPanel>
-              </controls:SurfaceCard>
+              <controls:Callout
+                  Margin="{controls:Inset Md}"
+                  VerticalAlignment="Bottom"
+                  ShowsGlyph="False"
+                  Title="{Binding MetadataIssue.Title}"
+                  Text="{Binding MetadataIssue.Message}"
+                  IsVisible="{Binding HasMetadataIssue}"
+                  AutomationProperties.LiveSetting="Polite"
+                  AutomationProperties.Name="File metadata status" />
             </Grid>
           </Grid>
         </Border>
@@ -711,7 +727,7 @@
       <Rectangle
           x:Name="TransferDropOutline"
           Grid.RowSpan="2"
-          Margin="2"
+          Margin="{DynamicResource ShellHairlineInset}"
           IsHitTestVisible="False"
           IsVisible="False"
           RadiusX="{DynamicResource ShellCardRadius}"

@@ -85,10 +85,123 @@
           <controls:StatusChip Content="Connected" />
           <controls:StatusChip Tone="Warning" Content="Needs attention" />
           <controls:StatusChip Tone="Danger" Content="YOLO enabled" />
-          <controls:StatusChip Tone="Notice" Content="claude-opus-4-5" />
+          <controls:StatusChip Tone="Notice" Content="Provider model" />
           <controls:StatusChip Tone="Default" Content="Ask" />
           <controls:StatusChip Shape="Rounded" Content="SSH" />
           <controls:StatusChip Shape="Rounded" Content="Docker" />
+          <controls:SignalDot />
+          <Border Classes="StatusDot available" />
+          <Border Classes="Keycap"><TextBlock Text="⌘K" /></Border>
+          <Button Classes="Chip" Content="Run scope · This tab" />
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Callouts" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="A sentence the page wants read before the user acts. The tone says how seriously; the glyph carries it at a glance." />
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <controls:Callout
+              Glyph="Shield"
+              Text="Credential values stay in the operating-system vault and are never shown here." />
+          <controls:Callout
+              Tone="Warning"
+              Glyph="Warning"
+              Title="Local process authority"
+              Text="This server runs as a local process with your user's permissions."
+              Footnote="Trust is granted per profile and can be withdrawn in settings." />
+          <controls:Callout Tone="Danger" Glyph="ErrorCircle" Title="Delivery failed" Text="The startup command was not delivered to the session.">
+            <controls:Callout.Action>
+              <Button Classes="SecondaryButton" Content="Retry" />
+            </controls:Callout.Action>
+          </controls:Callout>
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="States" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="A surface's not-content: empty, loading, or failed. One control; the Kind picks the build." />
+        <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+          <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
+            <controls:StateOverlay
+                Glyph="Folder"
+                Heading="Nothing here yet"
+                Body="Choose a location to browse." />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Loading"
+                Heading="Waiting for first sample…"
+                Body="The session host is collecting a bounded snapshot." />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Error"
+                Glyph="ErrorCircle"
+                Heading="Engine unreachable"
+                Body="The Docker socket did not answer."
+                ActionLabel="Retry" />
+          </controls:SurfaceCard>
+        </UniformGrid>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Choosers and lists" />
+        <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+          <controls:ChooserTile Icon="WindowConsole" Title="New terminal" Description="Open the default local shell" />
+          <controls:ChooserTile Icon="Globe" Title="New browser" Description="Embedded Chromium browser panel" />
+          <controls:ChooserTile Icon="Database" Title="Database" Description="Query SQLite, Postgres, MySQL" />
+        </UniformGrid>
+        <controls:SurfaceCard Padding="0">
+          <StackPanel>
+            <Button Classes="ListRow">
+              <controls:ListItem
+                  ContentPadding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                  Title="production-api"
+                  Detail="ssh deploy@prod.example.com">
+                <controls:ListItem.Leading>
+                  <controls:IdentityTile TileSize="Small" Tint="{DynamicResource ShellAccentSoftBrush}" Symbol="ServerLink" />
+                </controls:ListItem.Leading>
+                <controls:ListItem.Trailing>
+                  <controls:StatusChip Shape="Rounded" Content="SSH" />
+                </controls:ListItem.Trailing>
+              </controls:ListItem>
+            </Button>
+            <Button Classes="ListRow selected">
+              <controls:ListItem
+                  ContentPadding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                  Title="analytics.sqlite"
+                  Detail="Local file · read-only">
+                <controls:ListItem.Leading>
+                  <controls:IdentityTile TileSize="Small" Tint="{DynamicResource ShellAccentSoftBrush}" Symbol="Database" />
+                </controls:ListItem.Leading>
+                <controls:ListItem.Trailing>
+                  <controls:StatusChip Shape="Rounded" Content="SQLite" />
+                </controls:ListItem.Trailing>
+              </controls:ListItem>
+            </Button>
+          </StackPanel>
+        </controls:SurfaceCard>
+      </StackPanel>
+
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <TextBlock Classes="SectionHeading" Text="Pickers" />
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceMd}">
+          <Border VerticalAlignment="Center" Classes="Segmented">
+            <UniformGrid Columns="3">
+              <ToggleButton Classes="Segment" IsChecked="True" Content="Data" />
+              <ToggleButton Classes="Segment" Content="Structure" />
+              <ToggleButton Classes="Segment" Content="Indexes" />
+            </UniformGrid>
+          </Border>
+          <controls:SurfaceCard Tone="Raised" VerticalAlignment="Center" Padding="{DynamicResource ShellCardPaddingCompact}" MinWidth="280">
+            <controls:ToggleField Label="Keep the session alive" IsChecked="True" />
+          </controls:SurfaceCard>
         </StackPanel>
       </StackPanel>
 

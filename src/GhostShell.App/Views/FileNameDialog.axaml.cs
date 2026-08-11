@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 
+using GhostShell.App.Controls;
+
 namespace GhostShell.App.Views;
 
 public sealed partial class FileNameDialog : Window
@@ -21,10 +23,11 @@ public sealed partial class FileNameDialog : Window
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentException.ThrowIfNullOrWhiteSpace(action);
         Title = title;
-        this.FindControl<TextBlock>("Heading")!.Text = title;
+        var shell = this.FindControl<DialogShell>("Shell")!;
+        shell.Title = title;
         if (!string.IsNullOrWhiteSpace(description))
         {
-            this.FindControl<TextBlock>("Description")!.Text = description;
+            shell.Subtitle = description;
         }
 
         this.FindControl<Button>("ConfirmButton")!.Content = action;

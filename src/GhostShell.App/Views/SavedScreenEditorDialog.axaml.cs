@@ -161,7 +161,7 @@ public sealed partial class SavedScreenEditorDialog : Window
         _closeInProgress = true;
         try
         {
-            var discard = await new DiscardChangesDialog(
+            var discard = await Confirmations.DiscardChanges(
                     "Discard saved screen changes?",
                     "The unsaved name, description, panel assignments, and startup settings will be lost.")
                 .ShowDialog<bool>(this);

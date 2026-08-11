@@ -15,7 +15,7 @@
   -->
   <controls:SurfaceCard Tone="Notice"
       x:Name="AgentPendingCapabilityRequest"
-      Padding="{controls:Inset Md}"
+      Padding="{DynamicResource ShellCardPaddingCompact}"
       Focusable="True"
       KeyboardNavigation.IsTabStop="True"
       IsVisible="{Binding AgentChat.HasPendingCapabilityRequest}"
@@ -80,19 +80,10 @@
             Text="{Binding AgentChat.PendingCapabilityRequest.ExpiresAt, StringFormat={}Expires {0}}"
             TextWrapping="Wrap" />
       </StackPanel>
-      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <icons:SymbolIcon
-            VerticalAlignment="Top"
-            Symbol="Info"
-            FontSize="13"
-            Foreground="{DynamicResource ShellMutedBrush}" />
-        <TextBlock
-            Grid.Column="1"
-            Classes="Muted"
-            FontSize="{DynamicResource ShellFontSize9}"
-            Text="{Binding AgentChat.PendingCapabilityRequest.GrantWarning}"
-            TextWrapping="Wrap" />
-      </Grid>
+      <controls:Callout
+          Tone="Notice"
+          Glyph="Info"
+          Text="{Binding AgentChat.PendingCapabilityRequest.GrantWarning}" />
       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <Button
             Classes="SecondaryButton"

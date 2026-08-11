@@ -42,7 +42,14 @@ public sealed partial class DesignSystemConventionTests
     /// becomes the thing that broke the product. Lowering this number is the unit
     /// of progress; raising it needs a reason written down here.
     /// </summary>
-    private const int LiteralLayoutBudget = 15;
+    /// <remarks>
+    /// Re-based at 6 when the rule learned to read Setter syntax: the count is
+    /// no longer comparable to the attribute-only 15 it replaced. The six that
+    /// remain are each deliberate — two overlay-host insets in MainWindow, a
+    /// chat-bubble corner, the appearance page's split preview tile corners,
+    /// and a log-highlight radius.
+    /// </remarks>
+    private const int LiteralLayoutBudget = 6;
 
     /// <summary>
     /// The design system defines what a value means, so it cannot contain one. A
@@ -126,16 +133,27 @@ public sealed partial class DesignSystemConventionTests
     {
         foreach (var axis in LayoutAxes)
         {
-            foreach (Match match in Regex.Matches(source, axis + "=\"(?<value>[^\"]*)\""))
+            // Both spellings of the same statement: the attribute on an
+            // element, and the Setter a style writes it with. Matching only
+            // the first is how the theme's styles stayed invisible to this
+            // rule for as long as they did.
+            foreach (var pattern in new[]
+                     {
+                         axis + "=\"(?<value>[^\"]*)\"",
+                         "Property=\"" + axis + "\" Value=\"(?<value>[^\"]*)\"",
+                     })
             {
-                var value = match.Groups["value"].Value;
-
-                // Zero is the absence of a value, not a magic number: there is no
-                // token for nothing, and "this card supplies its own inset" has to
-                // stay sayable.
-                if (!value.StartsWith('{') && !IsZero(value))
+                foreach (Match match in Regex.Matches(source, pattern))
                 {
-                    yield return $"{axis}=\"{value}\"";
+                    var value = match.Groups["value"].Value;
+
+                    // Zero is the absence of a value, not a magic number: there
+                    // is no token for nothing, and "this card supplies its own
+                    // inset" has to stay sayable.
+                    if (!value.StartsWith('{') && !IsZero(value))
+                    {
+                        yield return $"{axis}=\"{value}\"";
+                    }
                 }
             }
         }
@@ -155,6 +173,7 @@ public sealed partial class DesignSystemConventionTests
             "src",
             "GhostShell.App");
         yield return Path.Combine(application, "Styles", "DesignSystem.axaml");
+        yield return Path.Combine(application, "Styles", "GhostShellTheme.axaml");
         yield return Path.Combine(application, "Views", "DesignSystemGalleryWindow.axaml");
     }
 
@@ -167,6 +186,39 @@ public sealed partial class DesignSystemConventionTests
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
 
-    [GeneratedRegex("(Background|Foreground|BorderBrush|Color)=\"#[0-9A-Fa-f]{3,8}\"")]
+    /// <summary>
+    /// How many literal colours the application's markup may still contain.
+    /// The survivors are deliberate — the appearance page's mode-preview tiles
+    /// render each mode's own values, which must not follow the live theme —
+    /// but a new one is a theme and a contrast guarantee silently bypassed.
+    /// </summary>
+    private const int LiteralColourBudget = 14;
+
+    [Fact]
+    public void Literal_colours_in_application_markup_only_ever_decrease()
+    {
+        // App.axaml is the palette: the place colour values are defined so
+        // everywhere else can name them. Counting the definitions against the
+        // rule would punish adding a token, which is the fix the rule wants.
+        var counted = ApplicationXamlFiles()
+            .Where(file => !file.EndsWith(
+                Path.Combine("GhostShell.App", "App.axaml"),
+                StringComparison.Ordinal))
+            .Sum(file => LiteralColour().Matches(File.ReadAllText(file)).Count);
+
+        Assert.True(
+            counted <= LiteralColourBudget,
+            $"The application's markup now contains {counted} literal colours, up from "
+            + $"{LiteralColourBudget}. Use a Shell* brush token, or add the value to the "
+            + "palette if it is genuinely new.");
+
+        Assert.True(
+            counted >= LiteralColourBudget - 6,
+            $"The application's markup is down to {counted} literal colours from "
+            + $"{LiteralColourBudget}. Lower {nameof(LiteralColourBudget)} to lock the "
+            + "progress in.");
+    }
+
+    [GeneratedRegex("(Background|Foreground|BorderBrush|Color|Fill|Stroke)=\"#[0-9A-Fa-f]{3,8}\"")]
     private static partial Regex LiteralColour();
 }

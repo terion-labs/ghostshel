@@ -354,11 +354,15 @@ public sealed class McpServerProfileEditorViewModelTests
             && element.Attribute("Focusable")?.Value == "True"
             && !string.IsNullOrWhiteSpace(
                 element.Attribute("AutomationProperties.Name")?.Value)));
+        // The sentence lives on the executable field's Hint, which LabeledField
+        // renders below the control; the guarantee is that it is stated, not
+        // which element states it.
         Assert.Contains(
-            editor.Descendants(view + "TextBlock"),
-            element => element.Attribute("Text")?.Value?.Contains(
-                "not a shell command",
-                StringComparison.OrdinalIgnoreCase) == true);
+            editor.Descendants(),
+            element =>
+                (element.Attribute("Text")?.Value ?? element.Attribute("Hint")?.Value)
+                    ?.Contains("not a shell command", StringComparison.OrdinalIgnoreCase)
+                == true);
         foreach (var iconButton in editor
                      .Descendants(view + "Button")
                      .Where(button => button.Descendants(view + "SymbolIcon").Any()))
@@ -423,8 +427,10 @@ public sealed class McpServerProfileEditorViewModelTests
             section.Descendants(),
             element => element.Name.LocalName == "EmptyStatePanel"
                 && element.Attribute("Heading")?.Value == "No MCP server configured");
+        // Stated by the section's callout; the guarantee is the sentence, not
+        // which element renders it.
         Assert.Contains(
-            section.Descendants(view + "TextBlock"),
+            section.Descendants(),
             element => element.Attribute("Text")?.Value?.Contains(
                 "not live MCP process state",
                 StringComparison.OrdinalIgnoreCase) == true);

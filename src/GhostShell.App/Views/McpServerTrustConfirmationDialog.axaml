@@ -3,7 +3,6 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:icons="using:FluentIcons.Avalonia"
     Title="Trust MCP server changes"
     Width="620"
     MinWidth="500"
@@ -13,188 +12,170 @@
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner"
     Opened="OnOpened">
-  <Grid Margin="{controls:Inset Xl}" RowDefinitions="*,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-          <TextBlock
-              FontSize="{DynamicResource ShellFontSize18}"
-              FontWeight="SemiBold"
-              Text="Trust these MCP server changes?"
-              TextWrapping="Wrap" />
+  <controls:DialogShell Chrome="Utility" Title="Trust MCP server changes">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+        <TextBlock
+            FontSize="{DynamicResource ShellFontSize18}"
+            FontWeight="SemiBold"
+            Text="Trust these MCP server changes?"
+            TextWrapping="Wrap" />
+        <TextBlock
+            Classes="Muted"
+            Text="{Binding ServerName, StringFormat={}Reviewing “{0}” before its durable profile is saved.}"
+            TextWrapping="Wrap" />
+      </StackPanel>
+
+      <controls:Callout
+          Tone="Warning"
+          Glyph="Warning"
+          Title="Local process authority"
+          Text="GhostSHELL may launch this executable and provide the selected vault-backed environment variables during a governed agent run."
+          Footnote="Tool calls still require the governed MCP capability and an explicit per-call human approval. No shell parses the executable or arguments." />
+
+      <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock Classes="SectionHeading" Text="Authority changes" />
+          <ItemsControl ItemsSource="{Binding Changes}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Margin="{controls:Inset Top=Xs}" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </controls:SurfaceCard>
+
+      <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock Classes="SectionHeading" Text="Direct launch" />
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+            <TextBlock Classes="Eyebrow" Text="Executable" />
+            <TextBox
+                IsReadOnly="True"
+                Text="{Binding Executable}"
+                AutomationProperties.Name="Trusted MCP executable" />
+          </StackPanel>
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+            <TextBlock Classes="Eyebrow" Text="Working directory" />
+            <TextBox
+                IsReadOnly="True"
+                Text="{Binding WorkingDirectory}"
+                AutomationProperties.Name="Trusted MCP working directory" />
+          </StackPanel>
+          <TextBlock Classes="Eyebrow" Margin="{controls:Inset Top=Xs}" Text="Ordered arguments" />
           <TextBlock
               Classes="Muted"
-              Text="{Binding ServerName, StringFormat={}Reviewing “{0}” before its durable profile is saved.}"
-              TextWrapping="Wrap" />
+              FontSize="{DynamicResource ShellFontSize10}"
+              IsVisible="{Binding HasNoArguments}"
+              Text="No arguments" />
+          <ItemsControl ItemsSource="{Binding Arguments}" IsVisible="{Binding HasArguments}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="100,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Label}" />
+                  <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Value}" TextWrapping="Wrap" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
+      </controls:SurfaceCard>
 
-        <Border
-            Padding="{controls:Inset Md}"
-            Background="{DynamicResource ShellWarningSoftBrush}"
-            BorderBrush="{DynamicResource ShellWarningBorderBrush}"
-            BorderThickness="1"
-            CornerRadius="{DynamicResource ShellCardCornerRadius}">
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-            <icons:SymbolIcon Symbol="Warning" FontSize="18" Foreground="{DynamicResource ShellWarningBrush}" />
-            <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellWarningBrush}" Text="Local process authority" />
-              <TextBlock
-                  Text="GhostSHELL may launch this executable and provide the selected vault-backed environment variables during a governed agent run."
-                  TextWrapping="Wrap" />
-              <TextBlock
-                  Classes="Muted"
-                  FontSize="{DynamicResource ShellFontSize10}"
-                  Text="Tool calls still require the governed MCP capability and an explicit per-call human approval. No shell parses the executable or arguments."
-                  TextWrapping="Wrap" />
-            </StackPanel>
-          </Grid>
-        </Border>
-
-        <controls:SurfaceCard Padding="0">
-          <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
-            <TextBlock Classes="SectionHeading" Text="Authority changes" />
-            <ItemsControl ItemsSource="{Binding Changes}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <TextBlock Margin="{controls:Inset Top=Xs}" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
-        </controls:SurfaceCard>
-
-        <controls:SurfaceCard Padding="0">
-          <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
-            <TextBlock Classes="SectionHeading" Text="Direct launch" />
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="Eyebrow" Text="Executable" />
-              <TextBox
-                  
-                  IsReadOnly="True"
-                  Text="{Binding Executable}"
-                  AutomationProperties.Name="Trusted MCP executable" />
-            </StackPanel>
-            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="Eyebrow" Text="Working directory" />
-              <TextBox
-                  
-                  IsReadOnly="True"
-                  Text="{Binding WorkingDirectory}"
-                  AutomationProperties.Name="Trusted MCP working directory" />
-            </StackPanel>
-            <TextBlock Classes="Eyebrow" Margin="{controls:Inset Top=Xs}" Text="Ordered arguments" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                IsVisible="{Binding HasNoArguments}"
-                Text="No arguments" />
-            <ItemsControl ItemsSource="{Binding Arguments}" IsVisible="{Binding HasArguments}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="100,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Label}" />
-                    <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Value}" TextWrapping="Wrap" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
-        </controls:SurfaceCard>
-
-        <controls:SurfaceCard Padding="0">
-          <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceSm}">
-            <TextBlock Classes="SectionHeading" Text="Vault-backed environment" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                IsVisible="{Binding HasNoEnvironment}"
-                Text="No environment bindings" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                IsVisible="{Binding HasEnvironment}"
-                Text="Each binding shows its opaque reference and vault metadata. Credential values are never loaded or displayed."
-                TextWrapping="Wrap" />
-            <ItemsControl ItemsSource="{Binding Environment}" IsVisible="{Binding HasEnvironment}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border
-                      Margin="{controls:Inset Top=Xs}"
-                      Padding="{controls:Inset Sm}"
-                      BorderBrush="{DynamicResource ShellBorderBrush}"
-                      BorderThickness="1"
-                      CornerRadius="{DynamicResource ShellControlCornerRadius}"
-                      AutomationProperties.Name="{Binding AutomationName}">
-                    <Grid ColumnDefinitions="160,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                      <TextBlock
-                          
-                          FontSize="{DynamicResource ShellFontSize10}"
-                          Text="{Binding VariableName}"
-                          TextWrapping="Wrap" />
-                      <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                        <TextBlock
-                            Classes="Muted"
-                            FontSize="{DynamicResource ShellFontSize9}"
-                            Text="{Binding ReferenceValue, StringFormat={}SecretRef · {0}}"
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            FontSize="{DynamicResource ShellFontSize10}"
-                            Text="{Binding MetadataSummary}"
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            Classes="Muted"
-                            FontSize="{DynamicResource ShellFontSize9}"
-                            Text="{Binding StateSummary}"
-                            TextWrapping="Wrap" />
-                      </StackPanel>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <TextBlock Classes="SectionHeading" Margin="{controls:Inset Top=Xs}" Text="Enabled tool allowlist" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                IsVisible="{Binding HasNoEnabledTools}"
-                Text="No tools enabled" />
-            <ItemsControl ItemsSource="{Binding EnabledTools}" IsVisible="{Binding HasEnabledTools}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <TextBlock Margin="{controls:Inset Top=Xs}" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
-        </controls:SurfaceCard>
-
-        <CheckBox
-            x:Name="Acknowledgement"
-            Click="OnAcknowledgementChanged"
-            AutomationProperties.Name="I trust this executable, its ordered arguments, reviewed credential metadata, vault references, and expanded tool allowlist"
-            AutomationProperties.HelpText="Required acknowledgement before saving authority-expanding MCP server changes">
+      <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock Classes="SectionHeading" Text="Vault-backed environment" />
           <TextBlock
-              Text="I trust this executable, its exact arguments, reviewed credential bindings, and enabled tools."
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              IsVisible="{Binding HasNoEnvironment}"
+              Text="No environment bindings" />
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              IsVisible="{Binding HasEnvironment}"
+              Text="Each binding shows its opaque reference and vault metadata. Credential values are never loaded or displayed."
               TextWrapping="Wrap" />
-        </CheckBox>
-      </StackPanel>
-    </ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Environment}" IsVisible="{Binding HasEnvironment}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border
+                    Margin="{controls:Inset Top=Xs}"
+                    Padding="{controls:Inset Sm}"
+                    BorderBrush="{DynamicResource ShellBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource ShellControlCornerRadius}"
+                    AutomationProperties.Name="{Binding AutomationName}">
+                  <Grid ColumnDefinitions="160,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <TextBlock
+                        FontSize="{DynamicResource ShellFontSize10}"
+                        Text="{Binding VariableName}"
+                        TextWrapping="Wrap" />
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
+                          Text="{Binding ReferenceValue, StringFormat={}SecretRef · {0}}"
+                          TextWrapping="Wrap" />
+                      <TextBlock
+                          FontSize="{DynamicResource ShellFontSize10}"
+                          Text="{Binding MetadataSummary}"
+                          TextWrapping="Wrap" />
+                      <TextBlock
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
+                          Text="{Binding StateSummary}"
+                          TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Classes="SectionHeading" Margin="{controls:Inset Top=Xs}" Text="Enabled tool allowlist" />
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              IsVisible="{Binding HasNoEnabledTools}"
+              Text="No tools enabled" />
+          <ItemsControl ItemsSource="{Binding EnabledTools}" IsVisible="{Binding HasEnabledTools}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Margin="{controls:Inset Top=Xs}" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding StringFormat={}• {0}}" TextWrapping="Wrap" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </controls:SurfaceCard>
 
-    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-      <Button
-          Classes="SecondaryButton"
-          Click="OnCancelClick"
-          Content="Cancel"
-          IsCancel="True"
-          AutomationProperties.Name="Cancel MCP trust confirmation" />
-      <Button
-          x:Name="ConfirmButton"
-          Classes="PrimaryButton"
-          Click="OnConfirmClick"
-          Content="Trust and save"
-          IsEnabled="False"
-          IsDefault="True"
-          AutomationProperties.Name="Trust and save MCP server changes" />
+      <CheckBox
+          x:Name="Acknowledgement"
+          Click="OnAcknowledgementChanged"
+          AutomationProperties.Name="I trust this executable, its ordered arguments, reviewed credential metadata, vault references, and expanded tool allowlist"
+          AutomationProperties.HelpText="Required acknowledgement before saving authority-expanding MCP server changes">
+        <TextBlock
+            Text="I trust this executable, its exact arguments, reviewed credential bindings, and enabled tools."
+            TextWrapping="Wrap" />
+      </CheckBox>
     </StackPanel>
-  </Grid>
+
+    <controls:DialogShell.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button
+            Classes="SecondaryButton"
+            Click="OnCancelClick"
+            Content="Cancel"
+            IsCancel="True"
+            AutomationProperties.Name="Cancel MCP trust confirmation" />
+        <Button
+            x:Name="ConfirmButton"
+            Classes="PrimaryButton"
+            Click="OnConfirmClick"
+            Content="Trust and save"
+            IsEnabled="False"
+            IsDefault="True"
+            AutomationProperties.Name="Trust and save MCP server changes" />
+      </StackPanel>
+    </controls:DialogShell.Footer>
+  </controls:DialogShell>
 </Window>

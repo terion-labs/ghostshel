@@ -107,7 +107,9 @@
               <TextBlock FontSize="{DynamicResource ShellFontSize16}" FontWeight="Bold" Text="Design custom layout" />
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize11}" Text="Split, drag, and resize panels — the canvas works like the workspace" />
             </StackPanel>
-            <Border Classes="Keycap"><TextBlock Text="{Binding LayoutDesignerEditor.DirtyStatus}" /></Border>
+            <!-- Only news is worth a badge: "saved" is the resting state, and
+                 a label saying so was furniture. -->
+            <Border Classes="Keycap" IsVisible="{Binding LayoutDesignerEditor.IsDirty}"><TextBlock Text="{Binding LayoutDesignerEditor.DirtyStatus}" /></Border>
           </StackPanel>
           <Button Grid.Column="1" Classes="IconButton" Click="OnCloseOverlayClick" AutomationProperties.Name="Close layout designer">
             <icons:SymbolIcon Symbol="Dismiss" FontSize="16" />
@@ -155,10 +157,7 @@
         <Border Grid.Column="1" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1,0,0,0">
           <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock FontSize="{DynamicResource ShellFontSize15}" FontWeight="Bold" Text="Panels" />
-                <components:CountPill Grid.Column="1" VerticalAlignment="Center" Value="{Binding LayoutDesignerEditor.PanelCount}" />
-              </Grid>
+              <components:SectionHeader Heading="Panels" Count="{Binding LayoutDesignerEditor.PanelCount}" />
 
               <ItemsControl ItemsSource="{Binding LayoutDesignerEditor.Slots}">
                 <ItemsControl.ItemTemplate>
@@ -184,7 +183,7 @@
                           <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource ShellBackgroundBrush}" Text="{Binding Order}" />
                         </Border>
                         <TextBlock Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding OrderLabel}" />
-                        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="2" VerticalAlignment="Center" Content="{Binding SizeLabel}" />
+                        <components:CountPill Grid.Column="2" Value="{Binding SizeLabel}" />
                       </Grid>
                     </Button>
                   </DataTemplate>
@@ -202,12 +201,12 @@
                 </StackPanel>
               </Button>
 
-              <controls:SurfaceCard Tone="Notice" Padding="0">
-                <TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Panels are generic regions — assign connections later when you open the screen." TextWrapping="Wrap" />
+              <controls:SurfaceCard Tone="Notice" Padding="{DynamicResource ShellCardPaddingCompact}">
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Panels are generic regions — assign connections later when you open the screen." TextWrapping="Wrap" />
               </controls:SurfaceCard>
 
-              <controls:SurfaceCard Tone="Notice" Padding="0" IsVisible="{Binding LayoutDesignerEditor.HasOperationError}">
-                <TextBlock Margin="{controls:Inset Md}" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LayoutDesignerEditor.LastOperationIssue.Message}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Layout designer status" />
+              <controls:SurfaceCard Tone="Notice" Padding="{DynamicResource ShellCardPaddingCompact}" IsVisible="{Binding LayoutDesignerEditor.HasOperationError}">
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LayoutDesignerEditor.LastOperationIssue.Message}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Layout designer status" />
               </controls:SurfaceCard>
               <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding LayoutDesignerEditor.ValidationSummary}" TextWrapping="Wrap" />
 

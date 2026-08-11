@@ -531,7 +531,6 @@
                             Text="{Binding Evidence}"
                             TextWrapping="Wrap" />
                         <TextBlock
-                            
                             FontSize="{DynamicResource ShellFontSize9}"
                             Text="{Binding Timeline}"
                             TextWrapping="Wrap" />

@@ -3,7 +3,6 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:icons="using:FluentIcons.Avalonia"
     Title="Enable YOLO for this run"
     Width="560"
     MinWidth="420"
@@ -13,11 +12,8 @@
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner"
     Opened="OnOpened">
-  <Grid Margin="{controls:Inset Xl}" RowDefinitions="*,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
-    <ScrollViewer
-        HorizontalScrollBarVisibility="Disabled"
-        VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+  <controls:DialogShell Chrome="Utility" Title="Enable YOLO for this run">
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock
             FontSize="{DynamicResource ShellFontSize18}"
@@ -30,33 +26,15 @@
             TextWrapping="Wrap" />
       </StackPanel>
 
-      <Border
-          Padding="{controls:Inset Md}"
-          Background="{DynamicResource ShellDangerSoftBrush}"
-          BorderBrush="{DynamicResource ShellDangerBorderBrush}"
-          BorderThickness="1"
-          CornerRadius="{DynamicResource ShellCardCornerRadius}">
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <icons:SymbolIcon
-              Symbol="Warning"
-              FontSize="18"
-              Foreground="{DynamicResource ShellDangerBrush}" />
-          <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-            <TextBlock Classes="Eyebrow" Foreground="{DynamicResource ShellDangerBrush}" Text="High-risk run override" />
-            <TextBlock
-                Text="Terminal input and destructive terminal actions can execute without per-action approval until this window expires."
-                TextWrapping="Wrap" />
-            <TextBlock
-                Classes="Muted"
-                FontSize="{DynamicResource ShellFontSize10}"
-                Text="Exact target scope, provider isolation, human-input preemption, Stop, secret non-disclosure, and audit remain enforced."
-                TextWrapping="Wrap" />
-          </StackPanel>
-        </Grid>
-      </Border>
+      <controls:Callout
+          Tone="Danger"
+          Glyph="Warning"
+          Title="High-risk run override"
+          Text="Terminal input and destructive terminal actions can execute without per-action approval until this window expires."
+          Footnote="Exact target scope, provider isolation, human-input preemption, Stop, secret non-disclosure, and audit remain enforced." />
 
-      <controls:SurfaceCard Padding="0">
-        <StackPanel Margin="{controls:Inset Md}" Spacing="{DynamicResource ShellSpaceXs}">
+      <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
           <TextBlock Classes="Eyebrow" Text="Exact terminal scope" />
           <TextBlock x:Name="TargetTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
           <TextBlock
@@ -94,24 +72,25 @@
             Text="I understand that destructive terminal actions will not ask again during this window."
             TextWrapping="Wrap" />
       </CheckBox>
-      </StackPanel>
-    </ScrollViewer>
-
-    <StackPanel Grid.Row="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-      <Button
-          Classes="SecondaryButton"
-          Click="OnCancelClick"
-          Content="Cancel"
-          IsCancel="True"
-          AutomationProperties.Name="Cancel enabling YOLO" />
-      <Button
-          x:Name="ConfirmButton"
-          Classes="DestructiveButton"
-          Click="OnConfirmClick"
-          Content="Enable YOLO"
-          IsEnabled="False"
-          IsDefault="True"
-          AutomationProperties.Name="Enable YOLO for 15 minutes" />
     </StackPanel>
-  </Grid>
+
+    <controls:DialogShell.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button
+            Classes="SecondaryButton"
+            Click="OnCancelClick"
+            Content="Cancel"
+            IsCancel="True"
+            AutomationProperties.Name="Cancel enabling YOLO" />
+        <Button
+            x:Name="ConfirmButton"
+            Classes="DestructiveButton"
+            Click="OnConfirmClick"
+            Content="Enable YOLO"
+            IsEnabled="False"
+            IsDefault="True"
+            AutomationProperties.Name="Enable YOLO for 15 minutes" />
+      </StackPanel>
+    </controls:DialogShell.Footer>
+  </controls:DialogShell>
 </Window>

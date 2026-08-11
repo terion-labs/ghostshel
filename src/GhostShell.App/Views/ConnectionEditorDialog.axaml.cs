@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views;
@@ -132,7 +133,7 @@ public sealed partial class ConnectionEditorDialog : Window
         catch (Exception exception) when (exception
             is ArgumentException or OverflowException or UriFormatException or FormatException)
         {
-            var error = this.FindControl<TextBlock>("ValidationError");
+            var error = this.FindControl<Callout>("ValidationError");
             if (error is not null)
             {
                 error.Text = exception.Message;
@@ -143,7 +144,7 @@ public sealed partial class ConnectionEditorDialog : Window
 
     private void HideValidationError()
     {
-        var error = this.FindControl<TextBlock>("ValidationError");
+        var error = this.FindControl<Callout>("ValidationError");
         if (error is not null)
         {
             error.IsVisible = false;

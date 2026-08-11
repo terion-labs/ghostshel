@@ -12,12 +12,12 @@
     WindowStartupLocation="CenterOwner">
   <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
     <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-      <TextBlock FontSize="{DynamicResource ShellFontSize19}" FontWeight="SemiBold" Text="Review definition import" />
+      <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="Review definition import" />
       <TextBlock Classes="Muted" Text="Preflight is complete. Nothing has been imported yet." />
     </StackPanel>
 
-    <controls:SurfaceCard Padding="0" Grid.Row="1">
-      <Grid Margin="{controls:Inset Md}" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
+    <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}" Grid.Row="1">
+      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontWeight="SemiBold" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
         <Border Grid.Column="1" Classes="Keycap"><TextBlock Text="{Binding ModeLabel}" /></Border>
         <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Directory}" TextTrimming="CharacterEllipsis" />
@@ -26,15 +26,15 @@
     </controls:SurfaceCard>
 
     <Grid Grid.Row="2" MaxHeight="330">
-      <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoIssues}">
-        <TextBlock Margin="{controls:Inset Md}" Text="No conflicts or compatibility issues were found." />
+      <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}" IsVisible="{Binding HasNoIssues}">
+        <TextBlock Text="No conflicts or compatibility issues were found." />
       </controls:SurfaceCard>
       <ScrollViewer IsVisible="{Binding HasIssues}" VerticalScrollBarVisibility="Auto">
         <ItemsControl ItemsSource="{Binding Issues}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <controls:SurfaceCard Padding="0" Margin="{controls:Inset Bottom=Sm}">
-                <Grid Margin="{controls:Inset Md}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}" Margin="{controls:Inset Bottom=Sm}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <Border Classes="Keycap"><TextBlock Text="{Binding Label}" /></Border>
                   <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
                     <TextBlock FontWeight="SemiBold" Text="{Binding Heading}" />
@@ -48,10 +48,12 @@
       </ScrollViewer>
     </Grid>
 
-    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
       <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding CommitHint}" TextWrapping="Wrap" />
-      <Button Grid.Column="1" MinWidth="88" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
-      <Button Grid.Column="2" MinWidth="150" Classes="PrimaryButton" Click="OnImportClick" Content="Import definitions" IsEnabled="{Binding CanApply}" />
+      <StackPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+        <Button MinWidth="88" Click="OnCancelClick" Content="Cancel" IsCancel="True" />
+        <Button MinWidth="112" Classes="PrimaryButton" Click="OnImportClick" Content="Import definitions" IsEnabled="{Binding CanApply}" />
+      </StackPanel>
     </Grid>
   </Grid>
 </Window>
