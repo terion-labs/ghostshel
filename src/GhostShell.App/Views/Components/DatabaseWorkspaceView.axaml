@@ -385,7 +385,7 @@
           <!-- The run affordance floats over the editor's corner rather than
                claiming a column: the statement is the surface, the trigger is
                an icon, and Cmd+Enter is the real interface. -->
-          <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}">
+          <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Sm}">
             <local:CodeEditBox
                 x:Name="QueryEditorBox"
                 MinHeight="58"

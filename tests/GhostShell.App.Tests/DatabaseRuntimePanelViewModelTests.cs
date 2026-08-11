@@ -456,6 +456,49 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Prompted_password_can_be_persisted_for_the_saved_profile()
+    {
+        var client = new FakeDatabasePanelClient();
+        var profile = new DatabaseConnectionProfile(
+            DatabaseConnectionProfileId.New(),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "prod-core",
+            "postgres",
+            "Host=db.internal;Database=app");
+        DatabaseConnectionProfileId? persistedId = null;
+        string? persistedPassword = null;
+        var secret = SecretRef.New();
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            savedConnection: profile,
+            passwordPersister: (profileId, password, _) =>
+            {
+                persistedId = profileId;
+                persistedPassword = password;
+                return Task.FromResult<DatabaseConnectionProfile?>(new(
+                    profile.Id,
+                    profile.SchemaVersion,
+                    profile.Name,
+                    profile.DriverId,
+                    profile.ConnectionString,
+                    secret));
+            },
+            passwordStoreLabel: "Save in macOS Keychain");
+
+        Assert.True(panel.CanStorePassword);
+        Assert.Equal("Save in macOS Keychain", panel.PasswordStoreLabel);
+
+        var stored = await panel.StoreSessionPasswordAsync("typed");
+
+        Assert.True(stored);
+        Assert.Equal(profile.Id, persistedId);
+        Assert.Equal("typed", persistedPassword);
+        Assert.False(panel.CanStorePassword);
+    }
+
+    [Fact]
     public async Task Editing_details_detaches_the_panel_from_the_saved_connection()
     {
         var client = new FakeDatabasePanelClient();

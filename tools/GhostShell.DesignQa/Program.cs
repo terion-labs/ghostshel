@@ -441,6 +441,19 @@ internal sealed class QaApplication : Avalonia.Application
             "appearance-corners-round",
             vm => vm.ShowWorkspace(),
             Theme: AppearanceExtreme(InterfaceDensity.Comfortable)),
+        // The side-docked strip is its own box model — margins, padding, row
+        // metrics all orientation-owned — and it shipped broken twice because
+        // nothing rendered it headlessly.
+        new(
+            "workspace-tabs-side",
+            vm => vm.ShowWorkspace(),
+            Theme: new ThemePreference(
+                ThemePreference.Default.Id,
+                ThemePreference.Default.Name,
+                AppearanceMode.Dark,
+                PlatformProfile.Automatic,
+                AccentPreference.FollowHost,
+                tabStripPlacement: TabStripPlacement.Left)),
     ];
 
     /// <summary>

@@ -13,6 +13,7 @@
     ShowInTaskbar="False"
     WindowDecorations="None"
     Background="Transparent"
+    TransparencyBackgroundFallback="{DynamicResource ShellBackgroundBrush}"
     Topmost="True"
     WindowStartupLocation="Manual">
   <Grid

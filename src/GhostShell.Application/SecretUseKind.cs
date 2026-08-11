@@ -10,4 +10,5 @@ public enum SecretUseKind
     FileProviderAuthentication,
     UserManagement,
     PlatformMaintenance,
+    DatabaseConnectionAuthentication,
 }

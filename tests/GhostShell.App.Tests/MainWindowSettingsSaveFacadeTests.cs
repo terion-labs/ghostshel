@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -205,6 +207,58 @@ public sealed class MainWindowSettingsSaveFacadeTests
     }
 
     [Fact]
+    public async Task Prompted_database_password_is_vaulted_and_linked_to_the_profile()
+    {
+        var profile = new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("database.settings-save"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "Production database",
+            "postgres",
+            "Host=db.internal;Database=app");
+        var catalog = new RecordingDefinitionCatalog(
+            SettingsSnapshot() with
+            {
+                DatabaseConnections = [Store(profile, 48)],
+            });
+        using var vault = new TestPersistentVault();
+        using var viewModel = CreateViewModel(catalog, vault);
+
+        var saved = await viewModel.StoreDatabasePasswordAsync(
+            profile.Id,
+            "typed-password");
+
+        Assert.NotNull(saved);
+        var save = Assert.IsType<RecordedSave<DatabaseConnectionProfile>>(
+            catalog.DatabaseSave);
+        Assert.Equal(48, save.ExpectedRevision);
+        var reference = Assert.IsType<SecretRef>(save.Definition.PasswordSecret);
+        Assert.DoesNotContain(
+            "typed-password",
+            save.Definition.ConnectionString,
+            StringComparison.Ordinal);
+
+        using var material = Assert.IsType<SecretVaultResult<SecretMaterial>.Success>(
+            await vault.ResolveAsync(
+                new ResolveSecretRequest(
+                    reference,
+                    new SecretScope(SecretScopeKind.DatabaseConnection, profile.Id.Value),
+                    new SecretUsePurpose(
+                        SecretUseKind.DatabaseConnectionAuthentication,
+                        profile.Id.Value)),
+                default)).Value;
+        var bytes = new byte[material.Length];
+        material.CopyTo(bytes);
+        try
+        {
+            Assert.Equal("typed-password", Encoding.UTF8.GetString(bytes));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+        }
+    }
+
+    [Fact]
     public async Task Failed_terminal_save_preserves_the_live_draft_and_error()
     {
         var error = new DefinitionStoreError(
@@ -259,14 +313,15 @@ public sealed class MainWindowSettingsSaveFacadeTests
     private const long QuickTerminalRevision = 43;
 
     private static MainWindowViewModel CreateViewModel(
-        IDefinitionCatalog catalog)
+        IDefinitionCatalog catalog,
+        ISecretVault? secretVault = null)
     {
         var files = new EmptyFileClients();
         return new MainWindowViewModel(
             DispatchProxy.Create<ISessionHostClient, RejectingSessionHostProxy>(),
             catalog,
             new UnusedConnectionRuntime(),
-            new EmptySecretVault(),
+            secretVault ?? new EmptySecretVault(),
             files,
             files,
             new TerminalStartupCommandDispatcher(
@@ -354,6 +409,12 @@ public sealed class MainWindowSettingsSaveFacadeTests
         }
 
         public RecordedSave<McpServerProfile>? McpServerSave
+        {
+            get;
+            private set;
+        }
+
+        public RecordedSave<DatabaseConnectionProfile>? DatabaseSave
         {
             get;
             private set;
@@ -473,6 +534,16 @@ public sealed class MainWindowSettingsSaveFacadeTests
             return Complete(definition, expectedRevision);
         }
 
+        public ValueTask<DefinitionStoreResult<StoredDefinition<DatabaseConnectionProfile>>>
+            SaveDatabaseConnectionAsync(
+                DatabaseConnectionProfile definition,
+                long? expectedRevision,
+                CancellationToken cancellationToken)
+        {
+            DatabaseSave = new(definition, expectedRevision);
+            return Complete(definition, expectedRevision);
+        }
+
         public ValueTask<DefinitionStoreResult<Unit>> DeleteAsync(
             DefinitionKey key,
             long expectedRevision,
@@ -567,6 +638,105 @@ public sealed class MainWindowSettingsSaveFacadeTests
             GetSecretMetadataRequest request,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class TestPersistentVault : ISecretVault
+    {
+        private readonly Dictionary<SecretRef, (SecretMetadata Metadata, byte[] Value)>
+            _entries = [];
+
+        public SecretVaultAvailability Availability { get; } = new(
+            SecretVaultAvailabilityState.Available,
+            SecretVaultPersistenceKind.OsProtectedPersistent,
+            SecretVaultCapabilities.All,
+            "test-keychain",
+            "test_keychain",
+            "Test system credential store");
+
+        public void Dispose()
+        {
+            foreach (var entry in _entries.Values)
+            {
+                CryptographicOperations.ZeroMemory(entry.Value);
+            }
+
+            _entries.Clear();
+        }
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> CreateAsync(
+            CreateSecretRequest request,
+            SecretMaterial material,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var value = new byte[material.Length];
+            material.CopyTo(value);
+            var metadata = new SecretMetadata(
+                request.Reference,
+                request.Label,
+                request.Kind,
+                request.Scope,
+                SecretVaultPersistenceKind.OsProtectedPersistent,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch);
+            _entries.Add(request.Reference, (metadata, value));
+            return ValueTask.FromResult(
+                SecretVaultResult<SecretMetadata>.Succeed(metadata));
+        }
+
+        public ValueTask<SecretVaultResult<SecretMaterial>> ResolveAsync(
+            ResolveSecretRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return _entries.TryGetValue(request.Reference, out var entry)
+                ? ValueTask.FromResult(SecretVaultResult<SecretMaterial>.Succeed(
+                    SecretMaterial.CopyFrom(entry.Value)))
+                : ValueTask.FromResult(SecretVaultResult<SecretMaterial>.Fail(
+                    SecretVaultError.Create(SecretVaultErrorCode.NotFound)));
+        }
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> ReplaceAsync(
+            ReplaceSecretRequest request,
+            SecretMaterial material,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> RelabelAsync(
+            RelabelSecretRequest request,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask<SecretVaultResult<Unit>> DeleteAsync(
+            DeleteSecretRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_entries.Remove(request.Reference, out var entry))
+            {
+                return ValueTask.FromResult(SecretVaultResult<Unit>.Fail(
+                    SecretVaultError.Create(SecretVaultErrorCode.NotFound)));
+            }
+
+            CryptographicOperations.ZeroMemory(entry.Value);
+            return ValueTask.FromResult(SecretVaultResult<Unit>.Succeed(Unit.Value));
+        }
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> GetMetadataAsync(
+            GetSecretMetadataRequest request,
+            CancellationToken cancellationToken) =>
+            _entries.TryGetValue(request.Reference, out var entry)
+                ? ValueTask.FromResult(
+                    SecretVaultResult<SecretMetadata>.Succeed(entry.Metadata))
+                : ValueTask.FromResult(SecretVaultResult<SecretMetadata>.Fail(
+                    SecretVaultError.Create(SecretVaultErrorCode.NotFound)));
+
+        public ValueTask<SecretVaultResult<IReadOnlyList<SecretMetadata>>> ListMetadataAsync(
+            ListSecretMetadataRequest request,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(
+                SecretVaultResult<IReadOnlyList<SecretMetadata>>.Succeed(
+                    _entries.Values.Select(entry => entry.Metadata).ToArray()));
     }
 
     private sealed class EmptyFileClients

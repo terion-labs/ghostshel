@@ -41,6 +41,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     private readonly IDatabasePanelClient _client;
     private readonly ISqlLanguageService? _sqlLanguageService;
     private readonly Func<SecretRef, CancellationToken, Task<string?>>? _passwordResolver;
+    private readonly Func<DatabaseConnectionProfileId, string, CancellationToken,
+        Task<DatabaseConnectionProfile?>>? _passwordPersister;
     private readonly string? _forcedReadOnlyReason;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _disposed;
@@ -122,7 +124,10 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         Func<SecretRef, CancellationToken, Task<string?>>? passwordResolver = null,
         string? forcedReadOnlyReason = null,
         DatabaseObjectId? initialObject = null,
-        ISqlLanguageService? sqlLanguageService = null)
+        ISqlLanguageService? sqlLanguageService = null,
+        Func<DatabaseConnectionProfileId, string, CancellationToken,
+            Task<DatabaseConnectionProfile?>>? passwordPersister = null,
+        string passwordStoreLabel = "Save in system credential store")
         : base(id, PanelKind.DatabaseViewer, title, "Database")
     {
         _pendingInitialObject = initialObject;
@@ -132,6 +137,10 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _sqlLanguageService = sqlLanguageService;
         _passwordResolver = passwordResolver;
+        _passwordPersister = passwordPersister;
+        PasswordStoreLabel = string.IsNullOrWhiteSpace(passwordStoreLabel)
+            ? "Save in system credential store"
+            : passwordStoreLabel;
         _forcedReadOnlyReason = string.IsNullOrWhiteSpace(forcedReadOnlyReason)
             ? null
             : forcedReadOnlyReason;
@@ -183,6 +192,13 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
     public string? SavedConnectionName => _savedConnection?.Name;
 
+    public bool CanStorePassword =>
+        _passwordPersister is not null
+        && _isPersistedConnection
+        && _savedConnection is { PasswordSecret: null };
+
+    public string PasswordStoreLabel { get; }
+
     /// <summary>What the address bar shows: the saved name, or the masked string.</summary>
     public string AddressBarText => _savedConnection?.Name ?? MaskedConnectionString;
 
@@ -224,6 +240,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         ConnectionString = profile.ConnectionString;
         OnPropertyChanged(nameof(IsSavedConnection));
         OnPropertyChanged(nameof(SavedConnectionName));
+        OnPropertyChanged(nameof(CanStorePassword));
         OnPropertyChanged(nameof(AddressBarText));
         OnPropertyChanged(nameof(RecoveryTarget));
         OnPropertyChanged(nameof(TunnelConnectionId));
@@ -234,6 +251,28 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     /// <summary>The prompt's answer; an empty value means connect without one.</summary>
     public void SetSessionPassword(string password) =>
         _sessionPassword = password ?? string.Empty;
+
+    public async Task<bool> StoreSessionPasswordAsync(
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        if (!CanStorePassword
+            || _savedConnection is not { } profile
+            || string.IsNullOrEmpty(password))
+        {
+            return false;
+        }
+
+        var saved = await _passwordPersister!(profile.Id, password, cancellationToken);
+        if (saved is null)
+        {
+            return false;
+        }
+
+        _savedConnection = saved;
+        OnPropertyChanged(nameof(CanStorePassword));
+        return true;
+    }
 
     private bool NeedsPasswordPrompt =>
         _savedConnection is not null
@@ -751,6 +790,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         _sessionPassword = null;
         OnPropertyChanged(nameof(IsSavedConnection));
         OnPropertyChanged(nameof(SavedConnectionName));
+        OnPropertyChanged(nameof(CanStorePassword));
         ConnectionString = _client.BuildConnectionString(SelectedDriver.Id, details);
         OnPropertyChanged(nameof(AddressBarText));
         OnPropertyChanged(nameof(RecoveryTarget));

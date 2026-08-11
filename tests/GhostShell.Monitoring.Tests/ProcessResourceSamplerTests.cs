@@ -48,6 +48,98 @@ public sealed class ProcessResourceSamplerTests
     }
 
     [Fact]
+    public async Task ConsecutiveNetworkCountersProduceAggregateReceiveAndSendRates()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var processes = new SequenceProcessSnapshotSource();
+        processes.Enqueue(Capture(Process(
+            41,
+            "ghostshell",
+            128,
+            TimeSpan.FromSeconds(2),
+            FirstStart)));
+        processes.Enqueue(Capture(Process(
+            41,
+            "ghostshell",
+            128,
+            TimeSpan.FromSeconds(2),
+            FirstStart)));
+        var network = new SequenceNetworkSnapshotSource();
+        network.Enqueue(
+            Interface("eth0", received: 1_000, sent: 2_000),
+            Interface("wlan0", received: 500, sent: 700));
+        network.Enqueue(
+            Interface("eth0", received: 3_000, sent: 3_000),
+            Interface("wlan0", received: 1_500, sent: 2_700),
+            Interface("new0", received: 9_000, sent: 9_000));
+        var sampler = new ProcessResourceSampler(processes, clock, network);
+
+        var first = await sampler.CaptureAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var second = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.Null(first.Value!.Statistics.NetworkReceivedBytesPerSecond);
+        Assert.Null(first.Value.Statistics.NetworkSentBytesPerSecond);
+        Assert.Equal(1_500, second.Value!.Statistics.NetworkReceivedBytesPerSecond);
+        Assert.Equal(1_500, second.Value.Statistics.NetworkSentBytesPerSecond);
+    }
+
+    [Fact]
+    public async Task NetworkCaptureFailureDoesNotHideProcessStatistics()
+    {
+        var processes = new SequenceProcessSnapshotSource();
+        processes.Enqueue(Capture(Process(
+            41,
+            "ghostshell",
+            128,
+            TimeSpan.FromSeconds(2),
+            FirstStart)));
+        var network = new SequenceNetworkSnapshotSource();
+        network.EnqueueFailure(new IOException("network counters unavailable"));
+        var sampler = new ProcessResourceSampler(
+            processes,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch),
+            network);
+
+        var result = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(128, result.Value!.Statistics.ObservedWorkingSetBytes);
+        Assert.Null(result.Value.Statistics.NetworkReceivedBytesPerSecond);
+        Assert.Null(result.Value.Statistics.NetworkSentBytesPerSecond);
+    }
+
+    [Fact]
+    public async Task CounterResetOnlySuppressesTheAffectedNetworkDirection()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var processes = new SequenceProcessSnapshotSource();
+        processes.Enqueue(Capture(Process(
+            41,
+            "ghostshell",
+            128,
+            TimeSpan.FromSeconds(2),
+            FirstStart)));
+        processes.Enqueue(Capture(Process(
+            41,
+            "ghostshell",
+            128,
+            TimeSpan.FromSeconds(2),
+            FirstStart)));
+        var network = new SequenceNetworkSnapshotSource();
+        network.Enqueue(Interface("eth0", received: 5_000, sent: 2_000));
+        network.Enqueue(Interface("eth0", received: 1_000, sent: 3_000));
+        var sampler = new ProcessResourceSampler(processes, clock, network);
+
+        _ = await sampler.CaptureAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var result = await sampler.CaptureAsync(CancellationToken.None);
+
+        Assert.Null(result.Value!.Statistics.NetworkReceivedBytesPerSecond);
+        Assert.Equal(1_000, result.Value.Statistics.NetworkSentBytesPerSecond);
+    }
+
+    [Fact]
     public async Task ReusedProcessIdDoesNotInheritPriorCpuTime()
     {
         var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
@@ -202,6 +294,12 @@ public sealed class ProcessResourceSamplerTests
             processorTime,
             startedAtUtc,
             isGhostShell);
+
+    private static RawNetworkObservation Interface(
+        string interfaceId,
+        long received,
+        long sent) =>
+        new(interfaceId, received, sent);
 
     private sealed class ThrowingTimestampTimeProvider : TimeProvider
     {

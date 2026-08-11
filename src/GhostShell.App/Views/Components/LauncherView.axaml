@@ -154,7 +154,7 @@
           </StackPanel>
           <Button Grid.Column="1" VerticalAlignment="Center" MinHeight="0" Padding="0" Classes="TextButton" Click="OnAddConnectionClick" Content="Add" />
         </Grid>
-        <controls:SurfaceCard Tone="Sunken" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
+        <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
           <ScrollViewer HorizontalScrollBarVisibility="Disabled">
             <ItemsControl Classes="StretchItems" ItemsSource="{Binding SavedConnectionShortcuts}">
               <ItemsControl.ItemTemplate>
@@ -178,7 +178,7 @@
           </StackPanel>
           <Button Grid.Column="1" VerticalAlignment="Center" MinHeight="0" Padding="0" Classes="TextButton" Click="OnShowLayoutDesignerClick" Content="Layouts" />
         </Grid>
-        <controls:SurfaceCard Tone="Sunken" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
+        <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="420">
           <ScrollViewer HorizontalScrollBarVisibility="Disabled">
             <ItemsControl Classes="StretchItems" ItemsSource="{Binding Screens}">
               <ItemsControl.ItemTemplate>
@@ -239,7 +239,7 @@
               Text="{Binding HistorySearchQuery}" />
         </Grid>
       </Grid>
-      <controls:SurfaceCard Tone="Sunken" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="260">
+      <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0" Grid.Row="1" VerticalAlignment="Top" MaxHeight="260">
         <Panel>
           <ScrollViewer HorizontalScrollBarVisibility="Disabled">
             <!-- Realized as it scrolls. History is bounded by the retention

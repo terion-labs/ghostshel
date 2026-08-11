@@ -84,12 +84,16 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
         Assert.Equal(SystemMonitorPanelState.Live, panel.State);
         Assert.Equal("37.5%", panel.CpuText);
         Assert.Equal("2.0 KiB", panel.MemoryText);
+        Assert.Equal("1.5 KiB/s", panel.NetworkReceivedText);
+        Assert.Equal("3.0 KiB/s", panel.NetworkSentText);
         Assert.Equal("9", panel.ProcessCountText);
         Assert.Equal("Resource details available for 7 of 9", panel.ProcessDetailText);
         Assert.Equal("1d 2h 3m", panel.UptimeText);
         Assert.Equal("8", panel.ProcessorCountText);
         Assert.Equal([37.5], panel.CpuHistory);
         Assert.Equal([2_048], panel.MemoryHistory);
+        Assert.Equal([1_536], panel.NetworkReceivedHistory);
+        Assert.Equal([3_072], panel.NetworkSentHistory);
     }
 
     [Fact]
@@ -428,7 +432,9 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
             9,
             7,
             cpu,
-            memory);
+            memory,
+            1_536,
+            3_072);
 
     private static ProcessMonitorSnapshot ProcessSample() =>
         new(

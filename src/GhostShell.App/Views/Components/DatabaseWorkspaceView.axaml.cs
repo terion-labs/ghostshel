@@ -190,7 +190,13 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         }
 
         SyncEmbeddedModeButtons();
+        if (Panel?.IsDatabaseDiagramOverview == true)
+        {
+            FocusDiagram();
+        }
     }
+
+    internal void FocusDiagram() => MermaidDiagramRenderer.Focus();
 
     private void ObservePanel()
     {

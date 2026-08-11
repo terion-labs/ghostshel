@@ -1716,7 +1716,7 @@ public sealed class RuntimePanelViewContractTests
             .Where(element => element.Name.LocalName == "TimeSeriesChart")
             .ToArray();
 
-        Assert.Equal(2, charts.Length);
+        Assert.Equal(4, charts.Length);
         Assert.Contains(
             charts,
             chart => AttributeValue(chart, "Values") == "{Binding CpuHistory}"
@@ -1724,6 +1724,12 @@ public sealed class RuntimePanelViewContractTests
         Assert.Contains(
             charts,
             chart => AttributeValue(chart, "Values") == "{Binding MemoryHistory}");
+        Assert.Contains(
+            charts,
+            chart => AttributeValue(chart, "Values") == "{Binding NetworkReceivedHistory}");
+        Assert.Contains(
+            charts,
+            chart => AttributeValue(chart, "Values") == "{Binding NetworkSentHistory}");
 
         var visibleCopy = string.Join(
             " ",
@@ -1735,6 +1741,8 @@ public sealed class RuntimePanelViewContractTests
         Assert.DoesNotContain("GHOSTSHELL MEMORY", visibleCopy, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("CPU usage", visibleCopy, StringComparison.Ordinal);
         Assert.Contains("Process memory", visibleCopy, StringComparison.Ordinal);
+        Assert.Contains("Network receive", visibleCopy, StringComparison.Ordinal);
+        Assert.Contains("Network send", visibleCopy, StringComparison.Ordinal);
         Assert.Contains("Running processes", visibleCopy, StringComparison.Ordinal);
     }
 

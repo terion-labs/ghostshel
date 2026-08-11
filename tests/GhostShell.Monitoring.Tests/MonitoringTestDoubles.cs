@@ -36,6 +36,34 @@ internal sealed class SequenceProcessSnapshotSource : IProcessSnapshotSource
     }
 }
 
+internal sealed class SequenceNetworkSnapshotSource : INetworkSnapshotSource
+{
+    private readonly Queue<Func<CancellationToken, IReadOnlyList<RawNetworkObservation>>>
+        _captures = [];
+
+    public int CaptureCount { get; private set; }
+
+    public void Enqueue(params RawNetworkObservation[] observations) =>
+        _captures.Enqueue(_ => Array.AsReadOnly(observations));
+
+    public void EnqueueFailure(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        _captures.Enqueue(_ => throw exception);
+    }
+
+    public ValueTask<IReadOnlyList<RawNetworkObservation>> CaptureAsync(
+        CancellationToken cancellationToken)
+    {
+        CaptureCount++;
+        cancellationToken.ThrowIfCancellationRequested();
+        var capture = _captures.Count > 0
+            ? _captures.Dequeue()(cancellationToken)
+            : throw new InvalidOperationException("No network capture was queued.");
+        return ValueTask.FromResult(capture);
+    }
+}
+
 internal sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
 {
     private long _timestamp;

@@ -49,8 +49,12 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     private readonly AsyncActionCommand _refreshCommand;
     private readonly List<double?> _cpuSamples = [];
     private readonly List<double?> _memorySamples = [];
+    private readonly List<double?> _networkReceivedSamples = [];
+    private readonly List<double?> _networkSentSamples = [];
     private IReadOnlyList<double?> _cpuHistory = [];
     private IReadOnlyList<double?> _memoryHistory = [];
+    private IReadOnlyList<double?> _networkReceivedHistory = [];
+    private IReadOnlyList<double?> _networkSentHistory = [];
     private SystemStatisticsSnapshot? _snapshot;
     private SystemMonitorPanelState _state = SystemMonitorPanelState.Waiting;
     private string _statusText = "Waiting for first sample…";
@@ -138,6 +142,8 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
                 _refreshCommand.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(CpuText));
                 OnPropertyChanged(nameof(MemoryText));
+                OnPropertyChanged(nameof(NetworkReceivedText));
+                OnPropertyChanged(nameof(NetworkSentText));
                 OnPropertyChanged(nameof(ProcessCountText));
                 OnPropertyChanged(nameof(ProcessDetailText));
                 OnPropertyChanged(nameof(UptimeText));
@@ -237,6 +243,12 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     public string MemoryText => MonitorPanelPresentation.FormatBytes(
         Snapshot?.ObservedWorkingSetBytes);
 
+    public string NetworkReceivedText => MonitorPanelPresentation.FormatBytesPerSecond(
+        Snapshot?.NetworkReceivedBytesPerSecond);
+
+    public string NetworkSentText => MonitorPanelPresentation.FormatBytesPerSecond(
+        Snapshot?.NetworkSentBytesPerSecond);
+
     public string ProcessCountText => Snapshot is { } snapshot
         ? snapshot.EnumeratedProcessCount.ToString("N0", CultureInfo.CurrentCulture)
         : "Unavailable";
@@ -262,6 +274,10 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     public IReadOnlyList<double?> CpuHistory => _cpuHistory;
 
     public IReadOnlyList<double?> MemoryHistory => _memoryHistory;
+
+    public IReadOnlyList<double?> NetworkReceivedHistory => _networkReceivedHistory;
+
+    public IReadOnlyList<double?> NetworkSentHistory => _networkSentHistory;
 
     public Task Start()
     {
@@ -511,10 +527,16 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     {
         AppendBounded(_cpuSamples, snapshot.ObservedCpuPercent);
         AppendBounded(_memorySamples, snapshot.ObservedWorkingSetBytes);
+        AppendBounded(_networkReceivedSamples, snapshot.NetworkReceivedBytesPerSecond);
+        AppendBounded(_networkSentSamples, snapshot.NetworkSentBytesPerSecond);
         _cpuHistory = _cpuSamples.ToArray();
         _memoryHistory = _memorySamples.ToArray();
+        _networkReceivedHistory = _networkReceivedSamples.ToArray();
+        _networkSentHistory = _networkSentSamples.ToArray();
         OnPropertyChanged(nameof(CpuHistory));
         OnPropertyChanged(nameof(MemoryHistory));
+        OnPropertyChanged(nameof(NetworkReceivedHistory));
+        OnPropertyChanged(nameof(NetworkSentHistory));
     }
 
     private static void AppendBounded(List<double?> samples, double? value)
@@ -1130,6 +1152,27 @@ internal static class MonitorPanelPresentation
         return bounded.TotalDays >= 1
             ? $"{(int)bounded.TotalDays}d {bounded.Hours}h {bounded.Minutes}m"
             : $"{bounded.Hours}h {bounded.Minutes}m";
+    }
+
+    public static string FormatBytesPerSecond(double? bytesPerSecond)
+    {
+        if (bytesPerSecond is not { } rate || !double.IsFinite(rate))
+        {
+            return "Unavailable";
+        }
+
+        string[] units = ["B/s", "KiB/s", "MiB/s", "GiB/s", "TiB/s"];
+        var value = Math.Max(0, rate);
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0
+            ? $"{value.ToString("0", CultureInfo.InvariantCulture)} {units[unit]}"
+            : $"{value.ToString("0.0", CultureInfo.InvariantCulture)} {units[unit]}";
     }
 
     public static string AccessiblePercent(double? value) => value is { } percent

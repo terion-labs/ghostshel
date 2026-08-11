@@ -6,8 +6,8 @@ namespace GhostShell.App.Views;
 
 /// <summary>
 /// Asks for the password of a saved connection stored without one. Closes
-/// with the typed value (possibly empty, meaning connect without a password)
-/// or null on cancel.
+/// with the typed value and the user's explicit persistence choice, or null
+/// on cancel.
 /// </summary>
 public sealed partial class DatabasePasswordPromptDialog : Window
 {
@@ -16,11 +16,22 @@ public sealed partial class DatabasePasswordPromptDialog : Window
         InitializeComponent();
     }
 
-    public DatabasePasswordPromptDialog(string connectionName)
+    public DatabasePasswordPromptDialog(
+        string connectionName,
+        bool canSavePassword = false,
+        string passwordStoreLabel = "Save in system credential store")
         : this()
     {
         Title = $"{connectionName} password";
         PromptTitle.Text = $"{connectionName} password";
+        if (canSavePassword)
+        {
+            PromptDescription.Text =
+                "Use this password for the current session, or save it securely for future connections.";
+            SavePasswordCheckBox.Content = passwordStoreLabel;
+            SavePasswordCheckBox.IsVisible = true;
+        }
+
         Opened += (_, _) => PasswordInput.Focus();
     }
 
@@ -29,7 +40,18 @@ public sealed partial class DatabasePasswordPromptDialog : Window
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            Close(PasswordInput.Text ?? string.Empty);
+            Submit();
+        }
+    }
+
+    private void OnPasswordTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        SavePasswordCheckBox.IsEnabled = !string.IsNullOrEmpty(PasswordInput.Text);
+        if (!SavePasswordCheckBox.IsEnabled)
+        {
+            SavePasswordCheckBox.IsChecked = false;
         }
     }
 
@@ -44,6 +66,10 @@ public sealed partial class DatabasePasswordPromptDialog : Window
     {
         _ = sender;
         _ = e;
-        Close(PasswordInput.Text ?? string.Empty);
+        Submit();
     }
+
+    private void Submit() => Close(new DatabasePasswordPromptResult(
+        PasswordInput.Text ?? string.Empty,
+        SavePasswordCheckBox.IsVisible && SavePasswordCheckBox.IsChecked == true));
 }

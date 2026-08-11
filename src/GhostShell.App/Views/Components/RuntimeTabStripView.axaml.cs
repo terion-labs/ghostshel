@@ -41,6 +41,7 @@ public sealed partial class RuntimeTabStripView : UserControl
     public RuntimeTabStripView()
     {
         InitializeComponent();
+        SyncScrollBars();
         SyncAddButtonDock();
         SizeChanged += (_, _) => UpdateOverflowFade();
     }
@@ -62,15 +63,29 @@ public sealed partial class RuntimeTabStripView : UserControl
         set => SetValue(OrientationProperty, value);
     }
 
-    // Hidden, not Auto: the strip still scrolls along its axis, but overflow
-    // shows as an edge fade rather than as a scrollbar under the tabs.
-    public ScrollBarVisibility HorizontalScrollBars => Orientation == Orientation.Horizontal
-        ? ScrollBarVisibility.Hidden
-        : ScrollBarVisibility.Disabled;
+    /// <summary>
+    /// Hidden along the strip's axis (overflow shows as an edge fade, not a
+    /// bar), Disabled across it. Assigned directly rather than bound: the
+    /// consumer sets Orientation after this view's own bindings have read
+    /// their value, and the refresh never reached them — which left a
+    /// side-docked strip free to grow 13px wider than its viewport and clip
+    /// its own close buttons.
+    /// </summary>
+    private void SyncScrollBars()
+    {
+        if (TabScrollViewer is null)
+        {
+            return;
+        }
 
-    public ScrollBarVisibility VerticalScrollBars => Orientation == Orientation.Horizontal
-        ? ScrollBarVisibility.Disabled
-        : ScrollBarVisibility.Hidden;
+        var horizontal = Orientation == Orientation.Horizontal;
+        TabScrollViewer.HorizontalScrollBarVisibility = horizontal
+            ? ScrollBarVisibility.Hidden
+            : ScrollBarVisibility.Disabled;
+        TabScrollViewer.VerticalScrollBarVisibility = horizontal
+            ? ScrollBarVisibility.Disabled
+            : ScrollBarVisibility.Hidden;
+    }
 
     /// <summary>Raised when the strip's own add-a-tab control is pressed.</summary>
     public event EventHandler<RoutedEventArgs>? AddTabRequested;
@@ -100,9 +115,7 @@ public sealed partial class RuntimeTabStripView : UserControl
         base.OnPropertyChanged(change);
         if (change.Property == OrientationProperty)
         {
-            RaisePropertyChanged(
-                nameof(HorizontalScrollBars),
-                nameof(VerticalScrollBars));
+            SyncScrollBars();
             SyncAddButtonDock();
             UpdateOverflowFade();
         }

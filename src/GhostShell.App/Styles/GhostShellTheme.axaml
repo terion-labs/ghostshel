@@ -549,6 +549,20 @@
        shape, so the halo follows the corner radius. -->
   <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
     <Setter Property="BoxShadow" Value="{DynamicResource ShellFocusRingShadow}" />
+    <Setter Property="Background" Value="{Binding $parent[TextBox].Background}" />
+  </Style>
+
+  <!-- A field's fill never answers the pointer — Fluent's hover restyle
+       swapped in its own stock colour, which flashed harshly against quiet
+       fields and painted the toolbar's transparent boxes solid. The field
+       keeps whatever background it declared; only the border admits states. -->
+  <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{Binding $parent[TextBox].Background}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellControlBorderBrush}" />
+  </Style>
+
+  <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{Binding $parent[TextBox].Background}" />
   </Style>
 
   <!--
@@ -1297,6 +1311,14 @@
 
   <Style Selector="Button.ListRow:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <!-- Rows that sit flush inside a clipped card lose the inset-and-rounded
+       treatment: there the card supplies the shape, and a hover that stopped
+       four pixels short of its edges read as a misalignment, not a design. -->
+  <Style Selector="Button.ListRow.LauncherListRow">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
   </Style>
 
   <!-- The row the workspace is showing wears the soft accent. -->

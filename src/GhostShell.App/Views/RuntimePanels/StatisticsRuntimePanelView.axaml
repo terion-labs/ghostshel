@@ -99,6 +99,44 @@
                   </Grid>
                 </Grid>
               </controls:SurfaceCard>
+              <controls:SurfaceCard Padding="{DynamicResource ShellRowPadding}">
+                <Grid RowDefinitions="Auto,Auto,Auto,108,Auto">
+                  <TextBlock Classes="Eyebrow" Text="Network receive" />
+                  <TextBlock Grid.Row="1" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding NetworkReceivedText}" />
+                  <TextBlock Grid.Row="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Across non-loopback interfaces" TextWrapping="Wrap" />
+                  <controls:TimeSeriesChart
+                      Grid.Row="3"
+                      Margin="{controls:Inset Top=Md}"
+                      Values="{Binding NetworkReceivedHistory}"
+                      LineBrush="{DynamicResource ShellAccentBrush}"
+                      AreaBrush="{DynamicResource ShellAccentSoftBrush}"
+                      GridBrush="{DynamicResource ShellBorderBrush}"
+                      AutomationProperties.Name="Network receive history over the last two minutes" />
+                  <Grid Grid.Row="4" Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Last 2 min" />
+                    <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Now · auto scale" />
+                  </Grid>
+                </Grid>
+              </controls:SurfaceCard>
+              <controls:SurfaceCard Padding="{DynamicResource ShellRowPadding}">
+                <Grid RowDefinitions="Auto,Auto,Auto,108,Auto">
+                  <TextBlock Classes="Eyebrow" Text="Network send" />
+                  <TextBlock Grid.Row="1" FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="{Binding NetworkSentText}" />
+                  <TextBlock Grid.Row="2" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Across non-loopback interfaces" TextWrapping="Wrap" />
+                  <controls:TimeSeriesChart
+                      Grid.Row="3"
+                      Margin="{controls:Inset Top=Md}"
+                      Values="{Binding NetworkSentHistory}"
+                      LineBrush="{DynamicResource ShellSuccessBrush}"
+                      AreaBrush="{DynamicResource ShellSuccessSoftBrush}"
+                      GridBrush="{DynamicResource ShellBorderBrush}"
+                      AutomationProperties.Name="Network send history over the last two minutes" />
+                  <Grid Grid.Row="4" Margin="{controls:Inset Top=Xs}" ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Last 2 min" />
+                    <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Now · auto scale" />
+                  </Grid>
+                </Grid>
+              </controls:SurfaceCard>
             </controls:CardGridPanel>
 
             <controls:CardGridPanel MinItemWidth="236" MaxColumns="2" Spacing="{DynamicResource ShellSpaceMd}">
@@ -135,7 +173,7 @@
         <controls:StateOverlay
             Kind="Loading"
             Heading="Waiting for first sample…"
-            Body="The session host is collecting a bounded POSIX process snapshot; commands and terminal content remain excluded."
+            Body="The session host is collecting a bounded resource snapshot; commands and terminal content remain excluded."
             IsVisible="{Binding ShowLoading}"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="Statistics loading" />

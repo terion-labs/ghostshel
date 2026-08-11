@@ -6,6 +6,7 @@ namespace GhostShell.Monitoring;
 public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessionFactory
 {
     private readonly IConnectionCommandExecutor? _executor;
+    private readonly INetworkSnapshotSource? _networkSource;
     private readonly IProcessSnapshotSource? _source;
     private readonly object _samplerGate = new();
     private readonly Dictionary<ConnectionId, SamplerRegistration> _samplers = [];
@@ -17,7 +18,8 @@ public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessio
                 new LocalPosixCommandTransport(),
                 timeProvider,
                 Environment.ProcessId),
-            timeProvider)
+            timeProvider,
+            new SystemNetworkSnapshotSource())
     {
     }
 
@@ -37,16 +39,19 @@ public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessio
                 transport,
                 timeProvider,
                 localProcessId: null),
-            timeProvider)
+            timeProvider,
+            new PosixNetworkSnapshotSource(transport))
     {
     }
 
     internal SystemMonitorPanelSessionFactory(
         IProcessSnapshotSource source,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        INetworkSnapshotSource? networkSource = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _networkSource = networkSource;
     }
 
     public CapabilitySet StatisticsCapabilities { get; } = new(
@@ -119,16 +124,20 @@ public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessio
     {
         if (_source is not null)
         {
-            return new ProcessResourceSampler(_source, _timeProvider);
+            return new ProcessResourceSampler(_source, _timeProvider, _networkSource);
         }
 
         var transport = new ConnectionPosixCommandTransport(_executor!, connection);
         int? localProcessId = connection.ConnectionKind == ConnectionKind.Local
             ? Environment.ProcessId
             : null;
+        var networkSource = connection.ConnectionKind == ConnectionKind.Local
+            ? (INetworkSnapshotSource)new SystemNetworkSnapshotSource()
+            : new PosixNetworkSnapshotSource(transport);
         return new ProcessResourceSampler(
             new PosixProcessSnapshotSource(transport, _timeProvider, localProcessId),
-            _timeProvider);
+            _timeProvider,
+            networkSource);
     }
 
     private static bool HasSameExecutionConfiguration(

@@ -1833,6 +1833,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ? Avalonia.Controls.Dock.Right
             : Avalonia.Controls.Dock.Left;
 
+    /// <summary>Which side the strip touches, as booleans, because the strip's
+    /// floating margin belongs on the window side only — the canvas supplies
+    /// the gap on the inner side, the same contract the other sidebars keep.</summary>
+    public bool IsTabStripDockedLeft =>
+        IsTabStripVisibleOnSide && TabStripDock == Avalonia.Controls.Dock.Left;
+
+    public bool IsTabStripDockedRight =>
+        IsTabStripVisibleOnSide && TabStripDock == Avalonia.Controls.Dock.Right;
+
     public string ThemeAccent => ActiveTheme.Accent.Kind == AccentPreferenceKind.Custom
         ? ActiveTheme.Accent.CustomColor?.ToString() ?? ThemePreference.BronzeFallback.ToString()
         : "Follow system accent";
@@ -9798,6 +9807,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsTabStripVisibleOnBottom));
         OnPropertyChanged(nameof(IsTabStripVisibleOnSide));
         OnPropertyChanged(nameof(TabStripDock));
+        OnPropertyChanged(nameof(IsTabStripDockedLeft));
+        OnPropertyChanged(nameof(IsTabStripDockedRight));
         OnPropertyChanged(nameof(KeybindingConflictCount));
         RefreshRecentSessionAvailability();
         RefreshLauncherSearchResults();
@@ -11767,7 +11778,20 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 savedConnection,
                 ResolveDatabasePasswordAsync,
                 initialObject: initialObject,
-                sqlLanguageService: _sqlLanguageService);
+                sqlLanguageService: _sqlLanguageService,
+                passwordPersister: _secretVault.Availability.CanPersist
+                    ? StoreDatabasePasswordAsync
+                    : null,
+                passwordStoreLabel: DatabasePasswordStoreLabel(
+                    _secretVault.Availability.Adapter));
+
+    private static string DatabasePasswordStoreLabel(string adapter) => adapter switch
+    {
+        "macos-keychain" => "Save in macOS Keychain",
+        "windows-dpapi" => "Save securely for this Windows user",
+        "linux-secret-service" => "Save in Secret Service",
+        _ => "Save in system credential store",
+    };
 
     private RuntimePanelViewModel CreateDockerPanel(
         PanelInstanceId panelId,
@@ -12286,7 +12310,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     SecretKind.Password,
                     new SecretScope(SecretScopeKind.DatabaseConnection, profileId.Value),
                     new SecretUsePurpose(
-                        SecretUseKind.ConnectionAuthentication,
+                        SecretUseKind.DatabaseConnectionAuthentication,
                         profileId.Value)),
                 material,
                 cancellationToken);
@@ -12338,6 +12362,117 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DatabaseConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
         return saved.Value!.Value;
+    }
+
+    /// <summary>
+    /// Adds a password supplied by the connection-time prompt to an existing
+    /// database profile. If the catalog update fails, the newly-created,
+    /// unreferenced vault entry is removed before returning.
+    /// </summary>
+    internal async Task<DatabaseConnectionProfile?> StoreDatabasePasswordAsync(
+        DatabaseConnectionProfileId profileId,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        ClearError();
+        if (!_secretVault.Availability.CanPersist)
+        {
+            SetError(_secretVault.Availability.Message);
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(password))
+        {
+            SetError("Enter a password before saving it.");
+            return null;
+        }
+
+        var stored = _catalog.Snapshot.DatabaseConnections
+            .SingleOrDefault(item => item.Value.Id == profileId);
+        if (stored is null)
+        {
+            SetError("That database connection no longer exists.");
+            return null;
+        }
+
+        if (stored.Value.PasswordSecret is not null)
+        {
+            return stored.Value;
+        }
+
+        var reference = SecretRef.New();
+        var scope = new SecretScope(SecretScopeKind.DatabaseConnection, profileId.Value);
+        var purpose = new SecretUsePurpose(
+            SecretUseKind.DatabaseConnectionAuthentication,
+            profileId.Value);
+        var bytes = Encoding.UTF8.GetBytes(password);
+        using var material = SecretMaterial.TakeOwnership(bytes);
+        var created = await _secretVault.CreateAsync(
+            new CreateSecretRequest(
+                reference,
+                $"{stored.Value.Name} database password",
+                SecretKind.Password,
+                scope,
+                purpose),
+            material,
+            cancellationToken);
+        if (created is SecretVaultResult<SecretMetadata>.Failure failure)
+        {
+            SetError(failure.Error.Message);
+            return null;
+        }
+
+        var profile = new DatabaseConnectionProfile(
+            stored.Value.Id,
+            stored.Value.SchemaVersion,
+            stored.Value.Name,
+            stored.Value.DriverId,
+            stored.Value.ConnectionString,
+            reference,
+            stored.Value.TunnelConnectionId,
+            stored.Value.InlineTunnel);
+        DefinitionStoreResult<StoredDefinition<DatabaseConnectionProfile>> saved;
+        try
+        {
+            saved = await _catalog.SaveDatabaseConnectionAsync(
+                profile,
+                stored.Revision,
+                cancellationToken);
+        }
+        catch
+        {
+            await DeleteUnusedDatabasePasswordAsync(reference, scope, profileId);
+            throw;
+        }
+
+        if (!saved.IsSuccess)
+        {
+            await DeleteUnusedDatabasePasswordAsync(reference, scope, profileId);
+            SetError(saved.Error!.Message);
+            return null;
+        }
+
+        OnPropertyChanged(nameof(DatabaseConnectionOptions));
+        OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
+        return saved.Value!.Value;
+    }
+
+    private async Task DeleteUnusedDatabasePasswordAsync(
+        SecretRef reference,
+        SecretScope scope,
+        DatabaseConnectionProfileId profileId)
+    {
+        var deleted = await _secretVault.DeleteAsync(
+            new DeleteSecretRequest(
+                reference,
+                scope,
+                new SecretUsePurpose(SecretUseKind.UserManagement, profileId.Value)),
+            CancellationToken.None);
+        if (deleted is SecretVaultResult<Unit>.Failure)
+        {
+            SecretVaultStatus =
+                "An unused database credential could not be removed from the system credential store.";
+        }
     }
 
     /// <summary>
@@ -12417,7 +12552,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 secret,
                 new SecretScope(SecretScopeKind.DatabaseConnection, owner.Id.Value),
                 new SecretUsePurpose(
-                    SecretUseKind.ConnectionAuthentication,
+                    SecretUseKind.DatabaseConnectionAuthentication,
                     owner.Id.Value)),
             cancellationToken);
         if (result is SecretVaultResult<SecretMaterial>.Failure)

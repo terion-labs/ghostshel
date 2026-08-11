@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Svg.Skia;
 using Avalonia.VisualTree;
@@ -53,6 +54,7 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         Viewport.PointerMoved += OnPointerMoved;
         Viewport.PointerReleased += OnPointerReleased;
         Viewport.DoubleTapped += (_, _) => FitDiagram();
+        AddHandler(KeyDownEvent, OnKeyboardShortcut, RoutingStrategies.Tunnel);
     }
 
     public double HeaderVeilHeight
@@ -235,6 +237,67 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
     private void OnFitClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
         FitDiagram();
 
+    private void OnKeyboardShortcut(object? sender, KeyEventArgs e)
+    {
+        _ = sender;
+        if (e.Handled || !HasRenderedDiagram)
+        {
+            return;
+        }
+
+        var action = ResolveKeyboardAction(e.Key, e.KeyModifiers, e.KeySymbol);
+        if (action == DatabaseDiagramKeyboardAction.None
+            || (action == DatabaseDiagramKeyboardAction.Fit && e.Source is Button))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (action == DatabaseDiagramKeyboardAction.ZoomIn)
+        {
+            ZoomBy(ZoomStep);
+        }
+        else if (action == DatabaseDiagramKeyboardAction.ZoomOut)
+        {
+            ZoomBy(1 / ZoomStep);
+        }
+        else
+        {
+            FitDiagram();
+        }
+    }
+
+    internal static DatabaseDiagramKeyboardAction ResolveKeyboardAction(
+        Key key,
+        KeyModifiers modifiers,
+        string? keySymbol)
+    {
+        if (key == Key.Space && modifiers == KeyModifiers.None)
+        {
+            return DatabaseDiagramKeyboardAction.Fit;
+        }
+
+        var commandModifiers = modifiers & ~KeyModifiers.Shift;
+        if (commandModifiers != KeyModifiers.Meta
+            && commandModifiers != KeyModifiers.Control)
+        {
+            return DatabaseDiagramKeyboardAction.None;
+        }
+
+        if (key is Key.Add or Key.OemPlus || keySymbol == "+")
+        {
+            return DatabaseDiagramKeyboardAction.ZoomIn;
+        }
+
+        if (!modifiers.HasFlag(KeyModifiers.Shift)
+            && (key is Key.OemMinus or Key.Subtract || keySymbol == "-"))
+        {
+            return DatabaseDiagramKeyboardAction.ZoomOut;
+        }
+
+        return DatabaseDiagramKeyboardAction.None;
+    }
+
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
         if (!HasRenderedDiagram || Math.Abs(e.Delta.Y) < 0.01)
@@ -254,6 +317,7 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
             return;
         }
 
+        Focus();
         _dragging = true;
         _dragOrigin = e.GetPosition(Viewport);
         _dragPan = _pan;
@@ -316,4 +380,12 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
         transform.Children.Add(new TranslateTransform(_pan.X, _pan.Y));
         return transform;
     }
+}
+
+internal enum DatabaseDiagramKeyboardAction
+{
+    None,
+    ZoomIn,
+    ZoomOut,
+    Fit,
 }

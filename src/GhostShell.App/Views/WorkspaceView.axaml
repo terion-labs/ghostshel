@@ -321,12 +321,16 @@
         </StackPanel>
       </Border>
 
+      <!-- Margin on the window side only, by dock class: the canvas already
+           keeps the gap on its side, and carrying Sm on both edges made the
+           strip stand twice as far from the panels as anything else does. -->
       <Border
           Width="190"
           Classes="FloatingSidebar"
+          Classes.workspaceLeft="{Binding IsTabStripDockedLeft}"
+          Classes.workspaceRight="{Binding IsTabStripDockedRight}"
           controls:Concentric.IsEnabled="True"
-          Margin="{controls:Inset Horizontal=Sm, Bottom=Sm}"
-          Padding="{controls:Inset Horizontal=Xs, Vertical=Sm}"
+          Padding="{controls:Inset Sm}"
           DockPanel.Dock="{Binding TabStripDock}"
           IsVisible="{Binding IsTabStripVisibleOnSide}">
         <components:RuntimeTabStripView

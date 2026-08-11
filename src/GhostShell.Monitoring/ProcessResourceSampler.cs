@@ -14,6 +14,7 @@ internal sealed class ProcessResourceSampler
 {
     private static readonly TimeSpan CaptureReuseWindow = TimeSpan.FromMilliseconds(500);
     private readonly SemaphoreSlim _captureGate = new(1, 1);
+    private readonly INetworkSnapshotSource? _networkSource;
     private readonly IProcessSnapshotSource _source;
     private readonly TimeProvider _timeProvider;
     private MonitorPanelResult<ProcessResourceSample>? _latestCapture;
@@ -21,14 +22,19 @@ internal sealed class ProcessResourceSampler
     private long _latestCaptureTimestamp;
     private ProcessResourceConsumer _latestConsumer;
     private Dictionary<ProcessIdentity, TimeSpan> _previousProcessorTimes = [];
+    private Dictionary<string, RawNetworkObservation> _previousNetworkCounters =
+        new(StringComparer.Ordinal);
+    private long? _previousNetworkTimestamp;
     private long? _previousTimestamp;
 
     public ProcessResourceSampler(
         IProcessSnapshotSource source,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        INetworkSnapshotSource? networkSource = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _networkSource = networkSource;
     }
 
     public async ValueTask<MonitorPanelResult<ProcessResourceSample>> CaptureAsync(
@@ -105,9 +111,29 @@ internal sealed class ProcessResourceSampler
             return Failure(MonitorPanelErrorCode.CaptureFailed);
         }
 
+        IReadOnlyList<RawNetworkObservation>? network = null;
+        if (_networkSource is not null)
+        {
+            try
+            {
+                network = await _networkSource
+                    .CaptureAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled();
+            }
+            catch (Exception exception) when (IsRecoverableCaptureFailure(exception))
+            {
+                // Network counters are an optional part of the snapshot. Their absence
+                // must not hide otherwise valid CPU, memory, and process statistics.
+            }
+        }
+
         try
         {
-            return BuildSample(raw, cancellationToken);
+            return BuildSample(raw, network, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -123,6 +149,7 @@ internal sealed class ProcessResourceSampler
 
     private MonitorPanelResult<ProcessResourceSample> BuildSample(
         RawProcessCapture raw,
+        IReadOnlyList<RawNetworkObservation>? network,
         CancellationToken cancellationToken)
     {
         var timestamp = _timeProvider.GetTimestamp();
@@ -181,6 +208,9 @@ internal sealed class ProcessResourceSampler
         cancellationToken.ThrowIfCancellationRequested();
         _previousTimestamp = timestamp;
         _previousProcessorTimes = currentProcessorTimes;
+        var (receivedBytesPerSecond, sentBytesPerSecond) = NetworkRates(
+            network,
+            timestamp);
         var capturedAt = _timeProvider.GetUtcNow();
         var statistics = new SystemStatisticsSnapshot(
             capturedAt,
@@ -189,7 +219,9 @@ internal sealed class ProcessResourceSampler
             raw.EnumeratedProcessCount,
             observedProcesses,
             hasObservedCpu ? Math.Clamp(observedCpu, 0, 100) : null,
-            observedWorkingSet);
+            observedWorkingSet,
+            receivedBytesPerSecond,
+            sentBytesPerSecond);
         return MonitorPanelResult<ProcessResourceSample>.Success(
             new ProcessResourceSample(
                 statistics,
@@ -217,6 +249,69 @@ internal sealed class ProcessResourceSampler
 
     private static long SaturatingAdd(long left, long right) =>
         left > long.MaxValue - right ? long.MaxValue : left + right;
+
+    private (double? Received, double? Sent) NetworkRates(
+        IReadOnlyList<RawNetworkObservation>? observations,
+        long timestamp)
+    {
+        if (observations is null)
+        {
+            return (null, null);
+        }
+
+        var current = observations
+            .GroupBy(observation => observation.InterfaceId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Last(),
+                StringComparer.Ordinal);
+        double? receivedRate = null;
+        double? sentRate = null;
+        if (_previousNetworkTimestamp is { } previousTimestamp)
+        {
+            var elapsed = _timeProvider.GetElapsedTime(previousTimestamp, timestamp);
+            if (elapsed > TimeSpan.Zero)
+            {
+                var receivedDelta = 0d;
+                var sentDelta = 0d;
+                var observedReceived = false;
+                var observedSent = false;
+                foreach (var (interfaceId, observation) in current)
+                {
+                    if (!_previousNetworkCounters.TryGetValue(interfaceId, out var previous))
+                    {
+                        continue;
+                    }
+
+                    if (observation.ReceivedBytes >= previous.ReceivedBytes)
+                    {
+                        receivedDelta += observation.ReceivedBytes - previous.ReceivedBytes;
+                        observedReceived = true;
+                    }
+
+                    if (observation.SentBytes >= previous.SentBytes)
+                    {
+                        sentDelta += observation.SentBytes - previous.SentBytes;
+                        observedSent = true;
+                    }
+                }
+
+                if (observedReceived)
+                {
+                    receivedRate = receivedDelta / elapsed.TotalSeconds;
+                }
+
+                if (observedSent)
+                {
+                    sentRate = sentDelta / elapsed.TotalSeconds;
+                }
+            }
+        }
+
+        _previousNetworkTimestamp = timestamp;
+        _previousNetworkCounters = current;
+        return (receivedRate, sentRate);
+    }
 
     private static bool IsRecoverableCaptureFailure(Exception exception) =>
         exception is not OutOfMemoryException;

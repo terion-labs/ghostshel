@@ -8,6 +8,28 @@ namespace GhostShell.Architecture.Tests;
 public sealed partial class RepositoryConventionTests
 {
     [Fact]
+    public void Database_password_prompt_offers_explicit_opt_in_credential_storage()
+    {
+        var dialog = XDocument.Load(Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "DatabasePasswordPromptDialog.axaml"));
+        var root = Assert.IsType<XElement>(dialog.Root);
+        var savePassword = Assert.Single(
+            root.Descendants(),
+            element => AttributeValue(element, "Name") == "SavePasswordCheckBox");
+
+        Assert.Equal("CheckBox", savePassword.Name.LocalName);
+        Assert.Equal("False", AttributeValue(savePassword, "IsChecked"));
+        Assert.Equal("False", AttributeValue(savePassword, "IsVisible"));
+        Assert.Equal(
+            "Save password in system credential store",
+            AttributeValue(savePassword, "AutomationProperties.Name"));
+    }
+
+    [Fact]
     public void Macos_packaging_opts_the_apphost_into_current_native_chrome()
     {
         var packageScript = File.ReadAllText(
@@ -629,13 +651,22 @@ public sealed partial class RepositoryConventionTests
             .Document;
 
         Assert.Equal("ScrollViewer", tabStrip.Name.LocalName);
-        // Scroll bars follow the strip's orientation instead of being fixed.
-        Assert.Equal(
-            "{Binding HorizontalScrollBars, ElementName=Root}",
-            AttributeValue(tabStrip, "HorizontalScrollBarVisibility"));
-        Assert.Equal(
-            "{Binding VerticalScrollBars, ElementName=Root}",
-            AttributeValue(tabStrip, "VerticalScrollBarVisibility"));
+        // Scroll bars follow the strip's orientation. Assigned from code, not
+        // bound: the consumer sets Orientation after the strip's own bindings
+        // read their value, and the stale Hidden axis let a side-docked strip
+        // grow past its viewport and clip its close buttons.
+        var stripCode = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "Components",
+            "RuntimeTabStripView.axaml.cs"));
+        Assert.Contains("private void SyncScrollBars()", stripCode, StringComparison.Ordinal);
+        Assert.Contains(
+            "TabScrollViewer.HorizontalScrollBarVisibility",
+            stripCode,
+            StringComparison.Ordinal);
         Assert.False(
             string.IsNullOrWhiteSpace(
                 AttributeValue(tabStrip, "AutomationProperties.Name")));

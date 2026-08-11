@@ -87,6 +87,10 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         }
 
         SyncModeButtons();
+        if (Panel?.IsDatabaseDiagramOverview == true)
+        {
+            DatabaseWorkspace.FocusDiagram();
+        }
     }
 
     private void SetMode(DatabaseWorkspaceMode mode)
@@ -108,11 +112,18 @@ public sealed partial class DatabaseRuntimePanelView : UserControl
         }
 
         var dialog = new DatabasePasswordPromptDialog(
-            panel.SavedConnectionName ?? "Database");
-        var password = await dialog.ShowDialog<string?>(owner);
-        if (password is not null)
+            panel.SavedConnectionName ?? "Database",
+            panel.CanStorePassword,
+            panel.PasswordStoreLabel);
+        var result = await dialog.ShowDialog<DatabasePasswordPromptResult?>(owner);
+        if (result is not null)
         {
-            panel.SetSessionPassword(password);
+            panel.SetSessionPassword(result.Password);
+            if (result.SaveToCredentialStore)
+            {
+                _ = await panel.StoreSessionPasswordAsync(result.Password);
+            }
+
             await panel.ConnectAsync();
         }
     }

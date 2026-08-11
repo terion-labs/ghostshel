@@ -20,8 +20,20 @@
       <Setter Property="Width" Value="158" />
       <Setter Property="Height" Value="22" />
     </Style>
+    <Style Selector="components|RuntimeTabStripView[Orientation=Horizontal] Button.RuntimeTabActivator">
+      <Setter Property="Padding" Value="{controls:Inset Horizontal=Lg}" />
+    </Style>
     <Style Selector="components|RuntimeTabStripView[Orientation=Vertical] Grid.RuntimeTabDropTarget">
       <Setter Property="Height" Value="{DynamicResource ShellControlMinHeight}" />
+    </Style>
+    <!-- A row's label starts where a row's label starts, not where a 158px
+         chip's did: the horizontal chip spends Lg because its label floats in
+         a fixed box, and that inset carried over as dead air. -->
+    <!-- Left padding hosts the 18px reorder column, so the tab's icon starts
+         clear of the drag dots instead of burying them to a sliver; the right
+         side is where the dead air was, and stays tight. -->
+    <Style Selector="components|RuntimeTabStripView[Orientation=Vertical] Button.RuntimeTabActivator">
+      <Setter Property="Padding" Value="{controls:Inset Left=Lg, Right=Sm}" />
     </Style>
     <Style Selector="components|RuntimeTabStripView[Orientation=Vertical] Button#AddTabButton">
       <Setter Property="Margin" Value="{controls:Inset Top=Xs}" />
@@ -61,11 +73,21 @@
     </Button>
     <ScrollViewer
         x:Name="TabScrollViewer"
-        HorizontalScrollBarVisibility="{Binding HorizontalScrollBars, ElementName=Root}"
-        VerticalScrollBarVisibility="{Binding VerticalScrollBars, ElementName=Root}"
+        HorizontalScrollBarVisibility="Hidden"
+        VerticalScrollBarVisibility="Disabled"
         ScrollChanged="OnTabScrollChanged"
         AutomationProperties.Name="Open runtime tabs">
+      <!-- The container theme stretches every generated presenter, or a
+           side-docked tab is only as wide as its title and the close button
+           trails the text instead of holding the row's edge. Stated as a
+           theme because no style selector reliably reaches these presenters. -->
       <ItemsControl ItemsSource="{Binding Tabs, ElementName=Root}">
+      <ItemsControl.ItemContainerTheme>
+        <ControlTheme TargetType="ContentPresenter">
+          <Setter Property="HorizontalAlignment" Value="Stretch" />
+          <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </ControlTheme>
+      </ItemsControl.ItemContainerTheme>
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
           <StackPanel Orientation="{Binding Orientation, ElementName=Root}" Spacing="{DynamicResource ShellSpaceXs}" />
@@ -93,11 +115,12 @@
                  in without repeating its name. Colour comes from the theme
                  rather than from the view model: a tab that carried its own hex
                  answered no appearance setting. -->
+            <!-- No inline Padding: the orientation styles above own it, and an
+                 inline value would silently beat them both. -->
             <Button
                 Grid.ColumnSpan="3"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
-                Padding="{controls:Inset Horizontal=Lg}"
                 Classes="RuntimeTabActivator"
                 Classes.active="{Binding IsActive}"
                 Click="OnActivate"
@@ -144,6 +167,7 @@
                 AutomationProperties.Name="{Binding Title, StringFormat={}Reorder tab {0}}"
                 AutomationProperties.HelpText="Drag to change this tab's position without activating it.">
               <icons:SymbolIcon
+                  Classes="ReorderGlyph"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Symbol="ReOrderDotsVertical"

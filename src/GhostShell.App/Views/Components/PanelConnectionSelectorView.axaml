@@ -11,7 +11,7 @@
       Height="26"
       MinWidth="74"
       MaxWidth="180"
-      Padding="{controls:Inset Horizontal=Md}"
+      Padding="{controls:Inset Left=Md, Right=Sm}"
       HorizontalContentAlignment="Stretch"
       Background="{DynamicResource ShellSurfaceRaisedBrush}"
       BorderBrush="{DynamicResource ShellBorderBrush}"

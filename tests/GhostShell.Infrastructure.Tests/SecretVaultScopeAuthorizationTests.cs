@@ -164,6 +164,40 @@ public sealed class SecretVaultScopeAuthorizationTests
     }
 
     [Fact]
+    public async Task Database_authentication_is_authorized_only_for_database_scopes()
+    {
+        using var vault = new InMemorySecretVault();
+        var reference = SecretRef.New();
+        var scope = new SecretScope(SecretScopeKind.DatabaseConnection, "database-prod");
+        var purpose = new SecretUsePurpose(
+            SecretUseKind.DatabaseConnectionAuthentication,
+            "database-prod");
+        using var material = SecretMaterial.CopyFrom([4, 2]);
+
+        Success(await vault.CreateAsync(
+            new CreateSecretRequest(
+                reference,
+                "Database password",
+                SecretKind.Password,
+                scope,
+                purpose),
+            material,
+            default));
+
+        using var resolved = Success(await vault.ResolveAsync(
+            new ResolveSecretRequest(reference, scope, purpose),
+            default));
+        Assert.Equal(2, resolved.Length);
+
+        AssertDenied(await vault.ResolveAsync(
+            new ResolveSecretRequest(
+                reference,
+                new SecretScope(SecretScopeKind.Connection, "database-prod"),
+                purpose),
+            default));
+    }
+
+    [Fact]
     public async Task Create_denial_happens_before_an_adapter_reads_secret_material()
     {
         var wrongPurpose = new SecretUsePurpose(

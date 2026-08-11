@@ -103,6 +103,10 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             ShowWorkspacesPanelSwitch.IsChecked = theme.ShowWorkspacesPanel;
             TabPlacementTop.IsChecked = theme.TabStripPlacement == TabStripPlacement.Top;
             TabPlacementBottom.IsChecked = theme.TabStripPlacement == TabStripPlacement.Bottom;
+            // All four, or a side placement came back from disk with no tile
+            // checked — and the next save fell through the empty group to Top.
+            TabPlacementLeft.IsChecked = theme.TabStripPlacement == TabStripPlacement.Left;
+            TabPlacementRight.IsChecked = theme.TabStripPlacement == TabStripPlacement.Right;
             WorkspacePanelLeft.IsChecked =
                 theme.WorkspacePanelPlacement == WorkspacePanelPlacement.Left;
             WorkspacePanelRight.IsChecked =
