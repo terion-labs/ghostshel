@@ -42,6 +42,31 @@ public sealed class QuickTerminalPresentationContractTests
             element => element.Name.LocalName == "RuntimeTabStripView"
                 && AttributeValue(element, "Tabs") == "{Binding Tabs}"
                 && AttributeValue(element, "AddTabRequested") == "OnAddTabRequested");
+        var controlBar = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Grid"
+                && AttributeValue(element, "ColumnDefinitions") == "*,Auto,Auto"
+                && element.Descendants().Any(descendant =>
+                    AttributeValue(descendant, "Click") == "OnHideClick"));
+        Assert.Equal(
+            "{controls:Inset Left=Md, Right=Xs}",
+            AttributeValue(controlBar, "Margin"));
+        var statusBackground = Assert.Single(
+            root.Descendants(),
+            element => AttributeValue(element, "Name")
+                == "QuickTerminalStatusBackground");
+        Assert.Equal(
+            "{DynamicResource ShellSurfaceBrush}",
+            AttributeValue(statusBackground, "Background"));
+        var statusDivider = Assert.Single(
+            root.Descendants(),
+            element => AttributeValue(element, "Name")
+                == "QuickTerminalStatusDivider");
+        Assert.Equal("1", AttributeValue(statusDivider, "Height"));
+        Assert.Equal("Top", AttributeValue(statusDivider, "VerticalAlignment"));
+        Assert.Equal(
+            "{DynamicResource ShellBorderBrush}",
+            AttributeValue(statusDivider, "Background"));
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "AgentWorkspaceView"
@@ -88,6 +113,22 @@ public sealed class QuickTerminalPresentationContractTests
                 && element.Parent is { } style
                 && AttributeValue(style, "Selector")
                     == "views|AgentWorkspaceView.docked Border.AgentPanel");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "BorderThickness"
+                && AttributeValue(element, "Value") == "1,0,1,0"
+                && element.Parent is { } style
+                && AttributeValue(style, "Selector")
+                    == "views|AgentWorkspaceView.docked Border.AgentPanel");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "views|AgentWorkspaceView.docked.nativeMaterial Border.AgentPanel"
+                && element.Elements().Any(setter =>
+                    AttributeValue(setter, "Property") == "Background"
+                    && AttributeValue(setter, "Value") == "Transparent"));
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "Style"
@@ -152,6 +193,23 @@ public sealed class QuickTerminalPresentationContractTests
             "MacOsQuickTerminalReveal.TryKeepBackdropActive",
             window,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "MacOsWindowMaterial.TrySit",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MacOsMaterial.HudWindow",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MacOsQuickTerminalReveal.TrySetChromeMaterial",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MacOsQuickTerminalReveal.TrySetAgentMaterial",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains("MacOsMaterial.Sidebar", window, StringComparison.Ordinal);
         var nativeReveal = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
@@ -161,6 +219,17 @@ public sealed class QuickTerminalPresentationContractTests
         Assert.Contains("SetRevealFrames", nativeReveal, StringComparison.Ordinal);
         Assert.Contains("NSVisualEffectView", nativeReveal, StringComparison.Ordinal);
         Assert.Contains("setState:", nativeReveal, StringComparison.Ordinal);
+        Assert.Contains(
+            "GhostShellQuickTerminalChromeView",
+            nativeReveal,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GhostShellQuickTerminalAgentView",
+            nativeReveal,
+            StringComparison.Ordinal);
+        Assert.Contains("objc_allocateClassPair", nativeReveal, StringComparison.Ordinal);
+        Assert.DoesNotContain("setTag:", nativeReveal, StringComparison.Ordinal);
+        Assert.Contains("MacOsMaterial.HudWindow", window, StringComparison.Ordinal);
         Assert.Contains("AvnView", nativeReveal, StringComparison.Ordinal);
         Assert.Contains("MacOsQuickTerminalFocus.CaptureFrontmostApplication", controller, StringComparison.Ordinal);
         Assert.Contains("MacOsQuickTerminalFocus.TryRestoreFrontmostApplication", controller, StringComparison.Ordinal);

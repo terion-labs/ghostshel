@@ -159,6 +159,25 @@ internal static class MacOsWindowMaterial
 internal enum MacOsMaterial : long
 {
     /// <summary>
+    /// A lightweight transient surface. It preserves substantially more of
+    /// the backdrop than a window-base material while retaining AppKit's full
+    /// blur, which makes it appropriate for Quick Terminal's drop-down panel.
+    /// </summary>
+    Popover = 6,
+
+    /// <summary>
+    /// AppKit's sidebar glass, used for persistent control and navigation
+    /// regions inside Quick Terminal.
+    /// </summary>
+    Sidebar = 7,
+
+    /// <summary>
+    /// AppKit's heads-up-display glass. On the current macOS compositor it is
+    /// the clearest useful full-window Quick Terminal backdrop.
+    /// </summary>
+    HudWindow = 13,
+
+    /// <summary>
     /// The base a window itself sits on. Flatter and less tinted than
     /// NSVisualEffectMaterialHUDWindow (13), which is built for floating
     /// panels and leans darker — both were tried against a bright backdrop.

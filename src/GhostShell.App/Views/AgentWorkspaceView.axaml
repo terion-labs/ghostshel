@@ -709,7 +709,9 @@
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize9}"
+            HorizontalAlignment="Center"
             Text="{Binding AgentChat.Status}"
+            TextAlignment="Center"
             TextWrapping="Wrap"
             ToolTip.Tip="{Binding AgentChat.Status}"
             AutomationProperties.LiveSetting="Polite"

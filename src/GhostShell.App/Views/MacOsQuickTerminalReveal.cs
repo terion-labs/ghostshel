@@ -19,8 +19,12 @@ internal static class MacOsQuickTerminalReveal
     private const string ObjectiveCLibrary = "/usr/lib/libobjc.A.dylib";
     private const string AvaloniaContentView = "AutoFitContentView";
     private const string AvaloniaRenderView = "AvnView";
+    private const string ChromeMaterialView = "GhostShellQuickTerminalChromeView";
+    private const string AgentMaterialView = "GhostShellQuickTerminalAgentView";
     private const nint BlendsBehindWindow = 0;
     private const nint AlwaysActive = 1;
+    private const nint WidthSizable = 2;
+    private const nint PlaceBelow = -1;
     public static bool TryClearWindowBacking(Window window)
     {
         if (!TryGetNativeWindow(window, out var nsWindow))
@@ -44,12 +48,169 @@ internal static class MacOsQuickTerminalReveal
     /// </summary>
     public static bool TryKeepBackdropActive(Window window)
     {
-        if (!TryGetRevealViews(window, out var views) || views.BlurView == 0)
+        if (!TryGetRevealViews(window, out var views))
         {
             return false;
         }
 
-        SendIdArgument(views.BlurView, Selector("setState:"), AlwaysActive);
+        var activated = false;
+        if (views.BlurView != 0)
+        {
+            SendIdArgument(views.BlurView, Selector("setState:"), AlwaysActive);
+            activated = true;
+        }
+
+        if (views.ChromeView != 0)
+        {
+            SendIdArgument(views.ChromeView, Selector("setState:"), AlwaysActive);
+            activated = true;
+        }
+
+        if (views.AgentView != 0)
+        {
+            SendIdArgument(views.AgentView, Selector("setState:"), AlwaysActive);
+            activated = true;
+        }
+
+        return activated;
+    }
+
+    /// <summary>
+    /// Places a second native material behind Avalonia's bottom controls. It
+    /// is a sibling of the full-window material and the Skia render view, so
+    /// it can be denser without changing the terminal viewport's glass.
+    /// </summary>
+    public static bool TrySetChromeMaterial(
+        Window window,
+        double height,
+        MacOsMaterial material,
+        bool isVisible)
+    {
+        if (!double.IsFinite(height) || height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(height));
+        }
+
+        if (!TryGetRevealViews(window, out var views))
+        {
+            return false;
+        }
+
+        var chrome = views.ChromeView;
+        if (chrome == 0)
+        {
+            var chromeClass = GetOrCreateMaterialClass(ChromeMaterialView);
+            if (chromeClass == 0)
+            {
+                return false;
+            }
+
+            var allocated = SendId(chromeClass, Selector("alloc"));
+            chrome = SendIdRectArgument(
+                allocated,
+                Selector("initWithFrame:"),
+                ChromeFrame(views.Width, height, offset: 0));
+            if (chrome == 0)
+            {
+                return false;
+            }
+
+            SendNIntArgument(chrome, Selector("setAutoresizingMask:"), WidthSizable);
+            SendNIntArgument(chrome, Selector("setBlendingMode:"), BlendsBehindWindow);
+            SendThreeArguments(
+                views.ContainerView,
+                Selector("addSubview:positioned:relativeTo:"),
+                chrome,
+                PlaceBelow,
+                views.ContentView);
+            SendVoid(chrome, Selector("release"));
+        }
+
+        SendNIntArgument(chrome, Selector("setMaterial:"), (nint)material);
+        SendNIntArgument(chrome, Selector("setState:"), AlwaysActive);
+        SendBoolArgument(chrome, Selector("setHidden:"), !isVisible);
+        SendRectArgument(
+            chrome,
+            Selector("setFrame:"),
+            ChromeFrame(views.Width, height, offset: 0));
+        return true;
+    }
+
+    /// <summary>
+    /// Backs only the docked Agent column with native sidebar material. Its
+    /// frame follows the resizable Avalonia surface above the controls strip.
+    /// </summary>
+    public static bool TrySetAgentMaterial(
+        Window window,
+        double width,
+        double chromeHeight,
+        MacOsMaterial material,
+        bool isOnLeft,
+        bool isVisible)
+    {
+        if (!double.IsFinite(width) || width <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width));
+        }
+
+        if (!double.IsFinite(chromeHeight) || chromeHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chromeHeight));
+        }
+
+        if (!TryGetRevealViews(window, out var views))
+        {
+            return false;
+        }
+
+        var agent = views.AgentView;
+        if (agent == 0)
+        {
+            var agentClass = GetOrCreateMaterialClass(AgentMaterialView);
+            if (agentClass == 0)
+            {
+                return false;
+            }
+
+            var allocated = SendId(agentClass, Selector("alloc"));
+            agent = SendIdRectArgument(
+                allocated,
+                Selector("initWithFrame:"),
+                AgentFrame(
+                    views.Width,
+                    views.Height,
+                    width,
+                    chromeHeight,
+                    isOnLeft,
+                    offset: 0));
+            if (agent == 0)
+            {
+                return false;
+            }
+
+            SendNIntArgument(agent, Selector("setBlendingMode:"), BlendsBehindWindow);
+            SendThreeArguments(
+                views.ContainerView,
+                Selector("addSubview:positioned:relativeTo:"),
+                agent,
+                PlaceBelow,
+                views.ContentView);
+            SendVoid(agent, Selector("release"));
+        }
+
+        SendNIntArgument(agent, Selector("setMaterial:"), (nint)material);
+        SendNIntArgument(agent, Selector("setState:"), AlwaysActive);
+        SendBoolArgument(agent, Selector("setHidden:"), !isVisible);
+        SendRectArgument(
+            agent,
+            Selector("setFrame:"),
+            AgentFrame(
+                views.Width,
+                views.Height,
+                width,
+                chromeHeight,
+                isOnLeft,
+                offset: 0));
         return true;
     }
 
@@ -91,11 +252,23 @@ internal static class MacOsQuickTerminalReveal
             SendIdArgument(context, Selector("setTimingFunction:"), timing);
         }
 
-        var target = FramesForProgress(views.Width, views.Height, to);
+        var target = FramesForProgress(views, to);
         if (views.BlurView != 0)
         {
             var blurAnimator = SendId(views.BlurView, Selector("animator"));
             SendRectArgument(blurAnimator, Selector("setFrame:"), target.Blur);
+        }
+
+        if (views.ChromeView != 0)
+        {
+            var chromeAnimator = SendId(views.ChromeView, Selector("animator"));
+            SendRectArgument(chromeAnimator, Selector("setFrame:"), target.Chrome);
+        }
+
+        if (views.AgentView != 0)
+        {
+            var agentAnimator = SendId(views.AgentView, Selector("animator"));
+            SendRectArgument(agentAnimator, Selector("setFrame:"), target.Agent);
         }
 
         var contentAnimator = SendId(views.ContentView, Selector("animator"));
@@ -106,20 +279,31 @@ internal static class MacOsQuickTerminalReveal
 
     private static void SetRevealFrames(RevealViews views, double progress)
     {
-        var frames = FramesForProgress(views.Width, views.Height, progress);
+        var frames = FramesForProgress(views, progress);
         if (views.BlurView != 0)
         {
             SendRectArgument(views.BlurView, Selector("setFrame:"), frames.Blur);
+        }
+
+        if (views.ChromeView != 0)
+        {
+            SendRectArgument(views.ChromeView, Selector("setFrame:"), frames.Chrome);
+        }
+
+        if (views.AgentView != 0)
+        {
+            SendRectArgument(views.AgentView, Selector("setFrame:"), frames.Agent);
         }
 
         SendRectArgument(views.ContentView, Selector("setFrame:"), frames.Content);
     }
 
     private static RevealFrames FramesForProgress(
-        double width,
-        double height,
+        RevealViews views,
         double progress)
     {
+        var width = views.Width;
+        var height = views.Height;
         var visibleHeight = height * Math.Clamp(progress, 0, 1);
         var offset = height - visibleHeight;
         return new RevealFrames(
@@ -136,8 +320,47 @@ internal static class MacOsQuickTerminalReveal
                 Y = offset,
                 Width = width,
                 Height = height,
-            });
+            },
+            ChromeFrame(width, 36, offset),
+            views.AgentView == 0
+                ? default
+                : AgentRevealFrame(
+                    SendRect(views.AgentView, Selector("frame")),
+                    offset));
     }
+
+    private static CGRect ChromeFrame(double width, double height, double offset) =>
+        new()
+        {
+            X = 0,
+            Y = offset,
+            Width = width,
+            Height = height,
+        };
+
+    private static CGRect AgentFrame(
+        double windowWidth,
+        double windowHeight,
+        double width,
+        double chromeHeight,
+        bool isOnLeft,
+        double offset) =>
+        new()
+        {
+            X = isOnLeft ? 0 : Math.Max(0, windowWidth - width),
+            Y = chromeHeight + offset,
+            Width = Math.Min(width, windowWidth),
+            Height = Math.Max(0, windowHeight - chromeHeight),
+        };
+
+    private static CGRect AgentRevealFrame(CGRect frame, double offset) =>
+        new()
+        {
+            X = frame.X,
+            Y = 36 + offset,
+            Width = frame.Width,
+            Height = frame.Height,
+        };
 
     private static bool TryGetRevealViews(Window window, out RevealViews views)
     {
@@ -159,6 +382,8 @@ internal static class MacOsQuickTerminalReveal
         var height = Math.Max(1, bounds.Height);
         nint blurView = 0;
         nint renderView = 0;
+        nint chromeView = 0;
+        nint agentView = 0;
         foreach (var subview in SubviewsOf(container))
         {
             var className = ClassNameOf(subview);
@@ -168,11 +393,33 @@ internal static class MacOsQuickTerminalReveal
                 continue;
             }
 
-            if (string.Equals(className, "NSVisualEffectView", StringComparison.Ordinal)
-                && SendNInt(subview, Selector("blendingMode")) == BlendsBehindWindow
-                && !SendBoolWithResult(subview, Selector("isHidden")))
+            var isWindowMaterial = string.Equals(
+                className,
+                "NSVisualEffectView",
+                StringComparison.Ordinal);
+            var isChromeMaterial = string.Equals(
+                className,
+                ChromeMaterialView,
+                StringComparison.Ordinal);
+            var isAgentMaterial = string.Equals(
+                className,
+                AgentMaterialView,
+                StringComparison.Ordinal);
+            if ((isWindowMaterial || isChromeMaterial || isAgentMaterial)
+                && SendNInt(subview, Selector("blendingMode")) == BlendsBehindWindow)
             {
-                blurView = subview;
+                if (isChromeMaterial)
+                {
+                    chromeView = subview;
+                }
+                else if (isAgentMaterial)
+                {
+                    agentView = subview;
+                }
+                else if (!SendBoolWithResult(subview, Selector("isHidden")))
+                {
+                    blurView = subview;
+                }
             }
         }
 
@@ -181,8 +428,46 @@ internal static class MacOsQuickTerminalReveal
             return false;
         }
 
-        views = new RevealViews(renderView, blurView, width, height);
+        views = new RevealViews(
+            container,
+            renderView,
+            blurView,
+            chromeView,
+            agentView,
+            width,
+            height);
         return true;
+    }
+
+    /// <summary>
+    /// NSVisualEffectView is an NSView, not an NSControl, and therefore has no
+    /// tag property. A private subclass gives the localized chrome material a
+    /// safe native identity without sending unsupported Objective-C messages.
+    /// </summary>
+    private static nint GetOrCreateMaterialClass(string className)
+    {
+        var existing = objc_getClass(className);
+        if (existing != 0)
+        {
+            return existing;
+        }
+
+        var superclass = objc_getClass("NSVisualEffectView");
+        if (superclass == 0)
+        {
+            return 0;
+        }
+
+        var materialClass = objc_allocateClassPair(
+            superclass,
+            className,
+            extraBytes: 0);
+        if (materialClass != 0)
+        {
+            objc_registerClassPair(materialClass);
+        }
+
+        return materialClass;
     }
 
     private static bool TryGetNativeWindow(Window window, out nint nsWindow)
@@ -247,12 +532,19 @@ internal static class MacOsQuickTerminalReveal
     private static nint Selector(string name) => sel_registerName(name);
 
     private readonly record struct RevealViews(
+        nint ContainerView,
         nint ContentView,
         nint BlurView,
+        nint ChromeView,
+        nint AgentView,
         double Width,
         double Height);
 
-    private readonly record struct RevealFrames(CGRect Blur, CGRect Content);
+    private readonly record struct RevealFrames(
+        CGRect Blur,
+        CGRect Content,
+        CGRect Chrome,
+        CGRect Agent);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct CGRect
@@ -270,6 +562,15 @@ internal static class MacOsQuickTerminalReveal
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_getClass")]
     private static extern nint objc_getClass(
         [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_allocateClassPair")]
+    private static extern nint objc_allocateClassPair(
+        nint superclass,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string name,
+        nuint extraBytes);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_registerClassPair")]
+    private static extern void objc_registerClassPair(nint cls);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "object_getClassName")]
     private static extern nint object_getClassName(nint instance);
@@ -289,6 +590,15 @@ internal static class MacOsQuickTerminalReveal
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern void SendIdArgument(nint receiver, nint selector, nint argument);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendNIntArgument(nint receiver, nint selector, nint argument);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendBoolArgument(
+        nint receiver,
+        nint selector,
+        [MarshalAs(UnmanagedType.U1)] bool argument);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern void SendDouble(nint receiver, nint selector, double value);
@@ -315,8 +625,22 @@ internal static class MacOsQuickTerminalReveal
     private static extern CGRect SendRect(nint receiver, nint selector);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern nint SendIdRectArgument(
+        nint receiver,
+        nint selector,
+        CGRect value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern void SendRectArgument(
         nint receiver,
         nint selector,
         CGRect value);
+
+    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
+    private static extern void SendThreeArguments(
+        nint receiver,
+        nint selector,
+        nint first,
+        nint second,
+        nint third);
 }

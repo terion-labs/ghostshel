@@ -14,6 +14,7 @@ namespace GhostShell.App.Views;
 
 public sealed partial class QuickTerminalWindow : Window
 {
+    private const double ChromeHeight = 36;
     private static readonly CubicEaseOut SlideEasing = new();
     // Not None: asking for no transparency at all makes the native window
     // opaque, and the reveal animation slides a window that has already been
@@ -47,6 +48,11 @@ public sealed partial class QuickTerminalWindow : Window
     {
         InitializeComponent();
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        DataContextChanged += (_, _) =>
+            Dispatcher.UIThread.Post(UpdateNativeAgentMaterial);
+        SizeChanged += (_, _) => UpdateNativeAgentMaterial();
+        QuickTerminalAgentSurface.SizeChanged += (_, _) =>
+            UpdateNativeAgentMaterial();
         Deactivated += OnWindowDeactivated;
         Closing += OnWindowClosing;
     }
@@ -77,7 +83,6 @@ public sealed partial class QuickTerminalWindow : Window
             hostPreferences);
         QuickTerminalHost.BackgroundOpacity = backgroundOpacity;
         QuickTerminalPlaceholderBackground.Opacity = backgroundOpacity;
-        QuickTerminalStatusBackground.Opacity = backgroundOpacity;
         HideOnFocusLoss = settings.HideOnFocusLoss;
         ApplyBackdrop();
     }
@@ -99,16 +104,72 @@ public sealed partial class QuickTerminalWindow : Window
                 _hostPreferences))
         {
             ApplyTransparencyHint(TransparentHint);
+            // Keep the native backing clear when changing an already-created
+            // window from material to transparent. Otherwise AppKit may leave
+            // its previous windowBackgroundColor visible for this frame.
+            _ = MacOsQuickTerminalReveal.TryClearWindowBacking(this);
+            QuickTerminalStatusBackground.Opacity = 1;
+            _ = MacOsQuickTerminalReveal.TrySetChromeMaterial(
+                this,
+                ChromeHeight,
+                MacOsMaterial.Sidebar,
+                isVisible: false);
+            UpdateNativeAgentMaterial();
             return;
         }
 
         ApplyTransparencyHint(BlurHint);
+        // Avalonia pins its visual-effect view to the deprecated Light
+        // material. HUDWindow proved clearer on the live desktop than Popover
+        // while retaining strong blur, so Quick Terminal uses it for both the
+        // viewport and its separately framed native controls strip.
+        _ = MacOsWindowMaterial.TrySit(
+            this,
+            MacOsMaterial.HudWindow);
         // Avalonia's macOS Blur mode also paints NSWindow itself with opaque
         // windowBackgroundColor. The reveal moves the material and Skia
         // siblings, so that backing would otherwise appear immediately in the
         // final rectangle underneath them.
         _ = MacOsQuickTerminalReveal.TryClearWindowBacking(this);
+        var hasNativeChrome = MacOsQuickTerminalReveal.TrySetChromeMaterial(
+            this,
+            ChromeHeight,
+            MacOsMaterial.Sidebar,
+            isVisible: true);
+        QuickTerminalStatusBackground.Opacity = hasNativeChrome ? 0 : 1;
+        UpdateNativeAgentMaterial();
         _ = MacOsQuickTerminalReveal.TryKeepBackdropActive(this);
+    }
+
+    private void UpdateNativeAgentMaterial()
+    {
+        var viewModel = DataContext as QuickTerminalViewModel;
+        var shouldShow = viewModel is
+        {
+            IsAgentPanelVisible: true,
+            IsAgentPanelDocked: true,
+        }
+            && !_hostPreferences.ReducedTransparency
+            && QuickTerminalPresentationPolicy.ShouldUseBlur(
+                _settings,
+                _hostPreferences);
+        var arrangedWidth = QuickTerminalAgentSurface.Bounds.Width;
+        var configuredWidth = QuickTerminalAgentSurface.Width;
+        var width = double.IsFinite(arrangedWidth) && arrangedWidth > 0
+            ? arrangedWidth
+            : double.IsFinite(configuredWidth) && configuredWidth > 0
+                ? configuredWidth
+                : 352;
+        var hasNativeAgent = MacOsQuickTerminalReveal.TrySetAgentMaterial(
+            this,
+            width,
+            ChromeHeight,
+            MacOsMaterial.Sidebar,
+            viewModel?.IsAgentPanelOnLeft == true,
+            shouldShow);
+        QuickTerminalAgentSurface.Classes.Set(
+            "nativeMaterial",
+            shouldShow && hasNativeAgent);
     }
 
     private void ApplyTransparencyHint(IReadOnlyList<WindowTransparencyLevel> hint)

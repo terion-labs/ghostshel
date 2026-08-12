@@ -77,6 +77,10 @@
     <Style Selector="views|AgentWorkspaceView.docked Border.AgentPanel">
       <Setter Property="CornerRadius" Value="0" />
       <Setter Property="BoxShadow" Value="none" />
+      <Setter Property="BorderThickness" Value="1,0,1,0" />
+    </Style>
+    <Style Selector="views|AgentWorkspaceView.docked.nativeMaterial Border.AgentPanel">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
   </Window.Styles>
   <!-- The panel always fills a fixed-size native window. The reveal moves that
@@ -167,10 +171,16 @@
           <Border
               x:Name="QuickTerminalStatusBackground"
               Background="{DynamicResource ShellSurfaceBrush}"
-              BorderBrush="{DynamicResource ShellBorderBrush}"
-              BorderThickness="0,1,0,0"
               IsHitTestVisible="False" />
-          <Grid Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <!-- This divider cannot belong to the Avalonia background above:
+               that fallback is hidden when the native HUD material exists. -->
+          <Border
+              x:Name="QuickTerminalStatusDivider"
+              Height="1"
+              VerticalAlignment="Top"
+              Background="{DynamicResource ShellBorderBrush}"
+              IsHitTestVisible="False" />
+          <Grid Margin="{controls:Inset Left=Md, Right=Xs}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <components:RuntimeTabStripView
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"

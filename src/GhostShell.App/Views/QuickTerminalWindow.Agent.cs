@@ -1,5 +1,6 @@
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using GhostShell.App.ViewModels;
 using AvaloniaKeyModifiers = Avalonia.Input.KeyModifiers;
 
@@ -14,6 +15,7 @@ public sealed partial class QuickTerminalWindow
         if (DataContext is QuickTerminalViewModel viewModel)
         {
             viewModel.ToggleAgentPanel();
+            Dispatcher.UIThread.Post(UpdateNativeAgentMaterial);
         }
     }
 
@@ -24,6 +26,7 @@ public sealed partial class QuickTerminalWindow
         if (DataContext is QuickTerminalViewModel viewModel)
         {
             viewModel.ToggleAgentPanelPin();
+            Dispatcher.UIThread.Post(UpdateNativeAgentMaterial);
         }
     }
 

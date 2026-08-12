@@ -80,4 +80,34 @@ public sealed class QuickTerminalPresentationPolicyTests
             settings,
             HostAccessibilityPreferences.Default));
     }
+
+    [Fact]
+    public void Zero_tint_opacity_keeps_the_independent_platform_blur()
+    {
+        var defaults = QuickTerminalSettings.Default;
+        var settings = new QuickTerminalSettings(
+            defaults.Id,
+            defaults.Name,
+            defaults.Hotkey,
+            defaults.MonitorPolicy,
+            defaults.HeightFraction,
+            opacity: 0,
+            defaults.AnimateSlide,
+            defaults.AnimationDurationMilliseconds,
+            defaults.ReduceMotion,
+            defaults.RestoreLastSession,
+            defaults.HideOnFocusLoss,
+            isTranslucent: true,
+            defaults.RestoreOnStart);
+
+        Assert.True(QuickTerminalPresentationPolicy.ShouldUseBlur(
+            settings,
+            HostAccessibilityPreferences.Default));
+        Assert.Equal(
+            0,
+            QuickTerminalPresentationPolicy.EffectiveOpacity(
+                settings,
+                HostAccessibilityPreferences.Default));
+    }
+
 }

@@ -133,6 +133,13 @@ public sealed class AgentWorkspaceViewContractTests
         Assert.False(string.IsNullOrWhiteSpace(
             AttributeValue(providerSettings, "AutomationProperties.HelpText")));
 
+        var footerStatus = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "Text") == "{Binding AgentChat.Status}");
+        Assert.Equal("Center", AttributeValue(footerStatus, "HorizontalAlignment"));
+        Assert.Equal("Center", AttributeValue(footerStatus, "TextAlignment"));
+
         var clearRetainedSession = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "Button"
