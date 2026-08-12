@@ -279,6 +279,23 @@ public sealed class ManagedTerminalSessionHostTests
     }
 
     [Fact]
+    public async Task Polling_a_session_closed_by_tab_teardown_exits_without_an_engine_error()
+    {
+        var client = new LifecycleClient();
+        var host = CreateHost(client);
+        await host.InitializeForTestingAsync();
+        SessionSnapshot? observedSnapshot = null;
+        host.SessionSnapshotChanged += (_, args) => observedSnapshot = args.Snapshot;
+        client.CloseSessionForPolling();
+
+        await host.PollForTestingAsync();
+
+        Assert.Equal(SessionLifecycle.Closed, observedSnapshot?.Descriptor.Lifecycle);
+        Assert.Null(host.InitializationError);
+        Assert.False(host.Surface.IsInputReady);
+    }
+
+    [Fact]
     public async Task ApplicationPrefixReplayUsesTypedInputAndBypassesTheManagedKeymap()
     {
         var client = new LifecycleClient();
@@ -395,6 +412,7 @@ public sealed class ManagedTerminalSessionHostTests
         private int _activeResizes;
         private int _maximumConcurrentResizes;
         private int _resizeCalls;
+        private int _closedForPolling;
         private Action? _duringFirstScreenRead;
 
         public LifecycleClient(
@@ -531,6 +549,9 @@ public sealed class ManagedTerminalSessionHostTests
         public void FailNextPhysicalInput() =>
             Volatile.Write(ref _failNextPhysicalInput, 1);
 
+        public void CloseSessionForPolling() =>
+            Volatile.Write(ref _closedForPolling, 1);
+
         public ValueTask<HostResult<SessionSnapshot>> EnsureTerminalSessionAsync(
             EnsureTerminalSessionRequest request,
             OperationContext context,
@@ -626,7 +647,17 @@ public sealed class ManagedTerminalSessionHostTests
             CancellationToken cancellationToken)
         {
             ThrowIf(InitializationFailureStage.Snapshot);
-            return Success(_snapshot);
+            return Volatile.Read(ref _closedForPolling) == 0
+                ? Success(_snapshot)
+                : Success(_snapshot with
+                {
+                    Descriptor = _descriptor with
+                    {
+                        Lifecycle = SessionLifecycle.Closed,
+                        HasActiveWork = false,
+                        StatusDetail = "closed",
+                    },
+                });
         }
 
         public ValueTask<HostResult<TerminalScreenSnapshot>> ReadTerminalScreenAsync(
@@ -636,6 +667,15 @@ public sealed class ManagedTerminalSessionHostTests
         {
             ThrowIf(InitializationFailureStage.Screen);
             ScreenReadCalls++;
+            if (Volatile.Read(ref _closedForPolling) != 0)
+            {
+                return ValueTask.FromResult(HostResult<TerminalScreenSnapshot>.Fail(
+                    HostError.Create(
+                        HostErrorCode.EngineFailed,
+                        "Cannot access a disposed terminal engine."),
+                    2));
+            }
+
             var interruption = _duringFirstScreenRead;
             _duringFirstScreenRead = null;
             interruption?.Invoke();

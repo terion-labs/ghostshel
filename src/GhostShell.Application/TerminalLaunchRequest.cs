@@ -24,7 +24,8 @@ public sealed record TerminalLaunchRequest
         TerminalConnectionMetadata? connectionMetadata = null,
         string? initialCommand = null,
         TerminalShellActivityFallback shellActivityFallback =
-            TerminalShellActivityFallback.None)
+            TerminalShellActivityFallback.None,
+        TerminalMultiplexerSession? multiplexerSession = null)
     {
         ValidateText(workingDirectory, nameof(workingDirectory));
         ValidateText(executable, nameof(executable));
@@ -70,6 +71,7 @@ public sealed record TerminalLaunchRequest
         ConnectionMetadata = connectionMetadata;
         InitialCommand = initialCommand;
         ShellActivityFallback = shellActivityFallback;
+        MultiplexerSession = multiplexerSession;
     }
 
     public string? WorkingDirectory { get; }
@@ -104,6 +106,8 @@ public sealed record TerminalLaunchRequest
 
     public TerminalShellActivityFallback ShellActivityFallback { get; }
 
+    public TerminalMultiplexerSession? MultiplexerSession { get; }
+
     public TerminalLaunchRequest WithPresentationProfiles(
         TerminalRenderProfileSnapshot? renderProfile,
         TerminalKeymapSnapshot? keymap) =>
@@ -117,7 +121,8 @@ public sealed record TerminalLaunchRequest
             ConnectionId,
             ConnectionMetadata,
             InitialCommand,
-            ShellActivityFallback);
+            ShellActivityFallback,
+            MultiplexerSession);
 
     public TerminalLaunchRequest WithShellActivityFallback(
         TerminalShellActivityFallback fallback) =>
@@ -131,7 +136,8 @@ public sealed record TerminalLaunchRequest
             ConnectionId,
             ConnectionMetadata,
             InitialCommand,
-            fallback);
+            fallback,
+            MultiplexerSession);
 
     private static IReadOnlyList<string> SnapshotArguments(IReadOnlyList<string>? arguments)
     {

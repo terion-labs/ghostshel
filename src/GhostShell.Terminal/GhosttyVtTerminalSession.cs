@@ -381,6 +381,7 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
             }
 
             var hasActiveWork = NeedsCloseConfirmationUnsafe();
+            var isMultiplexed = _launch.MultiplexerSession is not null;
             return ValueTask.FromResult(new PanelSessionSnapshot(
                 SessionLifecycle.Active,
                 SessionHealth.Healthy,
@@ -389,7 +390,9 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
                 // would interrupt rather than which engine and renderer are
                 // carrying it. The parts naming our own plumbing meant nothing
                 // to the person reading them in a confirmation dialog.
-                _rendererAttached
+                isMultiplexed
+                    ? "protected by remote multiplexer"
+                    : _rendererAttached
                     ? hasActiveWork
                         ? "still working"
                         : "waiting at a prompt"
@@ -683,6 +686,15 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
 
     private bool NeedsCloseConfirmationUnsafe()
     {
+        // Closing the local SSH process only detaches an app-managed Screen
+        // session. Its foreground command continues remotely, so it is not
+        // work the close operation can interrupt and must not trigger the
+        // destructive-work warning.
+        if (_launch.MultiplexerSession is not null)
+        {
+            return false;
+        }
+
         if (_shellActivity == TerminalShellActivityState.Idle)
         {
             return false;

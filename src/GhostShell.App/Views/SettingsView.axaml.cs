@@ -139,6 +139,12 @@ public sealed partial class SettingsView : UserControl
     public event EventHandler<RoutedEventArgs>?
         RestoreSessionsOnStartChangedRequested;
 
+    public event EventHandler<RoutedEventArgs>? TerminalMultiplexingChangedRequested;
+
+    public event EventHandler<RoutedEventArgs>? TerminateManagedRemoteSessionRequested;
+
+    public event EventHandler<RoutedEventArgs>? ForgetManagedRemoteSessionRequested;
+
     public event EventHandler<RoutedEventArgs>? AppearanceChangedRequested;
 
     public event EventHandler<RoutedEventArgs>? PickColorRequested;
@@ -434,6 +440,15 @@ public sealed partial class SettingsView : UserControl
 
     private void OnRestoreSessionsOnStartChanged(object? sender, RoutedEventArgs e) =>
         RestoreSessionsOnStartChangedRequested?.Invoke(sender, e);
+
+    private void OnTerminalMultiplexingChanged(object? sender, RoutedEventArgs e) =>
+        TerminalMultiplexingChangedRequested?.Invoke(sender, e);
+
+    private void OnTerminateManagedRemoteSessionClick(object? sender, RoutedEventArgs e) =>
+        TerminateManagedRemoteSessionRequested?.Invoke(sender, e);
+
+    private void OnForgetManagedRemoteSessionClick(object? sender, RoutedEventArgs e) =>
+        ForgetManagedRemoteSessionRequested?.Invoke(sender, e);
 
     private void OnSaveKeybindingsClick(object? sender, RoutedEventArgs e) =>
         SaveKeybindingsRequested?.Invoke(sender, e);

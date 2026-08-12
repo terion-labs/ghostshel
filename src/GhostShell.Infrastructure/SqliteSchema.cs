@@ -270,5 +270,31 @@ internal static class SqliteSchema
                 maximum_entries = 0
             WHERE singleton_id = 1;
             """),
+        new(
+            10,
+            "terminal-multiplexing",
+            """
+            CREATE TABLE terminal_multiplexing_preference (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                mode INTEGER NOT NULL CHECK (mode IN (0, 1))
+            );
+
+            INSERT INTO terminal_multiplexing_preference(singleton_id, mode)
+            VALUES (1, 0);
+
+            CREATE TABLE terminal_multiplexer_leases (
+                connection_id TEXT NOT NULL CHECK (length(connection_id) > 0),
+                session_name TEXT NOT NULL CHECK (
+                    length(session_name) BETWEEN 1 AND 64
+                    AND session_name GLOB 'ghostshell-[a-z0-9-]*'),
+                state INTEGER NOT NULL CHECK (state IN (0, 1)),
+                created_utc TEXT NOT NULL,
+                updated_utc TEXT NOT NULL,
+                PRIMARY KEY (connection_id, session_name)
+            ) WITHOUT ROWID;
+
+            CREATE INDEX terminal_multiplexer_leases_state_idx
+                ON terminal_multiplexer_leases(state, updated_utc);
+            """),
     ];
 }

@@ -514,6 +514,65 @@
                 <Button Grid.Column="1" VerticalAlignment="Bottom" Classes="PrimaryButton" Click="OnSaveTerminalProfileClick" Content="Save profile" />
               </Grid>
 
+              <controls:SettingsGroup Heading="Continuity" ControlWidth="220">
+                <controls:SettingRow
+                    Label="Multiplex SSH terminals"
+                    Description="New SSH terminals use an app-managed tmux session, with GNU Screen as a fallback. Disconnecting or closing GhostSHELL preserves it; explicitly closing the panel, tab, or workspace ends it."
+                    IsLast="True">
+                  <ToggleSwitch
+                      HorizontalAlignment="Right"
+                      IsChecked="{Binding UseTerminalMultiplexingForSshTerminals, Mode=OneWay}"
+                      IsEnabled="{Binding CanChangeTerminalMultiplexing}"
+                      IsCheckedChanged="OnTerminalMultiplexingChanged"
+                      AutomationProperties.Name="Multiplex SSH terminals" />
+                </controls:SettingRow>
+              </controls:SettingsGroup>
+
+              <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock Classes="SectionHeading" Text="Managed remote sessions" />
+                  <TextBlock
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize12}"
+                      Text="Sessions created by GhostSHELL remain here until they are ended or deliberately forgotten." />
+                </StackPanel>
+                <controls:Callout
+                    ShowsGlyph="False"
+                    Text="No managed remote sessions."
+                    IsVisible="{Binding !HasManagedRemoteSessions}" />
+                <ItemsControl ItemsSource="{Binding ManagedRemoteSessions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <controls:SurfaceCard Margin="{controls:Inset Bottom=Sm}" Tone="Sunken">
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <StackPanel Spacing="{DynamicResource ShellSpace2Xs}">
+                            <TextBlock FontWeight="SemiBold" Text="{Binding ConnectionName}" />
+                            <TextBlock Classes="Muted" FontFamily="{DynamicResource ShellMonoFontFamily}" Text="{Binding SessionName}" />
+                          </StackPanel>
+                          <controls:StatusChip
+                              Grid.Column="1"
+                              VerticalAlignment="Center"
+                              Classes.Warning="{Binding IsCleanupPending}"
+                              Content="{Binding Status}" />
+                          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                            <Button
+                                Classes="DestructiveButton"
+                                Click="OnTerminateManagedRemoteSessionClick"
+                                Content="End session"
+                                AutomationProperties.Name="End managed remote session" />
+                            <Button
+                                Classes="SecondaryButton"
+                                Click="OnForgetManagedRemoteSessionClick"
+                                Content="Forget"
+                                AutomationProperties.Name="Forget managed remote session record" />
+                          </StackPanel>
+                        </Grid>
+                      </controls:SurfaceCard>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+
               <!-- Cursor and scrollback -->
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceXs}">

@@ -58,6 +58,10 @@ internal static class HistoricalDatabaseFixture
                 "session-history-is-opt-in",
                 "E22939EC49C7784C21CF680A1EDC0F09D10349582050D368130C4930DFFAC905",
                 IsDestructive: false),
+            [10] = new(
+                "terminal-multiplexing",
+                "59810F6439B7063446C5414BD62625EFFEA20FDAE6466B7BD702DB99327BD1EF",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -317,6 +321,7 @@ internal static class HistoricalDatabaseFixture
             6 => "session_restore_preference",
             7 => "file_preview_settings",
             8 => "session_history_opt_in_collision",
+            9 => "terminal_multiplexing_preference",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

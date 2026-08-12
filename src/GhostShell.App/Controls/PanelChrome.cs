@@ -31,6 +31,22 @@ internal sealed class PanelChrome : ContentControl
     public static readonly StyledProperty<string?> TitleProperty =
         AvaloniaProperty.Register<PanelChrome, string?>(nameof(Title));
 
+    /// <summary>
+    /// A compact state mark drawn immediately after the title, inside the drag
+    /// surface. Unlike header content, it does not take away the remaining
+    /// draggable width.
+    /// </summary>
+    public static readonly StyledProperty<object?> TitleAdornmentProperty =
+        AvaloniaProperty.Register<PanelChrome, object?>(nameof(TitleAdornment));
+
+    /// <summary>
+    /// Whether the compact state mark after the title is visible. This defaults
+    /// to false so a missing or broken state binding cannot present a feature as
+    /// active.
+    /// </summary>
+    public static readonly StyledProperty<bool> IsTitleAdornmentVisibleProperty =
+        AvaloniaProperty.Register<PanelChrome, bool>(nameof(IsTitleAdornmentVisible));
+
     /// <summary>Whether the panel is showing alone, filling its tab.</summary>
     public static readonly StyledProperty<bool> IsZoomedProperty =
         AvaloniaProperty.Register<PanelChrome, bool>(nameof(IsZoomed));
@@ -216,6 +232,18 @@ internal sealed class PanelChrome : ContentControl
     {
         get => GetValue(TitleProperty);
         set => SetValue(TitleProperty, value);
+    }
+
+    public object? TitleAdornment
+    {
+        get => GetValue(TitleAdornmentProperty);
+        set => SetValue(TitleAdornmentProperty, value);
+    }
+
+    public bool IsTitleAdornmentVisible
+    {
+        get => GetValue(IsTitleAdornmentVisibleProperty);
+        set => SetValue(IsTitleAdornmentVisibleProperty, value);
     }
 
     public bool IsZoomed

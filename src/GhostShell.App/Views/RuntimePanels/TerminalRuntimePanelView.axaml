@@ -14,9 +14,135 @@
   <controls:PanelChrome
       CloseRequested="OnCloseClick"
       IsActive="{Binding IsActive}"
+      IsTitleAdornmentVisible="{Binding IsContinuityActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="Terminal">
+    <controls:PanelChrome.TitleAdornment>
+      <Grid ToolTip.Tip="Continuity enabled">
+        <Grid.RenderTransform>
+          <TranslateTransform Y="1" />
+        </Grid.RenderTransform>
+        <!-- This is the neon text-shadow pattern scaled to a header glyph:
+             bright tight blooms build the luminous core, then progressively
+             wider and softer accent layers carry the afterglow. Every layer
+             owns bleed equal to its radius, so none is clipped. -->
+        <Border
+            Classes="ContinuityGlow ContinuityGlowFar"
+            IsHitTestVisible="False"
+            Margin="-32"
+            Padding="32">
+          <Border.Effect>
+            <DropShadowEffect
+                BlurRadius="32"
+                Color="{DynamicResource SystemAccentColor}"
+                OffsetX="0"
+                OffsetY="0"
+                Opacity="0.5" />
+          </Border.Effect>
+          <icons:SymbolIcon
+              FontSize="{DynamicResource ShellFontSize13}"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Symbol="Agents" />
+        </Border>
+        <Border
+            Classes="ContinuityGlow ContinuityGlowWide"
+            IsHitTestVisible="False"
+            Margin="-23"
+            Padding="23">
+          <Border.Effect>
+            <DropShadowEffect
+                BlurRadius="23"
+                Color="{DynamicResource SystemAccentColor}"
+                OffsetX="0"
+                OffsetY="0"
+                Opacity="0.65" />
+          </Border.Effect>
+          <icons:SymbolIcon
+              FontSize="{DynamicResource ShellFontSize13}"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Symbol="Agents" />
+        </Border>
+        <Border
+            Classes="ContinuityGlow ContinuityGlowMedium"
+            IsHitTestVisible="False"
+            Margin="-16"
+            Padding="16">
+          <Border.Effect>
+            <DropShadowEffect
+                BlurRadius="16"
+                Color="{DynamicResource SystemAccentColor}"
+                OffsetX="0"
+                OffsetY="0"
+                Opacity="0.78" />
+          </Border.Effect>
+          <icons:SymbolIcon
+              FontSize="{DynamicResource ShellFontSize13}"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Symbol="Agents" />
+        </Border>
+        <Border
+            Classes="ContinuityGlow ContinuityGlowNear"
+            IsHitTestVisible="False"
+            Margin="-11"
+            Padding="11">
+          <Border.Effect>
+            <DropShadowEffect
+                BlurRadius="11"
+                Color="{DynamicResource SystemAccentColor}"
+                OffsetX="0"
+                OffsetY="0"
+                Opacity="0.9" />
+          </Border.Effect>
+          <icons:SymbolIcon
+              FontSize="{DynamicResource ShellFontSize13}"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Symbol="Agents" />
+        </Border>
+        <Border
+            Classes="ContinuityGlow ContinuityGlowCore"
+            IsHitTestVisible="False"
+            Margin="-7"
+            Padding="7">
+          <Border.Effect>
+            <DropShadowEffect
+                BlurRadius="7"
+                Color="{DynamicResource SystemAccentColor}"
+                OffsetX="0"
+                OffsetY="0"
+                Opacity="1" />
+          </Border.Effect>
+          <icons:SymbolIcon
+              FontSize="{DynamicResource ShellFontSize13}"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Symbol="Agents" />
+        </Border>
+        <Border
+            Classes="ContinuityGlow ContinuityGlowHotCore"
+            IsHitTestVisible="False"
+            Margin="-4"
+            Padding="4">
+          <Border.Effect>
+            <DropShadowEffect
+                BlurRadius="4"
+                Color="{DynamicResource SystemAccentColor}"
+                OffsetX="0"
+                OffsetY="0"
+                Opacity="1" />
+          </Border.Effect>
+          <icons:SymbolIcon
+              FontSize="{DynamicResource ShellFontSize13}"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Symbol="Agents" />
+        </Border>
+        <icons:SymbolIcon
+            AutomationProperties.Name="Continuity enabled"
+            FontSize="{DynamicResource ShellFontSize13}"
+            Foreground="{DynamicResource ShellContinuityGlyphBrush}"
+            Symbol="Agents" />
+      </Grid>
+    </controls:PanelChrome.TitleAdornment>
+
     <controls:PanelChrome.Status>
       <Border
           Classes="StatusDot"
@@ -32,20 +158,11 @@
     </controls:PanelChrome.Leading>
 
     <controls:PanelChrome.Actions>
-      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}" VerticalAlignment="Center">
-        <!-- The panel that actually asked. The tab and the rail aggregate
-             it, so this is where the trail ends. -->
-        <controls:SignalDot
-            IsVisible="{Binding HasAttention}"
-            ToolTip.Tip="This panel asked for attention" />
-        <TextBlock
-            VerticalAlignment="Center"
-            Classes="Muted"
-            FontSize="{DynamicResource ShellFontSize9}"
-            Text="{Binding StatusText, ElementName=RuntimeTerminal}"
-            AutomationProperties.LiveSetting="Polite"
-            AutomationProperties.Name="Terminal session status" />
-      </StackPanel>
+      <!-- The panel that actually asked. The tab and the rail aggregate
+           it, so this is where the trail ends. -->
+      <controls:SignalDot
+          IsVisible="{Binding HasAttention}"
+          ToolTip.Tip="This panel asked for attention" />
     </controls:PanelChrome.Actions>
 
     <Grid>

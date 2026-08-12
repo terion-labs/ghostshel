@@ -34,6 +34,13 @@ public abstract class ConnectionRuntimeAdapterBase : IConnectionRuntimeAdapter
         IProgress<ConnectionProgress>? progress,
         CancellationToken cancellationToken);
 
+    public virtual ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+        ConnectionProfile profile,
+        TerminalMultiplexerSession? multiplexerSession,
+        IProgress<ConnectionProgress>? progress,
+        CancellationToken cancellationToken) =>
+        PlanOpenAsync(profile, progress, cancellationToken);
+
     public abstract ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(
         ConnectionProfile profile,
         IProgress<ConnectionProgress>? progress,

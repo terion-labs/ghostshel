@@ -421,6 +421,89 @@ public sealed class SshConnectionRuntimeAdapterTests
         Assert.Equal(TimeSpan.FromSeconds(12), command.Timeout);
     }
 
+    [Fact]
+    public async Task NewMultiplexerSessionPrefersConfiguredTmuxAndFallsBackToScreen()
+    {
+        using var vault = new RecordingSecretVault();
+        var adapter = new SshConnectionRuntimeAdapter(
+            vault,
+            LocatorWithSsh(),
+            new RecordingCommandRunner(),
+            KnownHosts());
+        var profile = ConnectionRuntimeTestSupport.Profile(
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.SshAgent(),
+            new ConnectionStartup("/srv/work"));
+        var session = new TerminalMultiplexerSession(
+            TerminalMultiplexingMode.Automatic,
+            "ghostshell-1234abcd");
+
+        var plan = ConnectionRuntimeTestSupport.Success(await adapter.PlanOpenAsync(
+            profile,
+            session,
+            null,
+            CancellationToken.None));
+
+        Assert.Equal(session, plan.Launch.MultiplexerSession);
+        var command = plan.Launch.Arguments[^1];
+        Assert.Contains("tmux -L ghostshell -u -2 start-server", command, StringComparison.Ordinal);
+        Assert.Contains("set-option -s default-terminal tmux-256color", command, StringComparison.Ordinal);
+        Assert.Contains("set-option -s terminal-features \"xterm*:RGB\"", command, StringComparison.Ordinal);
+        Assert.Contains("new-session -d -s \"$1\" -c \"$2\"", command, StringComparison.Ordinal);
+        Assert.Contains("set-option -t \"$1\" status off", command, StringComparison.Ordinal);
+        Assert.Contains("set-option -t \"$1\" mouse on", command, StringComparison.Ordinal);
+        Assert.Contains("exec screen -A -U -D -RR -S \"$1\"", command, StringComparison.Ordinal);
+        Assert.True(
+            command.IndexOf("command -v tmux", StringComparison.Ordinal)
+            < command.IndexOf("command -v screen", StringComparison.Ordinal));
+        Assert.EndsWith(
+            "ghostshell-multiplexer 'ghostshell-1234abcd' '/srv/work'",
+            command,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EstablishedMultiplexerSessionResumesTmuxOrLegacyScreenWithoutCreating()
+    {
+        using var vault = new RecordingSecretVault();
+        var adapter = new SshConnectionRuntimeAdapter(
+            vault,
+            LocatorWithSsh(),
+            new RecordingCommandRunner(),
+            KnownHosts());
+        var profile = ConnectionRuntimeTestSupport.Profile(
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.SshAgent());
+        var session = new TerminalMultiplexerSession(
+            TerminalMultiplexingMode.Automatic,
+            "ghostshell-1234abcd",
+            isEstablished: true);
+
+        var plan = ConnectionRuntimeTestSupport.Success(await adapter.PlanOpenAsync(
+            profile,
+            session,
+            null,
+            CancellationToken.None));
+
+        var command = plan.Launch.Arguments[^1];
+        Assert.Contains("tmux -L ghostshell has-session", command, StringComparison.Ordinal);
+        Assert.Contains(
+            "exec tmux -L ghostshell -u -2 attach-session -d",
+            command,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "set-option -t \"$1\" mouse on",
+            command,
+            StringComparison.Ordinal);
+        Assert.Contains("exec screen -A -U -D -r \"$1\"", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("new-session", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("-RR", command, StringComparison.Ordinal);
+        Assert.EndsWith(
+            "ghostshell-multiplexer 'ghostshell-1234abcd'",
+            command,
+            StringComparison.Ordinal);
+    }
+
     private static RecordingExecutableLocator LocatorWithSsh()
     {
         var locator = new RecordingExecutableLocator();

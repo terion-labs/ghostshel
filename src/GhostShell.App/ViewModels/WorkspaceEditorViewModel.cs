@@ -22,6 +22,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private string _color;
     private string _icon;
     private bool _autoSave;
+    private WorkspaceTerminalMultiplexingOption _selectedTerminalMultiplexing;
     private string _iconSearch = string.Empty;
     private bool _showAllIcons;
     private bool _isDirty;
@@ -82,6 +83,14 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _color = workspace.Color ?? string.Empty;
         _icon = workspace.Icon;
         _autoSave = workspace.AutoSave;
+        TerminalMultiplexingOptions =
+        [
+            new(null, "Use application setting"),
+            new(TerminalMultiplexingMode.Disabled, "Off for this workspace"),
+            new(TerminalMultiplexingMode.Automatic, "tmux with Screen fallback"),
+        ];
+        _selectedTerminalMultiplexing = TerminalMultiplexingOptions.Single(option =>
+            option.Mode == workspace.TerminalMultiplexingOverride);
         _screens = screens.ToDictionary(screen => screen.Id);
         _readOnlyEntries = new(_entries);
 
@@ -129,6 +138,21 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public IReadOnlyList<WorkspaceAccentChoiceViewModel> AccentChoices { get; } =
         WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option)).ToArray();
+
+    public IReadOnlyList<WorkspaceTerminalMultiplexingOption> TerminalMultiplexingOptions { get; }
+
+    public WorkspaceTerminalMultiplexingOption SelectedTerminalMultiplexing
+    {
+        get => _selectedTerminalMultiplexing;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (SetProperty(ref _selectedTerminalMultiplexing, value))
+            {
+                Changed();
+            }
+        }
+    }
 
     /// <summary>
     /// Filters the icon grid. The catalog is large enough that scanning it is
@@ -579,12 +603,16 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         var colorChanged = !StringComparer.Ordinal.Equals(_color, color);
         var iconChanged = !StringComparer.Ordinal.Equals(_icon, _original.Icon);
         var autoSaveChanged = _autoSave != _original.AutoSave;
+        var multiplexing = TerminalMultiplexingOptions.Single(option =>
+            option.Mode == _original.TerminalMultiplexingOverride);
+        var multiplexingChanged = _selectedTerminalMultiplexing != multiplexing;
         _name = _original.Name;
         _description = description;
         _accent = accent;
         _color = color;
         _icon = _original.Icon;
         _autoSave = _original.AutoSave;
+        _selectedTerminalMultiplexing = multiplexing;
         if (nameChanged)
         {
             OnPropertyChanged(nameof(Name));
@@ -623,6 +651,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         if (autoSaveChanged)
         {
             OnPropertyChanged(nameof(AutoSave));
+        }
+
+        if (multiplexingChanged)
+        {
+            OnPropertyChanged(nameof(SelectedTerminalMultiplexing));
         }
 
         RestoreEntries();
@@ -709,7 +742,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         Icon,
         AutoSave,
         Color,
-        _original.AgentPanelPinned);
+        _original.AgentPanelPinned,
+        SelectedTerminalMultiplexing.Mode);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {

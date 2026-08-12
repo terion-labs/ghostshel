@@ -26,6 +26,20 @@ public sealed record AgentRunScopeOption(
     AgentRunScopeKind Kind,
     string Label);
 
+public sealed record ManagedRemoteSessionViewModel(
+    TerminalMultiplexerLease Lease,
+    string ConnectionName)
+{
+    public string SessionName => Lease.Session.SessionName;
+
+    public string Status => Lease.State == TerminalMultiplexerLeaseState.Active
+        ? "Detached or active"
+        : "Cleanup pending";
+
+    public bool IsCleanupPending =>
+        Lease.State == TerminalMultiplexerLeaseState.TerminationPending;
+}
+
 public sealed class MainWindowViewModel : ObservableObject, IDisposable
 {
     private enum McpServerTestPresentationState
@@ -94,6 +108,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
     private readonly RuntimeRecoveryWriter? _runtimeRecoveryWriter;
     private readonly SessionRestoreCoordinator? _sessionRestoreCoordinator;
+    private readonly TerminalMultiplexerCoordinator? _terminalMultiplexerCoordinator;
     private readonly RecentSessionHistory? _recentSessionHistory;
     private readonly IUiThreadDispatcher _uiThreadDispatcher;
     private readonly TimeProvider _timeProvider;
@@ -104,6 +119,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly object _mcpServerTestGate = new();
     private readonly object _shutdownGate = new();
     private readonly Dictionary<PanelInstanceId, SessionId> _recentSessionIds = [];
+    private readonly Dictionary<WorkspaceInstanceId, TerminalMultiplexingMode>
+        _workspaceTerminalMultiplexingModes = [];
     private readonly List<Task> _runtimeGraphWatchTasks = [];
     private readonly HashSet<RuntimeTabViewModel> _agentSelectionTrackedTabs = [];
     private readonly HashSet<TerminalRuntimePanelViewModel>
@@ -164,6 +181,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private bool _restoreSessionsOnStart = true;
     private bool _sessionRestorePreferenceLoaded;
     private bool _sessionRestorePreferenceSaving;
+    private TerminalMultiplexingMode _terminalMultiplexingMode;
+    private bool _terminalMultiplexingPreferenceLoaded;
+    private bool _terminalMultiplexingPreferenceSaving;
     private HistoryRetentionOption? _selectedHistoryRetentionOption;
     private bool _isApplyingStoredHistoryRetention;
     private bool _hasPendingHistoryRetentionChange;
@@ -216,7 +236,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             mcpCredentialSessionInvalidator = null,
         SessionRestoreCoordinator? sessionRestoreCoordinator = null,
         ISqlLanguageService? sqlLanguageService = null,
-        IDockerEngineClient? dockerEngineClient = null)
+        IDockerEngineClient? dockerEngineClient = null,
+        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         OpenWorkspaces = new(_openWorkspaces);
@@ -257,6 +278,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _connectionSecurityRuntime = connectionSecurityRuntime;
         _runtimeRecoveryWriter = runtimeRecoveryWriter;
         _sessionRestoreCoordinator = sessionRestoreCoordinator;
+        _terminalMultiplexerCoordinator = terminalMultiplexerCoordinator;
+        if (_terminalMultiplexerCoordinator is not null)
+        {
+            _terminalMultiplexerCoordinator.LeasesChanged +=
+                OnTerminalMultiplexerLeasesChanged;
+        }
         _recentSessionHistory = recentSessionHistory;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _uiThreadDispatcher = uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance;
@@ -323,6 +350,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// unavailable rather than not rendering.
     /// </summary>
     public ApplicationSecurityEditorViewModel ApplicationSecurityEditor { get; }
+
+    public ObservableCollection<ManagedRemoteSessionViewModel> ManagedRemoteSessions { get; } = [];
 
     public OnboardingViewModel? Onboarding { get; }
 
@@ -1455,6 +1484,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _sessionRestoreCoordinator is null
         || (_sessionRestorePreferenceLoaded && !_sessionRestorePreferenceSaving);
 
+    public bool UseTerminalMultiplexingForSshTerminals =>
+        _terminalMultiplexingMode == TerminalMultiplexingMode.Automatic;
+
+    public bool CanChangeTerminalMultiplexing =>
+        _terminalMultiplexerCoordinator is null
+        || (_terminalMultiplexingPreferenceLoaded && !_terminalMultiplexingPreferenceSaving);
+
+    public bool HasManagedRemoteSessions => ManagedRemoteSessions.Count > 0;
+
     public bool IsKeybindingSettingsVisible => SettingsPage == SettingsPage.Keybindings;
 
     public bool IsFilesSettingsVisible => SettingsPage == SettingsPage.Files;
@@ -2219,10 +2257,34 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ApplyError(saved.Error);
         if (saved.IsSuccess)
         {
+            ApplyTerminalMultiplexingOverrideToOpenWorkspaces(request.Definition);
             DismissWorkspaceEditor();
         }
 
         return saved;
+    }
+
+    private void ApplyTerminalMultiplexingOverrideToOpenWorkspaces(
+        WorkspaceDefinition definition)
+    {
+        foreach (var runtime in _openWorkspaces)
+        {
+            if (!_runtimeSources.TryGetValue(runtime.Id, out var source)
+                || source.SourceDefinition != definition.Key)
+            {
+                continue;
+            }
+
+            runtime.TerminalMultiplexingMode = definition.TerminalMultiplexingOverride;
+            if (definition.TerminalMultiplexingOverride is { } mode)
+            {
+                _workspaceTerminalMultiplexingModes[runtime.Id] = mode;
+            }
+            else
+            {
+                _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
+            }
+        }
     }
 
     public void BeginEditScreen(ScreenId id)
@@ -2350,7 +2412,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             RuntimeAgentPolicyProvenance.Default.WithOverride(
                 workspace.AgentPolicyOverride,
                 workspace.Key,
-                storedWorkspace.Revision));
+                storedWorkspace.Revision),
+            workspace.TerminalMultiplexingOverride);
+        if (runtime.TerminalMultiplexingMode is { } workspaceMultiplexingOverride)
+        {
+            _workspaceTerminalMultiplexingModes[runtime.Id] = workspaceMultiplexingOverride;
+        }
         try
         {
             foreach (var entry in workspace.Entries)
@@ -3004,6 +3071,161 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    public async Task<bool> LoadTerminalMultiplexingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_terminalMultiplexerCoordinator is null)
+        {
+            _terminalMultiplexingPreferenceLoaded = true;
+            return true;
+        }
+
+        var preference = await _terminalMultiplexerCoordinator.ReadPreferenceAsync(cancellationToken);
+        var leases = await _terminalMultiplexerCoordinator.ListAsync(cancellationToken);
+        if (!preference.IsSuccess || !leases.IsSuccess)
+        {
+            SetError("Terminal continuity settings could not be loaded.");
+            return false;
+        }
+
+        _terminalMultiplexingMode = preference.Value;
+        _terminalMultiplexingPreferenceLoaded = true;
+        OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
+        OnPropertyChanged(nameof(CanChangeTerminalMultiplexing));
+        RefreshManagedRemoteSessions(leases.Value!);
+        return true;
+    }
+
+    public async Task<bool> SetUseTerminalMultiplexingForSshTerminalsAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var mode = enabled
+            ? TerminalMultiplexingMode.Automatic
+            : TerminalMultiplexingMode.Disabled;
+        if (_terminalMultiplexerCoordinator is null)
+        {
+            _terminalMultiplexingMode = mode;
+            OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
+            return true;
+        }
+
+        if (!_terminalMultiplexingPreferenceLoaded || _terminalMultiplexingPreferenceSaving)
+        {
+            return false;
+        }
+
+        _terminalMultiplexingPreferenceSaving = true;
+        OnPropertyChanged(nameof(CanChangeTerminalMultiplexing));
+        try
+        {
+            var result = await _terminalMultiplexerCoordinator.WritePreferenceAsync(
+                mode,
+                cancellationToken);
+            if (!result.IsSuccess)
+            {
+                SetError("Terminal continuity settings could not be saved.");
+                OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
+                return false;
+            }
+
+            _terminalMultiplexingMode = mode;
+            OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
+            return true;
+        }
+        finally
+        {
+            _terminalMultiplexingPreferenceSaving = false;
+            OnPropertyChanged(nameof(CanChangeTerminalMultiplexing));
+        }
+    }
+
+    public async Task TerminateManagedRemoteSessionAsync(
+        ManagedRemoteSessionViewModel item,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (_terminalMultiplexerCoordinator is null
+            || FindConnection(item.Lease.ConnectionId) is not { } connection)
+        {
+            SetError("The connection for this managed remote session is unavailable.");
+            return;
+        }
+
+        var result = await _terminalMultiplexerCoordinator.TerminateAsync(
+            connection,
+            item.Lease.Session,
+            cancellationToken);
+        if (!result.Terminated)
+        {
+            SetError(result.Detail);
+        }
+
+        await RefreshManagedRemoteSessionsAsync(cancellationToken);
+    }
+
+    public async Task ForgetManagedRemoteSessionAsync(
+        ManagedRemoteSessionViewModel item,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (_terminalMultiplexerCoordinator is null)
+        {
+            return;
+        }
+
+        _ = await _terminalMultiplexerCoordinator.ForgetAsync(item.Lease, cancellationToken);
+        await RefreshManagedRemoteSessionsAsync(cancellationToken);
+    }
+
+    private async Task RefreshManagedRemoteSessionsAsync(CancellationToken cancellationToken)
+    {
+        if (_terminalMultiplexerCoordinator is null)
+        {
+            return;
+        }
+
+        var result = await _terminalMultiplexerCoordinator.ListAsync(cancellationToken);
+        if (result.IsSuccess)
+        {
+            RefreshManagedRemoteSessions(result.Value!);
+        }
+    }
+
+    private void RefreshManagedRemoteSessions(
+        IReadOnlyList<TerminalMultiplexerLease> leases)
+    {
+        ManagedRemoteSessions.Clear();
+        foreach (var lease in leases)
+        {
+            ManagedRemoteSessions.Add(new ManagedRemoteSessionViewModel(
+                lease,
+                FindConnection(lease.ConnectionId)?.Name ?? lease.ConnectionId.Value));
+        }
+
+        OnPropertyChanged(nameof(HasManagedRemoteSessions));
+    }
+
+    private async void OnTerminalMultiplexerLeasesChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (_terminalMultiplexerCoordinator is null || _disposed)
+        {
+            return;
+        }
+
+        var result = await _terminalMultiplexerCoordinator.ListAsync(CancellationToken.None);
+        if (!result.IsSuccess || _disposed)
+        {
+            return;
+        }
+
+        await _uiThreadDispatcher.InvokeAsync(
+            () => RefreshManagedRemoteSessions(result.Value!),
+            CancellationToken.None);
+    }
+
     /// <summary>
     /// Opens Main on its launcher when the window has come up with nothing in it.
     ///
@@ -3043,6 +3265,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public async Task<bool> RestoreSessionOnStartupAsync(
         CancellationToken cancellationToken = default)
     {
+        _ = await LoadTerminalMultiplexingAsync(cancellationToken);
         if (_sessionRestoreCoordinator is null)
         {
             Console.Error.WriteLine(
@@ -4288,7 +4511,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 current.Icon,
                 current.AutoSave,
                 current.Color,
-                current.AgentPanelPinned);
+                current.AgentPanelPinned,
+                current.TerminalMultiplexingOverride);
             var saved = await _catalog.SaveWorkspaceAsync(updated, revision, cancellationToken);
             ApplyError(saved.Error);
             if (saved.IsSuccess)
@@ -4410,11 +4634,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CloseDecision decision,
         CancellationToken cancellationToken)
     {
+        var multiplexed = OpenTerminalPanels().Where(panel => panel.Id == panelId).ToArray();
         var result = await SessionClient.CloseAsync(
             CloseScopeRequest.Panel(panelId, decision),
             NewContext(),
             cancellationToken);
         RecordRecentSessionCompletions(result);
+        if (result is HostResult<CloseScopeResult>.Success
+            { Value: CloseScopeResult.Completed })
+        {
+            await TerminateMultiplexersAsync(multiplexed, cancellationToken);
+        }
         return result;
     }
 
@@ -4423,11 +4653,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CloseDecision decision,
         CancellationToken cancellationToken)
     {
+        var multiplexed = _openWorkspaces
+            .SelectMany(workspace => workspace.Tabs)
+            .Where(tab => tab.Id == tabId)
+            .SelectMany(tab => tab.Panels)
+            .OfType<TerminalRuntimePanelViewModel>()
+            .ToArray();
         var result = await SessionClient.CloseAsync(
             CloseScopeRequest.Tab(tabId, decision),
             NewContext(),
             cancellationToken);
         RecordRecentSessionCompletions(result);
+        if (result is HostResult<CloseScopeResult>.Success
+            { Value: CloseScopeResult.Completed })
+        {
+            await TerminateMultiplexersAsync(multiplexed, cancellationToken);
+        }
         return result;
     }
 
@@ -4443,12 +4684,66 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CloseDecision decision,
         CancellationToken cancellationToken)
     {
+        var multiplexed = _openWorkspaces
+            .Where(workspace => workspace.Id == workspaceId)
+            .SelectMany(workspace => workspace.Tabs)
+            .SelectMany(tab => tab.Panels)
+            .OfType<TerminalRuntimePanelViewModel>()
+            .ToArray();
         var result = await SessionClient.CloseAsync(
             CloseScopeRequest.Workspace(workspaceId, decision),
             NewContext(),
             cancellationToken);
         RecordRecentSessionCompletions(result);
+        if (result is HostResult<CloseScopeResult>.Success
+            { Value: CloseScopeResult.Completed })
+        {
+            await TerminateMultiplexersAsync(multiplexed, cancellationToken);
+        }
         return result;
+    }
+
+    public async Task CloseDetachedMultiplexedTerminalAsync(
+        TerminalRuntimePanelViewModel panel,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        await TerminateMultiplexersAsync([panel], cancellationToken);
+    }
+
+    private IEnumerable<TerminalRuntimePanelViewModel> OpenTerminalPanels() =>
+        _openWorkspaces
+            .SelectMany(workspace => workspace.Tabs)
+            .SelectMany(tab => tab.Panels)
+            .OfType<TerminalRuntimePanelViewModel>();
+
+    private async Task TerminateMultiplexersAsync(
+        IEnumerable<TerminalRuntimePanelViewModel> panels,
+        CancellationToken cancellationToken)
+    {
+        if (_terminalMultiplexerCoordinator is null)
+        {
+            return;
+        }
+
+        foreach (var panel in panels)
+        {
+            if (panel.MultiplexerSession is not { IsEstablished: true } session)
+            {
+                continue;
+            }
+
+            var result = await _terminalMultiplexerCoordinator.TerminateAsync(
+                panel.Connection,
+                session,
+                cancellationToken);
+            if (!result.Terminated)
+            {
+                SetError(result.Detail);
+            }
+        }
+
+        await RefreshManagedRemoteSessionsAsync(CancellationToken.None);
     }
 
     public async ValueTask<HostResult<CloseScopeResult>> CloseWindowAsync(
@@ -6877,7 +7172,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (panel is FileRuntimePanelViewModel
             or BrowserRuntimePanelViewModel
-            or DatabaseRuntimePanelViewModel)
+            or DatabaseRuntimePanelViewModel
+            or TerminalRuntimePanelViewModel)
         {
             panel.PropertyChanged += OnRecoveryRelevantPanelPropertyChanged;
         }
@@ -6903,7 +7199,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void StopTrackingRecovery(RuntimePanelViewModel panel)
     {
-        if (panel is FileRuntimePanelViewModel or BrowserRuntimePanelViewModel)
+        if (panel is FileRuntimePanelViewModel
+            or BrowserRuntimePanelViewModel
+            or DatabaseRuntimePanelViewModel
+            or TerminalRuntimePanelViewModel)
         {
             panel.PropertyChanged -= OnRecoveryRelevantPanelPropertyChanged;
         }
@@ -6925,6 +7224,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             DatabaseRuntimePanelViewModel => eventArgs.PropertyName is
                 nameof(DatabaseRuntimePanelViewModel.RecoveryTarget)
                 or nameof(DatabaseRuntimePanelViewModel.TunnelConnectionId),
+            TerminalRuntimePanelViewModel => eventArgs.PropertyName is
+                nameof(TerminalRuntimePanelViewModel.MultiplexerSession),
             _ => false,
         } is false)
         {
@@ -7267,7 +7568,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             storedDefinition.Icon,
             autoSave: true,
             storedDefinition.Color,
-            storedDefinition.AgentPanelPinned);
+            storedDefinition.AgentPanelPinned,
+            storedDefinition.TerminalMultiplexingOverride);
         var unchanged = DefinitionPayloadEquals(definition, storedDefinition)
             && layouts.All(item =>
                 storedLayouts.TryGetValue(item.Definition.Id.Value, out var existing)
@@ -8009,6 +8311,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var wasActive = ReferenceEquals(RuntimeWorkspace, runtime);
         _openWorkspaces.Remove(runtime);
         _runtimeSources.Remove(runtime.Id);
+        _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
         Notifications.Forget(runtime);
         if (wasActive)
         {
@@ -8040,6 +8343,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (!ReferenceEquals(RuntimeWorkspace, runtime))
         {
+            _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
             runtime.DisposePanels();
         }
     }
@@ -11041,7 +11345,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             recovered.Accent,
             Connections.Where(item => connectionIds.Contains(item.Id)).ToArray(),
             recovered.AgentPolicy?.ToProvenance()
-                ?? RuntimeAgentPolicyProvenance.LegacyFallback);
+                ?? RuntimeAgentPolicyProvenance.LegacyFallback,
+            ResolveRecoveredTerminalMultiplexingOverride(recovered));
+        if (runtime.TerminalMultiplexingMode is { } recoveredMultiplexingOverride)
+        {
+            _workspaceTerminalMultiplexingModes[runtime.Id] = recoveredMultiplexingOverride;
+        }
         try
         {
             var restoredTabs = new Dictionary<string, RuntimeTabViewModel>(StringComparer.Ordinal);
@@ -11062,6 +11371,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             runtime.DisposePanels();
             throw;
         }
+    }
+
+    private TerminalMultiplexingMode? ResolveRecoveredTerminalMultiplexingOverride(
+        RuntimeWorkspaceRecoveryPayload recovered)
+    {
+        if (recovered.HistorySource is not
+            { SourceKind: var kind, SourceValue: var value }
+            || kind != WorkspaceDefinition.Kind.Value)
+        {
+            return recovered.TerminalMultiplexingMode;
+        }
+
+        return _catalog.Snapshot.Workspaces
+            .Select(item => item.Value)
+            .FirstOrDefault(workspace => workspace.Id.Value == value)
+            ?.TerminalMultiplexingOverride;
     }
 
     private RuntimeTabViewModel RestoreTab(
@@ -11158,7 +11483,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     tabId,
                     connection,
                     recovered.Title,
-                    new PanelStartupBehavior(recovered.StartupLocation));
+                    new PanelStartupBehavior(recovered.StartupLocation),
+                    multiplexerSession: recovered.Multiplexer?.ToSession());
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.FileViewer)
@@ -11551,13 +11877,31 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PanelStartupBehavior startup,
         PanelInstanceId? panelId = null,
         PanelInstanceId? ownerPanelId = null,
-        PanelSessionRole sessionRole = PanelSessionRole.Primary)
+        PanelSessionRole sessionRole = PanelSessionRole.Primary,
+        TerminalMultiplexerSession? multiplexerSession = null)
     {
         var resolvedPanelId = panelId ?? PanelInstanceId.New();
         var terminalProfile = ActiveTerminalProfile;
         var terminalKeymap = terminalProfile is null
             ? null
             : ResolveTerminalKeymap(_catalog.Snapshot, terminalProfile.KeymapId);
+        var mode = _workspaceTerminalMultiplexingModes.TryGetValue(workspaceId, out var workspaceMode)
+            ? workspaceMode
+            : _terminalMultiplexingMode;
+        var usesContinuity = mode == TerminalMultiplexingMode.Automatic
+            && connection.ConnectionKind == ConnectionKind.Ssh;
+        if (!usesContinuity)
+        {
+            // Recovery metadata describes the previous launch, while the
+            // current workspace policy decides the next one. Keeping the old
+            // identity here silently re-enabled continuity in disabled workspaces.
+            multiplexerSession = null;
+        }
+        else if (multiplexerSession is null)
+        {
+            multiplexerSession = TerminalMultiplexerSession.CreateAutomatic();
+        }
+
         return new TerminalRuntimePanelViewModel(
             resolvedPanelId,
             title,
@@ -11580,7 +11924,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             keymap: terminalKeymap is null
                 ? null
                 : TerminalKeymapSnapshot.FromProfile(terminalKeymap),
-            sessionRole: sessionRole);
+            sessionRole: sessionRole,
+            multiplexerCoordinator: _terminalMultiplexerCoordinator,
+            multiplexerSession: multiplexerSession);
     }
 
     private static KeymapProfile? ResolveTerminalKeymap(
@@ -12980,6 +13326,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             _runtimeRecoveryWriter.WriteFailed -= OnRuntimeRecoveryWriteFailed;
         }
+        if (_terminalMultiplexerCoordinator is not null)
+        {
+            _terminalMultiplexerCoordinator.LeasesChanged -=
+                OnTerminalMultiplexerLeasesChanged;
+        }
 
         lock (_historyGate)
         {
@@ -13025,6 +13376,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (_runtimeRecoveryWriter is not null)
         {
             _runtimeRecoveryWriter.WriteFailed -= OnRuntimeRecoveryWriteFailed;
+        }
+        if (_terminalMultiplexerCoordinator is not null)
+        {
+            _terminalMultiplexerCoordinator.LeasesChanged -=
+                OnTerminalMultiplexerLeasesChanged;
         }
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);

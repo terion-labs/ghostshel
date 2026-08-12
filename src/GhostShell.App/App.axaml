@@ -161,6 +161,7 @@
         back to zero.
       -->
       <SolidColorBrush x:Key="ShellWindowBackdropBrush" Color="#E0111111" />
+      <SolidColorBrush x:Key="ShellContinuityGlyphBrush" Color="#FFFFFF" />
 
       <!--
         The band across the top of the window is Avalonia's own drawn title

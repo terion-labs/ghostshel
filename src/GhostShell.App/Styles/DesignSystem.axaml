@@ -229,22 +229,22 @@
                     <controls:PanelDockHandle
                         Grid.Column="0"
                         Grid.ColumnSpan="{TemplateBinding TitleColumnSpan}">
-                      <StackPanel
+                      <controls:PanelTitleLine
                           VerticalAlignment="Center"
-                          Orientation="Horizontal"
                           Spacing="{DynamicResource ShellSpaceSm}">
                         <TextBlock
-                            VerticalAlignment="Center"
                             FontSize="{DynamicResource ShellFontSize11}"
                             FontWeight="SemiBold"
                             Text="{TemplateBinding Title}"
                             TextTrimming="CharacterEllipsis" />
+                        <ContentPresenter
+                            Content="{TemplateBinding TitleAdornment}"
+                            IsVisible="{TemplateBinding IsTitleAdornmentVisible}" />
                         <TextBlock
-                            VerticalAlignment="Center"
                             Classes="Eyebrow Accent"
                             IsVisible="{TemplateBinding IsZoomed}"
                             Text="Zoomed" />
-                      </StackPanel>
+                      </controls:PanelTitleLine>
                     </controls:PanelDockHandle>
                     <ContentPresenter
                         Grid.Column="1"

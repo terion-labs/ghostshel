@@ -37,6 +37,19 @@ public sealed class ConnectionRuntime : IConnectionRuntime
                 ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.AdapterUnavailable)));
     }
 
+    public ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+        ConnectionProfile profile,
+        TerminalMultiplexerSession? multiplexerSession,
+        IProgress<ConnectionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        return _adapters.TryGetValue(profile.ConnectionKind, out var adapter)
+            ? adapter.PlanOpenAsync(profile, multiplexerSession, progress, cancellationToken)
+            : ValueTask.FromResult(ConnectionRuntimeResult<ConnectionOpenPlan>.Fail(
+                ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.AdapterUnavailable)));
+    }
+
     public ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(
         ConnectionProfile profile,
         IProgress<ConnectionProgress>? progress,

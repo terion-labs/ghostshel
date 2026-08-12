@@ -392,6 +392,32 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task MultiplexedRunningCommandDoesNotRequireBusyConfirmation()
+    {
+        var harness = await CreateAsync(new TerminalLaunchRequest(
+            Environment.CurrentDirectory,
+            multiplexerSession: new TerminalMultiplexerSession(
+                TerminalMultiplexingMode.Automatic,
+                "ghostshell-1234abcd",
+                isEstablished: true)));
+        await using var session = harness.Session;
+        await harness.Pty.WriteOutputAsync(
+            "\u001b]133;A\u0007$ \u001b]133;B\u0007top\u001b]133;C\u0007");
+        _ = await WaitForScreenAsync(
+            session,
+            current => current.ShellIntegrationEvents.Count == 3);
+
+        var snapshot = await session.SnapshotAsync(default);
+
+        Assert.False(snapshot.HasActiveWork);
+        Assert.Equal("protected by remote multiplexer", snapshot.StatusDetail);
+        Assert.Equal(
+            PanelCloseOutcome.GracefullyClosed,
+            await session.CloseAsync(PanelCloseMode.Graceful, default));
+        Assert.Equal(0, harness.Pty.KillCount);
+    }
+
+    [Fact]
     public async Task DockerExecShellAtContainerPromptClosesWithoutFalseWorkingWarning()
     {
         var harness = await CreateAsync(new TerminalLaunchRequest(

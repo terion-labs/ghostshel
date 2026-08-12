@@ -197,6 +197,30 @@ public sealed class ManagedTerminalSurfaceTests
     }
 
     [Fact]
+    public async Task CopyFailureExplainsMouseSelectionWithoutMisreportingClipboardPolicy()
+    {
+        var surface = new ManagedTerminalSurface
+        {
+            InputSink = new RecordingInputSink(),
+            Clipboard = new RecordingClipboard(),
+            Profile = Profile(),
+            Keymap = TerminalKeymapSnapshot.FromProfile(Keymap(
+                Binding(BuiltInCommands.Copy, "C", CoreKeyModifiers.Meta))),
+        };
+        surface.UpdateSnapshot(Snapshot(mouseTracking: true, columns: 80, rows: 24));
+
+        var result = await surface.DispatchKeymapShortcutAsync(
+            Key.C,
+            AvaloniaKeyModifiers.Meta);
+
+        Assert.Equal(TerminalCommandDispatchResult.Outcome.Unavailable, result.Status);
+        Assert.Equal(
+            "No terminal text is selected. Hold Shift while dragging when the running app handles the mouse.",
+            result.Message);
+        Assert.DoesNotContain("policy", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CanonicalTerminalEditingCommandsSendSemanticControlSequences()
     {
         var sink = new RecordingInputSink();

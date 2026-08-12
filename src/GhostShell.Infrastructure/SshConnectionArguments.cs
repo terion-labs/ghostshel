@@ -1,4 +1,5 @@
 using System.Globalization;
+using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.Infrastructure;
@@ -11,7 +12,8 @@ internal static class SshConnectionArguments
     public static IReadOnlyList<string> Open(
         ConnectionProfile profile,
         ConnectionEndpoint.Ssh endpoint,
-        SshKnownHostBinding? knownHostBinding = null)
+        SshKnownHostBinding? knownHostBinding = null,
+        TerminalMultiplexerSession? multiplexerSession = null)
     {
         var arguments = Common(profile, endpoint, knownHostBinding);
         foreach (var variable in profile.Startup.Environment)
@@ -21,7 +23,11 @@ internal static class SshConnectionArguments
 
         arguments.Add("-tt");
         AddDestination(arguments, endpoint);
-        if (profile.Startup.Directory is { } directory)
+        if (multiplexerSession is not null)
+        {
+            arguments.Add(BuildMultiplexerCommand(profile.Startup.Directory, multiplexerSession));
+        }
+        else if (profile.Startup.Directory is { } directory)
         {
             arguments.Add(BuildRemoteLoginCommand(directory));
         }
@@ -195,6 +201,76 @@ internal static class SshConnectionArguments
             ? $"./{directory}"
             : directory;
         return $"exec /bin/sh -c {QuotePosixShellWord(script)} ghostshell-startup {QuotePosixShellWord(directoryArgument)}";
+    }
+
+    private static string BuildMultiplexerCommand(
+        string? directory,
+        TerminalMultiplexerSession session)
+    {
+        if (session.Mode != TerminalMultiplexingMode.Automatic)
+        {
+            throw new ArgumentOutOfRangeException(nameof(session), session.Mode, null);
+        }
+
+        // An established identity may belong to Screen from an older GhostSHELL
+        // build. Resume the backend that owns it; only a new identity may choose
+        // tmux first and fall back to Screen when tmux is unavailable.
+        var multiplexerScript = session.IsEstablished
+            ? EstablishedMultiplexerScript()
+            : NewMultiplexerScript(directory is not null);
+        var sessionName = QuotePosixShellWord(session.SessionName);
+        if (directory is null)
+        {
+            return $"exec /bin/sh -c {QuotePosixShellWord(multiplexerScript)} "
+                + $"ghostshell-multiplexer {sessionName}";
+        }
+
+        if (directory.IndexOf('\0') >= 0)
+        {
+            throw new ArgumentException(
+                "An SSH startup directory cannot contain a null character.",
+                nameof(directory));
+        }
+
+        var directoryArgument = directory.StartsWith("-", StringComparison.Ordinal)
+            ? $"./{directory}"
+            : directory;
+        return $"exec /bin/sh -c {QuotePosixShellWord(multiplexerScript)} ghostshell-multiplexer "
+            + $"{sessionName} {QuotePosixShellWord(directoryArgument)}";
+    }
+
+    private static string EstablishedMultiplexerScript() =>
+        "if command -v tmux >/dev/null 2>&1 "
+        + "&& tmux -L ghostshell has-session -t \"$1\" 2>/dev/null; then "
+        + "tmux -L ghostshell set-option -t \"$1\" status off >/dev/null 2>&1; "
+        + "tmux -L ghostshell set-option -t \"$1\" mouse on >/dev/null 2>&1; "
+        + "exec tmux -L ghostshell -u -2 attach-session -d -t \"$1\"; fi; "
+        + "if command -v screen >/dev/null 2>&1; then "
+        + "exec screen -A -U -D -r \"$1\"; fi; "
+        + "printf \"%s\\n\" \"GhostSHELL could not find the managed tmux or Screen session.\" >&2; "
+        + "exit 1";
+
+    private static string NewMultiplexerScript(bool hasDirectory)
+    {
+        var tmuxDirectory = hasDirectory ? " -c \"$2\"" : string.Empty;
+        var screenDirectory = hasDirectory ? "cd \"$2\" || exit $?; " : string.Empty;
+        return "if command -v tmux >/dev/null 2>&1; then "
+            + "if tmux -L ghostshell has-session -t \"$1\" 2>/dev/null; then "
+            + "tmux -L ghostshell set-option -t \"$1\" status off >/dev/null 2>&1; "
+            + "tmux -L ghostshell set-option -t \"$1\" mouse on >/dev/null 2>&1; "
+            + "exec tmux -L ghostshell -u -2 attach-session -d -t \"$1\"; fi; "
+            + "tmux -L ghostshell -u -2 start-server \\; "
+            + "set-option -s default-terminal tmux-256color \\; "
+            + "set-option -s terminal-features \"xterm*:RGB\" \\; "
+            + $"new-session -d -s \"$1\"{tmuxDirectory} \\; "
+            + "set-option -t \"$1\" status off || exit $?; "
+            + "tmux -L ghostshell set-option -t \"$1\" mouse on >/dev/null 2>&1; "
+            + "exec tmux -L ghostshell -u -2 attach-session -d -t \"$1\"; fi; "
+            + "if command -v screen >/dev/null 2>&1; then "
+            + screenDirectory
+            + "exec screen -A -U -D -RR -S \"$1\"; fi; "
+            + "printf \"%s\\n\" \"GhostSHELL terminal continuity requires tmux or GNU Screen.\" >&2; "
+            + "exit 127";
     }
 
     private static string QuotePosixShellWord(string value) =>

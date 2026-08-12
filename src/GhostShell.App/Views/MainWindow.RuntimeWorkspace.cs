@@ -2174,7 +2174,8 @@ public sealed partial class MainWindow
 
         if (tab.Panels.All(panel => panel is FileRuntimePanelViewModel { HostedClient: null }
                 or UnavailableRuntimePanelViewModel
-                or TerminalRuntimePanelViewModel { SessionRequest: null }
+                or TerminalRuntimePanelViewModel
+                    { SessionRequest: null, MultiplexerSession: null }
                 or StatisticsRuntimePanelViewModel { HasHostedSession: false }
                 or ProcessMonitorRuntimePanelViewModel { HasHostedSession: false })
             || await RunCloseFlowAsync(
@@ -2318,7 +2319,11 @@ public sealed partial class MainWindow
         {
             UnavailableRuntimePanelViewModel => Task.FromResult(true),
             FileRuntimePanelViewModel { HostedClient: null } => Task.FromResult(true),
-            TerminalRuntimePanelViewModel { SessionRequest: null } => Task.FromResult(true),
+            TerminalRuntimePanelViewModel
+                { SessionRequest: null, MultiplexerSession: null } => Task.FromResult(true),
+            TerminalRuntimePanelViewModel
+                { SessionRequest: null, MultiplexerSession: not null } terminal =>
+                CloseDetachedMultiplexedTerminalAsync(terminal),
             StatisticsRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
             ProcessMonitorRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
             FileRuntimePanelViewModel filePanel => RunCloseFlowAsync((decision, token) =>
@@ -2326,6 +2331,13 @@ public sealed partial class MainWindow
             _ => RunCloseFlowAsync((decision, token) =>
                 ViewModel.ClosePanelAsync(panel.Id, decision, token)),
         });
+    }
+
+    private async Task<bool> CloseDetachedMultiplexedTerminalAsync(
+        TerminalRuntimePanelViewModel terminal)
+    {
+        await ViewModel.CloseDetachedMultiplexedTerminalAsync(terminal, _lifetime.Token);
+        return true;
     }
 
     private async Task CloseActiveTabAsync()

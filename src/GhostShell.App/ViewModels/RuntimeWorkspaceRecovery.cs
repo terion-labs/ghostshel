@@ -9,9 +9,9 @@ namespace GhostShell.App.ViewModels;
 internal static class RuntimeWorkspaceRecoveryCodec
 {
     public const string SnapshotKey = "desktop.main-window";
-    public const int SchemaVersion = 4;
+    public const int SchemaVersion = 6;
 
-    private const int OldestSupportedSchemaVersion = SchemaVersion;
+    private const int OldestSupportedSchemaVersion = 4;
 
     private const int MaximumTabs = 128;
     private const int MaximumPanelsPerTab = 128;
@@ -87,7 +87,20 @@ internal static class RuntimeWorkspaceRecoveryCodec
             return false;
         }
 
-        if (snapshot.SchemaVersion == 4
+        // Schema 5 accidentally persisted the effective global value as if it
+        // were a workspace override. Keeping it would pin an inherited
+        // workspace to whatever the global preference happened to be when the
+        // snapshot was written. The durable workspace definition is consulted
+        // during restore, so discarding this ambiguous value is lossless there.
+        if (snapshot.SchemaVersion == 5 && payload?.Workspace is { } versionFiveWorkspace)
+        {
+            payload = payload with
+            {
+                Workspace = versionFiveWorkspace with { TerminalMultiplexingMode = null },
+            };
+        }
+
+        if (snapshot.SchemaVersion >= 4
             && payload?.Workspace is { } currentWorkspace
             && (currentWorkspace.AgentPolicy is null
                 || currentWorkspace.Tabs is null
@@ -128,7 +141,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
             workspace.Tabs.Select(CaptureTab).ToArray(),
             historySource is null
                 ? null
-                : RuntimeHistorySourceRecoveryPayload.Capture(historySource));
+                : RuntimeHistorySourceRecoveryPayload.Capture(historySource),
+            workspace.TerminalMultiplexingMode);
 
     private static RuntimeTabRecoveryPayload CaptureTab(RuntimeTabViewModel tab) =>
         new(
@@ -194,7 +208,13 @@ internal static class RuntimeWorkspaceRecoveryCodec
             panel.LayoutColumnSpan,
             panel.LayoutRowSpan,
             panel.LayoutMinimumWidth,
-            panel.LayoutMinimumHeight);
+            panel.LayoutMinimumHeight,
+            terminal?.MultiplexerSession is { } multiplexer
+                ? new RuntimeTerminalMultiplexerRecoveryPayload(
+                    multiplexer.Mode,
+                    multiplexer.SessionName,
+                    multiplexer.IsEstablished)
+                : null);
     }
 
     private static bool TryValidate(
@@ -215,6 +235,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
             || workspace.ConnectionIds.Any(id => !IsIdentifier(id))
             || workspace.ConnectionIds.Distinct(StringComparer.Ordinal).Count()
                 != workspace.ConnectionIds.Length
+            || workspace.TerminalMultiplexingMode is { } terminalMultiplexingMode
+                && !Enum.IsDefined(terminalMultiplexingMode)
             || workspace.AgentPolicy is { } workspacePolicy
                 && (!workspacePolicy.TryValidate()
                     || workspacePolicy.Sources.Any(source =>
@@ -363,15 +385,21 @@ internal static class RuntimeWorkspaceRecoveryCodec
             RuntimePanelRecoveryKind.Terminal =>
                 IsIdentifier(panel.ConnectionId)
                 && IsOptionalText(panel.StartupLocation, 4_096)
-                && panel.FileLocation is null,
+                && panel.FileLocation is null
+                && (panel.Multiplexer is null
+                    || panel.Multiplexer.Mode == TerminalMultiplexingMode.Automatic
+                    && TerminalMultiplexerSession.IsValidSessionName(
+                        panel.Multiplexer.SessionName)),
             RuntimePanelRecoveryKind.FileViewer =>
-                IsOptionalIdentifier(panel.FileProviderProfileId)
+                panel.Multiplexer is null
+                && IsOptionalIdentifier(panel.FileProviderProfileId)
                 && IsOptionalIdentifier(panel.ConnectionId)
                 && (panel.FileLocation is null
                     || panel.FileLocation.TryValidate(panel.FileProviderProfileId, out _))
                 && IsOptionalText(panel.Filter, 1_024),
             RuntimePanelRecoveryKind.Browser =>
-                IsOptionalIdentifier(panel.ConnectionId)
+                panel.Multiplexer is null
+                && IsOptionalIdentifier(panel.ConnectionId)
                 && panel.StartupLocation is { } browserAddress
                 && BrowserAddress.TryParse(browserAddress, out _)
                 && panel.FileProviderProfileId is null
@@ -379,11 +407,13 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && !panel.ShowHidden
                 && panel.Filter is null,
             RuntimePanelRecoveryKind.Unavailable =>
-                IsDisplayText(panel.KindLabel, 128)
+                panel.Multiplexer is null
+                && IsDisplayText(panel.KindLabel, 128)
                 && panel.ConnectionId is null
                 && panel.FileLocation is null,
             RuntimePanelRecoveryKind.Placeholder =>
-                panel.KindLabel is null
+                panel.Multiplexer is null
+                && panel.KindLabel is null
                 && panel.ConnectionId is null
                 && panel.StartupLocation is null
                 && panel.FileProviderProfileId is null
@@ -391,7 +421,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && !panel.ShowHidden
                 && panel.Filter is null,
             RuntimePanelRecoveryKind.Statistics or RuntimePanelRecoveryKind.ProcessMonitor =>
-                panel.KindLabel is null
+                panel.Multiplexer is null
+                && panel.KindLabel is null
                 && IsOptionalIdentifier(panel.ConnectionId)
                 && panel.StartupLocation is null
                 && panel.FileProviderProfileId is null
@@ -399,7 +430,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && !panel.ShowHidden
                 && panel.Filter is null,
             RuntimePanelRecoveryKind.DatabaseViewer =>
-                panel.KindLabel is null
+                panel.Multiplexer is null
+                && panel.KindLabel is null
                 && IsOptionalIdentifier(panel.ConnectionId)
                 && IsOptionalText(panel.StartupLocation, 4_096)
                 && panel.FileProviderProfileId is null
@@ -407,7 +439,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && !panel.ShowHidden
                 && panel.Filter is null,
             RuntimePanelRecoveryKind.Docker =>
-                panel.KindLabel is null
+                panel.Multiplexer is null
+                && panel.KindLabel is null
                 && IsIdentifier(panel.ConnectionId)
                 && panel.StartupLocation is null
                 && panel.FileProviderProfileId is null
@@ -472,7 +505,10 @@ internal sealed record RuntimeWorkspaceRecoveryPayload(
     string[] ConnectionIds,
     RuntimeAgentPolicyRecoveryPayload? AgentPolicy,
     RuntimeTabRecoveryPayload[] Tabs,
-    RuntimeHistorySourceRecoveryPayload? HistorySource = null);
+    RuntimeHistorySourceRecoveryPayload? HistorySource = null,
+    // Despite the historical property name, this stores only a concrete
+    // workspace override. Null follows the current application preference.
+    TerminalMultiplexingMode? TerminalMultiplexingMode = null);
 
 internal sealed record RuntimeTabRecoveryPayload(
     string Key,
@@ -653,7 +689,17 @@ internal sealed record RuntimePanelRecoveryPayload(
     int ColumnSpan,
     int RowSpan,
     double MinimumWidth,
-    double MinimumHeight);
+    double MinimumHeight,
+    RuntimeTerminalMultiplexerRecoveryPayload? Multiplexer = null);
+
+internal sealed record RuntimeTerminalMultiplexerRecoveryPayload(
+    TerminalMultiplexingMode Mode,
+    string SessionName,
+    bool IsEstablished)
+{
+    public TerminalMultiplexerSession ToSession() =>
+        new(Mode, SessionName, IsEstablished);
+}
 
 internal enum RuntimeFileAddressRecoveryKind
 {

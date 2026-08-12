@@ -821,19 +821,22 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     private int _canvasDepth;
     private long _hostRevision;
     private long _hostSequence;
+    private TerminalMultiplexingMode? _terminalMultiplexingMode;
 
     public RuntimeWorkspaceViewModel(
         WorkspaceInstanceId id,
         string name,
         string accent,
         IReadOnlyList<LauncherConnectionViewModel> connections,
-        RuntimeAgentPolicyProvenance? agentPolicy = null)
+        RuntimeAgentPolicyProvenance? agentPolicy = null,
+        TerminalMultiplexingMode? terminalMultiplexingMode = null)
     {
         Id = id;
         Name = name;
         Accent = accent;
         Connections = new ObservableCollection<LauncherConnectionViewModel>(connections);
         AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
+        _terminalMultiplexingMode = terminalMultiplexingMode;
         // A tab in this workspace is governed by this workspace unless it
         // brought a policy of its own. Stated once, here, rather than asked of
         // each of the eight places that build a tab: recovery refuses a
@@ -907,6 +910,18 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     public ObservableCollection<LauncherConnectionViewModel> Connections { get; }
 
     public RuntimeAgentPolicyProvenance AgentPolicy { get; }
+
+    /// <summary>
+    /// Null follows the current application preference. A concrete value is
+    /// the workspace's durable override. Saving the workspace updates this for
+    /// terminals opened afterwards; terminals already running retain the launch
+    /// contract they started with.
+    /// </summary>
+    public TerminalMultiplexingMode? TerminalMultiplexingMode
+    {
+        get => _terminalMultiplexingMode;
+        internal set => SetProperty(ref _terminalMultiplexingMode, value);
+    }
 
     internal void AddConnections(IEnumerable<LauncherConnectionViewModel> connections)
     {
@@ -2572,6 +2587,9 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     private bool _startupCommandOutcomePinned;
     private bool _startupCommandFailureStopped;
     private bool _isCopyMode;
+    private bool _isContinuityActive;
+    private readonly TerminalMultiplexerCoordinator? _multiplexerCoordinator;
+    private TerminalMultiplexerSession? _multiplexerSession;
     private bool _disposed;
 
     public TerminalRuntimePanelViewModel(
@@ -2589,7 +2607,9 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         ConnectionReconnectPolicy? reconnectPolicy = null,
         Func<TimeSpan, CancellationToken, Task>? reconnectDelay = null,
         TerminalKeymapSnapshot? keymap = null,
-        PanelSessionRole sessionRole = PanelSessionRole.Primary)
+        PanelSessionRole sessionRole = PanelSessionRole.Primary,
+        TerminalMultiplexerCoordinator? multiplexerCoordinator = null,
+        TerminalMultiplexerSession? multiplexerSession = null)
         : base(
             id,
             PanelKind.Terminal,
@@ -2604,6 +2624,8 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         _owner = owner;
         _renderProfile = renderProfile;
         _keymap = keymap;
+        _multiplexerCoordinator = multiplexerCoordinator;
+        _multiplexerSession = multiplexerSession;
         SessionRole = sessionRole;
         _reconnectPolicy = reconnectPolicy ?? ConnectionReconnectPolicy.InteractiveDefault;
         _reconnectDelay = reconnectDelay ?? ((delay, token) => Task.Delay(delay, token));
@@ -2659,6 +2681,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
             if (!ReferenceEquals(_sessionRequest, value))
             {
                 _sessionRequest = value;
+                IsContinuityActive = false;
                 HasObservedActiveSession = false;
                 WatchNotifications(value?.SessionId);
                 OnPropertyChanged();
@@ -2752,6 +2775,25 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     public ClientId ClientId { get; }
 
     public ConnectionId ConnectionId => _connection.Id;
+
+    public ConnectionProfile Connection => _connection;
+
+    public TerminalMultiplexerSession? MultiplexerSession
+    {
+        get => _multiplexerSession;
+        private set => SetProperty(ref _multiplexerSession, value);
+    }
+
+    /// <summary>
+    /// True only after the accepted launch carried a multiplexer identity and
+    /// that exact terminal became healthy. Planned or recovered metadata alone
+    /// is not evidence that continuity is active.
+    /// </summary>
+    public bool IsContinuityActive
+    {
+        get => _isContinuityActive;
+        private set => SetProperty(ref _isContinuityActive, value);
+    }
 
     public string ConnectionDisplayName =>
         _connection.Endpoint is ConnectionEndpoint.Local
@@ -3119,6 +3161,28 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         if (isExactActiveSession
             && snapshot.Descriptor.Health == SessionHealth.Healthy)
         {
+            if (SessionRequest.Launch.MultiplexerSession is { } launchedMultiplexer)
+            {
+                MultiplexerSession = launchedMultiplexer.IsEstablished
+                    ? launchedMultiplexer
+                    : launchedMultiplexer.MarkEstablished();
+                IsContinuityActive = true;
+                if (_multiplexerCoordinator is not null)
+                {
+                    _ = _multiplexerCoordinator.RegisterAsync(
+                        _connection,
+                        MultiplexerSession,
+                        CancellationToken.None);
+                }
+            }
+            else
+            {
+                // A runtime adapter may decline a requested launch feature.
+                // Once its direct launch is accepted, stale intent must not be
+                // persisted or presented as an established multiplexer.
+                MultiplexerSession = null;
+                IsContinuityActive = false;
+            }
             ReconnectAttempt = 0;
             NextReconnectDelay = null;
             ReconnectState = ConnectionReconnectState.Connected;
@@ -3361,6 +3425,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         {
             result = await _connectionRuntime.PlanOpenAsync(
                 _connection,
+                MultiplexerSession,
                 progress,
                 cancellationToken);
         }

@@ -189,6 +189,12 @@ public static class DesktopComposition
         services.AddSingleton<IOnboardingProgressStore, SqliteOnboardingProgressStore>();
         services.AddSingleton<ISessionRestorePreferenceStore,
             SqliteSessionRestorePreferenceStore>();
+        services.AddSingleton<SqliteTerminalMultiplexerStore>();
+        services.AddSingleton<ITerminalMultiplexingPreferenceStore>(provider =>
+            provider.GetRequiredService<SqliteTerminalMultiplexerStore>());
+        services.AddSingleton<ITerminalMultiplexerLeaseStore>(provider =>
+            provider.GetRequiredService<SqliteTerminalMultiplexerStore>());
+        services.AddSingleton<TerminalMultiplexerCoordinator>();
         services.AddSingleton<SqliteRecentSessionStore>();
         services.AddSingleton<IRecentSessionStore>(provider =>
             provider.GetRequiredService<SqliteRecentSessionStore>());

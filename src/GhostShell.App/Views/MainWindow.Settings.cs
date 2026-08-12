@@ -82,6 +82,44 @@ public sealed partial class MainWindow
             CancellationToken.None);
     }
 
+    private async void OnTerminalMultiplexingChanged(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not ToggleSwitch toggle
+            || !ViewModel.CanChangeTerminalMultiplexing)
+        {
+            return;
+        }
+
+        await ViewModel.SetUseTerminalMultiplexingForSshTerminalsAsync(
+            toggle.IsChecked == true,
+            CancellationToken.None);
+    }
+
+    private async void OnTerminateManagedRemoteSessionClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control { DataContext: ManagedRemoteSessionViewModel item })
+        {
+            await ViewModel.TerminateManagedRemoteSessionAsync(item, CancellationToken.None);
+        }
+    }
+
+    private async void OnForgetManagedRemoteSessionClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control { DataContext: ManagedRemoteSessionViewModel item })
+        {
+            await ViewModel.ForgetManagedRemoteSessionAsync(item, CancellationToken.None);
+        }
+    }
+
     private void OnKeybindingSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Keybindings);
 

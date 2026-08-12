@@ -1604,7 +1604,7 @@ public sealed class ManagedTerminalSurface : Control
                 ? TerminalCommandDispatchResult.Executed(commandId)
                 : TerminalCommandDispatchResult.Unavailable(
                     commandId,
-                    "Nothing can be copied under the current selection and clipboard policy.");
+                    CopyUnavailableMessage());
         }
         else if (commandId == BuiltInCommands.Paste)
         {
@@ -1676,6 +1676,20 @@ public sealed class ManagedTerminalSurface : Control
         }
 
         return await PublishCommandDispatchAsync(result);
+    }
+
+    private string CopyUnavailableMessage()
+    {
+        var writeAccess = Profile?.ClipboardPolicy.WriteAccess
+            ?? TerminalClipboardPolicy.Default.WriteAccess;
+        if (writeAccess == TerminalClipboardAccess.Deny)
+        {
+            return "Clipboard writes are disabled for this terminal in Settings.";
+        }
+
+        return _snapshot?.IsMouseTrackingEnabled == true
+            ? "No terminal text is selected. Hold Shift while dragging when the running app handles the mouse."
+            : "No terminal text is selected.";
     }
 
     private bool ApplyFontSize(double requestedSize)

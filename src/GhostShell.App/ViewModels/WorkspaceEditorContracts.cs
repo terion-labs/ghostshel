@@ -86,6 +86,10 @@ public sealed record WorkspaceLayoutSlotOption(
     public string DisplayName => IsAvailable ? Name : $"Missing · {Name}";
 }
 
+public sealed record WorkspaceTerminalMultiplexingOption(
+    TerminalMultiplexingMode? Mode,
+    string DisplayName);
+
 /// <summary>
 /// One choice in the workspace icon picker. <paramref name="Keywords"/> exists so
 /// the picker can be searched by purpose ("prod", "db") and not only by the

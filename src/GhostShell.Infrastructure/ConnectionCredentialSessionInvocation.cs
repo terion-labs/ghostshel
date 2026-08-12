@@ -47,7 +47,8 @@ internal sealed record ConnectionCredentialSessionInvocation(
             request.Launch.Keymap,
             request.ConnectionId,
             request.Launch.ConnectionMetadata,
-            request.Launch.InitialCommand);
+            request.Launch.InitialCommand,
+            multiplexerSession: request.Launch.MultiplexerSession);
     }
 
     public static ConnectionCredentialSessionInvocation? Parse(IReadOnlyList<string> arguments)

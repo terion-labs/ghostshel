@@ -249,6 +249,8 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
 
     internal Task ResizeForTestingAsync() => ResizeTerminalAsync();
 
+    internal Task PollForTestingAsync() => PollTerminalAsync();
+
     internal void StopForTesting() => StopSession();
 
     internal bool RequestInputFocus()
@@ -863,6 +865,11 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
     {
         _ = sender;
         _ = e;
+        await PollTerminalAsync();
+    }
+
+    private async Task PollTerminalAsync()
+    {
         if (_pollInProgress
             || SessionClient is null
             || SessionRequest is null
@@ -892,7 +899,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
                     await ReadAndApplyScreenAsync(generation, lifetime.Token);
                 }
 
-                var snapshot = RequireSuccess(await SessionClient.GetSnapshotAsync(
+                var snapshot = RequirePollingSuccess(await SessionClient.GetSnapshotAsync(
                     SessionRequest.SessionId,
                     NewContext(),
                     lifetime.Token));
@@ -916,15 +923,83 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         {
             _pollTimer.Stop();
         }
+        catch (HostOperationException exception)
+        {
+            if (generation != _initializationGeneration
+                || lifetime.IsCancellationRequested
+                || await TryStopForClosedSessionAsync(
+                    exception.Error,
+                    generation,
+                    lifetime.Token))
+            {
+                _pollTimer.Stop();
+                return;
+            }
+
+            _pollTimer.Stop();
+            SetState(TerminalHostState.Error, exception.Message);
+            Trace.TraceError("Unable to poll the managed terminal: {0}", exception);
+        }
         catch (Exception exception)
         {
             _pollTimer.Stop();
+            if (generation != _initializationGeneration
+                || lifetime.IsCancellationRequested)
+            {
+                return;
+            }
+
             SetState(TerminalHostState.Error, exception.Message);
             Trace.TraceError("Unable to poll the managed terminal: {0}", exception);
         }
         finally
         {
             _pollInProgress = false;
+        }
+    }
+
+    private async Task<bool> TryStopForClosedSessionAsync(
+        HostError readError,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        if (readError.Code is not (HostErrorCode.SessionClosed or HostErrorCode.EngineFailed)
+            || generation != _initializationGeneration
+            || SessionClient is not { } client
+            || SessionRequest is not { } request)
+        {
+            return false;
+        }
+
+        try
+        {
+            var result = await client.GetSnapshotAsync(
+                request.SessionId,
+                NewContext(),
+                cancellationToken);
+            if (generation != _initializationGeneration
+                || result is not HostResult<SessionSnapshot>.Success
+                {
+                    Value.Descriptor.Lifecycle: SessionLifecycle.Closed,
+                } success)
+            {
+                return false;
+            }
+
+            _surface.SetInputReady(false);
+            ApplySnapshot(success.Value);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceError(
+                "Unable to confirm whether the terminal session closed while polling: {0}",
+                exception);
+            return false;
         }
     }
 
@@ -946,7 +1021,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
                 cancellationToken);
             if (generation == _initializationGeneration)
             {
-                _surface.UpdateSnapshot(RequireSuccess(result));
+                _surface.UpdateSnapshot(RequirePollingSuccess(result));
             }
         }
         finally
@@ -1007,7 +1082,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             return null;
         }
 
-        _ = RequireSuccess(result);
+        _ = RequirePollingSuccess(result);
         throw new UnreachableException();
     }
 
@@ -1422,6 +1497,19 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             $"{failure.Error.StableCode}: {failure.Error.Message}"),
         _ => throw new ArgumentOutOfRangeException(nameof(result)),
     };
+
+    private static T RequirePollingSuccess<T>(HostResult<T> result) => result switch
+    {
+        HostResult<T>.Success success => success.Value,
+        HostResult<T>.Failure failure => throw new HostOperationException(failure.Error),
+        _ => throw new ArgumentOutOfRangeException(nameof(result)),
+    };
+
+    private sealed class HostOperationException(HostError error)
+        : InvalidOperationException($"{error.StableCode}: {error.Message}")
+    {
+        public HostError Error { get; } = error;
+    }
 
     private static CapabilitySet InteractiveCapabilities() => new(
     [

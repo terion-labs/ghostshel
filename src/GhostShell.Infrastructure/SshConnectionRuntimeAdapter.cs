@@ -33,8 +33,16 @@ public sealed class SshConnectionRuntimeAdapter : ConnectionRuntimeAdapterBase
         ConnectionProfile profile,
         IProgress<ConnectionProgress>? progress,
         CancellationToken cancellationToken)
+        => await PlanOpenAsync(profile, null, progress, cancellationToken).ConfigureAwait(false);
+
+    public override async ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+        ConnectionProfile profile,
+        TerminalMultiplexerSession? multiplexerSession,
+        IProgress<ConnectionProgress>? progress,
+        CancellationToken cancellationToken)
     {
-        var result = await BuildPlanAsync(profile, progress, cancellationToken).ConfigureAwait(false);
+        var result = await BuildPlanAsync(profile, multiplexerSession, progress, cancellationToken)
+            .ConfigureAwait(false);
         if (result is ConnectionRuntimeResult<ConnectionOpenPlan>.Success success)
         {
             result = await PrepareCredentialLaunchAsync(success.Value, cancellationToken)
@@ -54,7 +62,7 @@ public sealed class SshConnectionRuntimeAdapter : ConnectionRuntimeAdapterBase
         IProgress<ConnectionProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var planResult = await BuildPlanAsync(profile, progress, cancellationToken)
+        var planResult = await BuildPlanAsync(profile, null, progress, cancellationToken)
             .ConfigureAwait(false);
         if (planResult is ConnectionRuntimeResult<ConnectionOpenPlan>.Failure failure)
         {
@@ -114,6 +122,7 @@ public sealed class SshConnectionRuntimeAdapter : ConnectionRuntimeAdapterBase
 
     private async ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> BuildPlanAsync(
         ConnectionProfile profile,
+        TerminalMultiplexerSession? multiplexerSession,
         IProgress<ConnectionProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -172,11 +181,13 @@ public sealed class SshConnectionRuntimeAdapter : ConnectionRuntimeAdapterBase
                 SshConnectionArguments.Open(
                     profile,
                     endpoint,
-                    await ResolveKnownHostBindingAsync(profile, cancellationToken).ConfigureAwait(false)),
+                    await ResolveKnownHostBindingAsync(profile, cancellationToken).ConfigureAwait(false),
+                    multiplexerSession),
                 PlainEnvironment(profile),
                 connectionId: profile.Id,
                 connectionMetadata: ConnectionMetadata(profile),
-                initialCommand: profile.Startup.Command);
+                initialCommand: profile.Startup.Command,
+                multiplexerSession: multiplexerSession);
             var plan = new ConnectionOpenPlan(
                 profile.Id,
                 Kind,

@@ -14,6 +14,35 @@ namespace GhostShell.App.Tests;
 public sealed class MainWindowRuntimeGraphIntegrationTests
 {
     [Fact]
+    public async Task EnablingGlobalMultiplexingAffectsAnAlreadyOpenInheritedWorkspace()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var ssh = new ConnectionProfile(
+            new ConnectionId("runtime-graph-ssh"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Remote",
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        snapshot = snapshot with
+        {
+            Connections = [.. snapshot.Connections, Store(ssh)],
+        };
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, snapshot);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        Assert.True(await viewModel.SetUseTerminalMultiplexingForSshTerminalsAsync(true));
+        Assert.True(await viewModel.AddConnectionPanelAsync(ssh.Id));
+
+        var terminal = Assert.IsType<TerminalRuntimePanelViewModel>(viewModel.ActivePanel);
+        Assert.Equal(ssh.Id, terminal.ConnectionId);
+        Assert.NotNull(terminal.MultiplexerSession);
+    }
+
+    [Fact]
     public async Task Opening_workspace_registers_typed_ordered_graph_and_active_ids()
     {
         var snapshot = CreateCatalogSnapshot();

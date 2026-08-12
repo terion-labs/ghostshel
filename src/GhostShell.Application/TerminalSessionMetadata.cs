@@ -13,7 +13,8 @@ public sealed record TerminalSessionMetadata
         ConnectionId? connectionId,
         string connectionBoundary,
         string? initialWorkingDirectory,
-        string? currentWorkingDirectory)
+        string? currentWorkingDirectory,
+        TerminalMultiplexerSession? multiplexerSession = null)
     {
         TerminalConnectionMetadata.ValidateConnectionId(
             connectionId,
@@ -27,6 +28,7 @@ public sealed record TerminalSessionMetadata
         CurrentWorkingDirectory = TerminalConnectionMetadata.CopyWorkingDirectory(
             currentWorkingDirectory,
             nameof(currentWorkingDirectory));
+        MultiplexerSession = multiplexerSession;
     }
 
     public ConnectionId? ConnectionId { get; }
@@ -37,12 +39,15 @@ public sealed record TerminalSessionMetadata
 
     public string? CurrentWorkingDirectory { get; }
 
+    public TerminalMultiplexerSession? MultiplexerSession { get; }
+
     public TerminalSessionMetadata WithCurrentWorkingDirectory(string workingDirectory) =>
         new(
             ConnectionId,
             ConnectionBoundary,
             InitialWorkingDirectory,
-            workingDirectory);
+            workingDirectory,
+            MultiplexerSession);
 
     public static TerminalSessionMetadata FromLaunch(TerminalLaunchRequest launch)
     {
@@ -60,7 +65,8 @@ public sealed record TerminalSessionMetadata
                 launch.ConnectionId,
                 boundary,
                 initialWorkingDirectory,
-                initialWorkingDirectory);
+                initialWorkingDirectory,
+                launch.MultiplexerSession);
         }
         catch (ArgumentException) when (connection is null)
         {
@@ -70,7 +76,8 @@ public sealed record TerminalSessionMetadata
                 launch.ConnectionId,
                 boundary,
                 initialWorkingDirectory: null,
-                currentWorkingDirectory: null);
+                currentWorkingDirectory: null,
+                launch.MultiplexerSession);
         }
     }
 }

@@ -39,7 +39,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         string? icon = null,
         bool autoSave = false,
         string? color = null,
-        bool agentPanelPinned = false)
+        bool agentPanelPinned = false,
+        TerminalMultiplexingMode? terminalMultiplexingOverride = null)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -52,6 +53,13 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         AutoSave = autoSave;
         Color = string.IsNullOrWhiteSpace(color) ? null : color.Trim();
         AgentPanelPinned = agentPanelPinned;
+        if (terminalMultiplexingOverride is not null
+            && !Enum.IsDefined(terminalMultiplexingOverride.Value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(terminalMultiplexingOverride));
+        }
+
+        TerminalMultiplexingOverride = terminalMultiplexingOverride;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -107,6 +115,12 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     /// </summary>
     public bool AgentPanelPinned { get; }
 
+    /// <summary>
+    /// Null inherits the application preference. A concrete value makes the
+    /// workspace behavior stable even when the global preference changes.
+    /// </summary>
+    public TerminalMultiplexingMode? TerminalMultiplexingOverride { get; }
+
     public WorkspaceDefinition MoveEntry(WorkspaceEntryId entryId, int destinationIndex)
     {
         if (destinationIndex < 0 || destinationIndex >= Entries.Count)
@@ -140,7 +154,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
             Icon,
             AutoSave,
             Color,
-            AgentPanelPinned);
+            AgentPanelPinned,
+            TerminalMultiplexingOverride);
     }
 
     public static bool IsValidIcon(string? icon)

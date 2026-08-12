@@ -588,6 +588,130 @@ public sealed class TerminalRuntimePanelViewModelTests
         Assert.Same(sessionRequest, panel.SessionRequest);
     }
 
+    [Fact]
+    public void RecoveryKeepsAutomaticMultiplexerIdentityAndAcceptsScreenOnlyPreviewName()
+    {
+        var connection = SshAgentConnection();
+        var session = new TerminalMultiplexerSession(
+            TerminalMultiplexingMode.Automatic,
+            "ghostshell-1234abcd",
+            isEstablished: true);
+        using var panel = CreatePanel(
+            new QueueConnectionRuntime(
+                ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(new ConnectionOpenPlan(
+                    connection.Id,
+                    ConnectionKind.Ssh,
+                    new TerminalLaunchRequest(null, "/usr/bin/ssh", ["host.example"]),
+                    ConnectionAuthenticationMode.SshAgent,
+                    SshHostKeyPolicy.Strict,
+                    ConnectionReconnectMode.BoundedBackoff))),
+            connection,
+            PanelStartupBehavior.None,
+            multiplexerSession: session);
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId("tab"),
+            "Terminal",
+            "Test");
+        tab.AddPanel(panel);
+        var workspace = new RuntimeWorkspaceViewModel(
+            new WorkspaceInstanceId("workspace"),
+            "Workspace",
+            "#123456",
+            [],
+            terminalMultiplexingMode: TerminalMultiplexingMode.Automatic);
+        workspace.Tabs.Add(tab);
+        workspace.ActiveTab = tab;
+
+        var json = RuntimeWorkspaceRecoveryCodec.Serialize(workspace);
+        Assert.Contains("\"terminalMultiplexingMode\":\"Automatic\"", json, StringComparison.Ordinal);
+        var screenOnlyPreviewJson = json.Replace(
+            "\"Automatic\"",
+            "\"GnuScreen\"",
+            StringComparison.Ordinal);
+        var deserialized = RuntimeWorkspaceRecoveryCodec.TryDeserialize(
+            new RuntimeRecoverySnapshot(
+                "run",
+                RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+                RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+                screenOnlyPreviewJson,
+                DateTimeOffset.UnixEpoch),
+            out var recovery,
+            out var error);
+
+        Assert.True(deserialized, error);
+        Assert.Equal(
+            TerminalMultiplexingMode.Automatic,
+            recovery!.Workspace!.TerminalMultiplexingMode);
+        Assert.Equal(
+            session,
+            Assert.Single(Assert.Single(recovery.Workspace.Tabs).Panels)
+                .Multiplexer!
+                .ToSession());
+    }
+
+    [Fact]
+    public async Task Healthy_direct_local_launch_does_not_establish_stale_multiplexer_metadata()
+    {
+        var connection = LocalConnection();
+        var staleSession = TerminalMultiplexerSession.CreateAutomatic();
+        using var panel = CreatePanel(
+            new QueueConnectionRuntime(
+                ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(new ConnectionOpenPlan(
+                    connection.Id,
+                    ConnectionKind.Local,
+                    new TerminalLaunchRequest(null, "/bin/zsh"),
+                    ConnectionAuthenticationMode.None,
+                    SshHostKeyPolicy.NotApplicable,
+                    ConnectionReconnectMode.NotApplicable))),
+            connection,
+            PanelStartupBehavior.None,
+            multiplexerSession: staleSession);
+        await panel.Initialization;
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(panel.SessionRequest);
+
+        panel.ObserveSessionSnapshot(Snapshot(
+            request,
+            SessionLifecycle.Active,
+            SessionHealth.Healthy));
+
+        Assert.False(panel.IsContinuityActive);
+        Assert.Null(panel.MultiplexerSession);
+    }
+
+    [Fact]
+    public async Task Healthy_launch_establishes_only_the_multiplexer_identity_it_accepted()
+    {
+        var connection = SshAgentConnection();
+        var plannedSession = TerminalMultiplexerSession.CreateAutomatic();
+        using var panel = CreatePanel(
+            new QueueConnectionRuntime(
+                ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(new ConnectionOpenPlan(
+                    connection.Id,
+                    ConnectionKind.Ssh,
+                    new TerminalLaunchRequest(
+                        null,
+                        "/usr/bin/ssh",
+                        ["host.example"],
+                        multiplexerSession: plannedSession),
+                    ConnectionAuthenticationMode.SshAgent,
+                    SshHostKeyPolicy.Strict,
+                    ConnectionReconnectMode.BoundedBackoff))),
+            connection,
+            PanelStartupBehavior.None,
+            multiplexerSession: plannedSession);
+        await panel.Initialization;
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(panel.SessionRequest);
+
+        panel.ObserveSessionSnapshot(Snapshot(
+            request,
+            SessionLifecycle.Active,
+            SessionHealth.Healthy));
+
+        Assert.True(panel.IsContinuityActive);
+        Assert.True(panel.MultiplexerSession?.IsEstablished);
+        Assert.Equal(plannedSession.SessionName, panel.MultiplexerSession?.SessionName);
+    }
+
     private static SessionSnapshot Snapshot(
         EnsureTerminalSessionRequest request,
         SessionLifecycle lifecycle,
@@ -615,7 +739,8 @@ public sealed class TerminalRuntimePanelViewModelTests
         TerminalRenderProfileSnapshot? render = null,
         IConnectionSecurityRuntime? security = null,
         Func<TimeSpan, CancellationToken, Task>? reconnectDelay = null,
-        TerminalKeymapSnapshot? keymap = null)
+        TerminalKeymapSnapshot? keymap = null,
+        TerminalMultiplexerSession? multiplexerSession = null)
     {
         var panelId = PanelInstanceId.New();
         return new TerminalRuntimePanelViewModel(
@@ -636,7 +761,8 @@ public sealed class TerminalRuntimePanelViewModelTests
             new TerminalStartupCommandDispatcher(new SuccessfulAuditStore(), TimeProvider.System),
             security,
             reconnectDelay: reconnectDelay,
-            keymap: keymap);
+            keymap: keymap,
+            multiplexerSession: multiplexerSession);
     }
 
     private static ConnectionProfile LocalConnection() => new(

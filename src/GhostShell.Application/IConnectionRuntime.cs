@@ -12,6 +12,13 @@ public interface IConnectionRuntime
         IProgress<ConnectionProgress>? progress,
         CancellationToken cancellationToken);
 
+    ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+        ConnectionProfile profile,
+        TerminalMultiplexerSession? multiplexerSession,
+        IProgress<ConnectionProgress>? progress,
+        CancellationToken cancellationToken) =>
+        PlanOpenAsync(profile, progress, cancellationToken);
+
     ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(
         ConnectionProfile profile,
         IProgress<ConnectionProgress>? progress,
