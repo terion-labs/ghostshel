@@ -22,6 +22,7 @@ public sealed class QuickTerminalSettingsEditorViewModelTests
             AnimationDurationMilliseconds = 90,
             ReduceMotion = true,
             RestoreLastSession = false,
+            RestoreOnStart = false,
             HideOnFocusLoss = false,
         };
 
@@ -35,7 +36,32 @@ public sealed class QuickTerminalSettingsEditorViewModelTests
         Assert.Equal(0.4, request.Settings.HeightFraction);
         Assert.Equal(0.4, request.Settings.Opacity);
         Assert.False(request.Settings.RestoreLastSession);
+        Assert.False(request.Settings.RestoreOnStart);
         Assert.False(request.Settings.HideOnFocusLoss);
+    }
+
+    [Fact]
+    public void Height_percentage_is_presented_as_a_whole_number()
+    {
+        var defaults = QuickTerminalSettings.Default;
+        var settings = new QuickTerminalSettings(
+            defaults.Id,
+            defaults.Name,
+            defaults.Hotkey,
+            defaults.MonitorPolicy,
+            heightFraction: 0.404981549815498,
+            defaults.Opacity,
+            defaults.AnimateSlide,
+            defaults.AnimationDurationMilliseconds,
+            defaults.ReduceMotion,
+            defaults.RestoreLastSession,
+            defaults.HideOnFocusLoss,
+            defaults.IsTranslucent,
+            defaults.RestoreOnStart);
+
+        var editor = new QuickTerminalSettingsEditorViewModel(settings, expectedRevision: 1);
+
+        Assert.Equal(40, editor.HeightPercent);
     }
 
     [Fact]

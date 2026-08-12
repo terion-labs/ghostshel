@@ -16,8 +16,14 @@ public sealed class QuickTerminalController : IDisposable
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly IDefinitionCatalog _catalog;
     private readonly IConnectionRuntime _connectionRuntime;
+    private readonly IGovernedAgentRuntime _agentRuntime;
+    private readonly IAiProviderProfileRuntime _aiProviderRuntime;
+    private readonly IAgentRunAuditReader _agentRunAuditReader;
     private readonly IHostAccessibilityPreferencesSource _hostAccessibilityPreferences;
     private readonly IActiveWindowBoundsSource _activeWindowBounds;
+    private readonly RuntimeRecoveryWriter _runtimeRecoveryWriter;
+    private readonly SessionRestoreCoordinator _sessionRestoreCoordinator;
+    private readonly ApplicationStartupState _startupState;
     private readonly QuickTerminalDefinitionTracker _definitionTracker;
     private QuickTerminalViewModel _viewModel;
     private QuickTerminalSettings _settings = QuickTerminalSettings.Default;
@@ -31,6 +37,12 @@ public sealed class QuickTerminalController : IDisposable
     private KeyStroke? _activeGesture;
     private GlobalHotkeyRegistrationResult? _registrationResult;
     private long _settingsRevision = -1;
+    private double _availableHeight;
+    private double? _pendingHeightFraction;
+    private bool _heightSaveRunning;
+    private bool _restorePreviousApplicationAfterHide;
+    private bool _quickWindowIsActive;
+    private bool _recoveryReady;
     private bool _initialized;
     private bool _isShuttingDown;
     private bool _disposed;
@@ -40,8 +52,14 @@ public sealed class QuickTerminalController : IDisposable
         MainWindowViewModel mainWindowViewModel,
         IDefinitionCatalog catalog,
         IConnectionRuntime connectionRuntime,
+        IGovernedAgentRuntime agentRuntime,
+        IAiProviderProfileRuntime aiProviderRuntime,
+        IAgentRunAuditReader agentRunAuditReader,
         IHostAccessibilityPreferencesSource hostAccessibilityPreferences,
-        IActiveWindowBoundsSource activeWindowBounds)
+        IActiveWindowBoundsSource activeWindowBounds,
+        RuntimeRecoveryWriter runtimeRecoveryWriter,
+        SessionRestoreCoordinator sessionRestoreCoordinator,
+        ApplicationStartupState startupState)
     {
         _globalHotkey = globalHotkey ?? throw new ArgumentNullException(nameof(globalHotkey));
         _mainWindowViewModel = mainWindowViewModel
@@ -49,10 +67,20 @@ public sealed class QuickTerminalController : IDisposable
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _connectionRuntime = connectionRuntime
             ?? throw new ArgumentNullException(nameof(connectionRuntime));
+        _agentRuntime = agentRuntime ?? throw new ArgumentNullException(nameof(agentRuntime));
+        _aiProviderRuntime = aiProviderRuntime
+            ?? throw new ArgumentNullException(nameof(aiProviderRuntime));
+        _agentRunAuditReader = agentRunAuditReader
+            ?? throw new ArgumentNullException(nameof(agentRunAuditReader));
         _hostAccessibilityPreferences = hostAccessibilityPreferences
             ?? throw new ArgumentNullException(nameof(hostAccessibilityPreferences));
         _activeWindowBounds = activeWindowBounds
             ?? throw new ArgumentNullException(nameof(activeWindowBounds));
+        _runtimeRecoveryWriter = runtimeRecoveryWriter
+            ?? throw new ArgumentNullException(nameof(runtimeRecoveryWriter));
+        _sessionRestoreCoordinator = sessionRestoreCoordinator
+            ?? throw new ArgumentNullException(nameof(sessionRestoreCoordinator));
+        _startupState = startupState ?? throw new ArgumentNullException(nameof(startupState));
         _definitionTracker = new QuickTerminalDefinitionTracker(_catalog.Snapshot);
         _viewModel = CreateViewModel();
     }
@@ -81,6 +109,7 @@ public sealed class QuickTerminalController : IDisposable
         _hostAccessibilityPreferences.Changed += OnHostAccessibilityPreferencesChanged;
         ApplyHostAccessibilityPreferences();
         ApplySettingsFromCatalog();
+        _ = RestoreOnStartupAsync();
     }
 
     public void Toggle()
@@ -103,6 +132,8 @@ public sealed class QuickTerminalController : IDisposable
             return;
         }
 
+        MacOsQuickTerminalFocus.CaptureFrontmostApplication();
+        _restorePreviousApplicationAfterHide = false;
         var window = GetOrCreateWindow();
         var progress = PauseTransition(window);
         if (_transition.State == QuickTerminalVisibilityState.Hidden)
@@ -111,10 +142,11 @@ public sealed class QuickTerminalController : IDisposable
         }
 
         PositionAtTopOfWorkingArea(window);
-        _viewModel.ApplyEscapeCapture(_globalHotkey.BeginEscapeCapture());
+        _ = _globalHotkey.BeginEscapeCapture();
         try
         {
-            if (!window.IsVisible)
+            var wasVisible = window.IsVisible;
+            if (!wasVisible)
             {
                 window.PrepareReveal(progress);
                 window.Show();
@@ -125,6 +157,11 @@ public sealed class QuickTerminalController : IDisposable
             }
 
             window.ApplyBackdrop();
+            if (!wasVisible)
+            {
+                window.CompletePreparedReveal();
+            }
+
             window.Activate();
             window.FocusTerminal();
             StartTransition(window, progress, 1);
@@ -143,7 +180,46 @@ public sealed class QuickTerminalController : IDisposable
         }
     }
 
-    public void Hide()
+    public void Hide() => Hide(restorePreviousApplication: true);
+
+    /// <summary>
+    /// Routes the application-level New Tab command to Quick Terminal when it
+    /// owns keyboard focus. On macOS, native menu key equivalents are invoked
+    /// before Avalonia can raise KeyDown on the focused window.
+    /// </summary>
+    public async Task<bool> TryAddTabToActiveQuickTerminalAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_quickWindowIsActive || _quickWindow?.IsVisible != true)
+        {
+            return false;
+        }
+
+        await _viewModel.AddTabAsync();
+        _quickWindow.FocusTerminal();
+        return true;
+    }
+
+    public async Task<bool> TryCloseTabInActiveQuickTerminalAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_quickWindowIsActive || _quickWindow?.IsVisible != true)
+        {
+            return false;
+        }
+
+        if (_viewModel.ActiveTab is { } activeTab)
+        {
+            await _viewModel.CloseTabAsync(activeTab);
+            _quickWindow.FocusTerminal();
+        }
+
+        // The command belongs to Quick Terminal even when its only tab cannot
+        // be closed. Never let it fall through and mutate the main window.
+        return true;
+    }
+
+    private void Hide(bool restorePreviousApplication)
     {
         _globalHotkey.EndEscapeCapture();
         if (_quickWindow?.IsVisible != true
@@ -152,6 +228,8 @@ public sealed class QuickTerminalController : IDisposable
         {
             return;
         }
+
+        _restorePreviousApplicationAfterHide = restorePreviousApplication;
 
         var window = _quickWindow;
         var progress = PauseTransition(window);
@@ -173,6 +251,7 @@ public sealed class QuickTerminalController : IDisposable
         _globalHotkey.EscapePressed -= OnEscapePressed;
         _globalHotkey.EndEscapeCapture();
         _globalHotkey.Unregister();
+        _viewModel.RecoveryStateChanged -= OnRecoveryStateChanged;
         _viewModel.Dispose();
         if (_mainWindow is not null)
         {
@@ -183,7 +262,9 @@ public sealed class QuickTerminalController : IDisposable
         if (_quickWindow is not null)
         {
             _quickWindow.DismissRequested -= OnDismissRequested;
-            _quickWindow.SettingsRequested -= OnSettingsRequested;
+            _quickWindow.AgentSettingsRequested -= OnAgentSettingsRequested;
+            _quickWindow.NewConnectionRequested -= OnNewConnectionRequested;
+            _quickWindow.HeightResizeCompleted -= OnHeightResizeCompleted;
             _quickWindow.Activated -= OnQuickWindowActivated;
             _quickWindow.Deactivated -= OnQuickWindowDeactivated;
             _quickWindow.Closed -= OnQuickWindowClosed;
@@ -198,10 +279,19 @@ public sealed class QuickTerminalController : IDisposable
         _settings,
         _hostPreferences);
 
-    private QuickTerminalViewModel CreateViewModel() => new(
-        _mainWindowViewModel,
-        _catalog,
-        _connectionRuntime);
+    private QuickTerminalViewModel CreateViewModel()
+    {
+        var viewModel = new QuickTerminalViewModel(
+            _mainWindowViewModel,
+            _catalog,
+            _connectionRuntime,
+            _agentRuntime,
+            _aiProviderRuntime,
+            _agentRunAuditReader,
+            AvaloniaUiThreadDispatcher.Instance);
+        viewModel.RecoveryStateChanged += OnRecoveryStateChanged;
+        return viewModel;
+    }
 
     private QuickTerminalWindow GetOrCreateWindow()
     {
@@ -216,7 +306,9 @@ public sealed class QuickTerminalController : IDisposable
         };
         _quickWindow.ApplySettings(_settings, _hostPreferences);
         _quickWindow.DismissRequested += OnDismissRequested;
-        _quickWindow.SettingsRequested += OnSettingsRequested;
+        _quickWindow.AgentSettingsRequested += OnAgentSettingsRequested;
+        _quickWindow.NewConnectionRequested += OnNewConnectionRequested;
+        _quickWindow.HeightResizeCompleted += OnHeightResizeCompleted;
         _quickWindow.Activated += OnQuickWindowActivated;
         _quickWindow.Deactivated += OnQuickWindowDeactivated;
         _quickWindow.Closed += OnQuickWindowClosed;
@@ -244,11 +336,21 @@ public sealed class QuickTerminalController : IDisposable
         var workingArea = screen.WorkingArea;
         var scale = screen.Scaling;
         var availableHeight = workingArea.Height / scale;
+        _availableHeight = availableHeight;
+        var maximumHeight = availableHeight * QuickTerminalSettings.MaximumHeightFraction;
+        var minimumHeight = Math.Min(
+            maximumHeight,
+            Math.Max(
+                QuickTerminalWindow.MinimumRevealHeight,
+                availableHeight * QuickTerminalSettings.MinimumHeightFraction));
         window.Width = workingArea.Width / scale;
-        window.Height = Math.Min(
-            availableHeight,
-            Math.Max(window.MinHeight, Math.Round(availableHeight * _settings.HeightFraction)));
-        window.Position = workingArea.Position;
+        window.MinHeight = minimumHeight;
+        window.MaxHeight = maximumHeight;
+        window.Height = Math.Clamp(
+            Math.Round(availableHeight * _settings.HeightFraction),
+            minimumHeight,
+            maximumHeight);
+        window.PlaceAt(workingArea.Position, scale);
     }
 
     private void ApplySettingsFromCatalog()
@@ -349,7 +451,6 @@ public sealed class QuickTerminalController : IDisposable
             return;
         }
 
-        _viewModel.ApplyRegistration(_settings.Hotkey, _activeGesture, _registrationResult);
         _mainWindowViewModel.ApplyQuickTerminalRegistration(
             _settings.Hotkey,
             _activeGesture,
@@ -358,9 +459,16 @@ public sealed class QuickTerminalController : IDisposable
 
     private void CompleteHide(QuickTerminalWindow window)
     {
+        _quickWindowIsActive = false;
         if (window.IsVisible)
         {
             window.Hide();
+        }
+
+        if (_restorePreviousApplicationAfterHide)
+        {
+            _restorePreviousApplicationAfterHide = false;
+            _ = MacOsQuickTerminalFocus.TryRestoreFrontmostApplication();
         }
 
         window.PrepareReveal(0);
@@ -374,11 +482,13 @@ public sealed class QuickTerminalController : IDisposable
     {
         ResetTransition();
         var previousViewModel = _viewModel;
-        var previousRequest = previousViewModel.TerminalRequest;
+        var previousRequests = previousViewModel.TerminalRequests;
         if (_quickWindow is { } window)
         {
             window.DismissRequested -= OnDismissRequested;
-            window.SettingsRequested -= OnSettingsRequested;
+            window.AgentSettingsRequested -= OnAgentSettingsRequested;
+            window.NewConnectionRequested -= OnNewConnectionRequested;
+            window.HeightResizeCompleted -= OnHeightResizeCompleted;
             window.Activated -= OnQuickWindowActivated;
             window.Deactivated -= OnQuickWindowDeactivated;
             window.Closed -= OnQuickWindowClosed;
@@ -386,10 +496,12 @@ public sealed class QuickTerminalController : IDisposable
             _quickWindow = null;
         }
 
+        previousViewModel.RecoveryStateChanged -= OnRecoveryStateChanged;
         previousViewModel.Dispose();
         _viewModel = CreateViewModel();
         PublishRegistration();
-        if (previousRequest is not null)
+        QueueRecoverySnapshot();
+        foreach (var previousRequest in previousRequests)
         {
             _ = CloseDiscardedSessionAsync(previousRequest.SessionId, previousViewModel.ClientId);
         }
@@ -514,6 +626,80 @@ public sealed class QuickTerminalController : IDisposable
         Dispatcher.UIThread.Post(ApplySettingsFromCatalog);
     }
 
+    private async Task RestoreOnStartupAsync()
+    {
+        await _startupState.Initialized;
+        if (_disposed)
+        {
+            return;
+        }
+
+        // The catalog and its durable Quick Terminal settings are guaranteed
+        // ready by the startup signal. Re-read them before deciding whether
+        // the previous run may be restored.
+        ApplySettingsFromCatalog();
+        try
+        {
+            if (_settings.RestoreOnStart)
+            {
+                var result = await _sessionRestoreCoordinator.LoadLatestSessionAsync(
+                    CancellationToken.None);
+                var snapshot = result.IsSuccess
+                    ? result.Value!
+                        .Where(item => item.Key == QuickTerminalRecoveryCodec.SnapshotKey)
+                        .OrderByDescending(item => item.UpdatedAt)
+                        .FirstOrDefault()
+                    : null;
+                if (snapshot is not null
+                    && QuickTerminalRecoveryCodec.TryDeserialize(snapshot, out var recovered))
+                {
+                    await _viewModel.RestoreAsync(recovered!);
+                }
+                else if (!result.IsSuccess)
+                {
+                    Trace.TraceError(
+                        "Unable to load Quick Terminal startup recovery: {0}",
+                        result.Error?.Code.ToString() ?? "quick-terminal-recovery-load-failed");
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceError("Unable to restore Quick Terminal on startup: {0}", exception);
+        }
+        finally
+        {
+            _recoveryReady = true;
+            QueueRecoverySnapshot();
+        }
+    }
+
+    private void OnRecoveryStateChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        QueueRecoverySnapshot();
+    }
+
+    private void QueueRecoverySnapshot()
+    {
+        if (!_recoveryReady || _disposed)
+        {
+            return;
+        }
+
+        var queued = _runtimeRecoveryWriter.Enqueue(
+            QuickTerminalRecoveryCodec.SnapshotKey,
+            QuickTerminalRecoveryCodec.SchemaVersion,
+            QuickTerminalRecoveryCodec.Serialize(_viewModel));
+        if (!queued.IsSuccess)
+        {
+            Trace.TraceError(
+                "Unable to persist Quick Terminal recovery: {0}",
+                queued.Error?.Code.ToString() ?? "quick-terminal-recovery-save-failed");
+        }
+    }
+
     private void OnHostAccessibilityPreferencesChanged(object? sender, EventArgs e)
     {
         _ = sender;
@@ -571,12 +757,12 @@ public sealed class QuickTerminalController : IDisposable
         Hide();
     }
 
-    private void OnSettingsRequested(object? sender, EventArgs e)
+    private void OnAgentSettingsRequested(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        Hide();
-        _mainWindowViewModel.ShowSettings(SettingsPage.QuickTerminal);
+        Hide(restorePreviousApplication: false);
+        _mainWindowViewModel.ShowSettings(SettingsPage.Agent);
         if (_mainWindow is not { } mainWindow)
         {
             return;
@@ -590,13 +776,115 @@ public sealed class QuickTerminalController : IDisposable
         mainWindow.Activate();
     }
 
+    private async void OnNewConnectionRequested(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Hide(restorePreviousApplication: false);
+        if (_mainWindow is not { } mainWindow)
+        {
+            return;
+        }
+
+        if (!mainWindow.IsVisible)
+        {
+            mainWindow.Show();
+        }
+
+        mainWindow.Activate();
+        var connectionId = await mainWindow.ShowNewTerminalConnectionEditorAsync();
+        if (connectionId is { } id && !_disposed)
+        {
+            await _viewModel.SelectConnectionAsync(id);
+        }
+    }
+
+    private void OnHeightResizeCompleted(
+        object? sender,
+        QuickTerminalHeightChangedEventArgs e)
+    {
+        _ = sender;
+        if (_availableHeight <= 0)
+        {
+            return;
+        }
+
+        var fraction = QuickTerminalPresentationPolicy.HeightFraction(
+            e.Height,
+            _availableHeight);
+        fraction = Math.Round(fraction * 100, MidpointRounding.AwayFromZero) / 100;
+        if (Math.Abs(fraction - _settings.HeightFraction) < 0.0005)
+        {
+            return;
+        }
+
+        _pendingHeightFraction = fraction;
+        if (!_heightSaveRunning)
+        {
+            _ = SavePendingHeightAsync();
+        }
+    }
+
+    private async Task SavePendingHeightAsync()
+    {
+        _heightSaveRunning = true;
+        try
+        {
+            while (_pendingHeightFraction is { } heightFraction && !_disposed)
+            {
+                _pendingHeightFraction = null;
+                var settings = CopySettingsWithHeight(_settings, heightFraction);
+                var result = await _catalog.SaveQuickTerminalSettingsAsync(
+                    settings,
+                    _settingsRevision,
+                    CancellationToken.None);
+                if (!result.IsSuccess || result.Value is null)
+                {
+                    Trace.TraceError(
+                        "Unable to save the resized Quick Terminal height: {0}",
+                        result.Error?.Code.ToString() ?? "quick-terminal-height-save-failed");
+                    return;
+                }
+
+                _settings = result.Value.Value;
+                _settingsRevision = result.Value.Revision;
+            }
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceError("Unable to save the resized Quick Terminal height: {0}", exception);
+        }
+        finally
+        {
+            _heightSaveRunning = false;
+        }
+    }
+
+    private static QuickTerminalSettings CopySettingsWithHeight(
+        QuickTerminalSettings settings,
+        double heightFraction) => new(
+            settings.Id,
+            settings.Name,
+            settings.Hotkey,
+            settings.MonitorPolicy,
+            heightFraction,
+            settings.Opacity,
+            settings.AnimateSlide,
+            settings.AnimationDurationMilliseconds,
+            settings.ReduceMotion,
+            settings.RestoreLastSession,
+            settings.HideOnFocusLoss,
+            settings.IsTranslucent,
+            settings.RestoreOnStart);
+
     private void OnQuickWindowActivated(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
+        _quickWindowIsActive = true;
         if (!_disposed && IsVisible)
         {
-            _viewModel.ApplyEscapeCapture(_globalHotkey.BeginEscapeCapture());
+            _ = _globalHotkey.BeginEscapeCapture();
         }
     }
 
@@ -604,6 +892,7 @@ public sealed class QuickTerminalController : IDisposable
     {
         _ = sender;
         _ = e;
+        _quickWindowIsActive = false;
         _globalHotkey.EndEscapeCapture();
     }
 
@@ -621,7 +910,9 @@ public sealed class QuickTerminalController : IDisposable
         }
 
         window.DismissRequested -= OnDismissRequested;
-        window.SettingsRequested -= OnSettingsRequested;
+        window.AgentSettingsRequested -= OnAgentSettingsRequested;
+        window.NewConnectionRequested -= OnNewConnectionRequested;
+        window.HeightResizeCompleted -= OnHeightResizeCompleted;
         window.Activated -= OnQuickWindowActivated;
         window.Deactivated -= OnQuickWindowDeactivated;
         window.Closed -= OnQuickWindowClosed;

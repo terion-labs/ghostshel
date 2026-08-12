@@ -4,6 +4,21 @@ namespace GhostShell.App.Tests;
 
 public sealed class QuickTerminalPresentationPolicyTests
 {
+    [Theory]
+    [InlineData(520, 1_000, 0.52)]
+    [InlineData(100, 1_000, QuickTerminalSettings.MinimumHeightFraction)]
+    [InlineData(950, 1_000, QuickTerminalSettings.MaximumHeightFraction)]
+    public void Resized_height_is_stored_as_a_bounded_monitor_fraction(
+        double height,
+        double availableHeight,
+        double expected)
+    {
+        Assert.Equal(
+            expected,
+            QuickTerminalPresentationPolicy.HeightFraction(height, availableHeight),
+            precision: 6);
+    }
+
     [Fact]
     public void Default_presentation_uses_the_stored_motion_blur_and_opacity()
     {

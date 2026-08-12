@@ -10,7 +10,7 @@ public sealed record QuickTerminalSettings : IDurableDefinition
 {
     // Not moved: see ThemePreference. The switch is optional so a stored
     // payload without it still constructs.
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const double MinimumHeightFraction = 0.25;
     public const double MaximumHeightFraction = 0.90;
     public const double MinimumOpacity = 0.00;
@@ -33,7 +33,8 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         reduceMotion: false,
         restoreLastSession: true,
         hideOnFocusLoss: true,
-        isTranslucent: DefaultIsTranslucent);
+        isTranslucent: DefaultIsTranslucent,
+        restoreOnStart: true);
 
     [JsonConstructor]
     public QuickTerminalSettings(
@@ -48,7 +49,8 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         bool reduceMotion,
         bool restoreLastSession,
         bool hideOnFocusLoss,
-        bool isTranslucent = DefaultIsTranslucent)
+        bool isTranslucent = DefaultIsTranslucent,
+        bool restoreOnStart = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (string.IsNullOrWhiteSpace(hotkey.Key)
@@ -104,6 +106,7 @@ public sealed record QuickTerminalSettings : IDurableDefinition
         ReduceMotion = reduceMotion;
         RestoreLastSession = restoreLastSession;
         HideOnFocusLoss = hideOnFocusLoss;
+        RestoreOnStart = restoreOnStart;
     }
 
     public static DefinitionKind Kind => DefinitionKind.QuickTerminalSettings;
@@ -141,6 +144,13 @@ public sealed record QuickTerminalSettings : IDurableDefinition
     public bool RestoreLastSession { get; }
 
     public bool HideOnFocusLoss { get; }
+
+    /// <summary>
+    /// Recreates the Quick Terminal tab and connection set from the latest
+    /// application run. This is independent of retaining live sessions while
+    /// the panel is merely hidden in the current process.
+    /// </summary>
+    public bool RestoreOnStart { get; }
 
     [JsonIgnore]
     public DefinitionKey Key => new(Kind, Id.Value);

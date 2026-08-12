@@ -128,6 +128,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? RecordKeybindingRequested;
 
+    public event EventHandler<RoutedEventArgs>? RecordQuickTerminalHotkeyRequested;
+
     public event EventHandler<RoutedEventArgs>? ResetAllKeybindingsRequested;
 
     public event EventHandler<RoutedEventArgs>? ResetKeybindingRequested;
@@ -455,6 +457,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnQuickTerminalSettingsSaveRequested(object? sender, RoutedEventArgs e) =>
         SaveQuickTerminalSettingsRequested?.Invoke(sender, e);
+
+    private void OnQuickTerminalHotkeyRecordRequested(object? sender, RoutedEventArgs e) =>
+        RecordQuickTerminalHotkeyRequested?.Invoke(sender, e);
 
     private void OnSaveTerminalProfileClick(object? sender, RoutedEventArgs e) =>
         SaveTerminalProfileRequested?.Invoke(sender, e);

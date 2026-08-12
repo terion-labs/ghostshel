@@ -652,6 +652,7 @@
             <settingsPages:QuickTerminalSettingsPageView
                 x:Name="QuickTerminalSettingsPage"
                 IsVisible="{Binding IsQuickTerminalSettingsVisible}"
+                RecordHotkeyRequested="OnQuickTerminalHotkeyRecordRequested"
                 SaveRequested="OnQuickTerminalSettingsSaveRequested" />
 
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsSecretsSettingsVisible}">

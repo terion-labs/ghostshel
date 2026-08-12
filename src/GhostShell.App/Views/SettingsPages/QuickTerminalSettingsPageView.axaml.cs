@@ -12,6 +12,11 @@ public sealed partial class QuickTerminalSettingsPageView : UserControl
 
     public event EventHandler<RoutedEventArgs>? SaveRequested;
 
+    public event EventHandler<RoutedEventArgs>? RecordHotkeyRequested;
+
     private void OnSaveQuickTerminalSettingsClick(object? sender, RoutedEventArgs e) =>
         SaveRequested?.Invoke(sender, e);
+
+    private void OnRecordHotkeyClick(object? sender, RoutedEventArgs e) =>
+        RecordHotkeyRequested?.Invoke(sender, e);
 }

@@ -852,6 +852,33 @@ public sealed partial class MainWindow
         _ = await ViewModel.SaveQuickTerminalSettingsAsync(_lifetime.Token);
     }
 
+    private async void OnRecordQuickTerminalHotkeyClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (ViewModel.QuickTerminalSettingsEditor is not { } editor)
+        {
+            return;
+        }
+
+        KeySequence? initial = null;
+        try
+        {
+            initial = new KeySequence([QuickTerminalHotkeyText.Parse(editor.HotkeyText)]);
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException)
+        {
+            // An edited invalid value should not prevent the recorder from repairing it.
+        }
+
+        var recorded = await new ShortcutRecorderDialog(initial, maximumStrokes: 1)
+            .ShowDialog<KeySequence?>(this);
+        if (recorded is { Count: 1 })
+        {
+            editor.HotkeyText = QuickTerminalHotkeyText.Format(recorded[0]);
+        }
+    }
+
     private async void OnCreateConnectionSecretClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

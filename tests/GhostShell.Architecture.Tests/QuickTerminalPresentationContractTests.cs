@@ -24,13 +24,96 @@ public sealed class QuickTerminalPresentationContractTests
             element => AttributeValue(element, "Name") == "SlidingPanel");
 
         Assert.Equal("Transparent", AttributeValue(root, "Background"));
+        Assert.Null(AttributeValue(root, "TransparencyBackgroundFallback"));
         Assert.Equal("True", AttributeValue(viewport, "ClipToBounds"));
         Assert.Equal("Transparent", AttributeValue(viewport, "Background"));
         Assert.Equal("Transparent", AttributeValue(slidingPanel, "Background"));
+        Assert.Equal("0", AttributeValue(slidingPanel, "CornerRadius"));
+        Assert.Contains(
+            root.Descendants(),
+            element => AttributeValue(element, "Name") == "ResizeGrip"
+                && AttributeValue(element, "PointerPressed") == "OnResizeGripPointerPressed");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "PanelConnectionSelectorView"
+                && AttributeValue(element, "Options") == "{Binding ConnectionOptions}");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "RuntimeTabStripView"
+                && AttributeValue(element, "Tabs") == "{Binding Tabs}"
+                && AttributeValue(element, "AddTabRequested") == "OnAddTabRequested");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "AgentWorkspaceView"
+                && AttributeValue(element, "Name") == "QuickTerminalAgentSurface"
+                && AttributeValue(element, "MaxHeight")
+                    == "{Binding #AgentViewport.Bounds.Height}"
+                && AttributeValue(element, "Classes.floating")
+                    == "{Binding !IsAgentPanelDocked}"
+                && AttributeValue(element, "Classes") == "edgeResizable"
+                && AttributeValue(element, "Classes.docked")
+                    == "{Binding IsAgentPanelDocked}"
+                && AttributeValue(element, "Classes.edgeLeft")
+                    == "{Binding IsAgentPanelOnLeft}"
+                && AttributeValue(element, "Classes.edgeRight")
+                    == "{Binding IsAgentPanelOnRight}"
+                && AttributeValue(element, "Classes.anchorBottom")
+                    == "{Binding IsAgentPanelAnchoredBottom}"
+                && AttributeValue(element, "Classes.anchorTop")
+                    == "{Binding IsAgentPanelAnchoredTop}"
+                && AttributeValue(element, "HorizontalAlignment")
+                    == "{Binding AgentPanelAlignment}"
+                && AttributeValue(element, "VerticalAlignment")
+                    == "{Binding AgentPanelVerticalAlignment}");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "Width")
+                    == "{Binding #QuickTerminalAgentSurface.Bounds.Width}"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding IsAgentPanelDockedVisible}");
+        Assert.Contains(
+            root.Descendants(),
+            element => AttributeValue(element, "Symbol") == "Bot"
+                && element.Parent is { } button
+                && AttributeValue(button, "Click") == "OnToggleAgentClick");
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => AttributeValue(element, "Click") == "OnSettingsClick");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property") == "CornerRadius"
+                && AttributeValue(element, "Value") == "0"
+                && element.Parent is { } style
+                && AttributeValue(style, "Selector")
+                    == "views|AgentWorkspaceView.docked Border.AgentPanel");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "views|AgentWorkspaceView.floating.anchorBottom"
+                && element.Elements().Any(setter =>
+                    AttributeValue(setter, "Property") == "Margin"
+                    && AttributeValue(setter, "Value") == "0,12,0,0"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "views|AgentWorkspaceView.floating.anchorTop"
+                && element.Elements().Any(setter =>
+                    AttributeValue(setter, "Property") == "Margin"
+                    && AttributeValue(setter, "Value") == "0,0,0,12"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => AttributeValue(element, "Text") is
+                "{Binding ProfileName, StringFormat={}Profile · {0}}"
+                or "{Binding ShortcutStatus}"
+                or "{Binding EscapeStatus}");
     }
 
     [Fact]
-    public void Quick_terminal_native_window_is_placed_once_and_never_animated_off_screen()
+    public void Quick_terminal_moves_one_fixed_size_native_surface()
     {
         var repositoryRoot = ApplicationViewCatalog.Load().RepositoryRoot;
         var controller = File.ReadAllText(Path.Combine(
@@ -50,18 +133,40 @@ public sealed class QuickTerminalPresentationContractTests
             RegexOptions.Singleline);
 
         Assert.True(toggle.Success);
-        Assert.Single(Regex.Matches(controller, @"window\.Position\s*="));
-        Assert.DoesNotContain("AboveWorkingArea", controller, StringComparison.Ordinal);
-        Assert.DoesNotContain("AnimatePosition", controller, StringComparison.Ordinal);
+        Assert.Contains("window.PlaceAt(workingArea.Position, scale)", controller, StringComparison.Ordinal);
+        Assert.Contains("CompletePreparedReveal", controller, StringComparison.Ordinal);
         Assert.Contains("AnimateReveal", controller, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "ApplySettings",
             toggle.Groups["body"].Value,
             StringComparison.Ordinal);
         Assert.Contains(
-            "visual.StartAnimation(\"Translation\", animation)",
+            "MacOsQuickTerminalReveal.TryAnimate",
             window,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "MacOsQuickTerminalReveal.TryClearWindowBacking",
+            window,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MacOsQuickTerminalReveal.TryKeepBackdropActive",
+            window,
+            StringComparison.Ordinal);
+        var nativeReveal = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "MacOsQuickTerminalReveal.cs"));
+        Assert.Contains("SetRevealFrames", nativeReveal, StringComparison.Ordinal);
+        Assert.Contains("NSVisualEffectView", nativeReveal, StringComparison.Ordinal);
+        Assert.Contains("setState:", nativeReveal, StringComparison.Ordinal);
+        Assert.Contains("AvnView", nativeReveal, StringComparison.Ordinal);
+        Assert.Contains("MacOsQuickTerminalFocus.CaptureFrontmostApplication", controller, StringComparison.Ordinal);
+        Assert.Contains("MacOsQuickTerminalFocus.TryRestoreFrontmostApplication", controller, StringComparison.Ordinal);
+        Assert.Contains("PositionForProgress", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("HeightForProgress", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("ElementComposition", window, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "WindowTransparencyLevel.None",
             window,
@@ -85,6 +190,41 @@ public sealed class QuickTerminalPresentationContractTests
         Assert.Single(Regex.Matches(
             window,
             @"TransparencyLevelHint\s*=\s*hint;"));
+    }
+
+    [Fact]
+    public void Native_new_tab_command_targets_the_active_quick_terminal()
+    {
+        var repositoryRoot = ApplicationViewCatalog.Load().RepositoryRoot;
+        var application = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "GhostShell.App",
+            "App.axaml.cs"));
+        var controller = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "GhostShell.App",
+            "QuickTerminalController.cs"));
+
+        Assert.Contains(
+            "await QuickTerminalController.TryAddTabToActiveQuickTerminalAsync()",
+            application,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (!_quickWindowIsActive || _quickWindow?.IsVisible != true)",
+            controller,
+            StringComparison.Ordinal);
+        Assert.Contains("await _viewModel.AddTabAsync()", controller, StringComparison.Ordinal);
+        Assert.Contains("_quickWindow.FocusTerminal()", controller, StringComparison.Ordinal);
+        Assert.Contains(
+            "await QuickTerminalController.TryCloseTabInActiveQuickTerminalAsync()",
+            application,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await _viewModel.CloseTabAsync(activeTab)",
+            controller,
+            StringComparison.Ordinal);
     }
 
     private static string? AttributeValue(XElement element, string localName) =>

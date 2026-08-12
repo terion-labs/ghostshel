@@ -38,9 +38,17 @@
       <controls:SettingRow
           Label="Global hotkey"
           Description="{Binding QuickTerminalSettingsEditor.HotkeyHelpText}">
-        <TextBox
-            Text="{Binding QuickTerminalSettingsEditor.HotkeyText}"
-            AutomationProperties.Name="Quick Terminal global hotkey" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <TextBox
+              Text="{Binding QuickTerminalSettingsEditor.HotkeyText}"
+              AutomationProperties.Name="Quick Terminal global hotkey" />
+          <Button
+              Grid.Column="1"
+              Classes="SecondaryButton"
+              Click="OnRecordHotkeyClick"
+              Content="Record"
+              AutomationProperties.Name="Record Quick Terminal global hotkey" />
+        </Grid>
       </controls:SettingRow>
       <controls:SettingsGroup.Footer>
         <Grid
@@ -89,6 +97,7 @@
               Minimum="25"
               Maximum="90"
               Increment="1"
+              FormatString="0"
               Value="{Binding QuickTerminalSettingsEditor.HeightPercent}"
               AutomationProperties.Name="Quick Terminal panel height" />
           <TextBlock
@@ -190,6 +199,14 @@
             HorizontalAlignment="Right"
             IsChecked="{Binding QuickTerminalSettingsEditor.RestoreLastSession}"
             AutomationProperties.Name="Keep Quick Terminal session" />
+      </controls:SettingRow>
+      <controls:SettingRow
+          Label="Restore on start"
+          Description="Reopen Quick Terminal tabs and their connections when GhostSHELL starts, like main-window session restore.">
+        <ToggleSwitch
+            HorizontalAlignment="Right"
+            IsChecked="{Binding QuickTerminalSettingsEditor.RestoreOnStart}"
+            AutomationProperties.Name="Restore Quick Terminal on start" />
       </controls:SettingRow>
       <controls:SettingsGroup.Footer>
         <TextBlock

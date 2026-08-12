@@ -229,6 +229,7 @@ public sealed class ApplicationKeySequenceResolverTests
     [InlineData(Key.Left, AvaloniaKeyModifiers.None, null, "ARROWLEFT", CoreKeyModifiers.None)]
     [InlineData(Key.D3, AvaloniaKeyModifiers.None, null, "3", CoreKeyModifiers.None)]
     [InlineData(Key.B, AvaloniaKeyModifiers.Control, null, "B", CoreKeyModifiers.Control)]
+    [InlineData(Key.T, AvaloniaKeyModifiers.Meta, null, "T", CoreKeyModifiers.Meta)]
     public void AvaloniaKeysMapToDurableKeyStrokeNames(
         Key key,
         AvaloniaKeyModifiers modifiers,

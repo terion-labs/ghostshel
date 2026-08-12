@@ -30,7 +30,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         {
             Connections = [.. snapshot.Connections, Store(ssh)],
         };
-        var (client, _) = CreateSessionClient();
+        var (client, recorder) = CreateSessionClient();
         using var viewModel = CreateViewModel(client, snapshot);
         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
 
@@ -2626,7 +2626,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     public async Task Quick_terminal_uses_an_independent_window_ownership_boundary()
     {
         var snapshot = CreateCatalogSnapshot();
-        var (client, _) = CreateSessionClient();
+        var (client, recorder) = CreateSessionClient();
         using var mainWindow = CreateViewModel(client, snapshot);
         using var quickTerminal = new QuickTerminalViewModel(
             mainWindow,
@@ -2638,6 +2638,133 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var request = Assert.IsType<EnsureTerminalSessionRequest>(quickTerminal.TerminalRequest);
         Assert.Equal(quickTerminal.WindowId, request.Owner.WindowId);
         Assert.NotEqual(mainWindow.WindowId, request.Owner.WindowId);
+        Assert.Equal(quickTerminal.WorkspaceId, request.Owner.WorkspaceId);
+        Assert.NotEmpty(recorder.Registrations);
+        Assert.All(
+            recorder.Registrations,
+            item => Assert.Equal(quickTerminal.WorkspaceId, item.Request.Workspace.Id));
+        var registration = recorder.Registrations[^1];
+        Assert.Equal(quickTerminal.WindowId, registration.Request.WindowId);
+        Assert.Equal(quickTerminal.WorkspaceId, registration.Request.Workspace.Id);
+        var graphTab = Assert.Single(registration.Request.Workspace.Tabs);
+        Assert.Equal(request.Owner.TabId, graphTab.Id);
+        Assert.Equal(request.Owner.PanelId, Assert.Single(graphTab.Panels).Id);
+    }
+
+    [Fact]
+    public async Task Quick_terminal_tabs_own_independent_sessions_and_can_be_activated()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime());
+        await quickTerminal.Initialization;
+        var firstTab = Assert.Single(quickTerminal.Tabs);
+        var firstRequest = Assert.IsType<EnsureTerminalSessionRequest>(
+            firstTab.TerminalRequest);
+
+        await quickTerminal.AddTabAsync();
+
+        Assert.Equal(2, quickTerminal.Tabs.Count);
+        var secondTab = Assert.IsType<QuickTerminalTabViewModel>(quickTerminal.ActiveTab);
+        var secondRequest = Assert.IsType<EnsureTerminalSessionRequest>(
+            secondTab.TerminalRequest);
+        Assert.NotEqual(firstRequest.SessionId, secondRequest.SessionId);
+        Assert.NotEqual(firstRequest.Owner.TabId, secondRequest.Owner.TabId);
+        Assert.True(firstTab.CanClose);
+        Assert.True(secondTab.CanClose);
+
+        quickTerminal.MoveTab(secondTab, firstTab, placeAfterAnchor: false);
+
+        Assert.Same(secondTab, quickTerminal.Tabs[0]);
+        Assert.Same(firstTab, quickTerminal.Tabs[1]);
+
+        quickTerminal.ActivateTab(firstTab);
+
+        Assert.Same(firstTab, quickTerminal.ActiveTab);
+        Assert.Same(firstRequest, quickTerminal.TerminalRequest);
+    }
+
+    [Fact]
+    public async Task Quick_terminal_recovery_recreates_tab_order_and_selection()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var connectionId = snapshot.Connections[0].Value.Id.Value;
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime());
+
+        await quickTerminal.RestoreAsync(new QuickTerminalRecoveryPayload(
+            [connectionId, connectionId, connectionId],
+            ActiveTabIndex: 1));
+
+        Assert.Equal(3, quickTerminal.Tabs.Count);
+        Assert.Same(quickTerminal.Tabs[1], quickTerminal.ActiveTab);
+        Assert.All(
+            quickTerminal.Tabs,
+            tab => Assert.Equal(connectionId, tab.ConnectionId?.Value));
+        Assert.Equal(3, quickTerminal.TerminalRequests.Count);
+    }
+
+    [Fact]
+    public async Task Quick_terminal_agent_targets_its_own_workspace_and_active_panel()
+    {
+        var provider = CreateAgentProvider();
+        using var agentRuntime = new RecordingGovernedAgentRuntime();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var snapshot = CreateCatalogSnapshot();
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime(),
+            agentRuntime,
+            aiProfiles);
+        await quickTerminal.Initialization;
+        var tab = Assert.IsType<QuickTerminalTabViewModel>(quickTerminal.ActiveTab);
+        quickTerminal.AgentChat!.Prompt = "Inspect Quick Terminal.";
+
+        await quickTerminal.SendAgentPromptAsync();
+
+        var request = Assert.IsType<GovernedAgentPrompt>(agentRuntime.LastRequest);
+        var target = Assert.IsType<AgentTarget.Panel>(request.Target);
+        Assert.Equal(quickTerminal.WindowId, target.WindowId);
+        Assert.Equal(quickTerminal.WorkspaceId, target.WorkspaceId);
+        Assert.Equal(tab.Id, target.TabId);
+        Assert.Equal(tab.PanelId, target.PanelId);
+        Assert.NotEqual(mainWindow.WindowId, target.WindowId);
+    }
+
+    [Fact]
+    public async Task Quick_terminal_agent_uses_its_rendered_bottom_right_chrome_pivot()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime());
+
+        await quickTerminal.Initialization;
+
+        Assert.False(quickTerminal.IsAgentPanelOnLeft);
+        Assert.True(quickTerminal.IsAgentPanelOnRight);
+        Assert.True(quickTerminal.IsAgentPanelAnchoredBottom);
+        Assert.False(quickTerminal.IsAgentPanelAnchoredTop);
+        Assert.Equal(
+            Avalonia.Layout.VerticalAlignment.Bottom,
+            quickTerminal.AgentPanelVerticalAlignment);
+        Assert.Equal(
+            Avalonia.Controls.Dock.Right,
+            quickTerminal.AgentPanelDock);
     }
 
     [Fact]
@@ -4724,6 +4851,14 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 nameof(ISessionHostClient.EnsureFilePanelSessionAsync)
                     when args is [EnsureFilePanelSessionRequest, ..] =>
                     RejectFilePanelSession(),
+                nameof(ISessionHostClient.CloseAsync)
+                    when args is [CloseScopeRequest request, ..] =>
+                    ValueTask.FromResult(HostResult<CloseScopeResult>.Succeed(
+                        new CloseScopeResult.Completed(
+                            request.Scope,
+                            request.TargetId,
+                            []),
+                        1)),
                 _ => throw new NotSupportedException(targetMethod?.Name),
             };
 

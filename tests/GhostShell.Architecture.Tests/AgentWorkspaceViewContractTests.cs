@@ -57,16 +57,48 @@ public sealed class AgentWorkspaceViewContractTests
             element => element.Name.LocalName == "Grid");
         Assert.Equal("Auto,Auto,*,Auto,Auto", AttributeValue(layout, "RowDefinitions"));
 
-        // The grip resizes only a floating panel — docked, the layout owns the
-        // geometry — so it must drag through the code-behind and sit in the
-        // corner diagonally opposite the flyout's top-right anchor.
+        // The ordinary floating surface uses the corner grip. Edge-attached
+        // hosts reuse it as a full inner-edge handle, including while docked.
         var resizeGrip = Assert.Single(
             host.Elements(),
-            element => element.Name.LocalName == "Thumb");
+            element => element.Name.LocalName == "Thumb"
+                && AttributeValue(element, "Name") == "FloatingResizeHandle");
         Assert.Equal("FloatingResizeHandle", AttributeValue(resizeGrip, "Name"));
         Assert.Equal("OnFloatingResizeDragDelta", AttributeValue(resizeGrip, "DragDelta"));
-        Assert.Equal("Left", AttributeValue(resizeGrip, "HorizontalAlignment"));
-        Assert.Equal("Bottom", AttributeValue(resizeGrip, "VerticalAlignment"));
+        Assert.Null(AttributeValue(resizeGrip, "HorizontalAlignment"));
+        Assert.Null(AttributeValue(resizeGrip, "VerticalAlignment"));
+        var defaultResizeStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "views|AgentWorkspaceView Thumb#FloatingResizeHandle");
+        Assert.Contains(
+            defaultResizeStyle.Elements(),
+            element => AttributeValue(element, "Property") == "HorizontalAlignment"
+                && AttributeValue(element, "Value") == "Left");
+        Assert.Contains(
+            defaultResizeStyle.Elements(),
+            element => AttributeValue(element, "Property") == "VerticalAlignment"
+                && AttributeValue(element, "Value") == "Bottom");
+        var edgeResizeStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "views|AgentWorkspaceView.edgeResizable Thumb#FloatingResizeHandle");
+        Assert.Contains(
+            edgeResizeStyle.Elements(),
+            element => AttributeValue(element, "Property") == "IsVisible"
+                && AttributeValue(element, "Value") == "True");
+        Assert.Contains(
+            root.Descendants(),
+            element => AttributeValue(element, "Name") == "CornerResizeGlyph");
+        var heightResizeGrip = Assert.Single(
+            host.Elements(),
+            element => element.Name.LocalName == "Thumb"
+                && AttributeValue(element, "Name") == "FloatingHeightResizeHandle");
+        Assert.Equal(
+            "OnFloatingHeightResizeDragDelta",
+            AttributeValue(heightResizeGrip, "DragDelta"));
 
         foreach (var controlName in NamedControls)
         {
@@ -163,6 +195,13 @@ public sealed class AgentWorkspaceViewContractTests
         Assert.DoesNotContain("StorageProvider", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("Process.Start", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_floatingWidth", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_floatingHeight", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_dockedWidth", codeBehind, StringComparison.Ordinal);
+        Assert.Contains(
+            "PreserveSizeAcrossPresentationChanges();",
+            codeBehind,
+            StringComparison.Ordinal);
     }
 
     [Fact]

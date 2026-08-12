@@ -1,12 +1,13 @@
-using System.Numerics;
+using Avalonia;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Rendering.Composition;
-using Avalonia.Rendering.Composition.Animations;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using GhostShell.App;
+using GhostShell.App.ViewModels;
+using GhostShell.App.Views.Components;
 using GhostShell.Core;
 
 namespace GhostShell.App.Views;
@@ -30,6 +31,17 @@ public sealed partial class QuickTerminalWindow : Window
     private HostAccessibilityPreferences _hostPreferences =
         HostAccessibilityPreferences.Default;
     private double _preparedRevealProgress = 1;
+    private int _revealToken;
+    private PixelPoint _shownPosition;
+    private PixelPoint _hiddenPosition;
+    private bool _hasPlacement;
+    private double _placementScale = 1;
+    private bool _isResizing;
+    private double _resizeStartScreenY;
+    private double _resizeStartHeight;
+    private QuickTerminalTabReorder? _tabReorder;
+    private Grid? _tabDropTarget;
+    private readonly CancellationTokenSource _lifetime = new();
 
     public QuickTerminalWindow()
     {
@@ -41,7 +53,11 @@ public sealed partial class QuickTerminalWindow : Window
 
     public event EventHandler? DismissRequested;
 
-    public event EventHandler? SettingsRequested;
+    public event EventHandler? AgentSettingsRequested;
+
+    public event EventHandler? NewConnectionRequested;
+
+    public event EventHandler<QuickTerminalHeightChangedEventArgs>? HeightResizeCompleted;
 
     public bool HideOnFocusLoss { get; set; } = true;
 
@@ -59,17 +75,11 @@ public sealed partial class QuickTerminalWindow : Window
         var backgroundOpacity = QuickTerminalPresentationPolicy.EffectiveOpacity(
             settings,
             hostPreferences);
-        Opacity = 1;
         QuickTerminalHost.BackgroundOpacity = backgroundOpacity;
         QuickTerminalPlaceholderBackground.Opacity = backgroundOpacity;
         QuickTerminalStatusBackground.Opacity = backgroundOpacity;
         HideOnFocusLoss = settings.HideOnFocusLoss;
-        var transparencyHint = QuickTerminalPresentationPolicy.ShouldUseBlur(
-            settings,
-            hostPreferences)
-            ? BlurHint
-            : TransparentHint;
-        ApplyTransparencyHint(transparencyHint);
+        ApplyBackdrop();
     }
 
     /// <summary>
@@ -93,6 +103,12 @@ public sealed partial class QuickTerminalWindow : Window
         }
 
         ApplyTransparencyHint(BlurHint);
+        // Avalonia's macOS Blur mode also paints NSWindow itself with opaque
+        // windowBackgroundColor. The reveal moves the material and Skia
+        // siblings, so that backing would otherwise appear immediately in the
+        // final rectangle underneath them.
+        _ = MacOsQuickTerminalReveal.TryClearWindowBacking(this);
+        _ = MacOsQuickTerminalReveal.TryKeepBackdropActive(this);
     }
 
     private void ApplyTransparencyHint(IReadOnlyList<WindowTransparencyLevel> hint)
@@ -108,53 +124,141 @@ public sealed partial class QuickTerminalWindow : Window
         TransparencyLevelHint = hint;
     }
 
+    /// <summary>
+    /// The smallest useful terminal surface. The controller combines this with
+    /// the configured monitor-relative minimum before enabling the resize grip.
+    /// </summary>
+    public const double MinimumRevealHeight = 320;
+
+    /// <summary>
+    /// Places the fully revealed panel and records its off-screen position.
+    /// The native window retains its full size at both positions, so moving it
+    /// never asks the terminal or the backdrop to reflow.
+    /// </summary>
+    public void PlaceAt(PixelPoint topLeft, double scaling)
+    {
+        if (!double.IsFinite(scaling) || scaling <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(scaling));
+        }
+
+        var hiddenOffset = checked((int)Math.Ceiling(Math.Max(1, Height) * scaling));
+        _placementScale = scaling;
+        _shownPosition = topLeft;
+        _hiddenPosition = new PixelPoint(topLeft.X, topLeft.Y - hiddenOffset);
+        _hasPlacement = true;
+        Position = topLeft;
+        if (IsVisible)
+        {
+            ApplyRevealPosition(_preparedRevealProgress);
+        }
+    }
+
     public void PrepareReveal(double progress)
     {
+        _revealToken++;
         _preparedRevealProgress = Math.Clamp(progress, 0, 1);
-        SlidingPanel.Opacity = _preparedRevealProgress >= 1 ? 1 : 0;
+        if (IsVisible)
+        {
+            ApplyRevealPosition(_preparedRevealProgress);
+            return;
+        }
+
+        // Showing invisibly at the final anchor lets the platform choose the
+        // correct display and create its material before the first visible
+        // frame. CompletePreparedReveal moves it off-screen synchronously.
+        Opacity = 0;
+        if (_hasPlacement)
+        {
+            Position = _shownPosition;
+        }
+    }
+
+    public void CompletePreparedReveal()
+    {
+        if (!IsVisible)
+        {
+            return;
+        }
+
+        ApplyRevealPosition(_preparedRevealProgress);
+        Opacity = 1;
     }
 
     public void SetRevealProgress(double progress)
     {
+        _revealToken++;
         _preparedRevealProgress = Math.Clamp(progress, 0, 1);
-        var visual = ElementComposition.GetElementVisual(SlidingPanel);
-        if (visual is not null)
-        {
-            visual.StopAnimation("Translation");
-            visual.Translation = TranslationFor(_preparedRevealProgress);
-        }
-
-        SlidingPanel.Opacity = _preparedRevealProgress > 0 ? 1 : 0;
+        ApplyRevealPosition(_preparedRevealProgress);
     }
 
     public void AnimateReveal(double from, double to, TimeSpan duration)
     {
         from = Math.Clamp(from, 0, 1);
         to = Math.Clamp(to, 0, 1);
+        var token = ++_revealToken;
         _preparedRevealProgress = to;
-        var visual = ElementComposition.GetElementVisual(SlidingPanel);
-        if (visual is null || duration <= TimeSpan.Zero)
+        if (duration <= TimeSpan.Zero || !_hasPlacement)
         {
-            SetRevealProgress(to);
+            ApplyRevealPosition(to);
             return;
         }
 
-        visual.StopAnimation("Translation");
-        visual.Translation = TranslationFor(from);
-        var animation = visual.Compositor.CreateVector3KeyFrameAnimation();
-        animation.Target = "Translation";
-        animation.Duration = duration;
-        animation.StopBehavior = AnimationStopBehavior.LeaveCurrentValue;
-        animation.InsertKeyFrame(0, TranslationFor(from));
-        animation.InsertKeyFrame(1, TranslationFor(to), SlideEasing);
-        SlidingPanel.Opacity = 1;
-        visual.StartAnimation("Translation", animation);
+        if (MacOsQuickTerminalReveal.TryAnimate(this, from, to, duration))
+        {
+            return;
+        }
+
+        var start = TimeSpan.MinValue;
+        void Frame(TimeSpan timestamp)
+        {
+            if (token != _revealToken)
+            {
+                return;
+            }
+
+            if (start == TimeSpan.MinValue)
+            {
+                start = timestamp;
+            }
+
+            var t = Math.Clamp(
+                (timestamp - start).TotalMilliseconds / duration.TotalMilliseconds,
+                0,
+                1);
+            PositionForProgress(from + ((to - from) * SlideEasing.Ease(t)));
+            if (t < 1)
+            {
+                RequestAnimationFrame(Frame);
+            }
+        }
+
+        PositionForProgress(from);
+        RequestAnimationFrame(Frame);
     }
 
-    private Vector3 TranslationFor(double progress) => new(
-        0,
-        checked((float)(-Math.Max(1, Bounds.Height) * (1 - progress))),
-        0);
+    private void ApplyRevealPosition(double progress)
+    {
+        if (!_hasPlacement)
+        {
+            return;
+        }
+
+        if (MacOsQuickTerminalReveal.TrySetProgress(this, progress))
+        {
+            return;
+        }
+
+        PositionForProgress(progress);
+    }
+
+    private void PositionForProgress(double progress)
+    {
+        var y = checked((int)Math.Round(
+            _hiddenPosition.Y
+            + ((_shownPosition.Y - _hiddenPosition.Y) * Math.Clamp(progress, 0, 1))));
+        Position = new PixelPoint(_shownPosition.X, y);
+    }
 
     public void FocusTerminal() =>
         Dispatcher.UIThread.Post(
@@ -199,11 +303,302 @@ public sealed partial class QuickTerminalWindow : Window
         RequestDismiss();
     }
 
-    private void OnSettingsClick(object? sender, RoutedEventArgs e)
+    private async void OnAddTabRequested(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        SettingsRequested?.Invoke(this, EventArgs.Empty);
+        if (DataContext is QuickTerminalViewModel viewModel)
+        {
+            await viewModel.AddTabAsync();
+            FocusTerminal();
+        }
+    }
+
+    private void OnActivateTabRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (DataContext is QuickTerminalViewModel viewModel
+            && sender is Control { DataContext: QuickTerminalTabViewModel tab })
+        {
+            viewModel.ActivateTab(tab);
+            FocusTerminal();
+        }
+    }
+
+    private async void OnCloseTabRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (DataContext is QuickTerminalViewModel viewModel
+            && sender is Control { DataContext: QuickTerminalTabViewModel tab })
+        {
+            await viewModel.CloseTabAsync(tab);
+            FocusTerminal();
+        }
+    }
+
+    private async void OnConnectionSelected(
+        object? sender,
+        PanelConnectionSelectedEventArgs e)
+    {
+        _ = sender;
+        if (DataContext is QuickTerminalViewModel viewModel
+            && e.Selection is PanelConnectionOptionViewModel.Target.Connection connection)
+        {
+            await viewModel.SelectConnectionAsync(connection.Id);
+            FocusTerminal();
+        }
+    }
+
+    private void OnNewConnectionRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        NewConnectionRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnTabReorderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_tabReorder is not null
+            || sender is not Control
+            {
+                DataContext: QuickTerminalTabViewModel tab,
+            } source
+            || DataContext is not QuickTerminalViewModel { Tabs.Count: > 1 }
+            || !e.Pointer.IsPrimary)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(source);
+        if (!point.Properties.IsLeftButtonPressed
+            && e.Pointer.Type != PointerType.Touch)
+        {
+            return;
+        }
+
+        _tabReorder = new QuickTerminalTabReorder(
+            source,
+            point.Position,
+            e.Pointer,
+            tab,
+            IsDragging: false);
+        e.Pointer.Capture(source);
+        e.Handled = true;
+    }
+
+    private void OnTabReorderPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_tabReorder is not { } reorder
+            || !ReferenceEquals(sender, reorder.Source)
+            || !ReferenceEquals(e.Pointer, reorder.Pointer))
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(reorder.Source);
+        if (!point.Properties.IsLeftButtonPressed
+            && e.Pointer.Type != PointerType.Touch)
+        {
+            CancelTabReorder();
+            return;
+        }
+
+        if (!reorder.IsDragging)
+        {
+            var delta = point.Position - reorder.Origin;
+            if (Math.Abs(delta.X) < 6 && Math.Abs(delta.Y) < 6)
+            {
+                return;
+            }
+
+            reorder = reorder with { IsDragging = true };
+            _tabReorder = reorder;
+        }
+
+        ShowTabDropTarget(ResolveTabDrop(e.GetPosition(this), reorder.Tab));
+        e.Handled = true;
+    }
+
+    private void OnTabReorderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_tabReorder is not { } reorder
+            || !ReferenceEquals(sender, reorder.Source)
+            || !ReferenceEquals(e.Pointer, reorder.Pointer))
+        {
+            return;
+        }
+
+        var drop = reorder.IsDragging
+            ? ResolveTabDrop(e.GetPosition(this), reorder.Tab)
+            : null;
+        _tabReorder = null;
+        ClearTabDropTarget();
+        reorder.Pointer.Capture(null);
+        if (drop is not null && DataContext is QuickTerminalViewModel viewModel)
+        {
+            viewModel.MoveTab(reorder.Tab, drop.Value.Tab, drop.Value.PlaceAfter);
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnTabReorderPointerCaptureLost(
+        object? sender,
+        PointerCaptureLostEventArgs e)
+    {
+        _ = sender;
+        if (_tabReorder is { } reorder && ReferenceEquals(e.Pointer, reorder.Pointer))
+        {
+            CancelTabReorder(releaseCapture: false);
+        }
+    }
+
+    private QuickTerminalTabDrop? ResolveTabDrop(
+        Point position,
+        QuickTerminalTabViewModel sourceTab)
+    {
+        if (this.InputHitTest(position) is not Visual hit)
+        {
+            return null;
+        }
+
+        var target = hit is Grid grid
+            && grid.Classes.Contains("RuntimeTabDropTarget")
+                ? grid
+                : hit.GetVisualAncestors()
+                    .OfType<Grid>()
+                    .FirstOrDefault(candidate =>
+                        candidate.Classes.Contains("RuntimeTabDropTarget"));
+        if (target?.DataContext is not QuickTerminalTabViewModel targetTab
+            || ReferenceEquals(sourceTab, targetTab))
+        {
+            return null;
+        }
+
+        var targetPosition = position
+            - target.TranslatePoint(default, this).GetValueOrDefault();
+        return new QuickTerminalTabDrop(
+            target,
+            targetTab,
+            targetPosition.X >= target.Bounds.Width / 2);
+    }
+
+    private void ShowTabDropTarget(QuickTerminalTabDrop? drop)
+    {
+        ClearTabDropTarget();
+        if (drop is null)
+        {
+            return;
+        }
+
+        _tabDropTarget = drop.Value.Target;
+        var placementClass = drop.Value.PlaceAfter ? "After" : "Before";
+        foreach (var indicator in _tabDropTarget
+                     .GetVisualDescendants()
+                     .OfType<Border>()
+                     .Where(border =>
+                         border.Classes.Contains("RuntimeTabDropIndicator")))
+        {
+            indicator.IsVisible = indicator.Classes.Contains(placementClass);
+        }
+    }
+
+    private void ClearTabDropTarget()
+    {
+        if (_tabDropTarget is null)
+        {
+            return;
+        }
+
+        foreach (var indicator in _tabDropTarget
+                     .GetVisualDescendants()
+                     .OfType<Border>()
+                     .Where(border =>
+                         border.Classes.Contains("RuntimeTabDropIndicator")))
+        {
+            indicator.IsVisible = false;
+        }
+
+        _tabDropTarget = null;
+    }
+
+    private void CancelTabReorder(bool releaseCapture = true)
+    {
+        var reorder = _tabReorder;
+        _tabReorder = null;
+        ClearTabDropTarget();
+        if (releaseCapture)
+        {
+            reorder?.Pointer.Capture(null);
+        }
+    }
+
+    private void OnResizeGripPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control grip
+            || !e.GetCurrentPoint(grip).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _isResizing = true;
+        _resizeStartScreenY = this.PointToScreen(e.GetPosition(this)).Y;
+        _resizeStartHeight = Height;
+        e.Pointer.Capture(grip);
+        e.Handled = true;
+    }
+
+    private void OnResizeGripPointerMoved(object? sender, PointerEventArgs e)
+    {
+        _ = sender;
+        if (!_isResizing)
+        {
+            return;
+        }
+
+        var screenY = this.PointToScreen(e.GetPosition(this)).Y;
+        var nextHeight = _resizeStartHeight
+            + ((screenY - _resizeStartScreenY) / _placementScale);
+        Height = Math.Clamp(nextHeight, MinHeight, MaxHeight);
+        if (_hasPlacement)
+        {
+            PlaceAt(_shownPosition, _placementScale);
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnResizeGripPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _ = sender;
+        if (!_isResizing)
+        {
+            return;
+        }
+
+        e.Pointer.Capture(null);
+        CompleteResize();
+        e.Handled = true;
+    }
+
+    private void OnResizeGripPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        CompleteResize();
+    }
+
+    private void CompleteResize()
+    {
+        if (!_isResizing)
+        {
+            return;
+        }
+
+        _isResizing = false;
+        HeightResizeCompleted?.Invoke(
+            this,
+            new QuickTerminalHeightChangedEventArgs(Height));
     }
 
     private void OnWindowDeactivated(object? sender, EventArgs e)
@@ -223,6 +618,8 @@ public sealed partial class QuickTerminalWindow : Window
         _ = sender;
         if (_allowClose)
         {
+            _lifetime.Cancel();
+            _lifetime.Dispose();
             return;
         }
 
@@ -232,3 +629,20 @@ public sealed partial class QuickTerminalWindow : Window
 
     private void RequestDismiss() => DismissRequested?.Invoke(this, EventArgs.Empty);
 }
+
+public sealed class QuickTerminalHeightChangedEventArgs(double height) : EventArgs
+{
+    public double Height { get; } = height;
+}
+
+internal readonly record struct QuickTerminalTabDrop(
+    Grid Target,
+    QuickTerminalTabViewModel Tab,
+    bool PlaceAfter);
+
+internal sealed record QuickTerminalTabReorder(
+    Control Source,
+    Point Origin,
+    IPointer Pointer,
+    QuickTerminalTabViewModel Tab,
+    bool IsDragging);

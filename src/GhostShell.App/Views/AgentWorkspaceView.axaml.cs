@@ -16,22 +16,73 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private const double MinimumFloatingHeight = 360;
 
+    private static readonly Lazy<Cursor> HorizontalResizeCursor = new(
+        () => new Cursor(StandardCursorType.SizeWestEast));
+
+    private static readonly Lazy<Cursor> VerticalResizeCursor = new(
+        () => new Cursor(StandardCursorType.SizeNorthSouth));
+
+    private bool _wasFloating;
+    private double? _floatingWidth;
+    private double? _floatingHeight;
+    private double? _dockedWidth;
+
     public AgentWorkspaceView()
     {
         InitializeComponent();
-        // A resize while floating is a local value over the style's size, so
-        // docking clears it: the docked slot's geometry belongs to the layout
-        // spacer, and the next float starts back at the style's default.
+        _wasFloating = Classes.Contains("floating");
         Classes.CollectionChanged += (_, _) =>
         {
-            if (!Classes.Contains("floating"))
-            {
-                ClearValue(WidthProperty);
-                ClearValue(HeightProperty);
-            }
+            PreserveSizeAcrossPresentationChanges();
+            UpdateResizeCursor();
         };
-        FloatingResizeHandle.Cursor = DiagonalResizeCursor.Value;
+        UpdateResizeCursor();
     }
+
+    private void PreserveSizeAcrossPresentationChanges()
+    {
+        var isFloating = Classes.Contains("floating");
+        if (isFloating == _wasFloating)
+        {
+            return;
+        }
+
+        if (_wasFloating)
+        {
+            _floatingWidth = PreferredSize(Width, Bounds.Width);
+            _floatingHeight = PreferredSize(Height, Bounds.Height);
+            ClearValue(WidthProperty);
+            ClearValue(HeightProperty);
+            if (_dockedWidth is { } dockedWidth)
+            {
+                Width = dockedWidth;
+            }
+        }
+        else
+        {
+            _dockedWidth = PreferredSize(Width, Bounds.Width);
+            ClearValue(WidthProperty);
+            ClearValue(HeightProperty);
+            if (_floatingWidth is { } floatingWidth)
+            {
+                Width = floatingWidth;
+            }
+
+            if (_floatingHeight is { } floatingHeight)
+            {
+                Height = floatingHeight;
+            }
+        }
+
+        _wasFloating = isFloating;
+    }
+
+    private static double? PreferredSize(double configured, double arranged) =>
+        double.IsFinite(configured) && configured > 0
+            ? configured
+            : double.IsFinite(arranged) && arranged > 0
+                ? arranged
+                : null;
 
     /// <summary>
     /// A north-east/south-west double arrow, drawn: macOS exposes no diagonal
@@ -81,15 +132,67 @@ public sealed partial class AgentWorkspaceView : UserControl
         }
 
         var availableWidth = host.Bounds.Width - Margin.Left - Margin.Right;
+        if (Classes.Contains("edgeResizable"))
+        {
+            var widthDelta = Classes.Contains("edgeLeft")
+                ? e.Vector.X
+                : -e.Vector.X;
+            var width = Math.Clamp(
+                Bounds.Width + widthDelta,
+                MinimumFloatingWidth,
+                Math.Max(MinimumFloatingWidth, availableWidth));
+            Width = width;
+            if (Classes.Contains("floating"))
+            {
+                _floatingWidth = width;
+            }
+            else
+            {
+                _dockedWidth = width;
+            }
+
+            return;
+        }
+
         var availableHeight = host.Bounds.Height - Margin.Top - Margin.Bottom;
-        Width = Math.Clamp(
+        _floatingWidth = Math.Clamp(
             Bounds.Width - e.Vector.X,
             MinimumFloatingWidth,
             Math.Max(MinimumFloatingWidth, availableWidth));
-        Height = Math.Clamp(
+        _floatingHeight = Math.Clamp(
             Bounds.Height + e.Vector.Y,
             MinimumFloatingHeight,
             Math.Max(MinimumFloatingHeight, availableHeight));
+        Width = _floatingWidth.Value;
+        Height = _floatingHeight.Value;
+    }
+
+    private void UpdateResizeCursor() =>
+        (FloatingResizeHandle.Cursor, FloatingHeightResizeHandle.Cursor) =
+            Classes.Contains("edgeResizable")
+                ? (HorizontalResizeCursor.Value, VerticalResizeCursor.Value)
+                : (DiagonalResizeCursor.Value, VerticalResizeCursor.Value);
+
+    private void OnFloatingHeightResizeDragDelta(object? sender, VectorEventArgs e)
+    {
+        _ = sender;
+        if (Parent is not Control host || !Classes.Contains("edgeResizable"))
+        {
+            return;
+        }
+
+        var availableHeight = Math.Max(
+            1,
+            host.Bounds.Height - Margin.Top - Margin.Bottom);
+        var minimumHeight = Math.Min(MinimumFloatingHeight, availableHeight);
+        var heightDelta = Classes.Contains("anchorBottom")
+            ? -e.Vector.Y
+            : e.Vector.Y;
+        _floatingHeight = Math.Clamp(
+            Bounds.Height + heightDelta,
+            minimumHeight,
+            availableHeight);
+        Height = _floatingHeight.Value;
     }
 
     public event EventHandler<RoutedEventArgs>? ApproveAgentActionRequested;

@@ -459,6 +459,15 @@ public sealed class SettingsViewContractTests
         Assert.Equal("100", AttributeValue(opacity, "Maximum"));
         Assert.Equal("True", AttributeValue(opacity, "ClipValueToMinMax"));
 
+        var height = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "NumericUpDown"
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "Quick Terminal panel height",
+                    StringComparison.Ordinal));
+        Assert.Equal("0", AttributeValue(height, "FormatString"));
+
         var display = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "ComboBox"
@@ -483,7 +492,7 @@ public sealed class SettingsViewContractTests
         var toggles = root.Descendants()
             .Where(element => element.Name.LocalName == "ToggleSwitch")
             .ToArray();
-        Assert.Equal(5, toggles.Length);
+        Assert.Equal(6, toggles.Length);
         Assert.Equal(
             new[]
             {
@@ -492,6 +501,7 @@ public sealed class SettingsViewContractTests
                 "{Binding QuickTerminalSettingsEditor.ReduceMotion}",
                 "{Binding QuickTerminalSettingsEditor.HideOnFocusLoss}",
                 "{Binding QuickTerminalSettingsEditor.RestoreLastSession}",
+                "{Binding QuickTerminalSettingsEditor.RestoreOnStart}",
             },
             toggles
                 .Select(toggle => AttributeValue(toggle, "IsChecked"))
@@ -512,6 +522,10 @@ public sealed class SettingsViewContractTests
             "public sealed partial class QuickTerminalSettingsPageView");
         Assert.Contains(
             "SaveRequested?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RecordHotkeyRequested?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
         Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
@@ -665,6 +679,7 @@ public sealed class SettingsViewContractTests
     [
         "Save Quick Terminal settings",
         "Quick Terminal global hotkey",
+        "Record Quick Terminal global hotkey",
         "Quick Terminal display",
         "Quick Terminal panel height",
         "Quick Terminal background opacity",

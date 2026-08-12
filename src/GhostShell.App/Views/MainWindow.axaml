@@ -300,6 +300,7 @@
         ForgetManagedRemoteSessionRequested="OnForgetManagedRemoteSessionClick"
         AppearanceChangedRequested="OnAppearanceChanged"
         PickColorRequested="OnPickColorRequested"
+        RecordQuickTerminalHotkeyRequested="OnRecordQuickTerminalHotkeyClick"
         SaveKeybindingsRequested="OnSaveKeybindingsClick"
         SaveQuickTerminalSettingsRequested="OnSaveQuickTerminalSettingsClick"
         SaveTerminalProfileRequested="OnSaveTerminalProfileClick"

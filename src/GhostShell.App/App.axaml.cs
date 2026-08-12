@@ -240,6 +240,11 @@ public sealed partial class App : Avalonia.Application
     {
         _ = sender;
         _ = e;
+        if (await QuickTerminalController.TryAddTabToActiveQuickTerminalAsync())
+        {
+            return;
+        }
+
         await MainWindow.ShowNewItemLauncherAsync();
     }
 
@@ -296,6 +301,11 @@ public sealed partial class App : Avalonia.Application
     {
         _ = sender;
         _ = e;
+        if (await QuickTerminalController.TryCloseTabInActiveQuickTerminalAsync())
+        {
+            return;
+        }
+
         await MainWindow.RequestCloseTabAsync();
     }
 

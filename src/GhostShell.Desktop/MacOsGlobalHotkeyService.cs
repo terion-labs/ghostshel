@@ -24,7 +24,6 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
     private const uint ShiftKey = 1U << 9;
     private const uint OptionKey = 1U << 11;
     private const uint ControlKey = 1U << 12;
-    private const uint GraveVirtualKeyCode = 50;
     private const uint EscapeVirtualKeyCode = 53;
 
     private readonly EventHandlerDelegate _eventHandler;
@@ -53,7 +52,7 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         Unregister();
-        if (!TryMapGesture(gesture, out var keyCode, out var modifiers))
+        if (!TryMapGesture(gesture, out var nativeGesture))
         {
             return Failure(
                 GlobalHotkeyRegistrationErrorCode.InvalidGesture,
@@ -69,8 +68,8 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
 
         var hotKeyId = new EventHotKeyId(GhostShellSignature, GhostShellHotKeyId);
         var registrationStatus = RegisterEventHotKey(
-            keyCode,
-            modifiers,
+            nativeGesture.VirtualKey,
+            nativeGesture.Modifiers,
             hotKeyId,
             GetApplicationEventTarget(),
             EventHotKeyExclusive,
@@ -248,16 +247,18 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
         _eventHandlerReference = IntPtr.Zero;
     }
 
-    private static bool TryMapGesture(KeyStroke gesture, out uint keyCode, out uint modifiers)
+    internal static bool TryMapGesture(
+        KeyStroke gesture,
+        out MacOsHotkeyGesture nativeGesture)
     {
-        keyCode = 0;
-        modifiers = 0;
-        if (gesture.Key is not ("`" or "GRAVE" or "OEMTILDE"))
+        nativeGesture = default;
+        if (gesture.Modifiers == KeyModifiers.None
+            || !TryMapVirtualKey(gesture.Key, out var virtualKey))
         {
             return false;
         }
 
-        keyCode = GraveVirtualKeyCode;
+        var modifiers = 0U;
         if ((gesture.Modifiers & KeyModifiers.Meta) != 0)
         {
             modifiers |= CommandKey;
@@ -278,8 +279,90 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
             modifiers |= ControlKey;
         }
 
-        return modifiers != 0;
+        nativeGesture = new MacOsHotkeyGesture(virtualKey, modifiers);
+        return true;
     }
+
+    private static bool TryMapVirtualKey(string key, out uint virtualKey)
+    {
+        virtualKey = key switch
+        {
+            "A" => 0,
+            "S" => 1,
+            "D" => 2,
+            "F" => 3,
+            "H" => 4,
+            "G" => 5,
+            "Z" => 6,
+            "X" => 7,
+            "C" => 8,
+            "V" => 9,
+            "B" => 11,
+            "Q" => 12,
+            "W" => 13,
+            "E" => 14,
+            "R" => 15,
+            "Y" => 16,
+            "T" => 17,
+            "1" => 18,
+            "2" => 19,
+            "3" => 20,
+            "4" => 21,
+            "6" => 22,
+            "5" => 23,
+            "9" => 25,
+            "7" => 26,
+            "8" => 28,
+            "0" => 29,
+            "O" => 31,
+            "U" => 32,
+            "I" => 34,
+            "P" => 35,
+            "L" => 37,
+            "J" => 38,
+            "K" => 40,
+            "N" => 45,
+            "M" => 46,
+            "SPACE" => 49,
+            "`" or "GRAVE" or "OEMTILDE" or "OEM3" => 50,
+            "HOME" => 115,
+            "PAGEUP" => 116,
+            "DELETE" => 117,
+            "END" => 119,
+            "PAGEDOWN" => 121,
+            "LEFT" or "ARROWLEFT" => 123,
+            "RIGHT" or "ARROWRIGHT" => 124,
+            "DOWN" or "ARROWDOWN" => 125,
+            "UP" or "ARROWUP" => 126,
+            _ => FunctionVirtualKey(key),
+        };
+        return virtualKey != uint.MaxValue;
+    }
+
+    private static uint FunctionVirtualKey(string key) => key switch
+    {
+        "F1" => 122,
+        "F2" => 120,
+        "F3" => 99,
+        "F4" => 118,
+        "F5" => 96,
+        "F6" => 97,
+        "F7" => 98,
+        "F8" => 100,
+        "F9" => 101,
+        "F10" => 109,
+        "F11" => 103,
+        "F12" => 111,
+        "F13" => 105,
+        "F14" => 107,
+        "F15" => 113,
+        "F16" => 106,
+        "F17" => 64,
+        "F18" => 79,
+        "F19" => 80,
+        "F20" => 90,
+        _ => uint.MaxValue,
+    };
 
     private static GlobalHotkeyRegistrationResult Failure(
         GlobalHotkeyRegistrationErrorCode code,
@@ -341,3 +424,5 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
         IntPtr actualSize,
         out EventHotKeyId data);
 }
+
+internal readonly record struct MacOsHotkeyGesture(uint VirtualKey, uint Modifiers);

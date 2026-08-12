@@ -22,6 +22,7 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
     private int _animationDurationMilliseconds;
     private bool _reduceMotion;
     private bool _restoreLastSession;
+    private bool _restoreOnStart;
     private bool _hideOnFocusLoss;
     private string _registrationStatus = "Shortcut registration has not been checked yet.";
     private string _registrationStatusBrush = "#8B8B91";
@@ -36,13 +37,16 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
         ExpectedRevision = expectedRevision;
         _hotkeyText = QuickTerminalHotkeyText.Format(settings.Hotkey);
         _monitorPolicy = settings.MonitorPolicy;
-        _heightPercent = settings.HeightFraction * 100;
+        _heightPercent = Math.Round(
+            settings.HeightFraction * 100,
+            MidpointRounding.AwayFromZero);
         _opacityPercent = settings.Opacity * 100;
         _isTranslucent = settings.IsTranslucent;
         _animateSlide = settings.AnimateSlide;
         _animationDurationMilliseconds = settings.AnimationDurationMilliseconds;
         _reduceMotion = settings.ReduceMotion;
         _restoreLastSession = settings.RestoreLastSession;
+        _restoreOnStart = settings.RestoreOnStart;
         _hideOnFocusLoss = settings.HideOnFocusLoss;
     }
 
@@ -136,6 +140,12 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
         set => SetProperty(ref _restoreLastSession, value);
     }
 
+    public bool RestoreOnStart
+    {
+        get => _restoreOnStart;
+        set => SetProperty(ref _restoreOnStart, value);
+    }
+
     public bool HideOnFocusLoss
     {
         get => _hideOnFocusLoss;
@@ -168,7 +178,8 @@ public sealed class QuickTerminalSettingsEditorViewModel : ObservableObject
             ReduceMotion,
             RestoreLastSession,
             HideOnFocusLoss,
-            IsTranslucent);
+            IsTranslucent,
+            RestoreOnStart);
         return new QuickTerminalSettingsSaveRequest(settings, ExpectedRevision);
     }
 

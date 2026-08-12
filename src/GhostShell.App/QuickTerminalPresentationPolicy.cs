@@ -33,4 +33,22 @@ internal static class QuickTerminalPresentationPolicy
         ArgumentNullException.ThrowIfNull(hostPreferences);
         return hostPreferences.ReducedTransparency ? 1 : settings.Opacity;
     }
+
+    public static double HeightFraction(double height, double availableHeight)
+    {
+        if (!double.IsFinite(height) || height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(height));
+        }
+
+        if (!double.IsFinite(availableHeight) || availableHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(availableHeight));
+        }
+
+        return Math.Clamp(
+            height / availableHeight,
+            QuickTerminalSettings.MinimumHeightFraction,
+            QuickTerminalSettings.MaximumHeightFraction);
+    }
 }

@@ -1054,6 +1054,33 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    public async Task<ConnectionId?> ShowNewTerminalConnectionEditorAsync()
+    {
+        try
+        {
+            ViewModel.CloseOverlay();
+            await ViewModel.RefreshSecretsAsync(_lifetime.Token);
+            var editor = ViewModel.CreateUnifiedConnectionEditor(
+                SavedConnectionFamily.Terminal);
+            var result = await new ConnectionEditorDialog(editor)
+                .ShowDialog<UnifiedConnectionEditorResult?>(this);
+            if (result is not UnifiedConnectionEditorResult.Terminal terminal)
+            {
+                return null;
+            }
+
+            var saved = await ViewModel.SaveConnectionAsync(
+                terminal.Request,
+                _lifetime.Token);
+            return saved.IsSuccess ? terminal.Request.Profile.Id : null;
+        }
+        catch (InvalidOperationException exception)
+        {
+            ViewModel.SetError(exception.Message);
+            return null;
+        }
+    }
+
     private async Task ApplyConnectionEditorResultAsync(UnifiedConnectionEditorResult result)
     {
         switch (result)

@@ -17,6 +17,7 @@ public sealed class QuickTerminalSettingsTests
         Assert.True(settings.IsTranslucent);
         Assert.True(settings.AnimateSlide);
         Assert.True(settings.RestoreLastSession);
+        Assert.True(settings.RestoreOnStart);
         Assert.True(settings.HideOnFocusLoss);
     }
 
@@ -66,12 +67,14 @@ public sealed class QuickTerminalSettingsTests
             animationDurationMilliseconds: 0,
             reduceMotion: true,
             restoreLastSession: false,
-            hideOnFocusLoss: false);
+            hideOnFocusLoss: false,
+            restoreOnStart: false);
 
         var json = JsonSerializer.Serialize(original);
         var restored = JsonSerializer.Deserialize<QuickTerminalSettings>(json);
 
         Assert.Equal(original, restored);
+        Assert.False(restored!.RestoreOnStart);
     }
 
     private static QuickTerminalSettings Create(

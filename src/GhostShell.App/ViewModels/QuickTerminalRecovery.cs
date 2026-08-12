@@ -1,0 +1,79 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using GhostShell.Application;
+
+namespace GhostShell.App.ViewModels;
+
+/// <summary>
+/// Persists only durable Quick Terminal identity: tab order, selected tab, and
+/// connection definitions. Shell processes and scrollback cannot survive an
+/// application exit; restore reconnects them through the normal runtime path.
+/// </summary>
+internal static class QuickTerminalRecoveryCodec
+{
+    public const string SnapshotKey = "desktop.quick-terminal";
+    public const int SchemaVersion = 1;
+
+    private const int MaximumTabs = 64;
+
+    public static string Serialize(QuickTerminalViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        var payload = new QuickTerminalRecoveryPayload(
+            viewModel.Tabs
+                .Select(tab => tab.ConnectionId?.Value)
+                .ToArray(),
+            Math.Max(0, viewModel.Tabs.IndexOf(viewModel.ActiveTab!)));
+        return JsonSerializer.Serialize(
+            payload,
+            QuickTerminalRecoveryJsonContext.Default.QuickTerminalRecoveryPayload);
+    }
+
+    public static bool TryDeserialize(
+        RuntimeRecoverySnapshot snapshot,
+        out QuickTerminalRecoveryPayload? payload)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        payload = null;
+        if (snapshot.Key != SnapshotKey || snapshot.SchemaVersion != SchemaVersion)
+        {
+            return false;
+        }
+
+        try
+        {
+            payload = JsonSerializer.Deserialize(
+                snapshot.PayloadJson,
+                QuickTerminalRecoveryJsonContext.Default.QuickTerminalRecoveryPayload);
+        }
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
+        {
+            return false;
+        }
+
+        if (payload?.ConnectionIds is not { Length: > 0 and <= MaximumTabs } connectionIds
+            || payload.ActiveTabIndex < 0
+            || payload.ActiveTabIndex >= connectionIds.Length
+            || connectionIds.Any(id => id is not null
+                && (string.IsNullOrWhiteSpace(id)
+                    || id.Length > 256
+                    || id.Any(char.IsControl))))
+        {
+            payload = null;
+            return false;
+        }
+
+        return true;
+    }
+}
+
+internal sealed record QuickTerminalRecoveryPayload(
+    string?[] ConnectionIds,
+    int ActiveTabIndex);
+
+[JsonSourceGenerationOptions(
+    JsonSerializerDefaults.Web,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow)]
+[JsonSerializable(typeof(QuickTerminalRecoveryPayload))]
+internal sealed partial class QuickTerminalRecoveryJsonContext : JsonSerializerContext;
