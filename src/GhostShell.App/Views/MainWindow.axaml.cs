@@ -39,6 +39,8 @@ public sealed partial class MainWindow : Window
     private bool _closeApproved;
     private bool _closeInProgress;
     private bool _restoreRouteFocusWhenActivated;
+    private bool _backingScaleReconciliationQueued;
+    private IDisposable? _backingScaleSettledPass;
     private double _titleBarChromeHeight = 44;
     private Thickness _windowTitleBarContentMargin = new(10, 0);
 
@@ -73,6 +75,7 @@ public sealed partial class MainWindow : Window
         AddHandler(PointerPressedEvent, OnAnyActivity, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnAnyActivity, RoutingStrategies.Tunnel);
         Activated += OnWindowActivated;
+        ScalingChanged += OnWindowScalingChanged;
         // Asked for before the window is created, not after it is on screen.
         // The platform decides whether a window can be seen through when it
         // makes one; a hint arriving later is a request to change something
@@ -180,6 +183,8 @@ public sealed partial class MainWindow : Window
             Avalonia.Threading.DispatcherPriority.Loaded);
         RefreshAppearanceControlsFromStoredProfile();
         ApplyWindowBackdrop();
+        Screens.Changed += OnScreensChanged;
+        QueueBackingScaleReconciliation();
     }
 
     /// <summary>
@@ -369,6 +374,10 @@ public sealed partial class MainWindow : Window
         }
 
         Deactivated -= OnWindowDeactivated;
+        ScalingChanged -= OnWindowScalingChanged;
+        Screens.Changed -= OnScreensChanged;
+        _backingScaleSettledPass?.Dispose();
+        _backingScaleSettledPass = null;
 
         _applicationHintLifetime?.Cancel();
         _applicationHintLifetime?.Dispose();
@@ -2198,12 +2207,62 @@ public sealed partial class MainWindow : Window
         }
 
         RefreshWindowChromeMetrics();
+        QueueBackingScaleReconciliation();
         if (_restoreRouteFocusWhenActivated)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(
                 RestoreRouteFocusIfActive,
                 Avalonia.Threading.DispatcherPriority.Loaded);
         }
+    }
+
+    private void OnWindowScalingChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        QueueBackingScaleReconciliation();
+    }
+
+    private void OnScreensChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        QueueBackingScaleReconciliation();
+        _backingScaleSettledPass?.Dispose();
+        _backingScaleSettledPass = Avalonia.Threading.DispatcherTimer.RunOnce(
+            () =>
+            {
+                _backingScaleSettledPass = null;
+                QueueBackingScaleReconciliation();
+            },
+            TimeSpan.FromMilliseconds(750),
+            Avalonia.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void QueueBackingScaleReconciliation()
+    {
+        if (_backingScaleReconciliationQueued)
+        {
+            return;
+        }
+
+        _backingScaleReconciliationQueued = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () =>
+            {
+                try
+                {
+                    _ = MacOsWindowBackingScale.TryReconcile(this);
+                }
+                finally
+                {
+                    // The native callback raises ScalingChanged even when the
+                    // value is unchanged. Keep the guard set until it returns
+                    // so that reconciliation cannot recursively queue itself.
+                    _backingScaleReconciliationQueued = false;
+                }
+            },
+            Avalonia.Threading.DispatcherPriority.Loaded);
     }
 
     /// <summary>

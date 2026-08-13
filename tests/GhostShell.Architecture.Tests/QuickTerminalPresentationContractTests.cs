@@ -7,6 +7,31 @@ namespace GhostShell.Architecture.Tests;
 public sealed class QuickTerminalPresentationContractTests
 {
     [Fact]
+    public void Main_window_reconciles_macos_backing_scale_after_display_changes()
+    {
+        var repositoryRoot = ApplicationViewCatalog.Load().RepositoryRoot;
+        var window = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "MainWindow.axaml.cs"));
+        var backingScale = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "MacOsWindowBackingScale.cs"));
+
+        Assert.Contains("ScalingChanged += OnWindowScalingChanged", window, StringComparison.Ordinal);
+        Assert.Contains("Screens.Changed += OnScreensChanged", window, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromMilliseconds(750)", window, StringComparison.Ordinal);
+        Assert.Contains("QueueBackingScaleReconciliation();", window, StringComparison.Ordinal);
+        Assert.Contains("viewDidChangeBackingProperties", backingScale, StringComparison.Ordinal);
+        Assert.Contains("intermediate pixel size", backingScale, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Quick_terminal_reveals_inside_a_clipped_transparent_window()
     {
         var document = XDocument.Load(Path.Combine(
