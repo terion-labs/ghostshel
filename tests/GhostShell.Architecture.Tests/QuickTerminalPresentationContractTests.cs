@@ -41,6 +41,7 @@ public sealed class QuickTerminalPresentationContractTests
             root.Descendants(),
             element => element.Name.LocalName == "RuntimeTabStripView"
                 && AttributeValue(element, "Tabs") == "{Binding Tabs}"
+                && AttributeValue(element, "IconPickerPlacement") == "TopEdgeAlignedLeft"
                 && AttributeValue(element, "AddTabRequested") == "OnAddTabRequested");
         var controlBar = Assert.Single(
             root.Descendants(),
@@ -259,6 +260,26 @@ public sealed class QuickTerminalPresentationContractTests
         Assert.Single(Regex.Matches(
             window,
             @"TransparencyLevelHint\s*=\s*hint;"));
+    }
+
+    [Fact]
+    public void Quick_terminal_forced_close_is_safe_when_shutdown_reenters()
+    {
+        var window = File.ReadAllText(Path.Combine(
+            ApplicationViewCatalog.Load().RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "QuickTerminalWindow.axaml.cs"));
+        var closing = Regex.Match(
+            window,
+            @"private void OnWindowClosing\(.*?private void RequestDismiss",
+            RegexOptions.Singleline);
+
+        Assert.True(closing.Success);
+        Assert.Contains("if (_allowClose)", closing.Value, StringComparison.Ordinal);
+        Assert.Contains("_lifetime.Cancel()", closing.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Dispose()", closing.Value, StringComparison.Ordinal);
     }
 
     [Fact]

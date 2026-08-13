@@ -100,6 +100,13 @@ public sealed partial class IconPicker : UserControl
 
     public bool IsShowAllOffered => string.IsNullOrWhiteSpace(SearchText);
 
+    /// <summary>Moves keyboard input straight into search when a picker flyout opens.</summary>
+    public void FocusSearch()
+    {
+        SearchInput.Focus();
+        SearchInput.SelectAll();
+    }
+
     private void OnIconClick(object? sender, RoutedEventArgs e)
     {
         _ = e;

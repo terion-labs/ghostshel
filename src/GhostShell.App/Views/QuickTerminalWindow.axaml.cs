@@ -410,6 +410,34 @@ public sealed partial class QuickTerminalWindow : Window
         }
     }
 
+    private void OnTabTitleEditRequested(
+        object? sender,
+        RuntimeTabTitleEditRequestedEventArgs e)
+    {
+        _ = sender;
+        if (DataContext is not QuickTerminalViewModel viewModel
+            || e.Tab is not QuickTerminalTabViewModel tab)
+        {
+            return;
+        }
+
+        viewModel.UpdateTabIdentity(tab, e.Title, tab.Icon);
+    }
+
+    private void OnTabIconEditRequested(
+        object? sender,
+        RuntimeTabIconEditRequestedEventArgs e)
+    {
+        _ = sender;
+        if (DataContext is not QuickTerminalViewModel viewModel
+            || e.Tab is not QuickTerminalTabViewModel tab)
+        {
+            return;
+        }
+
+        viewModel.UpdateTabIdentity(tab, tab.Title, e.Icon);
+    }
+
     private void OnNewConnectionRequested(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -679,8 +707,11 @@ public sealed partial class QuickTerminalWindow : Window
         _ = sender;
         if (_allowClose)
         {
+            // Avalonia can ask every top-level to close again after the main
+            // window's Closed handler has already closed Quick Terminal. Cancel
+            // is idempotent; disposing here would make that forced pass throw.
+            // Async event handlers also keep using this token while unwinding.
             _lifetime.Cancel();
-            _lifetime.Dispose();
             return;
         }
 

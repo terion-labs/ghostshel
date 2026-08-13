@@ -1880,6 +1880,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public bool IsTabStripDockedRight =>
         IsTabStripVisibleOnSide && TabStripDock == Avalonia.Controls.Dock.Right;
 
+    public Avalonia.Controls.PlacementMode SideTabIconPickerPlacement =>
+        IsTabStripDockedRight
+            ? Avalonia.Controls.PlacementMode.LeftEdgeAlignedTop
+            : Avalonia.Controls.PlacementMode.RightEdgeAlignedTop;
+
     public string ThemeAccent => ActiveTheme.Accent.Kind == AccentPreferenceKind.Custom
         ? ActiveTheme.Accent.CustomColor?.ToString() ?? ThemePreference.BronzeFallback.ToString()
         : "Follow system accent";
@@ -5899,6 +5904,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(commit);
 
         var navigation = CaptureRuntimeMutationNavigation();
+        var replacesLauncher = IsLauncherTab(tab);
+        var firstPanelTitle = replacesLauncher
+            ? tab.TitleForFirstPanel(panel.Title)
+            : tab.Title;
         var attached = false;
         try
         {
@@ -5909,16 +5918,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 // else grows the tab. The two must not be confused: proposing an
                 // append while the commit replaces would leave the host holding a
                 // panel the client had already dropped.
-                currentWorkspace => tab.ReplaceTarget is { } replacedPanelId
-                    ? ReplaceRuntimePanel(
-                        CaptureRuntimeWorkspaceGraph(currentWorkspace),
-                        tab.Id,
-                        replacedPanelId,
-                        new PanelInstance(panel.Id, panel.Kind, panel.Title))
-                    : AppendRuntimePanel(
-                        CaptureRuntimeWorkspaceGraph(currentWorkspace),
-                        tab.Id,
-                        new PanelInstance(panel.Id, panel.Kind, panel.Title)),
+                currentWorkspace =>
+                {
+                    var replacement = tab.ReplaceTarget is { } replacedPanelId
+                        ? ReplaceRuntimePanel(
+                            CaptureRuntimeWorkspaceGraph(currentWorkspace),
+                            tab.Id,
+                            replacedPanelId,
+                            new PanelInstance(panel.Id, panel.Kind, panel.Title))
+                        : AppendRuntimePanel(
+                            CaptureRuntimeWorkspaceGraph(currentWorkspace),
+                            tab.Id,
+                            new PanelInstance(panel.Id, panel.Kind, panel.Title));
+                    return !string.Equals(firstPanelTitle, tab.Title, StringComparison.Ordinal)
+                        ? RenameRuntimeTab(replacement, tab.Id, firstPanelTitle)
+                        : replacement;
+                },
                 () =>
                 {
                     try
@@ -5932,6 +5947,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
                     if (attached)
                     {
+                        if (replacesLauncher)
+                        {
+                            tab.AdoptFirstPanelTitle(panel.Title);
+                        }
+
                         StartAcceptedRuntimePanel(panel);
                         CompleteRuntimeMutationNavigation(navigation);
                     }
@@ -6762,22 +6782,53 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string title,
         CancellationToken cancellationToken = default)
     {
+        var tab = RuntimeWorkspace?.ActiveTab;
+        if (tab is null)
+        {
+            return false;
+        }
+
+        return await UpdateRuntimeTabIdentityAsync(
+            tab.Id,
+            title,
+            tab.Icon,
+            cancellationToken);
+    }
+
+    public async Task<bool> UpdateRuntimeTabIdentityAsync(
+        TabInstanceId tabId,
+        string title,
+        string icon,
+        CancellationToken cancellationToken = default)
+    {
         var workspace = RuntimeWorkspace;
-        var tab = workspace?.ActiveTab;
-        if (workspace is null || tab is null || string.IsNullOrWhiteSpace(title))
+        var tab = workspace?.Tabs.SingleOrDefault(candidate => candidate.Id == tabId);
+        if (workspace is null
+            || tab is null
+            || string.IsNullOrWhiteSpace(title))
         {
             return false;
         }
 
         var normalizedTitle = title.Trim();
-        if (string.Equals(tab.Title, normalizedTitle, StringComparison.Ordinal))
+        var normalizedIcon = WorkspaceIcons.OptionFor(icon).Id;
+        var titleChanged = !string.Equals(tab.Title, normalizedTitle, StringComparison.Ordinal);
+        var iconChanged = !string.Equals(tab.Icon, normalizedIcon, StringComparison.Ordinal);
+        if (!titleChanged && !iconChanged)
         {
+            return true;
+        }
+
+        if (!titleChanged)
+        {
+            _ = tab.ChooseIcon(normalizedIcon);
+            QueueRuntimeRecoverySnapshot();
             return true;
         }
 
         return await ReplaceRuntimeWorkspaceGraphAsync(
             workspace,
-            "tab rename",
+            "tab identity update",
             currentWorkspace =>
             {
                 if (!currentWorkspace.Tabs.Contains(tab))
@@ -6785,26 +6836,43 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     return null;
                 }
 
-                var current = CaptureRuntimeWorkspaceGraph(currentWorkspace);
-                var currentTab = current.Tabs.Single(item => item.Id == tab.Id);
-                return ReplaceRuntimeTab(
-                    current,
-                    new TabInstance(
-                        currentTab.Id,
-                        normalizedTitle,
-                        currentTab.Panels,
-                        currentTab.ActivePanelId),
-                    current.ActiveTabId);
+                return RenameRuntimeTab(
+                    CaptureRuntimeWorkspaceGraph(currentWorkspace),
+                    tab.Id,
+                    normalizedTitle);
             },
             () =>
             {
                 if (!tab.Rename(normalizedTitle))
                 {
                     throw new InvalidOperationException(
-                        "The runtime tab changed before the host-approved rename was applied.");
+                        "The runtime tab changed before the host-approved identity was applied.");
+                }
+
+                if (iconChanged)
+                {
+                    _ = tab.ChooseIcon(normalizedIcon);
                 }
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Records an explicit icon choice even when the user picked the icon that
+    /// was already displayed. Equality says whether pixels change, not whether
+    /// the first panel still owns this field.
+    /// </summary>
+    public bool ChooseRuntimeTabIcon(TabInstanceId tabId, string icon)
+    {
+        var tab = RuntimeWorkspace?.Tabs.SingleOrDefault(candidate => candidate.Id == tabId);
+        if (tab is null)
+        {
+            return false;
+        }
+
+        _ = tab.ChooseIcon(icon);
+        QueueRuntimeRecoverySnapshot();
+        return true;
     }
 
     public bool EnterTerminalCopyMode() =>
@@ -9389,6 +9457,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         return ReplaceRuntimeTab(workspace, replacement, tabId);
     }
 
+    private static WorkspaceInstance RenameRuntimeTab(
+        WorkspaceInstance workspace,
+        TabInstanceId tabId,
+        string title)
+    {
+        var tab = workspace.Tabs.Single(item => item.Id == tabId);
+        return ReplaceRuntimeTab(
+            workspace,
+            new TabInstance(tab.Id, title, tab.Panels, tab.ActivePanelId),
+            workspace.ActiveTabId);
+    }
+
     private static WorkspaceInstance ReplaceRuntimeTab(
         WorkspaceInstance workspace,
         TabInstance replacement,
@@ -10113,6 +10193,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(TabStripDock));
         OnPropertyChanged(nameof(IsTabStripDockedLeft));
         OnPropertyChanged(nameof(IsTabStripDockedRight));
+        OnPropertyChanged(nameof(SideTabIconPickerPlacement));
         OnPropertyChanged(nameof(KeybindingConflictCount));
         RefreshRecentSessionAvailability();
         RefreshLauncherSearchResults();
@@ -11420,7 +11501,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             recovered.HistorySource?.ToHistorySource(),
             recovered.AgentPolicy?.ToProvenance()
                 ?? RuntimeAgentPolicyProvenance.LegacyFallback,
-            usesAutomaticLayout: recovered.UsesAutomaticLayout);
+            usesAutomaticLayout: recovered.UsesAutomaticLayout,
+            icon: recovered.Icon,
+            // Older snapshots did not record field ownership. A non-default
+            // launcher title was necessarily user-authored; an explicit legacy
+            // icon is preserved conservatively rather than overwritten.
+            hasChosenTitle: recovered.HasChosenTitle
+                ?? !string.Equals(recovered.Title, "New tab", StringComparison.Ordinal),
+            hasChosenIcon: recovered.HasChosenIcon ?? recovered.Icon is not null);
         try
         {
             var restoredPanels = new Dictionary<string, RuntimePanelViewModel>(StringComparer.Ordinal);

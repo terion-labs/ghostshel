@@ -42,6 +42,30 @@ public sealed class CefPresentationShutdownContractTests
         Assert.True(failureFallback < cefShutdown);
     }
 
+    [Fact]
+    public void Desktop_does_not_attribute_unrelated_shutdown_failures_to_Chromium()
+    {
+        var program = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "src", "GhostShell.Desktop", "Program.cs"));
+
+        var initialization = RequiredIndexOf(
+            program,
+            "BrowserEngineRuntime.Initialize(CreateBrowserEngineOptions());");
+        var chromiumFailure = RequiredIndexOf(
+            program,
+            "GhostSHELL's embedded Chromium runtime failed:",
+            initialization);
+        var lifetime = RequiredIndexOf(program, "lifetime.Start(args)", chromiumFailure);
+        var desktopFailure = RequiredIndexOf(
+            program,
+            "GhostSHELL's desktop runtime failed:",
+            lifetime);
+
+        Assert.True(initialization < chromiumFailure);
+        Assert.True(chromiumFailure < lifetime);
+        Assert.True(lifetime < desktopFailure);
+    }
+
     private static int RequiredIndexOf(
         string source,
         string value,

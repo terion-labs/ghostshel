@@ -23,7 +23,9 @@ internal static class QuickTerminalRecoveryCodec
             viewModel.Tabs
                 .Select(tab => tab.ConnectionId?.Value)
                 .ToArray(),
-            Math.Max(0, viewModel.Tabs.IndexOf(viewModel.ActiveTab!)));
+            Math.Max(0, viewModel.Tabs.IndexOf(viewModel.ActiveTab!)),
+            viewModel.Tabs.Select(tab => tab.Title).ToArray(),
+            viewModel.Tabs.Select(tab => tab.Icon).ToArray());
         return JsonSerializer.Serialize(
             payload,
             QuickTerminalRecoveryJsonContext.Default.QuickTerminalRecoveryPayload);
@@ -54,6 +56,12 @@ internal static class QuickTerminalRecoveryCodec
         if (payload?.ConnectionIds is not { Length: > 0 and <= MaximumTabs } connectionIds
             || payload.ActiveTabIndex < 0
             || payload.ActiveTabIndex >= connectionIds.Length
+            || payload.Titles is { } titles
+                && (titles.Length != connectionIds.Length
+                    || titles.Any(title => !IsDisplayText(title, 256)))
+            || payload.Icons is { } icons
+                && (icons.Length != connectionIds.Length
+                    || icons.Any(icon => !IsDisplayText(icon, 64)))
             || connectionIds.Any(id => id is not null
                 && (string.IsNullOrWhiteSpace(id)
                     || id.Length > 256
@@ -65,11 +73,18 @@ internal static class QuickTerminalRecoveryCodec
 
         return true;
     }
+
+    private static bool IsDisplayText(string? value, int maximumLength) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length <= maximumLength
+        && !value.Any(char.IsControl);
 }
 
 internal sealed record QuickTerminalRecoveryPayload(
     string?[] ConnectionIds,
-    int ActiveTabIndex);
+    int ActiveTabIndex,
+    string[]? Titles = null,
+    string[]? Icons = null);
 
 [JsonSourceGenerationOptions(
     JsonSerializerDefaults.Web,

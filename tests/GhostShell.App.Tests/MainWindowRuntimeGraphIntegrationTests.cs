@@ -983,6 +983,96 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Null(viewModel.OperationError);
     }
 
+    [Fact]
+    public async Task First_panel_selected_in_a_launcher_sets_its_tab_name_and_icon()
+    {
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddLauncherTabAsync());
+        var tab = viewModel.RuntimeWorkspace!.ActiveTab!;
+        tab.ReplaceTarget = Assert.Single(tab.Panels).Id;
+
+        Assert.True(await viewModel.AddDatabasePanelAsync());
+
+        Assert.Equal("Database", tab.Title);
+        Assert.Equal("database", tab.Icon);
+        var hosted = Assert.IsType<WorkspaceGraphSnapshot>(recorder.CurrentWorkspace).Workspace;
+        Assert.Equal(
+            "Database",
+            hosted.Tabs.Single(candidate => candidate.Id == hosted.ActiveTabId).Title);
+    }
+
+    [Theory]
+    [InlineData(true, false, "Investigations", "database")]
+    [InlineData(false, true, "Database", "star")]
+    [InlineData(true, true, "Investigations", "star")]
+    public async Task First_panel_preserves_each_manually_chosen_tab_identity_field(
+        bool chooseTitle,
+        bool chooseIcon,
+        string expectedTitle,
+        string expectedIcon)
+    {
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddLauncherTabAsync());
+        var tab = viewModel.RuntimeWorkspace!.ActiveTab!;
+        tab.ReplaceTarget = Assert.Single(tab.Panels).Id;
+
+        Assert.True(await viewModel.UpdateRuntimeTabIdentityAsync(
+            tab.Id,
+            chooseTitle ? "Investigations" : tab.Title,
+            chooseIcon ? "star" : tab.Icon));
+        Assert.True(await viewModel.AddDatabasePanelAsync());
+
+        Assert.Equal(expectedTitle, tab.Title);
+        Assert.Equal(expectedIcon, tab.Icon);
+        var hosted = Assert.IsType<WorkspaceGraphSnapshot>(recorder.CurrentWorkspace).Workspace;
+        Assert.Equal(
+            expectedTitle,
+            hosted.Tabs.Single(candidate => candidate.Id == hosted.ActiveTabId).Title);
+    }
+
+    [Fact]
+    public async Task Choosing_the_displayed_default_icon_still_claims_it_from_the_first_panel()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddLauncherTabAsync());
+        var tab = viewModel.RuntimeWorkspace!.ActiveTab!;
+        tab.ReplaceTarget = Assert.Single(tab.Panels).Id;
+        var chosenIcon = tab.Icon;
+
+        Assert.True(viewModel.ChooseRuntimeTabIcon(tab.Id, chosenIcon));
+        Assert.True(await viewModel.AddDatabasePanelAsync());
+
+        Assert.Equal("Database", tab.Title);
+        Assert.Equal(chosenIcon, tab.Icon);
+    }
+
+    [Fact]
+    public async Task Editing_a_tab_updates_host_title_and_local_icon_together()
+    {
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var tab = viewModel.RuntimeWorkspace!.ActiveTab!;
+
+        Assert.True(await viewModel.UpdateRuntimeTabIdentityAsync(
+            tab.Id,
+            "Investigations",
+            "star"));
+
+        Assert.Equal("Investigations", tab.Title);
+        Assert.Equal("star", tab.Icon);
+        var hosted = Assert.IsType<WorkspaceGraphSnapshot>(recorder.CurrentWorkspace).Workspace;
+        Assert.Equal(
+            "Investigations",
+            hosted.Tabs.Single(candidate => candidate.Id == hosted.ActiveTabId).Title);
+    }
+
     /// <summary>
     /// Closing tabs one by one used to arrive at a blank window with a button on
     /// it. The last one leaves the question "what do I open" in its place, so

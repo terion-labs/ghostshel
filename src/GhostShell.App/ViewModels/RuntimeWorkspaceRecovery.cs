@@ -159,7 +159,10 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 ? RuntimeHistorySourceRecoveryPayload.Capture(historySource)
                 : null,
             RuntimeAgentPolicyRecoveryPayload.Capture(tab.AgentPolicy),
-            tab.Panels.Select(CapturePanel).ToArray());
+            tab.Panels.Select(CapturePanel).ToArray(),
+            tab.Icon,
+            tab.HasChosenTitle,
+            tab.HasChosenIcon);
 
     private static RuntimePanelRecoveryPayload CapturePanel(RuntimePanelViewModel panel)
     {
@@ -284,6 +287,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
         if (!IsIdentifier(tab.Key)
             || !IsDisplayText(tab.Title, 256)
             || !IsDisplayText(tab.Source, 128)
+            || tab.Icon is { } icon && !IsDisplayText(icon, 64)
             || tab.HistorySource is { } historySource
                 && !TryValidate(historySource)
             || tab.AgentPolicy is { } tabPolicy
@@ -522,7 +526,10 @@ internal sealed record RuntimeTabRecoveryPayload(
     int Rows,
     RuntimeHistorySourceRecoveryPayload? HistorySource,
     RuntimeAgentPolicyRecoveryPayload? AgentPolicy,
-    RuntimePanelRecoveryPayload[] Panels);
+    RuntimePanelRecoveryPayload[] Panels,
+    string? Icon = null,
+    bool? HasChosenTitle = null,
+    bool? HasChosenIcon = null);
 
 internal sealed record RuntimeAgentPolicyRecoveryPayload(
     string Provider,

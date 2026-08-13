@@ -139,7 +139,8 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<AgentTerminalSelectionItemViewModel>
-        AgentTerminalSelectionOptions { get; } = [];
+        AgentTerminalSelectionOptions
+    { get; } = [];
 
     public bool IsAgentSelectedPanelsScope =>
         SelectedAgentRunScope.Kind == AgentRunScopeKind.SelectedPanels;
@@ -320,6 +321,20 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
         NotifyRecoveryStateChanged();
     }
 
+    public void UpdateTabIdentity(
+        QuickTerminalTabViewModel tab,
+        string title,
+        string icon)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        if (!Tabs.Contains(tab) || !tab.SetIdentity(title, icon))
+        {
+            return;
+        }
+
+        NotifyRecoveryStateChanged();
+    }
+
     public void MoveTab(
         QuickTerminalTabViewModel tab,
         QuickTerminalTabViewModel anchor,
@@ -406,8 +421,9 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
             var tabsToInitialize = new List<(
                 QuickTerminalTabViewModel Tab,
                 ConnectionProfile Connection)>(recovered.ConnectionIds.Length);
-            foreach (var storedConnectionId in recovered.ConnectionIds)
+            for (var index = 0; index < recovered.ConnectionIds.Length; index++)
             {
+                var storedConnectionId = recovered.ConnectionIds[index];
                 var connectionId = storedConnectionId is null
                     ? (ConnectionId?)null
                     : new ConnectionId(storedConnectionId);
@@ -415,6 +431,13 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
                 var tab = new QuickTerminalTabViewModel(
                     connection?.Id,
                     connection?.Name ?? "No connection");
+                if (recovered.Titles is not null || recovered.Icons is not null)
+                {
+                    _ = tab.SetIdentity(
+                        recovered.Titles?[index] ?? tab.Title,
+                        recovered.Icons?[index] ?? tab.Icon);
+                }
+
                 AddTabCore(tab);
                 if (connection is null)
                 {

@@ -953,7 +953,7 @@
   </Style>
 
   <!-- One tile in the workspace icon grid. -->
-  <Style Selector="Button.IconChoice">
+  <Style Selector="Button.IconChoice, ToggleButton.IconChoice">
     <Setter Property="Width" Value="38" />
     <Setter Property="Height" Value="38" />
     <Setter Property="MinHeight" Value="0" />
@@ -963,10 +963,10 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource ShellControlCornerRadius}" />
   </Style>
-  <Style Selector="Button.IconChoice:pointerover">
+  <Style Selector="Button.IconChoice:pointerover, ToggleButton.IconChoice:pointerover">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
   </Style>
-  <Style Selector="Button.IconChoice.selected">
+  <Style Selector="Button.IconChoice.selected, ToggleButton.IconChoice:checked">
     <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellAccentBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource ShellAccentBrush}" />

@@ -29,34 +29,41 @@
           Text="{Binding TotalCount, ElementName=Root, StringFormat={}{0} icons}" />
     </Grid>
 
-    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
-      <ItemsControl x:Name="Grid" ItemsSource="{Binding ItemsSource, ElementName=Root}">
-        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate>
-            <Button
-                Margin="{controls:Inset Right=Xs, Bottom=Xs}"
-                Classes="IconChoice"
-                Click="OnIconClick"
-                ToolTip.Tip="{Binding Name}"
-                Classes.selected="{Binding IsSelected}"
-                AutomationProperties.Name="{Binding Name}">
-              <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding Symbol}" FontSize="16" />
-            </Button>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+      <ScrollViewer
+          MaxHeight="228"
+          HorizontalScrollBarVisibility="Disabled"
+          VerticalScrollBarVisibility="Auto">
+        <ItemsControl x:Name="Grid" ItemsSource="{Binding ItemsSource, ElementName=Root}">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button
+                  Margin="{controls:Inset Right=Xs, Bottom=Xs}"
+                  Classes="IconChoice"
+                  Click="OnIconClick"
+                  ToolTip.Tip="{Binding Name}"
+                  Classes.selected="{Binding IsSelected}"
+                  AutomationProperties.Name="{Binding Name}">
+                <icons:SymbolIcon HorizontalAlignment="Center" VerticalAlignment="Center" Symbol="{Binding Symbol}" FontSize="16" />
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
       <ToggleButton
           x:Name="ShowAllToggle"
+          Grid.Column="1"
           VerticalAlignment="Top"
           Classes="IconChoice"
+          controls:Concentric.IsEnabled="True"
           IsChecked="{Binding ShowAll, ElementName=Root, Mode=TwoWay}"
           ToolTip.Tip="Show every icon"
           IsVisible="{Binding IsShowAllOffered, ElementName=Root}"
           AutomationProperties.Name="Show every icon">
         <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="All" />
       </ToggleButton>
-    </StackPanel>
+    </Grid>
 
     <TextBlock
         Classes="Muted"

@@ -20,6 +20,21 @@ public sealed class QuickTerminalRecoveryTests
         Assert.Equal(1, payload.ActiveTabIndex);
     }
 
+    [Fact]
+    public void Recovery_payload_accepts_custom_tab_titles_and_icons()
+    {
+        var snapshot = new RuntimeRecoverySnapshot(
+            "previous-run",
+            QuickTerminalRecoveryCodec.SnapshotKey,
+            QuickTerminalRecoveryCodec.SchemaVersion,
+            """{"connectionIds":["local"],"activeTabIndex":0,"titles":["Logs"],"icons":["pulse"]}""",
+            DateTimeOffset.UtcNow);
+
+        Assert.True(QuickTerminalRecoveryCodec.TryDeserialize(snapshot, out var payload));
+        Assert.Equal(["Logs"], payload!.Titles!);
+        Assert.Equal(["pulse"], payload.Icons!);
+    }
+
     [Theory]
     [InlineData("""{"connectionIds":[],"activeTabIndex":0}""")]
     [InlineData("""{"connectionIds":["local"],"activeTabIndex":1}""")]

@@ -127,14 +127,53 @@
                 HorizontalContentAlignment="Left"
                 VerticalContentAlignment="Center"
                 AutomationProperties.Name="{Binding Title, StringFormat={}Activate tab {0}}"
-                AutomationProperties.HelpText="Use the reorder handle to drag this tab, or use Move tab left and Move tab right from the command palette.">
+                AutomationProperties.HelpText="Double-click the title to rename it, or the icon to choose another icon. Use the reorder handle to drag it, or use Move tab left and Move tab right from the command palette.">
               <!-- A grid, not a stack: a stacked label takes whatever width it
                    wants, so a long tab name ran under its own attention dot and
                    out through the close button instead of trimming. The label is
                    the only part that gives. -->
               <Grid VerticalAlignment="Center" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
-                <icons:SymbolIcon VerticalAlignment="Center" Symbol="WindowConsole" FontSize="11" />
-                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                <Border
+                    Tag="{Binding Icon}"
+                    Background="Transparent"
+                    DoubleTapped="OnIconDoubleTapped"
+                    ToolTip.Tip="Double-click to change icon"
+                    AutomationProperties.Name="{Binding Title, StringFormat={}Change icon for tab {0}}">
+                  <icons:SymbolIcon VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="11" />
+                  <FlyoutBase.AttachedFlyout>
+                    <Flyout Opened="OnIconFlyoutOpened">
+                      <components:IconPicker
+                          Width="330"
+                          ItemsSource="{Binding IconChoices}"
+                          SearchText="{Binding IconSearch, Mode=TwoWay}"
+                          ShowAll="{Binding ShowAllIcons, Mode=TwoWay}"
+                          TotalCount="{Binding IconCount}"
+                          Hint="{Binding IconHint}"
+                          IconChosen="OnIconChosen" />
+                    </Flyout>
+                  </FlyoutBase.AttachedFlyout>
+                </Border>
+                <Grid Grid.Column="1" Background="Transparent">
+                  <TextBlock
+                      Classes="RuntimeTabTitle"
+                      VerticalAlignment="Center"
+                      FontSize="{DynamicResource ShellFontSize10}"
+                      Text="{Binding Title}"
+                      TextTrimming="CharacterEllipsis"
+                      DoubleTapped="OnTitleDoubleTapped"
+                      ToolTip.Tip="Double-click to rename" />
+                  <TextBox
+                      Classes="Dense RuntimeTabTitleEditor"
+                      MinHeight="0"
+                      Height="20"
+                      Padding="2,0"
+                      VerticalContentAlignment="Center"
+                      FontSize="{DynamicResource ShellFontSize10}"
+                      IsVisible="False"
+                      KeyDown="OnTitleEditorKeyDown"
+                      LostFocus="OnTitleEditorLostFocus"
+                      AutomationProperties.Name="Edit tab title" />
+                </Grid>
                 <controls:SignalDot Grid.Column="2" IsVisible="{Binding HasAttention}" />
               </Grid>
             </Button>

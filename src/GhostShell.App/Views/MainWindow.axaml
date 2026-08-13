@@ -210,6 +210,8 @@
         CancelFileTransferRequested="OnCancelFileTransferClick"
         ClearAgentChatRequested="OnClearAgentChatClick"
         CloseRuntimeTabRequested="OnCloseRuntimeTabClick"
+        RuntimeTabTitleEditRequested="OnRuntimeTabTitleEditRequested"
+        RuntimeTabIconEditRequested="OnRuntimeTabIconEditRequested"
         DeclineAgentQuestionRequested="OnDeclineAgentQuestionClick"
         DenyAgentActionRequested="OnDenyAgentActionClick"
         DisableAgentYoloRequested="OnDisableAgentYoloClick"

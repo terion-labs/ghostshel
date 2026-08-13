@@ -1,5 +1,6 @@
 using GhostShell.Application;
 using GhostShell.Core;
+using FluentIcons.Common;
 
 namespace GhostShell.App.ViewModels;
 
@@ -10,6 +11,8 @@ public sealed class QuickTerminalTabViewModel : ObservableObject
 {
     private ConnectionId? _connectionId;
     private string _title;
+    private string _icon = "terminal";
+    private bool _hasCustomIdentity;
     private EnsureTerminalSessionRequest? _terminalRequest;
     private bool _isActive;
     private bool _canClose;
@@ -45,6 +48,10 @@ public sealed class QuickTerminalTabViewModel : ObservableObject
         get => _title;
         private set => SetProperty(ref _title, value);
     }
+
+    public string Icon => _icon;
+
+    public Symbol IconSymbol => WorkspaceIcons.SymbolFor(_icon);
 
     public EnsureTerminalSessionRequest? TerminalRequest
     {
@@ -103,7 +110,10 @@ public sealed class QuickTerminalTabViewModel : ObservableObject
     internal long BeginInitialization(ConnectionId connectionId, string title)
     {
         ConnectionId = connectionId;
-        Title = title;
+        if (!_hasCustomIdentity)
+        {
+            Title = title;
+        }
         TerminalRequest = null;
         TerminalUnavailableMessage = "Preparing the connection…";
         IsInitializing = true;
@@ -114,10 +124,31 @@ public sealed class QuickTerminalTabViewModel : ObservableObject
     {
         _initializationGeneration++;
         ConnectionId = null;
-        Title = title;
+        if (!_hasCustomIdentity)
+        {
+            Title = title;
+        }
         TerminalRequest = null;
         TerminalUnavailableMessage = message;
         IsInitializing = false;
+    }
+
+    internal bool SetIdentity(string title, string icon)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        Title = title.Trim();
+        _hasCustomIdentity = true;
+        var normalizedIcon = WorkspaceIcons.OptionFor(icon).Id;
+        if (SetProperty(ref _icon, normalizedIcon, nameof(Icon)))
+        {
+            OnPropertyChanged(nameof(IconSymbol));
+        }
+
+        return true;
     }
 
     internal void SetProgress(long generation, string message)

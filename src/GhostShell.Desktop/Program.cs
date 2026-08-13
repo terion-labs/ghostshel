@@ -80,8 +80,20 @@ internal static class Program
                 mainWindowViewModel = services.GetRequiredService<MainWindowViewModel>();
                 lifetime.Exit += (_, _) =>
                     TeardownPresentationOrReport(mainWindowViewModel);
-                BrowserEngineRuntime.Initialize(CreateBrowserEngineOptions());
-                cefInitialized = true;
+                try
+                {
+                    BrowserEngineRuntime.Initialize(CreateBrowserEngineOptions());
+                    cefInitialized = true;
+                }
+                catch (Exception error)
+                {
+                    Console.Error.WriteLine(
+                        "GhostSHELL's embedded Chromium runtime failed: "
+                        + error.Message);
+                    Environment.ExitCode = 1;
+                    return;
+                }
+
                 Environment.ExitCode = lifetime.Start(args);
                 // Exit normally performs this while the dispatcher still pumps.
                 // The process's STA thread is a safe fallback if the lifetime
@@ -92,7 +104,7 @@ internal static class Program
             catch (Exception error)
             {
                 Console.Error.WriteLine(
-                    "GhostSHELL's embedded Chromium runtime failed: "
+                    "GhostSHELL's desktop runtime failed: "
                     + error.Message);
                 Environment.ExitCode = 1;
             }

@@ -101,6 +101,20 @@ internal static class WorkspaceIcons
             ? option.Symbol
             : Symbol.Window;
 
+    /// <summary>The durable icon that initially identifies a runtime panel's tab.</summary>
+    public static string ForPanel(PanelKind kind) => kind switch
+    {
+        PanelKind.Terminal => "terminal",
+        PanelKind.Browser => "globe",
+        PanelKind.FileViewer => "folder",
+        PanelKind.Statistics => "pulse",
+        PanelKind.ProcessMonitor => "gauge",
+        PanelKind.DatabaseViewer => "database",
+        PanelKind.Docker => "box",
+        PanelKind.Placeholder => WorkspaceDefinition.DefaultIcon,
+        _ => WorkspaceDefinition.DefaultIcon,
+    };
+
     public static IReadOnlyList<WorkspaceIconOption> Search(string? query)
     {
         if (string.IsNullOrWhiteSpace(query))

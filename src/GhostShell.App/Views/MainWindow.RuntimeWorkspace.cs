@@ -2175,7 +2175,7 @@ public sealed partial class MainWindow
         if (tab.Panels.All(panel => panel is FileRuntimePanelViewModel { HostedClient: null }
                 or UnavailableRuntimePanelViewModel
                 or TerminalRuntimePanelViewModel
-                    { SessionRequest: null, MultiplexerSession: null }
+            { SessionRequest: null, MultiplexerSession: null }
                 or StatisticsRuntimePanelViewModel { HasHostedSession: false }
                 or ProcessMonitorRuntimePanelViewModel { HasHostedSession: false })
             || await RunCloseFlowAsync(
@@ -2320,9 +2320,9 @@ public sealed partial class MainWindow
             UnavailableRuntimePanelViewModel => Task.FromResult(true),
             FileRuntimePanelViewModel { HostedClient: null } => Task.FromResult(true),
             TerminalRuntimePanelViewModel
-                { SessionRequest: null, MultiplexerSession: null } => Task.FromResult(true),
+            { SessionRequest: null, MultiplexerSession: null } => Task.FromResult(true),
             TerminalRuntimePanelViewModel
-                { SessionRequest: null, MultiplexerSession: not null } terminal =>
+            { SessionRequest: null, MultiplexerSession: not null } terminal =>
                 CloseDetachedMultiplexedTerminalAsync(terminal),
             StatisticsRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
             ProcessMonitorRuntimePanelViewModel { HasHostedSession: false } => Task.FromResult(true),
@@ -2389,6 +2389,36 @@ public sealed partial class MainWindow
         {
             _ = await ViewModel.RenameActiveTabAsync(title, _lifetime.Token);
         }
+    }
+
+    private async void OnRuntimeTabTitleEditRequested(
+        object? sender,
+        RuntimeTabTitleEditRequestedEventArgs e)
+    {
+        _ = sender;
+        if (e.Tab is not RuntimeTabViewModel tab)
+        {
+            return;
+        }
+
+        _ = await ViewModel.UpdateRuntimeTabIdentityAsync(
+            tab.Id,
+            e.Title,
+            tab.Icon,
+            _lifetime.Token);
+    }
+
+    private void OnRuntimeTabIconEditRequested(
+        object? sender,
+        RuntimeTabIconEditRequestedEventArgs e)
+    {
+        _ = sender;
+        if (e.Tab is not RuntimeTabViewModel tab)
+        {
+            return;
+        }
+
+        _ = ViewModel.ChooseRuntimeTabIcon(tab.Id, e.Icon);
     }
 
     /// <summary>

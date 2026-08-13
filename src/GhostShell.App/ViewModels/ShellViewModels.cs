@@ -1132,6 +1132,9 @@ public sealed class RuntimeTabViewModel : ObservableObject
     private PanelInstanceId? _activePanelId;
     private PanelInstanceId? _zoomedPanelId;
     private string _title;
+    private string _icon;
+    private bool _hasChosenTitle;
+    private bool _hasChosenIcon;
     private bool _isActive;
     private bool _canClose = true;
     private bool _hasAttention;
@@ -1146,11 +1149,17 @@ public sealed class RuntimeTabViewModel : ObservableObject
         LayoutDefinition? layout = null,
         RuntimeHistorySource? historySource = null,
         RuntimeAgentPolicyProvenance? agentPolicy = null,
-        bool? usesAutomaticLayout = null)
+        bool? usesAutomaticLayout = null,
+        string? icon = null,
+        bool hasChosenTitle = false,
+        bool? hasChosenIcon = null)
     {
         Id = id;
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         _title = title.Trim();
+        _icon = WorkspaceIcons.OptionFor(icon).Id;
+        _hasChosenTitle = hasChosenTitle;
+        _hasChosenIcon = hasChosenIcon ?? icon is not null;
         Source = source;
         HistorySource = historySource;
         AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
@@ -1181,6 +1190,18 @@ public sealed class RuntimeTabViewModel : ObservableObject
         get => _title;
         private set => SetProperty(ref _title, value);
     }
+
+    /// <summary>
+    /// The durable catalog identity is stored beside the runtime title; the
+    /// symbol is only its current presentation and may evolve with the catalog.
+    /// </summary>
+    public string Icon => _icon;
+
+    public Symbol IconSymbol => WorkspaceIcons.SymbolFor(_icon);
+
+    internal bool HasChosenTitle => _hasChosenTitle;
+
+    internal bool HasChosenIcon => _hasChosenIcon;
 
     public string Source { get; }
 
@@ -1539,6 +1560,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         string? savedDockableId = null)
     {
         ArgumentNullException.ThrowIfNull(panel);
+        AdoptFirstPanelIcon(panel);
         ClearZoom();
         if (slotId is { } requestedSlot && _layoutSlots.TryGetValue(requestedSlot, out var slot))
         {
@@ -1731,7 +1753,65 @@ public sealed class RuntimeTabViewModel : ObservableObject
         }
 
         Title = title.Trim();
+        _hasChosenTitle = true;
         return true;
+    }
+
+    internal bool SetIdentity(string title, string icon)
+    {
+        if (!Rename(title))
+        {
+            return false;
+        }
+
+        return ChooseIcon(icon);
+    }
+
+    internal bool ChooseIcon(string icon)
+    {
+        var normalizedIcon = WorkspaceIcons.OptionFor(icon).Id;
+        _hasChosenIcon = true;
+        if (SetProperty(ref _icon, normalizedIcon, nameof(Icon)))
+        {
+            OnPropertyChanged(nameof(IconSymbol));
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the title the first real panel may contribute without claiming
+    /// a title the user already chose while the launcher was still open.
+    /// </summary>
+    internal string TitleForFirstPanel(string panelTitle)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(panelTitle);
+        return _hasChosenTitle ? Title : panelTitle.Trim();
+    }
+
+    internal void AdoptFirstPanelTitle(string panelTitle)
+    {
+        if (_hasChosenTitle)
+        {
+            return;
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(panelTitle);
+        Title = panelTitle.Trim();
+    }
+
+    private void AdoptFirstPanelIcon(RuntimePanelViewModel panel)
+    {
+        if (_hasChosenIcon
+            || panel.Kind == PanelKind.Placeholder
+            || Panels.Any(candidate => candidate.Kind != PanelKind.Placeholder))
+        {
+            return;
+        }
+
+        _icon = WorkspaceIcons.ForPanel(panel.Kind);
+        OnPropertyChanged(nameof(Icon));
+        OnPropertyChanged(nameof(IconSymbol));
     }
 
     /// <summary>

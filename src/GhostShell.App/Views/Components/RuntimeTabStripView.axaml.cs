@@ -24,6 +24,11 @@ public sealed partial class RuntimeTabStripView : UserControl
             nameof(Orientation),
             Orientation.Horizontal);
 
+    public static readonly StyledProperty<PlacementMode> IconPickerPlacementProperty =
+        AvaloniaProperty.Register<RuntimeTabStripView, PlacementMode>(
+            nameof(IconPickerPlacement),
+            PlacementMode.BottomEdgeAlignedLeft);
+
     /// <summary>
     /// Whether an overflowing strip draws a hairline after its add button.
     /// Only the title-bar strip wants it — that is the one place something
@@ -43,7 +48,7 @@ public sealed partial class RuntimeTabStripView : UserControl
         InitializeComponent();
         SyncScrollBars();
         SyncAddButtonDock();
-        SizeChanged += (_, _) => UpdateOverflowFade();
+        SizeChanged += (_, _) => UpdateOverflowPresentation();
     }
 
     public IEnumerable? Tabs
@@ -61,6 +66,17 @@ public sealed partial class RuntimeTabStripView : UserControl
     {
         get => GetValue(OrientationProperty);
         set => SetValue(OrientationProperty, value);
+    }
+
+    /// <summary>
+    /// The edge the icon picker opens toward. The host knows which viewport
+    /// edge owns this strip; orientation alone cannot distinguish top from
+    /// bottom or left from right.
+    /// </summary>
+    public PlacementMode IconPickerPlacement
+    {
+        get => GetValue(IconPickerPlacementProperty);
+        set => SetValue(IconPickerPlacementProperty, value);
     }
 
     /// <summary>
@@ -117,11 +133,15 @@ public sealed partial class RuntimeTabStripView : UserControl
         {
             SyncScrollBars();
             SyncAddButtonDock();
-            UpdateOverflowFade();
+            UpdateOverflowPresentation();
         }
         else if (change.Property == ShowsOverflowSeparatorProperty)
         {
-            UpdateOverflowFade();
+            UpdateOverflowPresentation();
+        }
+        else if (change.Property == TabsProperty)
+        {
+            ObserveTabs(change.NewValue as IEnumerable);
         }
     }
 
@@ -132,88 +152,6 @@ public sealed partial class RuntimeTabStripView : UserControl
             Orientation == Orientation.Horizontal
                 ? Avalonia.Controls.Dock.Right
                 : Avalonia.Controls.Dock.Bottom);
-
-    private void OnTabScrollChanged(object? sender, ScrollChangedEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        UpdateOverflowFade();
-    }
-
-    /// <summary>
-    /// Overflow announces itself as a fade: tabs dissolve at whichever edge
-    /// more of them are hiding behind. At rest with everything visible there
-    /// is no mask at all.
-    /// </summary>
-    private void UpdateOverflowFade()
-    {
-        var horizontal = Orientation == Orientation.Horizontal;
-        var extent = horizontal
-            ? TabScrollViewer.Extent.Width
-            : TabScrollViewer.Extent.Height;
-        var viewport = horizontal
-            ? TabScrollViewer.Viewport.Width
-            : TabScrollViewer.Viewport.Height;
-        var offset = horizontal ? TabScrollViewer.Offset.X : TabScrollViewer.Offset.Y;
-        OverflowSeparator.IsVisible = ShowsOverflowSeparator
-            && horizontal
-            && extent - viewport > 1;
-        var fadeStart = offset > 1;
-        var fadeEnd = extent - viewport - offset > 1;
-        if (viewport <= 0 || (!fadeStart && !fadeEnd))
-        {
-            TabScrollViewer.OpacityMask = null;
-            return;
-        }
-
-        // A soft, eased dissolve rather than a linear wipe: the ramp follows a
-        // smoothstep curve sampled into stops, so tabs melt away instead of
-        // hitting a visible gradient edge.
-        var fade = Math.Min(56, viewport / 3) / viewport;
-        var samples = new List<Avalonia.Media.GradientStop>();
-        const int sampleCount = 6;
-        for (var i = 0; i <= sampleCount; i++)
-        {
-            var t = (double)i / sampleCount;
-            var eased = t * t * (3 - (2 * t));
-            var alpha = (byte)Math.Round(eased * byte.MaxValue);
-            var colour = Avalonia.Media.Color.FromArgb(alpha, 0, 0, 0);
-            if (fadeStart)
-            {
-                samples.Add(new Avalonia.Media.GradientStop(colour, t * fade));
-            }
-
-            if (fadeEnd)
-            {
-                samples.Add(new Avalonia.Media.GradientStop(colour, 1 - (t * fade)));
-            }
-        }
-
-        if (!fadeStart)
-        {
-            samples.Add(new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, 0));
-        }
-
-        if (!fadeEnd)
-        {
-            samples.Add(new Avalonia.Media.GradientStop(Avalonia.Media.Colors.Black, 1));
-        }
-
-        var stops = new Avalonia.Media.GradientStops();
-        foreach (var stop in samples.OrderBy(candidate => candidate.Offset))
-        {
-            stops.Add(stop);
-        }
-
-        TabScrollViewer.OpacityMask = new Avalonia.Media.LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = horizontal
-                ? new RelativePoint(1, 0, RelativeUnit.Relative)
-                : new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops = stops,
-        };
-    }
 
     private void RaisePropertyChanged(params string[] names)
     {

@@ -12,6 +12,7 @@ using Dock.Model.Core;
 
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.Components;
 
 namespace GhostShell.App.Views;
 
@@ -89,6 +90,12 @@ public sealed partial class WorkspaceView : UserControl
     public event EventHandler<RoutedEventArgs>? ClearAgentChatRequested;
 
     public event EventHandler<RoutedEventArgs>? CloseRuntimeTabRequested;
+
+    public event EventHandler<RuntimeTabTitleEditRequestedEventArgs>?
+        RuntimeTabTitleEditRequested;
+
+    public event EventHandler<RuntimeTabIconEditRequestedEventArgs>?
+        RuntimeTabIconEditRequested;
 
     public event EventHandler<RoutedEventArgs>? DeclineAgentQuestionRequested;
 
@@ -190,6 +197,16 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnCloseRuntimeTabClick(object? sender, RoutedEventArgs e) =>
         CloseRuntimeTabRequested?.Invoke(sender, e);
+
+    private void OnRuntimeTabTitleEditRequested(
+        object? sender,
+        RuntimeTabTitleEditRequestedEventArgs e) =>
+        RuntimeTabTitleEditRequested?.Invoke(sender, e);
+
+    private void OnRuntimeTabIconEditRequested(
+        object? sender,
+        RuntimeTabIconEditRequestedEventArgs e) =>
+        RuntimeTabIconEditRequested?.Invoke(sender, e);
 
     private void OnDeclineAgentQuestionClick(object? sender, RoutedEventArgs e) =>
         DeclineAgentQuestionRequested?.Invoke(sender, e);
