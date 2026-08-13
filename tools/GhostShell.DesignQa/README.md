@@ -8,7 +8,7 @@ against `design/` without hand-driving the app.
 ./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- design/qa/current
 ```
 
-It captures 20 shell routes plus 6 modal editors and confirmations. Dialogs are
+It captures the shell's routes plus modal editors and confirmations. Dialogs are
 shown off-screen and rendered at their own arranged size, so a capture reflects
 the dialog's real geometry rather than a fixed frame.
 

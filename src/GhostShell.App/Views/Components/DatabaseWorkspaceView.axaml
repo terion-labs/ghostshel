@@ -48,29 +48,8 @@
       <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
     </Style>
 
-    <!-- DataGrid supplies row and column virtualization. These local choices
-         make it read as the same hairline table the previous viewer used. -->
-    <Style Selector="DataGrid.DatabaseGrid">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="GridLinesVisibility" Value="All" />
-      <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource ShellBorderBrush}" />
-      <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource ShellBorderBrush}" />
-      <Setter Property="RowBackground" Value="Transparent" />
-      <Setter Property="ColumnHeaderHeight" Value="28" />
-      <Setter Property="RowHeight" Value="30" />
-    </Style>
-    <Style Selector="DataGrid.DatabaseGrid DataGridColumnHeader">
-      <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
-    </Style>
-    <Style Selector="DataGrid.DatabaseGrid DataGridRow:pointerover">
-      <Setter Property="Background" Value="{DynamicResource ShellControlHoverBrush}" />
-    </Style>
-    <Style Selector="DataGrid.DatabaseGrid DataGridRow:selected">
-      <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
-    </Style>
+    <!-- The DataGrid.DatabaseGrid table chrome moved to GhostShellTheme so
+         Redis and other value tables share it. -->
     <Style Selector="Border.DatabaseCellValidation">
       <!-- The factory binds thickness to validation state. Keeping the colour in
            XAML makes the indicator follow live theme changes. -->

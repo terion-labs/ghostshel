@@ -8,6 +8,7 @@ using GhostShell.Browser;
 using GhostShell.Databases;
 using GhostShell.Docker;
 using GhostShell.Previews;
+using GhostShell.Redis;
 using GhostShell.Files;
 using GhostShell.Infrastructure;
 using GhostShell.Mcp;
@@ -148,6 +149,10 @@ public static class DesktopComposition
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<SshNetBrowserTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();
+        services.AddSingleton<IRedisPanelSessionFactory>(provider =>
+            new RedisPanelSessionFactory(
+                provider.GetRequiredService<IDatabaseTunnelFactory>()));
+        services.AddSingleton<IDatabaseConnectionCatalog, RedisConnectionCatalog>();
         services.AddSingleton<ISqlLanguageService, CalciteSqlLanguageService>();
         services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();
         services.AddSingleton<IArchiveTableOfContents, ArchiveTableOfContents>();

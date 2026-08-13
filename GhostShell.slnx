@@ -17,6 +17,7 @@
     <Project Path="src/GhostShell.Monitoring/GhostShell.Monitoring.csproj" />
     <Project Path="src/GhostShell.Previews/GhostShell.Previews.csproj" />
     <Project Path="src/GhostShell.Protocol/GhostShell.Protocol.csproj" />
+    <Project Path="src/GhostShell.Redis/GhostShell.Redis.csproj" />
     <Project Path="src/GhostShell.SessionHost/GhostShell.SessionHost.csproj" />
     <Project Path="src/GhostShell.Terminal/GhostShell.Terminal.csproj" />
   </Folder>
@@ -39,6 +40,7 @@
     <Project Path="tests/GhostShell.Monitoring.Tests/GhostShell.Monitoring.Tests.csproj" />
     <Project Path="tests/GhostShell.Previews.Tests/GhostShell.Previews.Tests.csproj" />
     <Project Path="tests/GhostShell.Protocol.Tests/GhostShell.Protocol.Tests.csproj" />
+    <Project Path="tests/GhostShell.Redis.Tests/GhostShell.Redis.Tests.csproj" />
     <Project Path="tests/GhostShell.SessionHost.Tests/GhostShell.SessionHost.Tests.csproj" />
     <Project Path="tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj" />
     <Project Path="tests/GhostShell.TerminalAcceptance.Tests/GhostShell.TerminalAcceptance.Tests.csproj" />

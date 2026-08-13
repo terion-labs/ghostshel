@@ -48,7 +48,7 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
     public const string AgentAuthentication = "SSH agent";
     public const string PasswordAuthentication = "Password (OS keychain)";
 
-    private readonly IDatabasePanelClient _client;
+    private readonly IDatabaseConnectionCatalog _client;
     private readonly IReadOnlyList<ConnectionProfile> _connections;
     private readonly DatabaseConnectionProfileId? _existingId;
     private readonly ConnectionProfile? _existingInlineTunnel;
@@ -74,9 +74,10 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
     private string _testStatus = "Not tested";
     private string _testDetail =
         "Save is allowed without a test; connecting validates the server again.";
+    private bool _isTesting;
 
     public DatabaseConnectionEditorViewModel(
-        IDatabasePanelClient client,
+        IDatabaseConnectionCatalog client,
         IReadOnlyList<ConnectionProfile> connections,
         DatabaseConnectionProfile? existing = null,
         Func<CancellationToken, Task<string?>>? storedPasswordResolver = null)
@@ -330,6 +331,12 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
         private set => SetProperty(ref _testDetail, value);
     }
 
+    public bool IsTesting
+    {
+        get => _isTesting;
+        private set => SetProperty(ref _isTesting, value);
+    }
+
     public DatabaseConnectionSaveRequest CreateSaveRequest()
     {
         if (string.IsNullOrWhiteSpace(Name))
@@ -361,6 +368,26 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
     /// facts, close it. Runs through the same tunnel the connection would use.
     /// </summary>
     public async Task TestAsync(CancellationToken cancellationToken)
+    {
+        if (IsTesting)
+        {
+            return;
+        }
+
+        IsTesting = true;
+        TestStatus = "Testing connection";
+        TestDetail = "Validating connection parameters…";
+        try
+        {
+            await TestConnectionAsync(cancellationToken);
+        }
+        finally
+        {
+            IsTesting = false;
+        }
+    }
+
+    private async Task TestConnectionAsync(CancellationToken cancellationToken)
     {
         DatabaseConnectionSaveRequest request;
         try

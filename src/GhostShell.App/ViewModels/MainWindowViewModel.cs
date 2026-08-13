@@ -92,6 +92,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public FileTransferClipboard FileTransferClipboard { get; } = new();
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
     private readonly IDatabasePanelClient? _databasePanelClient;
+    private readonly IDatabaseConnectionCatalog? _databaseConnectionCatalog;
+    private readonly IRedisPanelSessionFactory? _redisPanelSessionFactory;
     private readonly IDockerEngineClient? _dockerEngineClient;
     private readonly ISqlLanguageService? _sqlLanguageService;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
@@ -221,6 +223,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         IAgentApprovalPrincipal? agentApprovalPrincipal = null,
         IBrowserRendererViewFactory? browserRendererViewFactory = null,
         IDatabasePanelClient? databasePanelClient = null,
+        IDatabaseConnectionCatalog? databaseConnectionCatalog = null,
+        IRedisPanelSessionFactory? redisPanelSessionFactory = null,
         IImagePreviewDecoder? imagePreviewDecoder = null,
         IPdfPreviewRenderer? pdfPreviewRenderer = null,
         IArchiveTableOfContents? archiveTableOfContents = null,
@@ -254,6 +258,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
         _browserRendererViewFactory = browserRendererViewFactory;
         _databasePanelClient = databasePanelClient;
+        _databaseConnectionCatalog = databaseConnectionCatalog ?? databasePanelClient;
+        _redisPanelSessionFactory = redisPanelSessionFactory;
         _dockerEngineClient = dockerEngineClient;
         _sqlLanguageService = sqlLanguageService;
         _imagePreviewDecoder = imagePreviewDecoder;
@@ -473,14 +479,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _catalog.Snapshot.DatabaseConnections.Select(item =>
         {
             var profile = item.Value;
-            var driver = _databasePanelClient?.Drivers
+            var driver = _databaseConnectionCatalog?.Drivers
                 .FirstOrDefault(descriptor => descriptor.Id == profile.DriverId);
             return new PanelConnectionOptionViewModel(
                 new PanelConnectionOptionViewModel.Target.Database(profile.Id),
                 profile.Name,
                 driver?.DisplayName ?? profile.DriverId,
                 DatabaseConnectionDetailText(profile),
-                CanOpen: _databasePanelClient is not null);
+                CanOpen: _databaseConnectionCatalog is not null);
         });
 
     public ObservableCollection<LauncherScreenViewModel> Screens { get; } = [];
@@ -2692,7 +2698,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default)
     {
         ClearError();
-        if (_databasePanelClient is null)
+        if (_databaseConnectionCatalog is null)
         {
             SetError("The database drivers are unavailable in this build.");
             return false;
@@ -2805,7 +2811,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default)
     {
         ClearError();
-        if (_databasePanelClient is null)
+        if (_databaseConnectionCatalog is null)
         {
             SetError("The database drivers are unavailable in this build.");
             return false;
@@ -3514,7 +3520,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         DatabaseConnectionEditorViewModel? database = null;
-        if (_databasePanelClient is not null
+        if (_databaseConnectionCatalog is not null
             && lockedFamily is null or SavedConnectionFamily.Database)
         {
             DatabaseConnectionProfile? existing = null;
@@ -3526,7 +3532,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             database = new DatabaseConnectionEditorViewModel(
-                _databasePanelClient,
+                _databaseConnectionCatalog,
                 _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
                 existing,
                 existing?.PasswordSecret is { } storedSecret
@@ -5566,7 +5572,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        if (livePanel is DatabaseRuntimePanelViewModel)
+        if (livePanel is DatabaseRuntimePanelViewModel or RedisRuntimePanelViewModel)
         {
             // The database panel binds to saved database connections through
             // its own selector; a terminal connection is never its target.
@@ -7241,6 +7247,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (panel is FileRuntimePanelViewModel
             or BrowserRuntimePanelViewModel
             or DatabaseRuntimePanelViewModel
+            or RedisRuntimePanelViewModel
             or TerminalRuntimePanelViewModel)
         {
             panel.PropertyChanged += OnRecoveryRelevantPanelPropertyChanged;
@@ -7270,6 +7277,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (panel is FileRuntimePanelViewModel
             or BrowserRuntimePanelViewModel
             or DatabaseRuntimePanelViewModel
+            or RedisRuntimePanelViewModel
             or TerminalRuntimePanelViewModel)
         {
             panel.PropertyChanged -= OnRecoveryRelevantPanelPropertyChanged;
@@ -7292,6 +7300,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             DatabaseRuntimePanelViewModel => eventArgs.PropertyName is
                 nameof(DatabaseRuntimePanelViewModel.RecoveryTarget)
                 or nameof(DatabaseRuntimePanelViewModel.TunnelConnectionId),
+            RedisRuntimePanelViewModel => eventArgs.PropertyName is
+                nameof(RedisRuntimePanelViewModel.RecoveryTarget)
+                or nameof(RedisRuntimePanelViewModel.TunnelConnectionId),
             TerminalRuntimePanelViewModel => eventArgs.PropertyName is
                 nameof(TerminalRuntimePanelViewModel.MultiplexerSession),
             _ => false,
@@ -7691,6 +7702,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             StatisticsRuntimePanelViewModel statistics => statistics.ConnectionId,
             ProcessMonitorRuntimePanelViewModel processes => processes.ConnectionId,
             DatabaseRuntimePanelViewModel database => database.TunnelConnectionId,
+            RedisRuntimePanelViewModel redis => redis.TunnelConnectionId,
             DockerRuntimePanelViewModel docker => docker.ConnectionId,
             _ => null,
         };
@@ -7719,6 +7731,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 BrowserRuntimePanelViewModel browser => browser.CurrentAddress.ToString(),
                 DatabaseRuntimePanelViewModel database =>
                     database.RecoveryTarget ?? stored?.Startup.Location,
+                RedisRuntimePanelViewModel redis =>
+                    redis.RecoveryTarget ?? stored?.Startup.Location,
                 _ => stored?.Startup.Location,
             };
         }
@@ -10935,7 +10949,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             || Workspaces.Count > 0
             || Connections.Any(connection => connection.CanOpen);
         var canStartBrowser = CanStartBrowserSession;
-        var canStartDatabase = _databasePanelClient is not null;
+        var canStartDatabase = _databaseConnectionCatalog is not null;
         candidates.AddRange(
         [
             new LauncherSearchResultViewModel(
@@ -12183,9 +12197,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// A database panel needs no hosted session: queries run through the
-    /// application-level client, so the panel is unavailable only when the
-    /// desktop composition did not provide one.
+    /// The Database shell hosts two deliberately different runtimes: pooled,
+    /// per-call ADO.NET work and a long-lived Redis session.
     /// </summary>
     private RuntimePanelViewModel CreateDatabasePanel(
         PanelInstanceId panelId,
@@ -12194,8 +12207,34 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string? connectionString = null,
         ConnectionProfile? tunnelConnection = null,
         DatabaseConnectionProfile? savedConnection = null,
-        DatabaseObjectId? initialObject = null) =>
-        _databasePanelClient is null
+        DatabaseObjectId? initialObject = null)
+    {
+        var effectiveDriver = savedConnection?.DriverId ?? driverId;
+        if (string.Equals(effectiveDriver, RedisDatabase.DriverId, StringComparison.Ordinal))
+        {
+            return _redisPanelSessionFactory is null || _databaseConnectionCatalog is null
+                ? new UnavailableRuntimePanelViewModel(
+                    panelId,
+                    PanelKind.DatabaseViewer,
+                    title,
+                    "Database",
+                    "Redis support is unavailable in this build.")
+                : new RedisRuntimePanelViewModel(
+                    panelId,
+                    title,
+                    _redisPanelSessionFactory,
+                    _databaseConnectionCatalog,
+                    connectionString,
+                    tunnelConnection,
+                    savedConnection,
+                    ResolveDatabasePasswordAsync,
+                    _secretVault.Availability.CanPersist
+                        ? StoreDatabasePasswordAsync
+                        : null,
+                    DatabasePasswordStoreLabel(_secretVault.Availability.Adapter));
+        }
+
+        return _databasePanelClient is null
             ? new UnavailableRuntimePanelViewModel(
                 panelId,
                 PanelKind.DatabaseViewer,
@@ -12218,6 +12257,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     : null,
                 passwordStoreLabel: DatabasePasswordStoreLabel(
                     _secretVault.Availability.Adapter));
+    }
 
     private static string DatabasePasswordStoreLabel(string adapter) => adapter switch
     {
@@ -12616,7 +12656,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// it simply connects to the new target.
     /// </summary>
     public bool ReplaceDatabasePanelConnection(
-        DatabaseRuntimePanelViewModel panel,
+        RuntimePanelViewModel panel,
         DatabaseConnectionProfileId profileId)
     {
         ArgumentNullException.ThrowIfNull(panel);
@@ -12628,7 +12668,82 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        panel.ApplySavedConnection(profile, tunnel: ResolveDatabaseTunnel(profile));
+        return ApplyDatabasePanelConnection(
+            panel,
+            profile,
+            tunnel: ResolveDatabaseTunnel(profile));
+    }
+
+    /// <summary>
+    /// Binds a database profile, replacing the runtime when the selected
+    /// connection crosses the relational/Redis boundary.
+    /// </summary>
+    public bool ApplyDatabasePanelConnection(
+        RuntimePanelViewModel panel,
+        DatabaseConnectionProfile profile,
+        string? sessionPassword = null,
+        ConnectionProfile? tunnel = null,
+        bool persisted = true)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        ArgumentNullException.ThrowIfNull(profile);
+        var wantsRedis = string.Equals(
+            profile.DriverId,
+            RedisDatabase.DriverId,
+            StringComparison.Ordinal);
+        if (panel is RedisRuntimePanelViewModel redis && wantsRedis)
+        {
+            redis.ApplySavedConnection(profile, sessionPassword, tunnel, persisted);
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+
+        if (panel is DatabaseRuntimePanelViewModel relational && !wantsRedis)
+        {
+            relational.ApplySavedConnection(profile, sessionPassword, tunnel, persisted);
+            QueueRuntimeRecoverySnapshot();
+            return true;
+        }
+
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.Tabs.SingleOrDefault(candidate =>
+            candidate.Panels.Any(candidatePanel => candidatePanel.Id == panel.Id));
+        if (workspace is null || tab is null)
+        {
+            SetError("That database panel is no longer open.");
+            return false;
+        }
+
+        var replacement = CreateDatabasePanel(
+            panel.Id,
+            panel.Title,
+            driverId: profile.DriverId);
+        if (replacement is RedisRuntimePanelViewModel replacementRedis)
+        {
+            replacementRedis.ApplySavedConnection(
+                profile,
+                sessionPassword,
+                tunnel,
+                persisted);
+        }
+        else if (replacement is DatabaseRuntimePanelViewModel replacementRelational)
+        {
+            replacementRelational.ApplySavedConnection(
+                profile,
+                sessionPassword,
+                tunnel,
+                persisted);
+        }
+
+        if (!tab.ReplacePanel(panel, replacement))
+        {
+            replacement.Dispose();
+            SetError("The database panel changed before its connection could be switched.");
+            return false;
+        }
+
+        StartTrackingRecovery(replacement);
+        StartAcceptedRuntimePanel(replacement);
         QueueRuntimeRecoverySnapshot();
         return true;
     }
@@ -12640,13 +12755,13 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// also why an inline tunnel needing a stored password must be saved.
     /// </summary>
     public bool BindUnsavedDatabaseConnection(
-        DatabaseRuntimePanelViewModel panel,
+        RuntimePanelViewModel panel,
         DatabaseConnectionSaveRequest request)
     {
         ArgumentNullException.ThrowIfNull(panel);
         ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        if (_databasePanelClient is null)
+        if (_databaseConnectionCatalog is null)
         {
             SetError("The database drivers are unavailable in this build.");
             return false;
@@ -12684,15 +12799,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             DatabaseConnectionProfile.CurrentSchemaVersion,
             request.Name,
             request.DriverId,
-            _databasePanelClient.BuildConnectionString(
+            _databaseConnectionCatalog.BuildConnectionString(
                 request.DriverId,
                 request.Details with { Password = null }));
-        panel.ApplySavedConnection(
+        return ApplyDatabasePanelConnection(
+            panel,
             profile,
             request.Details.Password,
             tunnel,
             persisted: false);
-        return true;
     }
 
     /// <summary>Every saved database connection, for panel pickers.</summary>
@@ -12720,7 +12835,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default)
     {
         ClearError();
-        if (_databasePanelClient is null || string.IsNullOrWhiteSpace(name))
+        if (_databaseConnectionCatalog is null || string.IsNullOrWhiteSpace(name))
         {
             SetError("A saved database connection needs a name.");
             return null;
@@ -12777,7 +12892,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             DatabaseConnectionProfile.CurrentSchemaVersion,
             name.Trim(),
             driverId,
-            _databasePanelClient.BuildConnectionString(
+            _databaseConnectionCatalog.BuildConnectionString(
                 driverId,
                 details with { Password = null }),
             secret,
@@ -13237,7 +13352,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         DatabaseConnectionProfile profile,
         long revision)
     {
-        var driver = _databasePanelClient?.Drivers
+        var driver = _databaseConnectionCatalog?.Drivers
             .FirstOrDefault(item => item.Id == profile.DriverId);
         return new(
             new ConnectionId(profile.Id.Value),
@@ -13245,10 +13360,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             profile.Name,
             driver?.DisplayName ?? profile.DriverId,
             DatabaseConnectionDetailText(profile),
-            _databasePanelClient is null
+            _databaseConnectionCatalog is null
                 ? "Database drivers are unavailable in this build"
                 : "Validated on connect",
-            _databasePanelClient is not null,
+            _databaseConnectionCatalog is not null,
             [],
             SavedConnectionFamily.Database,
             profile.Id.Value);
@@ -13260,14 +13375,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private string DatabaseConnectionDetailText(DatabaseConnectionProfile profile)
     {
-        if (_databasePanelClient is null)
+        if (_databaseConnectionCatalog is null)
         {
             return profile.DriverId;
         }
 
         try
         {
-            var details = _databasePanelClient.ParseConnectionDetails(
+            var details = _databaseConnectionCatalog.ParseConnectionDetails(
                 profile.DriverId,
                 profile.ConnectionString);
             if (details.FilePath is { } filePath)

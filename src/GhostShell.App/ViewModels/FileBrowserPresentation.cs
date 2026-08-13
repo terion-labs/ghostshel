@@ -152,7 +152,7 @@ public sealed record FileBrowserContentPresentation(
     }
 }
 
-internal sealed class AsyncActionCommand(
+public sealed class AsyncActionCommand(
     Func<Task> execute,
     Func<bool> canExecute) : ICommand
 {

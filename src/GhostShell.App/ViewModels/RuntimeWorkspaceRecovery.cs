@@ -173,7 +173,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
             FileRuntimePanelViewModel => RuntimePanelRecoveryKind.FileViewer,
             StatisticsRuntimePanelViewModel => RuntimePanelRecoveryKind.Statistics,
             ProcessMonitorRuntimePanelViewModel => RuntimePanelRecoveryKind.ProcessMonitor,
-            DatabaseRuntimePanelViewModel => RuntimePanelRecoveryKind.DatabaseViewer,
+            DatabaseRuntimePanelViewModel or RedisRuntimePanelViewModel =>
+                RuntimePanelRecoveryKind.DatabaseViewer,
             DockerRuntimePanelViewModel => RuntimePanelRecoveryKind.Docker,
             PanelPlaceholderViewModel => RuntimePanelRecoveryKind.Placeholder,
             _ => RuntimePanelRecoveryKind.Unavailable,
@@ -181,6 +182,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
         var terminal = panel as TerminalRuntimePanelViewModel;
         var browser = panel as BrowserRuntimePanelViewModel;
         var database = panel as DatabaseRuntimePanelViewModel;
+        var redis = panel as RedisRuntimePanelViewModel;
         var file = panel as FileRuntimePanelViewModel;
         var statistics = panel as StatisticsRuntimePanelViewModel;
         var processes = panel as ProcessMonitorRuntimePanelViewModel;
@@ -196,10 +198,12 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 ?? statistics?.ConnectionId.Value
                 ?? processes?.ConnectionId.Value
                 ?? docker?.ConnectionId.Value
-                ?? database?.TunnelConnectionId?.Value,
+                ?? database?.TunnelConnectionId?.Value
+                ?? redis?.TunnelConnectionId?.Value,
             terminal?.RecoveryStartupLocation
                 ?? browser?.CurrentAddress.ToString()
-                ?? database?.RecoveryTarget,
+                ?? database?.RecoveryTarget
+                ?? redis?.RecoveryTarget,
             file?.SelectedProfile?.Id ?? file?.CurrentLocation?.ProviderProfileId,
             file?.CurrentLocation is { } location
                 ? RuntimeFileLocationRecoveryPayload.Capture(location)

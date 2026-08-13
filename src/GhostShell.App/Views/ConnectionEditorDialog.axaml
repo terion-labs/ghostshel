@@ -17,7 +17,7 @@
       Chrome="Editor"
       ShowsClose="True"
       CloseRequested="OnCancelClick"
-      FooterHint="Opening revalidates runtime, credentials, and platform support.">
+      FooterHint="{Binding TestFooterHint}">
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <!-- Every family starts the same way: a name and a type. -->
       <controls:SurfaceCard>
@@ -407,6 +407,7 @@
             Classes="SecondaryButton"
             Click="OnTestClick"
             Content="{Binding TestLabel}"
+            IsEnabled="{Binding !IsTesting}"
             IsVisible="{Binding CanTest}" />
         <Button x:Name="SubmitButton" MinWidth="110" Classes="PrimaryButton" Click="OnSubmitClick" Content="Save" IsDefault="True" />
       </StackPanel>

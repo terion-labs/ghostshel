@@ -64,6 +64,7 @@ public abstract record UnifiedConnectionEditorResult
 public sealed class UnifiedConnectionEditorViewModel : ObservableObject
 {
     private UnifiedConnectionTypeOption _selectedType;
+    private bool _hasTestFeedback;
 
     public UnifiedConnectionEditorViewModel(
         ConnectionEditorViewModel terminal,
@@ -84,6 +85,16 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
         }
 
         _selectedType = InitialOption(lockedFamily ?? initialFamily);
+        Terminal.PropertyChanged += OnFamilyEditorPropertyChanged;
+        if (Files is not null)
+        {
+            Files.PropertyChanged += OnFamilyEditorPropertyChanged;
+        }
+
+        if (Database is not null)
+        {
+            Database.PropertyChanged += OnFamilyEditorPropertyChanged;
+        }
     }
 
     public ConnectionEditorViewModel Terminal { get; }
@@ -113,6 +124,12 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
             OnPropertyChanged(nameof(IsDatabase));
             OnPropertyChanged(nameof(CanTest));
             OnPropertyChanged(nameof(TestLabel));
+            _hasTestFeedback = false;
+            OnPropertyChanged(nameof(HasTestFeedback));
+            OnPropertyChanged(nameof(TestStatus));
+            OnPropertyChanged(nameof(TestDetail));
+            OnPropertyChanged(nameof(TestFooterHint));
+            OnPropertyChanged(nameof(IsTesting));
             OnPropertyChanged(nameof(Name));
         }
     }
@@ -127,7 +144,39 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
 
     public bool CanTest => true;
 
-    public string TestLabel => IsTerminal ? "Run diagnostics" : "Test";
+    public bool IsTesting => Family switch
+    {
+        SavedConnectionFamily.Terminal => Terminal.IsTesting,
+        SavedConnectionFamily.Files => Files?.IsTesting == true,
+        SavedConnectionFamily.Database => Database?.IsTesting == true,
+        _ => false,
+    };
+
+    public bool HasTestFeedback => _hasTestFeedback;
+
+    public string TestStatus => Family switch
+    {
+        SavedConnectionFamily.Terminal => Terminal.TestStatus,
+        SavedConnectionFamily.Files => Files?.TestStatus ?? string.Empty,
+        SavedConnectionFamily.Database => Database?.TestStatus ?? string.Empty,
+        _ => string.Empty,
+    };
+
+    public string TestDetail => Family switch
+    {
+        SavedConnectionFamily.Terminal => Terminal.TestDetail,
+        SavedConnectionFamily.Files => Files?.TestDetail ?? string.Empty,
+        SavedConnectionFamily.Database => Database?.TestDetail ?? string.Empty,
+        _ => string.Empty,
+    };
+
+    public string TestFooterHint => HasTestFeedback
+        ? $"{TestStatus}: {TestDetail}"
+        : "Opening revalidates runtime, credentials, and platform support.";
+
+    public string TestLabel => IsTesting
+        ? "Testing…"
+        : IsTerminal ? "Run diagnostics" : "Test";
 
     /// <summary>
     /// Families whose connect purpose can open without persisting. Files
@@ -189,6 +238,36 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
             _ => throw new ArgumentOutOfRangeException(nameof(Family), Family, null),
         };
 
+    public async Task TestAsync(CancellationToken cancellationToken)
+    {
+        if (IsTesting)
+        {
+            return;
+        }
+
+        _hasTestFeedback = true;
+        OnTestStateChanged();
+        try
+        {
+            if (IsTerminal)
+            {
+                await Terminal.TestAsync(cancellationToken);
+            }
+            else if (IsFiles && Files is not null)
+            {
+                await Files.TestAsync(cancellationToken);
+            }
+            else if (IsDatabase && Database is not null)
+            {
+                await Database.TestAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            OnTestStateChanged();
+        }
+    }
+
     private void ApplyOption(UnifiedConnectionTypeOption option)
     {
         switch (option.Family)
@@ -206,6 +285,29 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
                     .First(item => item.Id == driverId);
                 break;
         }
+    }
+
+    private void OnFamilyEditorPropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        if (eventArgs.PropertyName is nameof(ConnectionEditorViewModel.IsTesting)
+            or nameof(ConnectionEditorViewModel.TestStatus)
+            or nameof(ConnectionEditorViewModel.TestDetail))
+        {
+            OnTestStateChanged();
+        }
+    }
+
+    private void OnTestStateChanged()
+    {
+        OnPropertyChanged(nameof(IsTesting));
+        OnPropertyChanged(nameof(HasTestFeedback));
+        OnPropertyChanged(nameof(TestStatus));
+        OnPropertyChanged(nameof(TestDetail));
+        OnPropertyChanged(nameof(TestFooterHint));
+        OnPropertyChanged(nameof(TestLabel));
     }
 
     private UnifiedConnectionTypeOption InitialOption(SavedConnectionFamily family)

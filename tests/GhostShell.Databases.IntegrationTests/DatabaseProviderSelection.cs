@@ -1,3 +1,5 @@
+using GhostShell.Application;
+
 namespace GhostShell.Databases.IntegrationTests;
 
 internal static class DatabaseProviderSelection
@@ -30,6 +32,7 @@ internal static class DatabaseProviderSelection
             .ToHashSet(StringComparer.Ordinal);
         var known = DatabaseProviderCatalog.All
             .Select(provider => provider.Id)
+            .Append(RedisDatabase.DriverId)
             .ToHashSet(StringComparer.Ordinal);
         var unknown = selected.Where(provider => !known.Contains(provider)).ToArray();
         if (unknown.Length > 0)

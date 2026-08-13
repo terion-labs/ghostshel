@@ -114,4 +114,88 @@ public sealed class ConcentricCornersTests
             offsetInContainer: default,
             size: default,
             minimumRadius: 2));
+
+    /// <summary>
+    /// A gap just short of the container's own radius earns a corner too tight
+    /// to draw — a card eight points inside a nine-point panel would take a
+    /// one-point corner and read square beside the seven-point controls it
+    /// holds. The rule stands aside there rather than clamping to a floor
+    /// nothing else in the interface uses.
+    /// </summary>
+    [Fact]
+    public void ACornerTooTightToDrawKeepsWhatTheThemeGaveIt()
+    {
+        Assert.Null(ConcentricCorners.Derive(
+            outerRadius: 9,
+            containerSize: new Size(1200, 700),
+            offsetInContainer: new Point(8, 8),
+            size: new Size(400, 200),
+            minimumRadius: 2));
+
+        // A gap that still leaves a corner keeps deriving one.
+        var derived = ConcentricCorners.Derive(
+            outerRadius: 14,
+            containerSize: new Size(1200, 700),
+            offsetInContainer: new Point(8, 8),
+            size: new Size(400, 200),
+            minimumRadius: 2);
+        Assert.Equal(new CornerRadius(6), derived);
+    }
+
+    /// <summary>
+    /// A card whose content outgrew the panel hangs outside it. Clamping that
+    /// overflow to zero read it as flush and handed it the container's whole
+    /// radius, so it came out rounder than the cards beside it — which is how a
+    /// row of identical cards stopped agreeing on their corners.
+    /// </summary>
+    [Fact]
+    public void SomethingHangingOutsideItsContainerIsLeftAlone()
+    {
+        Assert.Null(ConcentricCorners.Derive(
+            outerRadius: 9,
+            containerSize: new Size(1200, 700),
+            offsetInContainer: new Point(336, 640),
+            size: new Size(509, 196),
+            minimumRadius: 2));
+
+        // The same card, inside the panel, derives from the edge it is
+        // nearest — five points off the bottom here.
+        Assert.Equal(
+            new CornerRadius(21),
+            ConcentricCorners.Derive(
+                outerRadius: 26,
+                containerSize: new Size(1200, 841),
+                offsetInContainer: new Point(336, 640),
+                size: new Size(509, 196),
+                minimumRadius: 2));
+    }
+
+    /// <summary>
+    /// A card cannot be tighter than the controls it holds. Eight points inside
+    /// a thirteen-point panel earns a five-point corner — against the ten its
+    /// own inputs are drawn with — and an input rounder than the card around it
+    /// is the thing that reads as broken. The floor is the control corner, so
+    /// the rule stands aside there and the card keeps the theme's.
+    /// </summary>
+    [Fact]
+    public void ACardIsNeverTighterThanTheControlsItHolds()
+    {
+        // The profile whose controls are drawn at ten.
+        Assert.Null(ConcentricCorners.Derive(
+            outerRadius: 13,
+            containerSize: new Size(1200, 700),
+            offsetInContainer: new Point(8, 8),
+            size: new Size(400, 200),
+            minimumRadius: 10));
+
+        // Nearer the container than its controls are round, it still derives.
+        Assert.Equal(
+            new CornerRadius(11),
+            ConcentricCorners.Derive(
+                outerRadius: 13,
+                containerSize: new Size(1200, 700),
+                offsetInContainer: new Point(2, 2),
+                size: new Size(400, 200),
+                minimumRadius: 10));
+    }
 }

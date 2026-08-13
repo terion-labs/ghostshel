@@ -4,6 +4,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- SshNet.Agent 2024.2.0.5 predates SSH.NET 2026.0.0 and retains a
+         conservative <2026 dependency ceiling. SSH.NET 2026 reports no known
+         breaking changes and is required for GHSA-q939-rpr3-3284. Keep NU1608
+         visible, but do not let that stale ceiling block the security fix. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1608</WarningsNotAsErrors>
     <AnalysisLevel>latest</AnalysisLevel>
     <GhostShellRepositoryRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)'))</GhostShellRepositoryRoot>
     <PathMap>$(GhostShellRepositoryRoot)=/_/</PathMap>

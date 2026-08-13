@@ -326,6 +326,41 @@ public sealed class UnifiedConnectionEditorViewModelTests
         Assert.Equal("connection refused", editor.TestDetail);
     }
 
+    [Fact]
+    public async Task Unified_database_test_surfaces_progress_and_result_in_the_fixed_footer()
+    {
+        var probe = new TaskCompletionSource<DatabaseSessionInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new StructuralDatabaseClient { PendingProbe = probe };
+        var database = new DatabaseConnectionEditorViewModel(client, [])
+        {
+            Name = "Local Redis",
+            Host = "localhost",
+        };
+        database.SelectedDriver = database.Drivers.Single(driver => driver.Id == RedisDatabase.DriverId);
+        var editor = new UnifiedConnectionEditorViewModel(
+            new ConnectionEditorViewModel(new StubConnectionRuntime()),
+            files: null,
+            database,
+            lockedFamily: SavedConnectionFamily.Database,
+            initialFamily: SavedConnectionFamily.Database);
+
+        var test = editor.TestAsync(CancellationToken.None);
+
+        Assert.True(editor.IsTesting);
+        Assert.True(editor.HasTestFeedback);
+        Assert.Equal("Testing…", editor.TestLabel);
+        Assert.Contains("Testing connection", editor.TestFooterHint, StringComparison.Ordinal);
+
+        probe.SetResult(new DatabaseSessionInfo("8.2", null));
+        await test;
+
+        Assert.False(editor.IsTesting);
+        Assert.Equal("Test", editor.TestLabel);
+        Assert.Equal("Connected", editor.TestStatus);
+        Assert.Contains("Redis 8.2", editor.TestFooterHint, StringComparison.Ordinal);
+    }
+
     private static UnifiedConnectionEditorViewModel CreateEditor(
         SavedConnectionFamily? lockedFamily = null,
         SavedConnectionFamily initialFamily = SavedConnectionFamily.Terminal)
@@ -423,11 +458,14 @@ public sealed class UnifiedConnectionEditorViewModelTests
         [
             new("postgres", "PostgreSQL", "Host=…", DefaultPort: 5432, CanListDatabases: true),
             new("sqlite", "SQLite", "/path/to/database.db", IsFileBased: true),
+            RedisDatabase.Descriptor,
         ];
 
         public DatabaseSessionInfo SessionInfo { get; init; } = new();
 
         public Exception? ProbeError { get; init; }
+
+        public TaskCompletionSource<DatabaseSessionInfo>? PendingProbe { get; init; }
 
         public string? LastProbeConnectionString { get; private set; }
 
@@ -440,7 +478,7 @@ public sealed class UnifiedConnectionEditorViewModelTests
             LastProbeConnectionString = connectionString;
             return ProbeError is { } error
                 ? Task.FromException<DatabaseSessionInfo>(error)
-                : Task.FromResult(SessionInfo);
+                : PendingProbe?.Task ?? Task.FromResult(SessionInfo);
         }
 
         public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(

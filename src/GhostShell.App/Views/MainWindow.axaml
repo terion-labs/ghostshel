@@ -133,6 +133,17 @@
           PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
 
+    <DataTemplate DataType="vm:RedisRuntimePanelViewModel">
+      <panelViews:RedisRuntimePanelView
+          CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
+          EditConnectionRequested="OnPanelEditDatabaseConnectionRequested"
+          SplitRequested="OnSplitRuntimePanelRequested"
+          GotFocus="OnRuntimePanelGotFocus"
+          PointerPressed="OnRuntimePanelPointerPressed" />
+    </DataTemplate>
+
     <DataTemplate DataType="vm:DockerRuntimePanelViewModel">
       <panelViews:DockerRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"

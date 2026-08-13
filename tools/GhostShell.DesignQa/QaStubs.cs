@@ -1330,3 +1330,177 @@ internal sealed class QaProcessMonitorPreview
 
     public Row? SelectedProcess { get; set; }
 }
+
+/// <summary>
+/// A Redis server with enough in it to photograph: keys of every type the panel
+/// renders differently, a search index, and a subscription that has already
+/// received traffic. It answers from memory and opens no socket.
+/// </summary>
+internal sealed class QaRedisPanelSessionFactory : IRedisPanelSessionFactory
+{
+    public Task<IRedisPanelSession> OpenAsync(
+        string connectionString,
+        ConnectionProfile? tunnel,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IRedisPanelSession>(new QaRedisPanelSession());
+}
+
+internal sealed class QaRedisPanelSession : IRedisPanelSession
+{
+    private static readonly RedisKeySummary[] Catalog =
+    [
+        Summary("session:9f3c1a:profile", "hash", TimeSpan.FromMinutes(43), 2_184),
+        Summary("session:9f3c1a:cart", "list", TimeSpan.FromMinutes(43), 964),
+        Summary("feature:checkout-v2", "string", null, 128),
+        Summary("leaderboard:weekly", "zset", TimeSpan.FromHours(19), 41_920),
+        Summary("presence:online", "set", null, 8_744),
+        Summary("events:orders", "stream", null, 262_144),
+        Summary("catalog:sku:44192", "json", null, 3_072),
+        Summary("metrics:cpu:api-1", "timeseries", null, 131_072),
+    ];
+
+    public RedisServerFacts Facts { get; } = new(
+        "7.4.1",
+        "RESP3",
+        RedisTopologyKind.Standalone,
+        RedisLogicalDatabaseMode.Selectable,
+        SelectedDatabase: 0,
+        ConfiguredDatabaseCount: 16,
+        SearchAvailable: true,
+        JsonAvailable: true,
+        TimeSeriesAvailable: true,
+        ShardedPubSubAvailable: false);
+
+    public event EventHandler<RedisPubSubMessage>? MessageReceived;
+
+    public Task SelectDatabaseAsync(int database, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public Task<RedisScanPage> ScanKeysAsync(
+        string pattern,
+        string? cursor,
+        int count,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new RedisScanPage(Catalog, NextCursor: null, IsComplete: true));
+
+    public Task<RedisKeySnapshot> ReadKeyAsync(
+        RedisKeyReference key,
+        int maximumEntries,
+        CancellationToken cancellationToken)
+    {
+        var summary = Catalog.FirstOrDefault(candidate => candidate.Key.DisplayName == key.DisplayName)
+            ?? Catalog[0];
+        if (summary.Type == "json")
+        {
+            return Task.FromResult(new RedisKeySnapshot(
+                summary,
+                Length: 1,
+                [new("$", null, "{\n  \"sku\": \"44192\",\n  \"title\": \"Field notebook\",\n  \"price\": 1800\n}")],
+                Truncated: false));
+        }
+
+        if (summary.Type == "list")
+        {
+            return Task.FromResult(new RedisKeySnapshot(
+                summary,
+                Length: 3,
+                [
+                    new("0", null, "queued"),
+                    new("1", null, "picking"),
+                    new("2", null, "shipped"),
+                ],
+                Truncated: false));
+        }
+
+        return Task.FromResult(new RedisKeySnapshot(
+            summary,
+            Length: 4,
+            [
+                new("id", "id", "9f3c1a"),
+                new("email", "email", "ops@ghostshell.dev"),
+                new("plan", "plan", "team"),
+                new("last_seen", "last_seen", "2026-08-13T09:41:22Z"),
+            ],
+            Truncated: true,
+            Limitation: "Showing the first 4 of 128 entries; raise the page bound to read further."));
+    }
+
+    public Task SetStringAsync(RedisKeyReference key, string value, TimeSpan? expiry, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task SetHashFieldAsync(RedisKeyReference key, string field, string value, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task AppendListValueAsync(RedisKeyReference key, string value, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task SetListValueAsync(RedisKeyReference key, long index, string value, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task AddSetValueAsync(RedisKeyReference key, string value, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task AddSortedSetValueAsync(RedisKeyReference key, string value, double score, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task AddStreamEntryAsync(RedisKeyReference key, string field, string value, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task SetJsonAsync(RedisKeyReference key, string json, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task AddTimeSeriesSampleAsync(RedisKeyReference key, double value, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task<bool> DeleteKeyAsync(RedisKeyReference key, CancellationToken cancellationToken) => Task.FromResult(true);
+    public Task RemoveEntryAsync(RedisKeyReference key, string type, RedisValueEntry entry, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task SetExpiryAsync(RedisKeyReference key, TimeSpan? expiry, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task SubscribeAsync(RedisSubscription subscription, CancellationToken cancellationToken)
+    {
+        var receivedAt = QaData.Now;
+        foreach (var payload in new[]
+                 {
+                     "{\"order\":\"A-4471\",\"state\":\"paid\"}",
+                     "{\"order\":\"A-4472\",\"state\":\"picking\"}",
+                     "{\"order\":\"A-4473\",\"state\":\"shipped\"}",
+                 })
+        {
+            MessageReceived?.Invoke(
+                this,
+                new RedisPubSubMessage(subscription, subscription.Name, payload, receivedAt));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task UnsubscribeAsync(RedisSubscription subscription, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public Task<long> PublishAsync(string channel, string payload, bool sharded, CancellationToken cancellationToken) =>
+        Task.FromResult(1L);
+
+    public Task<IReadOnlyList<RedisSearchIndex>> ListSearchIndexesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<RedisSearchIndex>>(
+        [
+            new("idx:catalog", "ON JSON PREFIX 1 catalog:", "sku, title, price", 18_402),
+            new("idx:sessions", "ON HASH PREFIX 1 session:", "email, plan", 964),
+        ]);
+
+    public Task<RedisSearchResult> SearchAsync(
+        string index,
+        string query,
+        int limit,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new RedisSearchResult(
+            Total: 3,
+            [
+                new("catalog:sku:44192", "json", "{\"title\":\"Field notebook\",\"price\":1800}"),
+                new("catalog:sku:44193", "json", "{\"title\":\"Ink cartridge\",\"price\":600}"),
+                new("catalog:sku:44194", "json", "{\"title\":\"Desk mat\",\"price\":4200}"),
+            ],
+            Truncated: false));
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    private static RedisKeySummary Summary(string name, string type, TimeSpan? ttl, long memory) =>
+        new(
+            new RedisKeyReference(name, System.Text.Encoding.UTF8.GetBytes(name)),
+            type,
+            ttl,
+            memory);
+}
+
+/// <summary>The connection catalog the Redis panel reads its driver from.</summary>
+internal sealed class QaRedisConnectionCatalog : IDatabaseConnectionCatalog
+{
+    public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } = [RedisDatabase.Descriptor];
+
+    public DatabaseConnectionDetails ParseConnectionDetails(string driverId, string connectionString) =>
+        new("cache.internal", 6379);
+
+    public string BuildConnectionString(string driverId, DatabaseConnectionDetails details) =>
+        "cache.internal:6379";
+}

@@ -360,6 +360,38 @@ internal sealed class QaApplication : Avalonia.Application
             vm.ShowWorkspace();
             AddSampleDatabasePanel(vm);
         }),
+        // The Redis panel's three perspectives, each against a connected stub:
+        // key browser with a value selected, a search index with results, and a
+        // subscription that has already received messages.
+        new("workspace-redis", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleRedisPanel(vm, RedisWorkspacePerspective.Browser);
+        }),
+        // The create-key sheet is only reachable through its toolbar action, so
+        // it needs a route of its own or it is never looked at again.
+        new("workspace-redis-new-key", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleRedisPanel(vm, RedisWorkspacePerspective.Browser);
+        }, PrepareCapture: OpenRedisNewKeySheet),
+        // A document is edited as a document: the highlighted editor is only
+        // reachable on a JSON key, so it gets a route of its own.
+        new("workspace-redis-json", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleRedisPanel(vm, RedisWorkspacePerspective.Browser, selectedKeyType: "json");
+        }),
+        new("workspace-redis-search", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleRedisPanel(vm, RedisWorkspacePerspective.Search);
+        }),
+        new("workspace-redis-pubsub", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleRedisPanel(vm, RedisWorkspacePerspective.PubSub);
+        }),
         new("settings-workspace-editor", vm =>
         {
             vm.ShowSettings(SettingsPage.Workspaces);
@@ -1903,6 +1935,82 @@ internal sealed class QaApplication : Avalonia.Application
         return viewModel;
     }
 
+    private static void AddSampleRedisPanel(
+        MainWindowViewModel viewModel,
+        RedisWorkspacePerspective perspective,
+        string? selectedKeyType = null)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            return;
+        }
+
+        // The fixture is shared across routes, so the previous perspective's
+        // tab goes before this one arrives; three "cache" tabs in a capture is
+        // the harness talking about itself.
+        foreach (var stale in workspace.Tabs
+                     .Where(candidate => candidate.Panels.Any(panel => panel is RedisRuntimePanelViewModel))
+                     .ToArray())
+        {
+            workspace.Tabs.Remove(stale);
+        }
+
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId($"qa-tab-redis-{perspective}".ToLowerInvariant()),
+            "cache",
+            "Local");
+        var panel = new RedisRuntimePanelViewModel(
+            new PanelInstanceId($"qa-panel-redis-{perspective}".ToLowerInvariant()),
+            "Redis",
+            new QaRedisPanelSessionFactory(),
+            new QaRedisConnectionCatalog(),
+            connectionString: "cache.internal:6379",
+            // The key rows count their TTLs down, so a capture only diffs
+            // against the last one if its clock stands still.
+            timeProvider: new QaTimeProvider());
+        // The stub answers synchronously, so the capture shows a connected
+        // server rather than the panel's own empty state.
+        panel.Initialization.GetAwaiter().GetResult();
+        panel.Perspective = perspective;
+
+        switch (perspective)
+        {
+            case RedisWorkspacePerspective.Browser:
+                panel.SelectedKey = selectedKeyType is null
+                    ? panel.Keys.FirstOrDefault()
+                    : panel.Keys.FirstOrDefault(key => key.Type == selectedKeyType);
+                // Pointing at an entry is what the entry-level action acts on,
+                // so the capture shows it live rather than disabled.
+                panel.SelectedValueEntry = panel.ValueEntries.FirstOrDefault();
+                break;
+            case RedisWorkspacePerspective.Search:
+                panel.RefreshIndexesCommand.Execute(null);
+                panel.SearchIndex = "idx:catalog";
+                panel.SearchCommand.Execute(null);
+                break;
+            case RedisWorkspacePerspective.PubSub:
+                panel.SubscriptionName = "orders.*";
+                panel.SubscriptionKind = RedisSubscriptionKind.Pattern;
+                panel.SubscribeCommand.Execute(null);
+                break;
+        }
+
+        tab.AddPanel(panel);
+        _ = tab.ActivatePanel(panel.Id);
+        tab.NotifyPanelLayoutChanged();
+        workspace.Tabs.Add(tab);
+
+        foreach (var candidate in workspace.Tabs)
+        {
+            candidate.IsActive = ReferenceEquals(candidate, tab);
+        }
+
+        typeof(RuntimeWorkspaceViewModel)
+            .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(workspace, [tab]);
+    }
+
     private static void AddSampleDatabasePanel(MainWindowViewModel viewModel)
     {
         if (viewModel.RuntimeWorkspace is not { } workspace)
@@ -1988,6 +2096,24 @@ internal sealed class QaApplication : Avalonia.Application
         return tab.ActivePanel as DockerRuntimePanelViewModel
             ?? throw new InvalidOperationException(
                 "The Docker route did not activate its Docker panel.");
+    }
+
+    private static void OpenRedisNewKeySheet(MainWindow window)
+    {
+        // A collection is the sheet's widest shape — rows, a remove per row and
+        // the action that adds one — so that is what the capture shows.
+        if (window.DataContext is MainWindowViewModel { RuntimeWorkspace: { } workspace }
+            && workspace.Tabs
+                .SelectMany(tab => tab.Panels)
+                .OfType<RedisRuntimePanelViewModel>()
+                .FirstOrDefault() is { } panel)
+        {
+            panel.NewKeyType = "hash";
+            panel.NewKeyEntries[0].Field = "email";
+            panel.NewKeyEntries[0].Value = "ops@ghostshell.dev";
+            panel.AddNewKeyEntry();
+            panel.BeginCreateKey();
+        }
     }
 
     private static void SelectDockerReadmePreview(MainWindow window)

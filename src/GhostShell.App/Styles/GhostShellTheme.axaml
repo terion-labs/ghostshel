@@ -372,6 +372,28 @@
     <Setter Property="CornerRadius" Value="0" />
   </Style>
 
+  <!-- A list of rows — controls|ListItem in a ListBox — where the list itself
+       is not a surface: the rows sit on whatever is behind them and each one
+       is its own inset, rounded target. The row geometry is already the
+       ListBoxItem default; what a panel kept rebuilding by hand was undoing
+       the ListBox's own fill and border to get there. -->
+  <Style Selector="ListBox.Rows">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <!-- A row keeps the panel's own gutter, so the list lines up with the
+       toolbar over it rather than sitting a few pixels wider than everything
+       else in the column. -->
+  <Style Selector="ListBox.Rows ListBoxItem">
+    <Setter Property="Margin" Value="{controls:Inset Horizontal=Sm}" />
+  </Style>
+
+  <Style Selector="ListBox.Rows ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
   <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
   </Style>
@@ -822,9 +844,19 @@
 
   <!-- Data grids present values, not prose; they read at the data size. The
        cell and header carry it explicitly because the DataGrid theme sets its
-       own font size, which beats inheritance from the grid. -->
+       own font size, which beats inheritance from the grid. The chrome lives
+       here too, so every value table in the shell — SQL results, Redis
+       entries, message logs — is the same hairline table. -->
   <Style Selector="DataGrid.DatabaseGrid">
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize11}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="GridLinesVisibility" Value="All" />
+    <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource ShellBorderBrush}" />
+    <Setter Property="RowBackground" Value="Transparent" />
+    <Setter Property="ColumnHeaderHeight" Value="28" />
+    <Setter Property="RowHeight" Value="30" />
   </Style>
 
   <Style Selector="DataGrid.DatabaseGrid DataGridCell">
@@ -833,6 +865,17 @@
 
   <Style Selector="DataGrid.DatabaseGrid DataGridColumnHeader">
     <Setter Property="FontSize" Value="{DynamicResource ShellFontSize10}" />
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
+  </Style>
+
+  <Style Selector="DataGrid.DatabaseGrid DataGridRow:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ShellControlHoverBrush}" />
+  </Style>
+
+  <Style Selector="DataGrid.DatabaseGrid DataGridRow:selected">
+    <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
   </Style>
 
   <!--

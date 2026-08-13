@@ -18,6 +18,7 @@ Usage: ./scripts/test-database-viewer-integration.sh [provider,...|all] [dotnet 
 Examples:
   ./scripts/test-database-viewer-integration.sh
   ./scripts/test-database-viewer-integration.sh sqlite,duckdb
+  ./scripts/test-database-viewer-integration.sh redis
   ./scripts/test-database-viewer-integration.sh postgres --logger "console;verbosity=detailed"
   GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE=1 \
     GHOSTSHELL_SQL_LANGUAGE_WORKER="$PWD/native/artifacts/osx-arm64/ghostshell-sql-language" \
@@ -92,12 +93,12 @@ else
         case "${provider}" in
             sqlite|duckdb)
                 ;;
-            postgres|cockroach|redshift|mysql|mariadb|sqlserver|oracle|firebird|clickhouse)
+            postgres|cockroach|redshift|mysql|mariadb|sqlserver|oracle|firebird|clickhouse|redis)
                 docker_required=1
                 ;;
             *)
                 echo "Unknown database integration provider: ${provider}" >&2
-                echo "Known providers: sqlite, duckdb, postgres, cockroach, redshift, mysql, mariadb, sqlserver, oracle, firebird, clickhouse" >&2
+                echo "Known providers: sqlite, duckdb, postgres, cockroach, redshift, mysql, mariadb, sqlserver, oracle, firebird, clickhouse, redis" >&2
                 exit 2
                 ;;
         esac
@@ -119,4 +120,22 @@ fi
 export GHOSTSHELL_RUN_DATABASE_INTEGRATION=1
 export GHOSTSHELL_DATABASE_INTEGRATION_PROVIDERS="${providers}"
 
-exec "${dotnet}" test "${project}" --configuration Release "$@"
+test_arguments=("$@")
+if [[ "${providers}" == "redis" ]]; then
+    has_filter=0
+    for argument in "${test_arguments[@]}"; do
+        case "${argument}" in
+            --filter|--filter=*)
+                has_filter=1
+                ;;
+        esac
+    done
+
+    # The relational conformance theory intentionally has no rows when Redis is
+    # the sole selection; xUnit v2 treats that as an error unless it is filtered.
+    if [[ "${has_filter}" == "0" ]]; then
+        test_arguments+=(--filter "FullyQualifiedName~RedisDatabasePanelIntegrationTests")
+    fi
+fi
+
+exec "${dotnet}" test "${project}" --configuration Release "${test_arguments[@]}"

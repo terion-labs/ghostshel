@@ -636,6 +636,7 @@ public sealed class RuntimePanelViewContractTests
     [InlineData("StatisticsRuntimePanelView")]
     [InlineData("ProcessMonitorRuntimePanelView")]
     [InlineData("DatabaseRuntimePanelView")]
+    [InlineData("RedisRuntimePanelView")]
     [InlineData("UnavailableRuntimePanelView")]
     [InlineData("PanelPlaceholderView")]
     public void Panels_take_their_chrome_from_the_component_rather_than_drawing_it(
@@ -850,6 +851,9 @@ public sealed class RuntimePanelViewContractTests
         "DatabaseRuntimePanelViewModel",
         "DatabaseRuntimePanelView")]
     [InlineData(
+        "RedisRuntimePanelViewModel",
+        "RedisRuntimePanelView")]
+    [InlineData(
         "UnavailableRuntimePanelViewModel",
         "UnavailableRuntimePanelView")]
     public void Main_window_templates_delegate_runtime_interaction_to_named_panel_views(
@@ -907,6 +911,10 @@ public sealed class RuntimePanelViewContractTests
         "Database panel",
         "Close database panel")]
     [InlineData(
+        "RedisRuntimePanelView",
+        "Redis database panel",
+        "Close Redis panel")]
+    [InlineData(
         "UnavailableRuntimePanelView",
         null,
         "Close panel")]
@@ -962,6 +970,129 @@ public sealed class RuntimePanelViewContractTests
             Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         }
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Redis_panel_uses_the_database_toolbar_and_flat_workspace_geometry()
+    {
+        var root = Assert.IsType<XElement>(LoadRuntimePanelView("RedisRuntimePanelView").Root);
+        var connect = Assert.Single(
+            root.Descendants(),
+            element => AttributeValue(element, "AutomationProperties.Name") == "Connect to Redis");
+        var disconnect = Assert.Single(
+            root.Descendants(),
+            element => AttributeValue(element, "AutomationProperties.Name") == "Disconnect from Redis");
+
+        foreach (var button in new[] { connect, disconnect })
+        {
+            Assert.Equal("26", AttributeValue(button, "Height"));
+            Assert.Equal("{controls:Inset Horizontal=Md}", AttributeValue(button, "Padding"));
+            Assert.Equal("Center", AttributeValue(button, "VerticalAlignment"));
+            Assert.Equal("Center", AttributeValue(button, "VerticalContentAlignment"));
+            Assert.True(HasClass(button, "SecondaryButton"));
+        }
+
+        var error = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Callout"
+                && AttributeValue(element, "Text") == "{Binding ErrorMessage}");
+        Assert.Equal("Danger", AttributeValue(error, "Tone"));
+
+        var browser = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Grid"
+                && AttributeValue(element, "IsVisible") == "{Binding ShowBrowser}");
+        Assert.Equal("320,5,*", AttributeValue(browser, "ColumnDefinitions"));
+        Assert.Contains(
+            browser.Elements(),
+            element => element.Name.LocalName == "GridSplitter"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "Resize the Redis keys list");
+        Assert.DoesNotContain(
+            browser.Elements(),
+            element => element.Name.LocalName == "SurfaceCard"
+                && AttributeValue(element, "Tone") == "Panel");
+    }
+
+    /// <summary>
+    /// Redis is a database panel, so it states what it is showing and who it is
+    /// talking to in the same footer band the database workspace carries, and
+    /// its value tables are the shell's one table rather than stock grids.
+    /// </summary>
+    [Fact]
+    public void Redis_panel_shares_the_database_footer_band_and_table()
+    {
+        var root = Assert.IsType<XElement>(LoadRuntimePanelView("RedisRuntimePanelView").Root);
+
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "PanelChrome.Footer");
+
+        var grids = root
+            .Descendants()
+            .Where(element => element.Name.LocalName == "DataGrid")
+            .ToArray();
+        Assert.NotEmpty(grids);
+        foreach (var grid in grids)
+        {
+            Assert.True(
+                HasClass(grid, "DatabaseGrid"),
+                "Every Redis value table must wear the shared DatabaseGrid chrome.");
+        }
+
+        // A row of a list is the kit's row. Hand-rolled grids are how two
+        // lists in the same product stopped agreeing on their own geometry.
+        foreach (var list in root.Descendants().Where(element => element.Name.LocalName == "ListBox"))
+        {
+            Assert.True(
+                HasClass(list, "Rows"),
+                "A Redis list is a list of rows and takes its chrome from the theme.");
+            var template = Assert.Single(
+                list.Descendants(),
+                element => element.Name.LocalName == "DataTemplate");
+            Assert.Equal("ListItem", Assert.Single(template.Elements()).Name.LocalName);
+        }
+
+        // The create sheet is a form, so it names every input with the kit's
+        // field: a placeholder leaves the moment it is used. The two other
+        // shapes are deliberately not held to this — a repeated row is named
+        // once by the group above it, and the panel's dense bars (the value
+        // editor's footer, the Pub/Sub column) state their options inline the
+        // way the log toolbar does.
+        // The sheet is a region of the panel, not a popup: a flyout is a window
+        // of its own and can be drawn outside the frame it belongs to.
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "Flyout");
+        var sheet = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "SurfaceCard"
+                && element.Descendants().Any(child =>
+                    AttributeValue(child, "AutomationProperties.Name") == "Create Redis key"));
+
+        foreach (var input in sheet
+                     .Descendants()
+                     .Where(element => element.Name.LocalName is "TextBox" or "ComboBox")
+                     .Where(element => AttributeValue(element, "PlaceholderText") is null))
+        {
+            Assert.True(
+                input.Ancestors().Any(parent => parent.Name.LocalName == "LabeledField"),
+                $"A {input.Name.LocalName} in the create-key form carries no field label.");
+        }
+
+        // Both forms describe themselves from the selected type rather than
+        // hard-coding one type's words.
+        foreach (var binding in new[]
+                 {
+                     "{Binding NewKeyForm.ValueLabel}",
+                     "{Binding MutationForm.ValueLabel}",
+                     "{Binding MutationForm.ActionLabel}",
+                 })
+        {
+            Assert.Contains(
+                root.Descendants(),
+                element => element.Attributes().Any(attribute => attribute.Value == binding));
+        }
     }
 
     [Fact]

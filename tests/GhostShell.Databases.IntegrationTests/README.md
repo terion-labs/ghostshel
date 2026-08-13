@@ -17,10 +17,15 @@ This project runs the production database client, database-panel view model, and
 | `firebird` | `firebirdsql/firebird:5.0.4-trixie` | Native Firebird |
 | `clickhouse` | `clickhouse/clickhouse-server:26.3.17.56` | Native ClickHouse metadata and browsing; mutations are asserted read-only |
 | `redshift` | `postgres:18.4` through GhostShell's Redshift path | PostgreSQL-wire/dialect compatibility only; mutations are asserted read-only |
+| `redis` | `redis:8.2-alpine` | Native Redis session: logical databases, SCAN, core/JSON/Time Series mutation, TTL, UNLINK, Pub/Sub, capability discovery, secondary indexes, and full-text search over RESP3 |
 
 Amazon Redshift is a managed AWS service and this suite does not pretend that PostgreSQL is the Redshift engine. The `redshift` case verifies GhostShell's Redshift connection parsing, pgwire path, identifier/filter/query behavior, and intended read-only contract against a disposable PostgreSQL server. It is not native Redshift conformance; engine-specific verification needs an isolated managed Redshift endpoint. See AWS's notes on [Redshift and PostgreSQL differences](https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-and-postgres-sql.html).
 
 The file engines create unique files under the system temporary directory. Container cases use Testcontainers with random ports bound only to IPv4 loopback. Every case seeds its own database and disposes the file or container when finished.
+
+Redis runs beside the relational conformance matrix rather than through it: the
+Database panel shares durable connection and recovery infrastructure, while the
+Redis integration test exercises its long-lived session contract directly.
 
 ## Operations covered
 
@@ -100,6 +105,6 @@ The wrapper sets the two opt-in variables used by the tests:
 - `GHOSTSHELL_RUN_DATABASE_INTEGRATION=1` enables runtime integration cases.
 - `GHOSTSHELL_DATABASE_INTEGRATION_PROVIDERS=all` or a comma-separated list selects provider IDs.
 
-They can also be set directly when invoking the integration project with `./.dotnet/dotnet test`. Provider IDs are `sqlite`, `duckdb`, `postgres`, `cockroach`, `redshift`, `mysql`, `mariadb`, `sqlserver`, `oracle`, `firebird`, and `clickhouse`.
+They can also be set directly when invoking the integration project with `./.dotnet/dotnet test`. Provider IDs are `sqlite`, `duckdb`, `postgres`, `cockroach`, `redshift`, `mysql`, `mariadb`, `sqlserver`, `oracle`, `firebird`, `clickhouse`, and `redis`.
 
-The test assembly disables parallel execution so a local all-provider run starts and tears down the databases sequentially. CI builds and smoke-tests the `linux-x64` worker once, publishes and executes the production .NET client as a real Native-AOT binary both with and without that worker, and distributes the tested executable to all 11 provider jobs. Every CI provider job sets required-native mode, runs the standalone native client lifecycle, then runs the direct database-derived and rendered AvaloniaEdit journeys. The suite is sharded one provider per job on relevant pull requests, on manual dispatch, and on the weekly scheduled run.
+The test assembly disables parallel execution so a local all-provider run starts and tears down the databases sequentially. CI builds and smoke-tests the `linux-x64` worker once, publishes and executes the production .NET client as a real Native-AOT binary both with and without that worker, and distributes the tested executable to all 12 provider jobs. Every CI provider job sets required-native mode, runs the standalone native client lifecycle, then runs its selected database journey. The suite is sharded one provider per job on relevant pull requests, on manual dispatch, and on the weekly scheduled run.

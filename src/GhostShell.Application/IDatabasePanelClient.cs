@@ -131,10 +131,8 @@ public sealed record DatabaseQueryPage(
 /// Implementations open a connection per call and rely on ADO.NET pooling, so a
 /// panel holds no connection state between operations.
 /// </summary>
-public interface IDatabasePanelClient
+public interface IDatabasePanelClient : IDatabaseConnectionCatalog
 {
-    IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; }
-
     /// <summary>
     /// Lists tables and views; also serves as the connectivity probe. A non-null
     /// <paramref name="tunnel"/> routes the connection through an SSH local
@@ -157,17 +155,6 @@ public interface IDatabasePanelClient
         ConnectionProfile? tunnel,
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>>([]);
-
-    /// <summary>
-    /// Reads session facts — server version, negotiated TLS — from a fresh
-    /// connection. Also serves as the bounded reachability test for editors.
-    /// </summary>
-    Task<DatabaseSessionInfo> DescribeSessionAsync(
-        string driverId,
-        string connectionString,
-        ConnectionProfile? tunnel,
-        CancellationToken cancellationToken) =>
-        Task.FromResult(new DatabaseSessionInfo());
 
     /// <summary>
     /// Executes one statement. Result sets are capped at <paramref name="maxRows"/>
@@ -330,9 +317,4 @@ public interface IDatabasePanelClient
     string BuildTablePreviewQuery(string driverId, DatabaseObjectId table, int limit) =>
         BuildTablePreviewQuery(driverId, table.Name, limit);
 
-    /// <summary>Decomposes a connection string into structural fields.</summary>
-    DatabaseConnectionDetails ParseConnectionDetails(string driverId, string connectionString);
-
-    /// <summary>Recomposes structural fields into the driver's connection string.</summary>
-    string BuildConnectionString(string driverId, DatabaseConnectionDetails details);
 }

@@ -121,8 +121,26 @@ internal sealed class SurfaceCard : ContentControl
         UpdateStateClasses();
     }
 
-    /// <summary>How tight a derived corner may become before it reads square.</summary>
-    private const double MinimumConcentricRadius = 2;
+    /// <summary>
+    /// How tight a derived corner may become before the rule stands aside.
+    ///
+    /// A card holds controls, and a card cannot be tighter than what it holds:
+    /// an input rounder than the card around it is what reads as broken, and it
+    /// is what a card eight points inside a panel earned — five, against the
+    /// ten its own inputs were drawn with. So the floor is the control corner
+    /// rather than a hairline, and it follows the appearance setting the way
+    /// the controls do.
+    /// </summary>
+    private double MinimumConcentricRadius() =>
+        this.TryFindResource("ShellControlCornerRadius", out var value)
+            && value is CornerRadius radius
+            ? Math.Max(
+                Math.Max(radius.TopLeft, radius.TopRight),
+                Math.Max(radius.BottomLeft, radius.BottomRight))
+            : HairlineMinimumRadius;
+
+    /// <summary>The floor where the control corner cannot be resolved.</summary>
+    private const double HairlineMinimumRadius = 2;
 
     public SurfaceTone Tone
     {

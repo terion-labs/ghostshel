@@ -166,11 +166,21 @@ public static class Concentric
 internal sealed class ConcentricCornerReconciler
 {
     private readonly Control _owner;
-    private readonly double _minimumRadius;
+    private readonly Func<double> _minimumRadius;
     private bool _writing;
     private Visual? _watched;
 
     public ConcentricCornerReconciler(Control owner, double minimumRadius)
+        : this(owner, () => minimumRadius)
+    {
+    }
+
+    /// <summary>
+    /// The floor can depend on what the element is and what it holds, and both
+    /// answer to the appearance setting, so it is asked for at each reconcile
+    /// rather than fixed when the rule was attached.
+    /// </summary>
+    public ConcentricCornerReconciler(Control owner, Func<double> minimumRadius)
     {
         _owner = owner;
         _minimumRadius = minimumRadius;
@@ -239,7 +249,7 @@ internal sealed class ConcentricCornerReconciler
             _owner.ClearValue(Border.CornerRadiusProperty);
             var authored = _owner.GetValue(Border.CornerRadiusProperty);
 
-            var (container, derived) = ConcentricCorners.DeriveFor(_owner, _minimumRadius);
+            var (container, derived) = ConcentricCorners.DeriveFor(_owner, _minimumRadius());
             Watch(container);
             if (derived is { } radius && !radius.Equals(authored))
             {
@@ -376,17 +386,36 @@ public static class ConcentricCorners
         // round ones makes one shape look like two. It is one surface sitting
         // one distance inside another, so it takes one radius — the one that
         // its closest edge earns.
-        var gap = Math.Max(0, Math.Min(
+        var gap = Math.Min(
             Math.Min(offsetInContainer.X, offsetInContainer.Y),
             Math.Min(
                 containerSize.Width - (offsetInContainer.X + size.Width),
-                containerSize.Height - (offsetInContainer.Y + size.Height))));
+                containerSize.Height - (offsetInContainer.Y + size.Height)));
+
+        // Something hanging outside the container is not inside its shape, so
+        // there is no shared curve to answer to. Treating the overflow as flush
+        // — which clamping the distance to zero did — handed it the container's
+        // whole radius, so a card whose content outgrew the panel came out
+        // rounder than the cards beside it. That is where a row of identical
+        // cards stopped agreeing.
+        if (gap < 0)
+        {
+            return null;
+        }
 
         // Further out than the radius itself is not near the container's
         // corners at all, and stepping in by that distance would square
         // something meant to be round. There it keeps what it was given.
-        return gap >= outerRadius
+        //
+        // The same is true just short of that distance: a card eight points
+        // inside a nine-point panel earns a one-point corner, which is square
+        // beside the seven-point controls it holds — the inner curve reading
+        // tighter than everything within it. The rule applies where it leaves
+        // a corner worth drawing, and stands aside where it does not, rather
+        // than clamping to a floor nothing else in the interface uses.
+        var derived = outerRadius - gap;
+        return derived < minimumRadius
             ? null
-            : new CornerRadius(Math.Max(minimumRadius, outerRadius - gap));
+            : new CornerRadius(derived);
     }
 }

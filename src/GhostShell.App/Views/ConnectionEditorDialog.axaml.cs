@@ -71,17 +71,13 @@ public sealed partial class ConnectionEditorDialog : Window
         _ = sender;
         _ = e;
         HideValidationError();
-        if (ViewModel.IsTerminal)
+        try
         {
-            await ViewModel.Terminal.TestAsync(_lifetime.Token);
+            await ViewModel.TestAsync(_lifetime.Token);
         }
-        else if (ViewModel is { IsFiles: true, Files: { } files })
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
-            await files.TestAsync(_lifetime.Token);
-        }
-        else if (ViewModel is { IsDatabase: true, Database: { } database })
-        {
-            await database.TestAsync(_lifetime.Token);
+            // Closing the dialog owns cancellation of its in-flight test.
         }
     }
 

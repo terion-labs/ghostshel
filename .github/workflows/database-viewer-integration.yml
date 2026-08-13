@@ -11,7 +11,9 @@ on:
       - "src/GhostShell.Application/**"
       - "src/GhostShell.Databases/**"
       - "src/GhostShell.Infrastructure/**"
+      - "src/GhostShell.Redis/**"
       - "tests/GhostShell.Databases.IntegrationTests/**"
+      - "tests/GhostShell.Redis.Tests/**"
       - "tests/GhostShell.Infrastructure.Tests/CalciteSqlLanguageNativeIntegrationTests.cs"
       - "tools/GhostShell.SqlLanguageAotProbe/**"
   workflow_dispatch:
@@ -100,6 +102,7 @@ jobs:
           - oracle
           - firebird
           - clickhouse
+          - redis
     steps:
       - uses: actions/checkout@v6
 

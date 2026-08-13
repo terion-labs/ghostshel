@@ -1246,12 +1246,10 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (panel is DatabaseRuntimePanelViewModel database
+        if (panel is DatabaseRuntimePanelViewModel or RedisRuntimePanelViewModel
             && e.Selection is PanelConnectionOptionViewModel.Target.Database databaseTarget)
         {
-            // A database panel holds no session, so rebinding needs no close
-            // flow — it simply connects to the newly chosen profile.
-            _ = ViewModel.ReplaceDatabasePanelConnection(database, databaseTarget.Id);
+            _ = ViewModel.ReplaceDatabasePanelConnection(panel, databaseTarget.Id);
             return;
         }
 
@@ -1277,9 +1275,9 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (panel is DatabaseRuntimePanelViewModel database)
+        if (panel is DatabaseRuntimePanelViewModel or RedisRuntimePanelViewModel)
         {
-            await CreateAndBindDatabaseConnectionAsync(database);
+            await CreateAndBindDatabaseConnectionAsync(panel);
             return;
         }
 
@@ -1325,7 +1323,7 @@ public sealed partial class MainWindow
     /// password so it is not asked for twice.
     /// </summary>
     private async Task CreateAndBindDatabaseConnectionAsync(
-        DatabaseRuntimePanelViewModel panel)
+        RuntimePanelViewModel panel)
     {
         try
         {
@@ -1354,7 +1352,8 @@ public sealed partial class MainWindow
                     _lifetime.Token);
                 if (profile is not null)
                 {
-                    panel.ApplySavedConnection(
+                    _ = ViewModel.ApplyDatabasePanelConnection(
+                        panel,
                         profile,
                         database.Request.Details.Password,
                         ViewModel.ResolveDatabaseTunnel(profile));
@@ -1413,8 +1412,18 @@ public sealed partial class MainWindow
         RoutedEventArgs e)
     {
         _ = e;
-        if (sender is not Control { DataContext: DatabaseRuntimePanelViewModel panel }
-            || panel.SavedConnectionId is not { } profileId)
+        if (sender is not Control { DataContext: RuntimePanelViewModel panel })
+        {
+            return;
+        }
+
+        var profileId = panel switch
+        {
+            DatabaseRuntimePanelViewModel relational => relational.SavedConnectionId,
+            RedisRuntimePanelViewModel redis => redis.SavedConnectionId,
+            _ => null,
+        };
+        if (profileId is null)
         {
             return;
         }
@@ -1423,7 +1432,7 @@ public sealed partial class MainWindow
         {
             var editor = ViewModel.CreateUnifiedConnectionEditor(
                 SavedConnectionFamily.Database,
-                databaseProfileId: profileId,
+                databaseProfileId: profileId.Value,
                 initialFamily: SavedConnectionFamily.Database);
             var result = await new ConnectionEditorDialog(editor)
                 .ShowDialog<UnifiedConnectionEditorResult?>(this);
@@ -1443,7 +1452,8 @@ public sealed partial class MainWindow
                 _lifetime.Token);
             if (profile is not null)
             {
-                panel.ApplySavedConnection(
+                _ = ViewModel.ApplyDatabasePanelConnection(
+                    panel,
                     profile,
                     database.Request.Details.Password,
                     ViewModel.ResolveDatabaseTunnel(profile));
@@ -1539,6 +1549,10 @@ public sealed partial class MainWindow
                 DatabaseRuntimePanelViewModel database,
                 PanelConnectionOptionViewModel.Target.Database target) =>
                 database.SavedConnectionId == target.Id,
+            (
+                RedisRuntimePanelViewModel redis,
+                PanelConnectionOptionViewModel.Target.Database target) =>
+                redis.SavedConnectionId == target.Id,
             _ => false,
         };
 

@@ -8,6 +8,28 @@ namespace GhostShell.Architecture.Tests;
 public sealed partial class RepositoryConventionTests
 {
     [Fact]
+    public void Connection_editor_keeps_test_progress_in_its_fixed_footer()
+    {
+        var dialog = XDocument.Load(Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "ConnectionEditorDialog.axaml"));
+        var root = Assert.IsType<XElement>(dialog.Root);
+        var shell = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "DialogShell");
+        var test = Assert.Single(
+            root.Descendants(),
+            element => AttributeValue(element, "Click") == "OnTestClick");
+
+        Assert.Equal("{Binding TestFooterHint}", AttributeValue(shell, "FooterHint"));
+        Assert.Equal("{Binding !IsTesting}", AttributeValue(test, "IsEnabled"));
+        Assert.Equal("{Binding TestLabel}", AttributeValue(test, "Content"));
+    }
+
+    [Fact]
     public void Database_password_prompt_offers_explicit_opt_in_credential_storage()
     {
         var dialog = XDocument.Load(Path.Combine(
