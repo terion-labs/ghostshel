@@ -153,20 +153,42 @@ internal sealed class FakeStatisticsPanelSession(
 {
     public int ReadCount { get; private set; }
 
-    public ValueTask<MonitorPanelResult<SystemStatisticsSnapshot>> ReadStatisticsAsync(
+    public bool BlockRead { get; set; }
+
+    public TaskCompletionSource ReadStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public TaskCompletionSource ReleaseRead { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public MonitorPanelError? ReadError { get; set; }
+
+    public SystemStatisticsSnapshot Snapshot { get; set; } =
+        new(
+            DateTimeOffset.UnixEpoch,
+            TimeSpan.FromHours(1),
+            4,
+            8,
+            7,
+            12.5,
+            4_096);
+
+    public async ValueTask<MonitorPanelResult<SystemStatisticsSnapshot>> ReadStatisticsAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ReadCount++;
-        return ValueTask.FromResult(MonitorPanelResult<SystemStatisticsSnapshot>.Success(
-            new SystemStatisticsSnapshot(
-                DateTimeOffset.UnixEpoch,
-                TimeSpan.FromHours(1),
-                4,
-                8,
-                7,
-                12.5,
-                4_096)));
+        ReadStarted.TrySetResult();
+        if (BlockRead)
+        {
+            await ReleaseRead.Task
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return ReadError is { } error
+            ? MonitorPanelResult<SystemStatisticsSnapshot>.Failure(error)
+            : MonitorPanelResult<SystemStatisticsSnapshot>.Success(Snapshot);
     }
 }
 

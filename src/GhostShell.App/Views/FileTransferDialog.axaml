@@ -11,7 +11,7 @@
     Title="Queue transfer">
   <controls:DialogShell
       Title="Queue file transfer"
-      Subtitle="Transfers are bounded, cancellable, and preserve provider conflict semantics.">
+      Subtitle="Review and manage file transfers.">
     <controls:DialogShell.Footer>
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
         <Button Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />

@@ -14,6 +14,27 @@ public interface IGovernedAgentRuntime : IDisposable, IAsyncDisposable
 
     GovernedAgentSnapshot Snapshot { get; }
 
+    ValueTask RestoreLatestConversationAsync(CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
+
+    ValueTask<bool> StartNewConversationAsync(CancellationToken cancellationToken) =>
+        ClearAsync(cancellationToken);
+
+    ValueTask<bool> OpenConversationAsync(
+        AgentRunId runId,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(false);
+
+    ValueTask<bool> DeleteConversationAsync(
+        AgentRunId runId,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(false);
+
+    ValueTask<bool> ForkConversationAsync(
+        AgentConversationForkPoint forkPoint,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(false);
+
     ValueTask<GovernedAgentSendResult> SendAsync(
         GovernedAgentPrompt request,
         CancellationToken cancellationToken);
@@ -21,6 +42,20 @@ public interface IGovernedAgentRuntime : IDisposable, IAsyncDisposable
     ValueTask<GovernedAgentSteeringResult> SteerAsync(
         GovernedAgentSteering request,
         CancellationToken cancellationToken);
+
+    ValueTask<GovernedAgentFollowUpResult> QueueFollowUpAsync(
+        GovernedAgentFollowUp request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(
+            new GovernedAgentFollowUpResult(
+                false,
+                "agent_follow_up_unavailable",
+                "This agent runtime does not support queued follow-ups.",
+                0));
+    }
 
     ValueTask<GovernedAgentDecisionResult> DecideAsync(
         AgentApprovalId approvalId,
@@ -46,6 +81,10 @@ public interface IGovernedAgentRuntime : IDisposable, IAsyncDisposable
     ValueTask<GovernedAgentPolicyResult> EnableYoloAsync(
         TimeSpan lifetime,
         CancellationToken cancellationToken);
+
+    ValueTask<GovernedAgentPolicyResult> EnableFullAccessAsync(
+        CancellationToken cancellationToken) =>
+        EnableYoloAsync(AgentYoloConfirmation.MaximumLifetime, cancellationToken);
 
     ValueTask<GovernedAgentPolicyResult> DisableYoloAsync(
         CancellationToken cancellationToken);
@@ -75,15 +114,99 @@ public enum GovernedAgentState
     Cancelled,
 }
 
+public enum AgentApprovalMode
+{
+    Ask,
+    FullAccess,
+}
+
 public sealed record GovernedAgentPrompt
 {
     public const int MaximumMessageLength = 64 * 1024;
+
+    private string? _model;
 
     public GovernedAgentPrompt(
         AiProviderProfileId providerId,
         string message,
         AgentTarget target)
-        : this(providerId, message, target, policy: null, hasPolicyOverride: false)
+        : this(
+            providerId,
+            message,
+            target,
+            AgentReasoningEffort.Automatic,
+            AgentServiceTier.Automatic,
+            policy: null,
+            hasPolicyOverride: false,
+            images: null)
+    {
+    }
+
+    public GovernedAgentPrompt(
+        AiProviderProfileId providerId,
+        string message,
+        AgentTarget target,
+        IReadOnlyList<AgentImageAttachment> images,
+        AgentReasoningEffort reasoningEffort = AgentReasoningEffort.Automatic)
+        : this(
+            providerId,
+            message,
+            target,
+            reasoningEffort,
+            AgentServiceTier.Automatic,
+            policy: null,
+            hasPolicyOverride: false,
+            images)
+    {
+    }
+
+    /// <summary>
+    /// Carries the user's approval-mode selection into initial run
+    /// registration. The runtime binds full access to the run ID and inspected
+    /// target; provider output cannot populate this value.
+    /// </summary>
+    public GovernedAgentPrompt(
+        AiProviderProfileId providerId,
+        string message,
+        AgentTarget target,
+        IReadOnlyList<AgentImageAttachment> images,
+        AgentReasoningEffort reasoningEffort,
+        AgentServiceTier serviceTier,
+        AgentPolicy policy,
+        AgentApprovalMode approvalMode)
+        : this(
+            providerId,
+            message,
+            target,
+            reasoningEffort,
+            serviceTier,
+            policy,
+            hasPolicyOverride: true,
+            images)
+    {
+        if (!Enum.IsDefined(approvalMode))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(approvalMode));
+        }
+
+        ApprovalMode = approvalMode;
+    }
+
+    public GovernedAgentPrompt(
+        AiProviderProfileId providerId,
+        string message,
+        AgentTarget target,
+        AgentReasoningEffort reasoningEffort)
+        : this(
+            providerId,
+            message,
+            target,
+            reasoningEffort,
+            AgentServiceTier.Automatic,
+            policy: null,
+            hasPolicyOverride: false,
+            images: null)
     {
     }
 
@@ -96,7 +219,91 @@ public sealed record GovernedAgentPrompt
         string message,
         AgentTarget target,
         AgentPolicy policy)
-        : this(providerId, message, target, policy, hasPolicyOverride: true)
+        : this(
+            providerId,
+            message,
+            target,
+            AgentReasoningEffort.Automatic,
+            AgentServiceTier.Automatic,
+            policy,
+            hasPolicyOverride: true,
+            images: null)
+    {
+    }
+
+    public GovernedAgentPrompt(
+        AiProviderProfileId providerId,
+        string message,
+        AgentTarget target,
+        AgentReasoningEffort reasoningEffort,
+        AgentPolicy policy)
+        : this(
+            providerId,
+            message,
+            target,
+            reasoningEffort,
+            AgentServiceTier.Automatic,
+            policy,
+            hasPolicyOverride: true,
+            images: null)
+    {
+    }
+
+    public GovernedAgentPrompt(
+        AiProviderProfileId providerId,
+        string message,
+        AgentTarget target,
+        IReadOnlyList<AgentImageAttachment> images,
+        AgentReasoningEffort reasoningEffort,
+        AgentPolicy policy)
+        : this(
+            providerId,
+            message,
+            target,
+            reasoningEffort,
+            AgentServiceTier.Automatic,
+            policy,
+            hasPolicyOverride: true,
+            images)
+    {
+    }
+
+    public GovernedAgentPrompt(
+        AiProviderProfileId providerId,
+        string message,
+        AgentTarget target,
+        IReadOnlyList<AgentImageAttachment> images,
+        AgentReasoningEffort reasoningEffort,
+        AgentServiceTier serviceTier)
+        : this(
+            providerId,
+            message,
+            target,
+            reasoningEffort,
+            serviceTier,
+            policy: null,
+            hasPolicyOverride: false,
+            images)
+    {
+    }
+
+    public GovernedAgentPrompt(
+        AiProviderProfileId providerId,
+        string message,
+        AgentTarget target,
+        IReadOnlyList<AgentImageAttachment> images,
+        AgentReasoningEffort reasoningEffort,
+        AgentServiceTier serviceTier,
+        AgentPolicy policy)
+        : this(
+            providerId,
+            message,
+            target,
+            reasoningEffort,
+            serviceTier,
+            policy,
+            hasPolicyOverride: true,
+            images)
     {
     }
 
@@ -104,8 +311,11 @@ public sealed record GovernedAgentPrompt
         AiProviderProfileId providerId,
         string message,
         AgentTarget target,
+        AgentReasoningEffort reasoningEffort,
+        AgentServiceTier serviceTier,
         AgentPolicy? policy,
-        bool hasPolicyOverride)
+        bool hasPolicyOverride,
+        IReadOnlyList<AgentImageAttachment>? images)
     {
         if (string.IsNullOrWhiteSpace(providerId.Value))
         {
@@ -114,7 +324,23 @@ public sealed record GovernedAgentPrompt
                 nameof(providerId));
         }
 
-        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        ArgumentNullException.ThrowIfNull(message);
+        var imageArray = images is null
+            ? ImmutableArray<AgentImageAttachment>.Empty
+            : images.ToImmutableArray();
+        if (imageArray.Any(image => image is null))
+        {
+            throw new ArgumentException(
+                "The image collection cannot contain null values.",
+                nameof(images));
+        }
+
+        if (string.IsNullOrWhiteSpace(message) && imageArray.Length == 0)
+        {
+            throw new ArgumentException(
+                "An agent prompt requires text or an image.",
+                nameof(message));
+        }
         if (message.Length > MaximumMessageLength)
         {
             throw new ArgumentException(
@@ -123,6 +349,15 @@ public sealed record GovernedAgentPrompt
         }
 
         ArgumentNullException.ThrowIfNull(target);
+        if (!Enum.IsDefined(reasoningEffort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(reasoningEffort));
+        }
+        if (!Enum.IsDefined(serviceTier))
+        {
+            throw new ArgumentOutOfRangeException(nameof(serviceTier));
+        }
+
         if (hasPolicyOverride
             && (policy is null || !policy.IsValidForDurableStorage()))
         {
@@ -145,6 +380,9 @@ public sealed record GovernedAgentPrompt
         ProviderId = providerId;
         Message = string.Concat(message);
         Target = target;
+        ReasoningEffort = reasoningEffort;
+        ServiceTier = serviceTier;
+        Images = imageArray;
         Policy = hasPolicyOverride
             ? AgentPolicyResolver.Resolve(policy!)
             : null;
@@ -152,9 +390,36 @@ public sealed record GovernedAgentPrompt
 
     public AiProviderProfileId ProviderId { get; }
 
+    /// <summary>
+    /// The model selected for this provider turn. Model routing is deliberately
+    /// separate from conversation identity and from the authorization policy.
+    /// Null uses the policy/profile default for compatibility with older callers.
+    /// </summary>
+    public string? Model
+    {
+        get => _model;
+        init
+        {
+            if (value is not null && !AgentPolicy.IsValidModel(value))
+            {
+                throw new ArgumentException(
+                    "The selected AI model is invalid.",
+                    nameof(value));
+            }
+
+            _model = value is null ? null : string.Concat(value);
+        }
+    }
+
     public string Message { get; }
 
     public AgentTarget Target { get; }
+
+    public AgentReasoningEffort ReasoningEffort { get; }
+
+    public AgentServiceTier ServiceTier { get; }
+
+    public ImmutableArray<AgentImageAttachment> Images { get; }
 
     /// <summary>
     /// A trusted run-specific override whose provider is the exact profile ID
@@ -164,6 +429,36 @@ public sealed record GovernedAgentPrompt
     /// </summary>
     public AgentPolicy? Policy { get; }
 
+    public AgentApprovalMode ApprovalMode { get; } = AgentApprovalMode.Ask;
+
+}
+
+public sealed record GovernedAgentFollowUp
+{
+    public GovernedAgentFollowUp(
+        string message,
+        AgentReasoningEffort reasoningEffort = AgentReasoningEffort.Automatic)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (message.Length > GovernedAgentPrompt.MaximumMessageLength)
+        {
+            throw new ArgumentException(
+                "The follow-up exceeds the agent prompt character limit.",
+                nameof(message));
+        }
+
+        if (!Enum.IsDefined(reasoningEffort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(reasoningEffort));
+        }
+
+        Message = string.Concat(message);
+        ReasoningEffort = reasoningEffort;
+    }
+
+    public string Message { get; }
+
+    public AgentReasoningEffort ReasoningEffort { get; }
 }
 
 public sealed record GovernedAgentApproval(
@@ -199,13 +494,16 @@ public sealed record GovernedAgentYoloAuthority
     {
         AgentRunRegistration.ValidateRunId(runId);
         ArgumentNullException.ThrowIfNull(target);
+        var expiresWithRun = expiresAtUtc == AgentYoloConfirmation.RunLifetimeExpiry;
         if (confirmedAtUtc.Offset != TimeSpan.Zero
             || expiresAtUtc.Offset != TimeSpan.Zero
             || expiresAtUtc <= confirmedAtUtc
-            || expiresAtUtc - confirmedAtUtc > AgentYoloConfirmation.MaximumLifetime)
+            || (!expiresWithRun
+                && expiresAtUtc - confirmedAtUtc
+                    > AgentYoloConfirmation.MaximumLifetime))
         {
             throw new ArgumentException(
-                "A visible YOLO authority requires an ordered bounded UTC window.",
+                "A visible full-access authority requires an ordered UTC lifetime.",
                 nameof(expiresAtUtc));
         }
 
@@ -247,7 +545,12 @@ public sealed record GovernedAgentSnapshot(
     GovernedAgentQuestion? PendingQuestion = null,
     GovernedAgentCapabilityRequest? PendingCapabilityRequest = null,
     bool SteeringAvailable = false,
-    long? SteeringGeneration = null)
+    long? SteeringGeneration = null,
+    string ProvisionalReasoningSummary = "",
+    int QueuedFollowUpCount = 0,
+    ImmutableArray<GovernedAgentConversationSummary> Conversations = default,
+    string? Model = null,
+    long? ContextTokensUsed = null)
 {
     public bool IsBusy => State is
         GovernedAgentState.StreamingProvider
@@ -276,21 +579,44 @@ public sealed record GovernedAgentSnapshot(
         && PendingCapabilityRequest is null
         && ActiveTool is null;
 
+    public bool CanQueueFollowUp =>
+        RunId is not null
+        && State is GovernedAgentState.StreamingProvider
+            or GovernedAgentState.RunningTool;
+
     public bool HasMessages =>
-        Messages.Count > 0 || ProvisionalAssistantText.Length > 0;
+        Messages.Count > 0
+        || ProvisionalAssistantText.Length > 0
+        || ProvisionalReasoningSummary.Length > 0;
 
     public bool HasYoloAuthority => YoloAuthority is not null;
 }
 
+public sealed record GovernedAgentConversationSummary(
+    AgentRunId RunId,
+    string Title,
+    AiProviderProfileId? ProviderId,
+    string? Model,
+    int MessageCount,
+    DateTimeOffset UpdatedAt);
+
 public sealed record GovernedAgentSendResult(
     bool IsSuccess,
     string Code,
-    string Message);
+    string Message,
+    bool InitialPromptCommitted = false,
+    IReadOnlyList<GovernedAgentFollowUp>? RecoverableFollowUps = null);
 
 public sealed record GovernedAgentSteeringResult(
     bool IsAccepted,
     string Code,
     string Message);
+
+public sealed record GovernedAgentFollowUpResult(
+    bool IsAccepted,
+    string Code,
+    string Message,
+    int QueuedCount);
 
 public sealed record GovernedAgentDecisionResult(
     bool IsAccepted,

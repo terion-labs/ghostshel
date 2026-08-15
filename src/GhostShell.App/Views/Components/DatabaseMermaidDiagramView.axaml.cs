@@ -164,14 +164,16 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
 
             RenderedSvg = string.Empty;
             ReplaceSvgSource(null);
-            ErrorText.Text = $"The ER diagram could not be rendered: {exception.Message}";
+            ErrorText.Text = $"The Mermaid diagram could not be rendered: {exception.Message}";
             ErrorCard.IsVisible = true;
         }
     }
 
     private RenderOptions CreateRenderOptions() => new()
     {
-        AllowedDiagrams = DiagramTypes.Er,
+        // This view began as the database ER surface, but Markdown previews
+        // share the same bounded native renderer for every Mermaid diagram.
+        AllowedDiagrams = DiagramTypes.All,
         Bg = ThemeColor("ShellBackgroundBrush", "#111111"),
         Fg = ThemeColor("ShellTextBrush", "#FFFFFF"),
         Accent = ThemeColor("ShellAccentBrush", "#FF8400"),

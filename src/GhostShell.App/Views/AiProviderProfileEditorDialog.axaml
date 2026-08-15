@@ -17,36 +17,61 @@
       CloseRequested="OnCancelClick"
       Title="{Binding EditorTitle}"
       Subtitle="{Binding ProfileId, StringFormat={}Profile: {0}}"
-      FooterHint="Tests perform one bounded model listing.">
+      FooterHint="Tests load the provider's model list.">
     <controls:DialogShell.Footer>
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-        <Button Classes="SecondaryButton" Click="OnTestClick" Content="Test" IsEnabled="{Binding !IsTesting}" />
+        <Button Classes="SecondaryButton" Click="OnTestClick" Content="Test" IsEnabled="{Binding CanTest}" />
         <Button Click="OnCancelClick" Content="Cancel" IsCancel="True" />
-        <Button Classes="PrimaryButton" Click="OnSaveClick" Content="Save provider" IsDefault="True" />
+        <Button Classes="PrimaryButton" Click="OnSaveClick" Content="Save provider" IsDefault="True" IsEnabled="{Binding IsProviderRuntimeSupported}" />
       </StackPanel>
     </controls:DialogShell.Footer>
 
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
       <controls:SurfaceCard>
         <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-          <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <Grid
+              x:Name="IdentityFields"
+              ColumnDefinitions="*,*"
+              ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <controls:LabeledField Label="Name">
               <TextBox Text="{Binding Name}" PlaceholderText="Production OpenAI" />
             </controls:LabeledField>
-            <controls:LabeledField Grid.Column="1" Label="Provider protocol">
-              <ComboBox ItemsSource="{Binding ProviderKinds}" SelectedItem="{Binding Kind}" />
+            <controls:LabeledField Grid.Column="1" Label="Provider">
+              <ComboBox
+                  x:Name="ProviderSelector"
+                  ItemsSource="{Binding ProviderOptions}"
+                  SelectedItem="{Binding SelectedProvider}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
             </controls:LabeledField>
           </Grid>
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="{Binding ProviderProtocol, StringFormat={}Wire protocol: {0}}" />
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              IsVisible="{Binding !IsProviderRuntimeSupported}"
+              Text="{Binding ProviderAvailability}"
+              TextWrapping="Wrap" />
           <controls:LabeledField
               Label="API base endpoint"
-              Hint="HTTPS is required except for an exact loopback endpoint. Redirects, embedded credentials, queries, and fragments are rejected.">
-            <TextBox Text="{Binding Endpoint}" PlaceholderText="https://api.example.com/v1/" />
+              Hint="{Binding EndpointPolicy}">
+            <TextBox IsEnabled="{Binding IsEndpointEditable}" Text="{Binding Endpoint}" PlaceholderText="https://api.example.com/v1/" />
           </controls:LabeledField>
-          <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <Grid
+              x:Name="ModelFields"
+              ColumnDefinitions="*,*"
+              ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <controls:LabeledField Label="Default model">
               <TextBox Text="{Binding DefaultModel}" />
             </controls:LabeledField>
-            <controls:LabeledField Grid.Column="1" Label="Fallback order">
+            <controls:LabeledField Grid.Column="1" Label="Display order">
               <NumericUpDown Minimum="0" Maximum="10000" Value="{Binding Order}" />
             </controls:LabeledField>
           </Grid>
@@ -60,19 +85,83 @@
       <controls:SurfaceCard>
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
           <TextBlock Classes="SectionHeading" Text="Authentication" />
-          <CheckBox
-              IsVisible="{Binding CanDisableAuthentication}"
-              IsChecked="{Binding UseNoAuthentication}"
-              Content="No authentication (exact loopback endpoint only)" />
+          <ComboBox
+              x:Name="AuthenticationSelector"
+              IsVisible="{Binding HasMultipleAuthenticationOptions}"
+              ItemsSource="{Binding AuthenticationOptions}"
+              SelectedItem="{Binding SelectedAuthentication}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <Grid
+              x:Name="AuthenticationValue"
+              MinHeight="{DynamicResource ShellControlMinHeight}"
+              IsVisible="{Binding HasSingleAuthenticationOption}">
+            <TextBlock
+                VerticalAlignment="Center"
+                FontWeight="SemiBold"
+                Text="{Binding SelectedAuthentication.Label}" />
+          </Grid>
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="{Binding SelectedAuthentication.Detail}"
+              TextWrapping="Wrap" />
           <StackPanel IsVisible="{Binding UsesCredential}" Spacing="{DynamicResource ShellSpaceSm}">
-            <ComboBox ItemsSource="{Binding SecretOptions}" SelectedItem="{Binding SelectedCredential}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate>
-                  <TextBlock Text="{Binding DisplayName}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The definition stores only an opaque reference. If the selected slot is new or missing, save the profile and store its API key from the AI-provider settings page." TextWrapping="Wrap" />
+            <controls:LabeledField Label="Credential">
+              <Grid>
+                <ComboBox
+                    x:Name="CredentialSelector"
+                    IsVisible="{Binding HasMultipleCredentialOptions}"
+                    ItemsSource="{Binding SecretOptions}"
+                    SelectedItem="{Binding SelectedCredential}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Grid
+                    x:Name="CredentialValue"
+                    MinHeight="{DynamicResource ShellControlMinHeight}"
+                    IsVisible="{Binding HasSingleCredentialOption}">
+                  <TextBlock
+                      VerticalAlignment="Center"
+                      FontWeight="SemiBold"
+                      Text="{Binding SelectedCredential.DisplayName}" />
+                </Grid>
+              </Grid>
+            </controls:LabeledField>
+            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="API keys are kept in the system keychain. Save the profile first, then add its key from AI settings." TextWrapping="Wrap" />
+          </StackPanel>
+          <StackPanel
+              IsVisible="{Binding UsesInteractiveAuthentication}"
+              Spacing="{DynamicResource ShellSpaceSm}">
+            <Button
+                Classes="SecondaryButton"
+                HorizontalAlignment="Left"
+                Click="OnAuthenticateClick"
+                Content="{Binding AuthenticationButtonLabel}"
+                IsEnabled="{Binding CanAuthenticate}" />
+            <TextBlock
+                FontSize="{DynamicResource ShellFontSize10}"
+                Text="{Binding AuthenticationStatus}"
+                TextWrapping="Wrap"
+                AutomationProperties.LiveSetting="Polite" />
+            <Border
+                IsVisible="{Binding HasDeviceCode}"
+                Padding="{DynamicResource ShellInsetSm}"
+                Background="{DynamicResource ShellSurfaceElevatedBrush}"
+                CornerRadius="{DynamicResource ShellRadiusSm}">
+              <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="DEVICE CODE" />
+                <SelectableTextBlock FontFamily="{DynamicResource ShellMonoFontFamily}" FontSize="{DynamicResource ShellFontSize16}" Text="{Binding DeviceCode}" />
+                <SelectableTextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding AuthenticationUri}" />
+              </StackPanel>
+            </Border>
           </StackPanel>
         </StackPanel>
       </controls:SurfaceCard>

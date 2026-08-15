@@ -56,6 +56,166 @@ public sealed class McpServerProfileEditorViewModelTests
     }
 
     [Fact]
+    public void New_remote_profile_keeps_endpoint_and_header_secret_references_separate()
+    {
+        var editor = NewRemoteEditor();
+        editor.AddHttpHeaderBinding();
+        editor.HttpHeaders[0].Name = "Authorization";
+        editor.HttpHeaders[0].SecretReference = "vault-remote-token";
+        editor.AddEnabledTool();
+        editor.EnabledTools[0].Name = "remote.inspect";
+
+        var request = editor.CreateSaveRequest();
+
+        var transport = Assert.IsType<McpServerTransport.StreamableHttp>(
+            request.Profile.Transport);
+        Assert.Equal(
+            new Uri("https://mcp.example.test/rpc"),
+            transport.Endpoint);
+        Assert.False(transport.AllowInsecureTransport);
+        var header = Assert.Single(transport.Headers);
+        Assert.Equal("Authorization", header.Name);
+        Assert.Equal(new SecretRef("vault-remote-token"), header.Reference);
+        Assert.Empty(request.Profile.Environment);
+        Assert.Empty(request.Profile.Arguments);
+        Assert.Equal(string.Empty, request.Profile.Executable);
+        Assert.True(request.RequiresTrustConfirmation);
+        Assert.True(request.TrustReview.IsStreamableHttp);
+        Assert.False(request.TrustReview.IsStdio);
+        Assert.Equal(transport.Endpoint.AbsoluteUri, request.TrustReview.Endpoint);
+        Assert.Equal(
+            "vault-remote-token",
+            Assert.Single(request.TrustReview.HttpHeaders).ReferenceValue);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:7070/mcp")]
+    [InlineData("http://127.0.0.1:7070/mcp")]
+    [InlineData("http://[::1]:7070/mcp")]
+    public void Remote_profile_allows_plaintext_only_for_exact_loopback(
+        string endpoint)
+    {
+        var editor = NewRemoteEditor();
+        editor.Endpoint = endpoint;
+
+        var request = editor.CreateSaveRequest();
+
+        var transport = Assert.IsType<McpServerTransport.StreamableHttp>(
+            request.Profile.Transport);
+        Assert.True(transport.AllowInsecureTransport);
+        Assert.Equal(
+            "Plaintext loopback · explicitly acknowledged",
+            request.TrustReview.TransportSecurity);
+    }
+
+    [Theory]
+    [InlineData("http://mcp.example.test/rpc")]
+    [InlineData("http://localhost.example.test/rpc")]
+    [InlineData("ftp://mcp.example.test/rpc")]
+    [InlineData("/relative/mcp")]
+    [InlineData("https://user@mcp.example.test/rpc")]
+    [InlineData("https://mcp.example.test/rpc#fragment")]
+    public void Remote_profile_rejects_endpoints_outside_settings_policy(
+        string endpoint)
+    {
+        var editor = NewRemoteEditor();
+        editor.Endpoint = endpoint;
+
+        Assert.Throws<ArgumentException>(editor.CreateSaveRequest);
+    }
+
+    [Fact]
+    public void Existing_remote_profile_round_trips_without_authority_expansion()
+    {
+        var existing = RemoteProfile();
+        var editor = new McpServerProfileEditorViewModel(
+            existing,
+            expectedRevision: 19);
+
+        var request = editor.CreateSaveRequest();
+
+        Assert.Equal(19, request.ExpectedRevision);
+        Assert.True(editor.IsStreamableHttp);
+        Assert.Equal(
+            "https://mcp.example.test/rpc",
+            editor.Endpoint);
+        Assert.Equal("Authorization", Assert.Single(editor.HttpHeaders).Name);
+        Assert.False(request.RequiresTrustConfirmation);
+        Assert.Empty(request.TrustReview.Changes);
+        Assert.Equal(existing.Id, request.Profile.Id);
+        var savedTransport =
+            Assert.IsType<McpServerTransport.StreamableHttp>(
+                request.Profile.Transport);
+        var existingTransport =
+            Assert.IsType<McpServerTransport.StreamableHttp>(
+                existing.Transport);
+        Assert.Equal(existingTransport.Endpoint, savedTransport.Endpoint);
+        Assert.Equal(existingTransport.Headers, savedTransport.Headers);
+    }
+
+    [Fact]
+    public void Remote_endpoint_header_and_transport_changes_require_confirmation()
+    {
+        var mutations = new Action<McpServerProfileEditorViewModel>[]
+        {
+            editor => editor.Endpoint = "https://other.example.test/mcp",
+            editor => editor.HttpHeaders[0].SecretReference = "replacement-ref",
+            editor => editor.SelectedTransport = editor.TransportOptions.Single(
+                option => option.Kind == McpServerTransportKind.Stdio),
+        };
+
+        foreach (var mutate in mutations)
+        {
+            var editor = new McpServerProfileEditorViewModel(
+                RemoteProfile(),
+                expectedRevision: 20)
+            {
+                Executable = "/opt/tools/mcp-server",
+            };
+            mutate(editor);
+
+            var request = editor.CreateSaveRequest();
+
+            Assert.True(request.RequiresTrustConfirmation);
+            Assert.NotEmpty(request.TrustReview.Changes);
+        }
+    }
+
+    [Fact]
+    public void Remote_header_names_are_bounded_unique_and_non_reserved()
+    {
+        var editor = NewRemoteEditor();
+        editor.AddHttpHeaderBinding();
+        editor.HttpHeaders[0].Name = "Host";
+        Assert.Throws<ArgumentException>(editor.CreateSaveRequest);
+
+        editor.HttpHeaders[0].Name = "X-Token";
+        editor.AddHttpHeaderBinding();
+        editor.HttpHeaders[1].Name = "x-token";
+        Assert.Throws<ArgumentException>(editor.CreateSaveRequest);
+    }
+
+    [Fact]
+    public void Remote_header_rows_stop_at_the_profile_limit()
+    {
+        var editor = NewRemoteEditor();
+        for (var index = 0;
+             index < McpServerProfile.MaximumHttpHeaderCount;
+             index++)
+        {
+            editor.AddHttpHeaderBinding();
+        }
+
+        var error = Assert.Throws<InvalidOperationException>(
+            editor.AddHttpHeaderBinding);
+
+        Assert.Contains(
+            McpServerProfile.MaximumHttpHeaderCount.ToString(),
+            error.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Argument_reordering_changes_the_exact_argv_order_and_accessible_positions()
     {
         var editor = NewEditor();
@@ -79,11 +239,15 @@ public sealed class McpServerProfileEditorViewModelTests
         editor.AddEnvironmentBinding();
         editor.AddEnvironmentBinding();
         editor.AddEnvironmentBinding();
+        editor.AddHttpHeaderBinding();
+        editor.AddHttpHeaderBinding();
+        editor.AddHttpHeaderBinding();
         editor.AddEnabledTool();
         editor.AddEnabledTool();
         editor.AddEnabledTool();
 
         editor.RemoveEnvironmentBinding(editor.Environment[0]);
+        editor.RemoveHttpHeaderBinding(editor.HttpHeaders[1]);
         editor.RemoveEnabledTool(editor.EnabledTools[1]);
 
         Assert.Equal(
@@ -104,6 +268,24 @@ public sealed class McpServerProfileEditorViewModelTests
                 "Remove environment binding 2",
             ],
             editor.Environment.Select(item => item.RemoveAccessibleName));
+        Assert.Equal(
+            [
+                "HTTP header binding 1 name",
+                "HTTP header binding 2 name",
+            ],
+            editor.HttpHeaders.Select(item => item.NameAccessibleName));
+        Assert.Equal(
+            [
+                "HTTP header binding 1 secret reference",
+                "HTTP header binding 2 secret reference",
+            ],
+            editor.HttpHeaders.Select(item => item.SecretReferenceAccessibleName));
+        Assert.Equal(
+            [
+                "Remove HTTP header binding 1",
+                "Remove HTTP header binding 2",
+            ],
+            editor.HttpHeaders.Select(item => item.RemoveAccessibleName));
         Assert.Equal(
             ["Enabled MCP tool 1 name", "Enabled MCP tool 2 name"],
             editor.EnabledTools.Select(item => item.NameAccessibleName));
@@ -278,7 +460,9 @@ public sealed class McpServerProfileEditorViewModelTests
         var item = MainWindowViewModel.ProjectMcpServerProfile(stored, []);
 
         Assert.Equal("No tools enabled", item.Status);
-        Assert.Contains("excluded", item.StatusDetail, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "Choose at least one tool before enabling this server.",
+            item.StatusDetail);
         Assert.True(item.HasWarning);
         Assert.Equal("1 ordered arg", item.ArgumentSummary);
         Assert.Equal("1 vault binding", item.EnvironmentBindingSummary);
@@ -320,12 +504,139 @@ public sealed class McpServerProfileEditorViewModelTests
         Assert.Equal("Credential missing", missing.Status);
         Assert.True(missing.HasWarning);
         Assert.Equal("Enabled for new runs", matching.Status);
-        Assert.Contains(
-            "does not show live MCP process state",
-            matching.StatusDetail,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Ready.", matching.StatusDetail);
         Assert.False(matching.HasWarning);
         Assert.Equal("1 enabled tool", matching.EnabledToolSummary);
+    }
+
+    [Fact]
+    public void Server_list_projection_reports_remote_transport_and_header_credentials()
+    {
+        var profile = RemoteProfile();
+        var stored = new StoredDefinition<McpServerProfile>(
+            profile,
+            21,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch);
+
+        var missing = MainWindowViewModel.ProjectMcpServerProfile(stored, []);
+        var matching = MainWindowViewModel.ProjectMcpServerProfile(
+            stored,
+            [Secret(
+                new SecretRef("vault-remote-token"),
+                "Remote token",
+                "ApiKey",
+                new SecretScope(
+                    SecretScopeKind.McpServer,
+                    profile.Id.Value))]);
+
+        Assert.Equal(McpServerTransportKind.StreamableHttp, missing.TransportKind);
+        Assert.Equal(
+            "https://mcp.example.test/rpc",
+            missing.Address);
+        Assert.Equal("Streamable HTTP", missing.TransportSummary);
+        Assert.Equal("1 vault binding", missing.CredentialBindingSummary);
+        Assert.Equal("Credential missing", missing.Status);
+        Assert.Equal("Enabled for new runs", matching.Status);
+        Assert.False(matching.HasWarning);
+    }
+
+    [Fact]
+    public void Settings_offers_missing_remote_header_reference_as_a_vault_target()
+    {
+        var profile = RemoteProfile();
+        var catalog = DispatchProxy.Create<
+            IDefinitionCatalog,
+            CatalogProxy>();
+        ((CatalogProxy)(object)catalog).SnapshotValue =
+            DefinitionCatalogSnapshot.Empty with
+            {
+                McpServerProfiles =
+                [
+                    new StoredDefinition<McpServerProfile>(
+                        profile,
+                        22,
+                        DateTimeOffset.UnixEpoch,
+                        DateTimeOffset.UnixEpoch),
+                ],
+            };
+        using var viewModel = new MainWindowViewModel(
+            DispatchProxy.Create<ISessionHostClient, RejectingProxy>(),
+            catalog,
+            DispatchProxy.Create<IConnectionRuntime, RejectingProxy>(),
+            DispatchProxy.Create<ISecretVault, SecretVaultProxy>(),
+            DispatchProxy.Create<IFilePanelClient, FilePanelProxy>(),
+            DispatchProxy.Create<
+                IFileTransferQueueClient,
+                FileTransferQueueProxy>(),
+            new TerminalStartupCommandDispatcher(
+                new UnusedAuditStore(),
+                TimeProvider.System));
+
+        var target = Assert.Single(viewModel.McpServerSecretTargets);
+
+        Assert.Equal(profile.Id, target.ProfileId);
+        Assert.Equal(
+            McpServerCredentialBindingKind.HttpHeader,
+            target.BindingKind);
+        Assert.Equal("Authorization", target.BindingName);
+        Assert.Equal(new SecretRef("vault-remote-token"), target.Reference);
+        Assert.Contains("HTTP header", target.DisplayName, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret value", target.DisplayName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Settings_fills_the_exact_remote_header_secret_reference()
+    {
+        var profile = RemoteProfile();
+        var catalog = DispatchProxy.Create<
+            IDefinitionCatalog,
+            CatalogProxy>();
+        ((CatalogProxy)(object)catalog).SnapshotValue =
+            DefinitionCatalogSnapshot.Empty with
+            {
+                McpServerProfiles =
+                [
+                    new StoredDefinition<McpServerProfile>(
+                        profile,
+                        23,
+                        DateTimeOffset.UnixEpoch,
+                        DateTimeOffset.UnixEpoch),
+                ],
+            };
+        var vault = DispatchProxy.Create<ISecretVault, SecretVaultProxy>();
+        using var viewModel = new MainWindowViewModel(
+            DispatchProxy.Create<ISessionHostClient, RejectingProxy>(),
+            catalog,
+            DispatchProxy.Create<IConnectionRuntime, RejectingProxy>(),
+            vault,
+            DispatchProxy.Create<IFilePanelClient, FilePanelProxy>(),
+            DispatchProxy.Create<
+                IFileTransferQueueClient,
+                FileTransferQueueProxy>(),
+            new TerminalStartupCommandDispatcher(
+                new UnusedAuditStore(),
+                TimeProvider.System));
+        var target = Assert.Single(viewModel.McpServerSecretTargets);
+
+        var created = await viewModel.CreateMcpServerSecretAsync(
+            target,
+            "Remote token",
+            SecretKind.ApiKey,
+            "not-returned-to-settings",
+            CancellationToken.None);
+
+        Assert.True(created);
+        var createRequest = Assert.IsType<CreateSecretRequest>(
+            ((SecretVaultProxy)(object)vault).CreateRequest);
+        Assert.Equal(target.Reference, createRequest.Reference);
+        Assert.Equal(
+            new SecretScope(SecretScopeKind.McpServer, profile.Id.Value),
+            createRequest.Scope);
+        Assert.Equal(
+            SecretUseKind.UserManagement,
+            createRequest.Purpose.Kind);
+        Assert.Empty(viewModel.McpServerSecretTargets);
     }
 
     [Fact]
@@ -349,6 +660,20 @@ public sealed class McpServerProfileEditorViewModelTests
         Assert.Equal("OnOpened", editor.Root?.Attribute("Opened")?.Value);
         Assert.NotNull(editor.Descendants(view + "TextBox").Single(element =>
             element.Attribute(x + "Name")?.Value == "McpServerNameInput"));
+        Assert.NotNull(editor.Descendants(view + "ComboBox").Single(element =>
+            element.Attribute(x + "Name")?.Value == "McpServerTransportPicker"
+            && element.Attribute("ItemsSource")?.Value
+                == "{Binding TransportOptions}"
+            && element.Attribute("SelectedItem")?.Value
+                == "{Binding SelectedTransport}"));
+        Assert.Contains(
+            editor.Descendants(view + "TextBox"),
+            element => element.Attribute("AutomationProperties.Name")?.Value
+                == "MCP Streamable HTTP endpoint");
+        Assert.Contains(
+            editor.Descendants(view + "ItemsControl"),
+            element => element.Attribute("ItemsSource")?.Value
+                == "{Binding HttpHeaders}");
         Assert.NotNull(editor.Descendants(view + "TextBlock").Single(element =>
             element.Attribute(x + "Name")?.Value == "ValidationError"
             && element.Attribute("Focusable")?.Value == "True"
@@ -398,7 +723,12 @@ public sealed class McpServerProfileEditorViewModelTests
         Assert.Contains(
             confirmation.Descendants(view + "TextBlock"),
             element => element.Attribute("Text")?.Value?.Contains(
-                "Credential values are never loaded or displayed",
+                "Credential values are never shown",
+                StringComparison.Ordinal) == true);
+        Assert.Contains(
+            confirmation.Descendants(),
+            element => element.Attribute("Text")?.Value?.Contains(
+                "Header values are never shown",
                 StringComparison.Ordinal) == true);
     }
 
@@ -414,26 +744,19 @@ public sealed class McpServerProfileEditorViewModelTests
 
         Assert.Equal(view + "StackPanel", section.Name);
         Assert.Equal(
-            "{Binding IsMcpSettingsVisible}",
-            section.Attribute("IsVisible")?.Value);
-        Assert.Contains(
+            "{Binding IsAgentSettingsVisible}",
+            section.Ancestors().Single(element =>
+                element.Attribute(x + "Name")?.Value == "AiSettingsPage")
+                .Attribute("IsVisible")?.Value);
+        Assert.DoesNotContain(
             mainWindow.Descendants(),
             navigationItem =>
                 navigationItem.Name.LocalName == "ShellNavigationItem"
-                && navigationItem.Attribute("Click")?.Value == "OnMcpSettingsClick"
-                && !string.IsNullOrWhiteSpace(
-                    navigationItem.Attribute("AutomationName")?.Value));
+                && navigationItem.Attribute("Click")?.Value == "OnMcpSettingsClick");
         Assert.Contains(
             section.Descendants(),
             element => element.Name.LocalName == "EmptyStatePanel"
                 && element.Attribute("Heading")?.Value == "No MCP server configured");
-        // Stated by the section's callout; the guarantee is the sentence, not
-        // which element renders it.
-        Assert.Contains(
-            section.Descendants(),
-            element => element.Attribute("Text")?.Value?.Contains(
-                "not live MCP process state",
-                StringComparison.OrdinalIgnoreCase) == true);
         Assert.Contains(
             section.Descendants(view + "Button"),
             button =>
@@ -450,7 +773,7 @@ public sealed class McpServerProfileEditorViewModelTests
                 "No process is started",
                 StringComparison.OrdinalIgnoreCase) == true);
         Assert.NotNull(section.Descendants(view + "ComboBox").Single(element =>
-            element.Attribute(x + "Name")?.Value == "McpEnvironmentSecretTargetPicker"));
+            element.Attribute(x + "Name")?.Value == "McpServerSecretTargetPicker"));
         Assert.NotNull(section.Descendants(view + "TextBox").Single(element =>
             element.Attribute(x + "Name")?.Value == "McpServerSecretValueInput"
             && element.Attribute("PasswordChar")?.Value == "●"));
@@ -532,13 +855,9 @@ public sealed class McpServerProfileEditorViewModelTests
         Assert.Same(item, tested);
         Assert.Equal("Last test passed", tested.Status);
         Assert.Contains(
-            "directly launched process",
+            "Found 2 tools",
             tested.StatusDetail,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "does not show live process state",
-            tested.StatusDetail,
-            StringComparison.OrdinalIgnoreCase);
         Assert.True(tested.CanTest);
         Assert.False(tested.IsTesting);
         Assert.Equal(1, diagnosticsProxy.CallCount);
@@ -766,6 +1085,18 @@ public sealed class McpServerProfileEditorViewModelTests
             WorkingDirectory = "/var/lib/mcp",
         };
 
+    private static McpServerProfileEditorViewModel NewRemoteEditor()
+    {
+        var editor = new McpServerProfileEditorViewModel
+        {
+            Name = "Remote tools",
+            Endpoint = "https://mcp.example.test/rpc",
+        };
+        editor.SelectedTransport = editor.TransportOptions.Single(option =>
+            option.Kind == McpServerTransportKind.StreamableHttp);
+        return editor;
+    }
+
     private static McpServerProfile Profile(
         IReadOnlyList<string> enabledTools,
         bool isEnabled = true,
@@ -784,6 +1115,20 @@ public sealed class McpServerProfileEditorViewModelTests
                 : [],
             enabledTools,
             isEnabled);
+
+    private static McpServerProfile RemoteProfile() =>
+        new(
+            new McpServerProfileId("mcp.remote-tools"),
+            McpServerProfile.CurrentSchemaVersion,
+            "Remote tools",
+            new McpServerTransport.StreamableHttp(
+                new Uri("https://mcp.example.test/rpc"),
+                [
+                    new McpServerHttpHeader(
+                        "Authorization",
+                        new SecretRef("vault-remote-token")),
+                ]),
+            ["remote.inspect"]);
 
     private static SecretMetadataViewModel Secret(
         SecretRef reference,
@@ -870,12 +1215,36 @@ public sealed class McpServerProfileEditorViewModelTests
     {
         public IReadOnlyList<SecretMetadata> Metadata { get; set; } = [];
 
+        public CreateSecretRequest? CreateRequest { get; private set; }
+
         public int ReplaceCount { get; private set; }
 
         protected override object? Invoke(
             MethodInfo? targetMethod,
             object?[]? arguments)
         {
+            if (targetMethod?.Name == nameof(ISecretVault.CreateAsync)
+                && arguments is
+                [
+                    CreateSecretRequest createRequest,
+                    SecretMaterial,
+                    CancellationToken,
+                ])
+            {
+                CreateRequest = createRequest;
+                var metadata = new SecretMetadata(
+                    createRequest.Reference,
+                    createRequest.Label,
+                    createRequest.Kind,
+                    createRequest.Scope,
+                    SecretVaultPersistenceKind.MemoryOnly,
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch);
+                Metadata = [metadata];
+                return ValueTask.FromResult(
+                    SecretVaultResult<SecretMetadata>.Succeed(metadata));
+            }
+
             if (targetMethod?.Name == nameof(ISecretVault.ReplaceAsync)
                 && arguments is
                 [

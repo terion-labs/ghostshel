@@ -11,7 +11,7 @@
           <TextBlock
               Classes="Muted"
               FontSize="{DynamicResource ShellFontSize10}"
-              Text="Review bounded metadata for snapshots left by previous runs."
+              Text="Review recovery snapshots from previous runs."
               TextWrapping="Wrap" />
         </StackPanel>
         <Button
@@ -34,7 +34,7 @@
       <controls:Callout
           Tone="Notice"
           Glyph="Shield"
-          Text="Only previous-run metadata is listed. The current run’s crash snapshot is hidden and protected. Snapshot payloads are never loaded into this screen." />
+          Text="Only snapshots from previous runs are shown here. The current run is protected." />
 
       <TextBlock
           Classes="Muted"

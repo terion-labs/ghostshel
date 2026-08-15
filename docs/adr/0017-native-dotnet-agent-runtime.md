@@ -33,6 +33,63 @@ conversation or tool results. Official provider SDKs or direct HTTP clients may
 be used privately when they reduce compatibility risk; their request and
 response types do not cross the adapter.
 
+Provider-native reasoning continuity is retained through one internal bounded
+replay-state value on the committed assistant message. An adapter may emit that
+value only once, immediately before successful response completion; the
+provider-neutral reducer never projects it to run events, UI, logs, or audit.
+The binding covers the exact profile ID, provider identity, wire protocol,
+model, actual routed endpoint, and stable adapter/auth route identity. For
+vault-backed routes, that identity contains a one-way digest of the selected
+opaque credential reference, never the reference itself or its value. Any
+endpoint, credential-reference, authentication-route, profile, or protocol
+drift fails closed before the transcript is serialized or sent. Replacing
+material behind the same opaque reference is outside this check because the
+current vault contract exposes no immutable credential revision.
+
+A conversation is identified by its workspace-scoped run, not by its model.
+The model is a per-turn routing choice: changing it while idle retains the
+committed visible transcript and does not clear or fork the conversation. The
+next request uses the selected model under the already-pinned provider profile
+and authorization policy. Exact-model replay may retain provider-private signed
+or encrypted reasoning artifacts. A same-route model change instead serializes
+the visible assistant text and tool history without those model-bound opaque
+artifacts, matching Pi's cross-model message transformation. This preserves the
+human conversation without presenting incompatible provider state to the new
+model.
+
+Conversation maintenance follows Pi's context-budget behavior without adopting
+its session format. Every model descriptor may publish a bounded context
+window. After a successful turn, the kernel uses the latest provider-reported
+total plus bounded estimates for any trailing messages, and compacts when that
+usage exceeds `contextWindow - 16,384`. It retains approximately 20,000 tokens
+of the newest complete user turns, summarizes only the older complete turns,
+and rolls an existing summary forward. GhostSHELL never splits a structured
+tool exchange merely to hit the token target. The summarizer receives a
+prompt-injection-resistant structured checkpoint contract derived from Pi's
+Goal, Constraints, Progress, Decisions, Next Steps, and Critical Context
+sections. Compaction remains revision-fenced and optional maintenance: a
+maintenance-provider failure cannot discard the answer that already completed.
+
+The compaction route and optional conversation-title route are independent
+provider/model selections in the global AI configuration. Workspace and saved
+screen policy layers may override either route independently. An unspecified
+compaction route uses the resolved global primary model; an unspecified title
+route keeps the deterministic first-user-message title and performs no extra
+provider request. Main-window and Quick Terminal conversations both consume
+the saved global policy while retaining separate workspace-scoped transcripts.
+The visible composer projects current usage and the active
+model's effective context budget. These maintenance routes are data-processing
+choices, not execution authority, and never receive agent tools.
+
+Anthropic adapters retain the exact ordered signed `thinking`, opaque
+`redacted_thinking`, text, and tool-use blocks so a tool result can immediately
+continue a signed turn without exposing hidden thinking. OpenAI Responses
+requests `reasoning.encrypted_content`, retains finalized response items and
+their output/tool slots, and backfills encrypted reasoning from the completed
+response when the output-item event omitted it. Both formats enforce strict
+item, aggregate byte, JSON-depth/node, slot-contiguity, and duplicate bounds.
+Other adapters receive no replay-state surface.
+
 Internal GhostSHELL operation names remain stable domain and audit identities;
 they are not assumed to satisfy a model provider's tool-name grammar. Each tool
 definition therefore carries a separate provider name limited to 64 ASCII
@@ -74,6 +131,16 @@ proposals rolls their unexecuted turn back. Provider-turn budgets distinguish
 at most 128 advertised tool definitions from at most 16 returned calls, and
 bound schemas independently from generated call arguments.
 
+[ADR 0043](0043-idle-native-agent-checkpoints.md) adds a deliberately narrower
+durability boundary than Pi's operation harness: only fully committed `Ready`
+conversation state can be checkpointed. Active provider streams, pending tool
+decisions, compaction leases, approvals, capabilities, authorities, provider
+clients, and credentials remain process-local. A versioned kernel-owned JSON
+payload is stored behind an application port by a revision-fenced,
+integrity-checked SQLite adapter. Restore returns an idle kernel and never
+infers or replays an unfinished external effect. The desktop orchestration saves
+settled turns and restores only within the same workspace identity.
+
 [ADR 0037](0037-bounded-native-provider-steering.md) adds the first steering
 slice without widening that boundary. One human update may replace only the
 actively streaming initial user generation before commit. The kernel
@@ -93,31 +160,36 @@ any retained transcript can be sent again.
 
 `GhostShell.Agent.Runtime` is the provider-neutral orchestration boundary. It
 references the agent kernel plus application contracts, but no provider,
-terminal-engine, platform, vault, or UI implementation. It accepts an exact
-panel, the current live tab, or the current workspace as the run target and
-pins the initial ordered terminal/session membership. A bounded,
-host-generated system manifest describes only those terminals and their
-capabilities; its titles, connection labels, and working directories remain
-explicitly untrusted. Multi-terminal tool schemas require a capability-specific
-`panel_id`. For every proposal the runtime freshly resolves the target,
-revalidates the fixed membership and selected panel, converts the request into
-an exact panel/session action, waits for the capability broker, invokes the
-session-host consume-and-execute bridge, redacts and bounds the result, and
-returns the trusted panel ID with the correlated structured result to the same
-request-scoped provider adapter. Scope or session drift fails closed and
-requires a new run. Parallel calls fail closed; tool rounds and total turn
-lifetime are bounded. A linked, identity-tracked cancellation source exists
+terminal-engine, platform, vault, or UI implementation. The desktop binds a
+run to one workspace identity. A bounded host-generated system manifest is
+assembled by the runtime's registered tool-family contributions and rebuilt
+after each tool round from the current supported live panels. The current
+registry is runtime-owned; panels contribute eligibility and current context,
+not executable plugin objects. Panel titles, connection
+labels, and working directories remain explicitly untrusted; every operational
+schema narrows authority with a host-enumerated `panel_id` where needed. For
+every proposal the runtime freshly resolves the target and selected panel,
+converts the request into an exact panel/session action, waits for the capability
+broker, invokes the session-host consume-and-execute bridge, redacts and bounds
+the result, and returns the trusted panel ID with the correlated structured
+result to the same request-scoped provider adapter. Returned tool proposals are
+executed sequentially in provider order and submitted as one correlated result
+set; an uncertain mutation outcome revokes the run and skips the remainder.
+Exact internal targets retain fixed-membership fail-closed semantics. Tool
+rounds and total turn lifetime are bounded. A linked, identity-tracked
+cancellation source exists
 only while one authorized terminal dispatch is active. Its one-shot
 cancellation state is projected with that activity; completion clears the
 identity before disposing it, so stale completion and duplicate-cancel races
 cannot affect a later action. Whole-turn cancellation still takes precedence
 and revokes run authority.
 
-That same ordered membership is projected as immutable presentation-only rows
-for the visible desktop context inspector. Exact identities and host-verified
-operations remain distinct from bounded, redacted, explicitly untrusted display
-metadata. The rows are cleared with the run and cannot be consumed as
-authorization.
+That same current ordered Workspace topology is projected as immutable
+presentation-only rows for the visible desktop context inspector. The snapshot
+is replaced after each successful topology refresh; internal exact/selected
+targets retain fixed rows. Exact identities and host-verified operations remain
+distinct from bounded, redacted, explicitly untrusted display metadata. The
+rows are cleared with the run and cannot be consumed as authorization.
 
 If execution finishes but the terminal-outcome audit remains unavailable after
 the host's exact-completion retry, the runtime never submits that result for
@@ -126,8 +198,8 @@ failure instead. Retrying a completion cannot redispatch its terminal side
 effect.
 
 The desktop binds that runtime to one composition-owned human approval
-principal and presents a visible `Active terminal` / `Current tab` /
-`Workspace` selector, streaming state, active operations, one-action
+principal and presents a visible `Workspace` scope, streaming state, active
+operations, one-action
 approvals, per-action cancellation, a separate persistent run-wide Stop,
 failure recovery, and renderer capability limits.
 The selector cannot retarget an existing run, and a broad-scope proposal still

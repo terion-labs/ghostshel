@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -195,4 +196,43 @@ public sealed partial class GovernedAgentRuntime
         toolName is
             BuiltInAgentTools.PanelInspect
             or BuiltInAgentTools.PanelFocus;
+
+    private sealed class PanelToolContribution(
+        GovernedAgentRuntime runtime) : IAgentToolContribution
+    {
+        public ImmutableArray<AgentToolDefinition> BuildTools(
+            AgentToolBuildContext context) =>
+            runtime._agentPanelHost is not null
+                && runtime._panelComposer is not null
+                    ? PanelAgentToolSet.For(context.OperationalContext)
+                    : [];
+
+        public ResolvedAgentToolContribution? Resolve(string toolName) =>
+            IsPanelTool(toolName)
+                ? new ResolvedAgentToolContribution(
+                    toolName,
+                    ExecuteAsync)
+                : null;
+
+        private ValueTask<AgentToolResult> ExecuteAsync(
+            AgentToolExecutionRequest request,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteOperationalToolContributionAsync(
+                request,
+                ExecuteBoundAsync,
+                cancellationToken);
+
+        private ValueTask<AgentToolResult> ExecuteBoundAsync(
+            AgentToolExecutionRequest request,
+            OperationalAgentToolContext context,
+            CancellationToken cancellationToken) =>
+            runtime.ExecutePanelProposalAsync(
+                request.Proposal,
+                request.Descriptor,
+                context.Context,
+                context.ResizeEligiblePanelIds,
+                context.BrowserEligiblePanelIds,
+                context.FileMetadata,
+                cancellationToken);
+    }
 }

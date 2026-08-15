@@ -26,6 +26,15 @@ public sealed class AgentWorkspaceViewContractTests
             ["KeepAgentCapabilityOffRequested"] =
                 "OnKeepAgentCapabilityOffClick",
             ["LoadOlderAgentAuditRequested"] = "OnLoadOlderAgentAuditClick",
+            ["StartNewAgentConversationRequested"] = "OnStartNewConversationClick",
+            ["OpenAgentConversationRequested"] = "OnOpenConversationClick",
+            ["DeleteAgentConversationRequested"] = "OnDeleteConversationClick",
+            ["CopyAgentMessageRequested"] = "OnCopyAgentMessageClick",
+            ["ForkAgentConversationRequested"] = "OnForkAgentConversationClick",
+            ["SelectAgentModelRequested"] = "OnSelectModelClick",
+            ["ToggleAgentModelFavoriteRequested"] =
+                "OnToggleFavoriteModelClick",
+            ["RefreshAgentModelsRequested"] = "OnRefreshModelsClick",
             ["RefreshAgentAuditRequested"] = "OnRefreshAgentAuditClick",
             ["SendAgentChatRequested"] = "OnSendAgentChatClick",
             ["ShowAgentSettingsRequested"] = "OnShowAgentSettingsClick",
@@ -118,17 +127,21 @@ public sealed class AgentWorkspaceViewContractTests
             "AI agent activity",
             AttributeValue(transcript, "AutomationProperties.Name"),
             StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => AttributeValue(element, "IsVisible")
+                == "{Binding AgentChat.CanStartConversation}");
 
         var providerSettings = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "Button"
                 && string.Equals(
                     AttributeValue(element, "Content"),
-                    "Open provider settings",
+                    "Open AI settings",
                     StringComparison.Ordinal));
         Assert.Equal("PrimaryButton", AttributeValue(providerSettings, "Classes"));
         Assert.Equal(
-            "Open AI provider settings",
+            "Open AI settings",
             AttributeValue(providerSettings, "AutomationProperties.Name"));
         Assert.False(string.IsNullOrWhiteSpace(
             AttributeValue(providerSettings, "AutomationProperties.HelpText")));
@@ -166,6 +179,304 @@ public sealed class AgentWorkspaceViewContractTests
         Assert.Equal(
             "{Binding AgentChat.HasProvider}",
             AttributeValue(composer, "IsVisible"));
+
+        var contextUsage = Assert.Single(
+            composer.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "{Binding AgentChat.ContextWindowUsageLabel}");
+        Assert.Null(AttributeValue(contextUsage, "Content"));
+        Assert.Equal("34", AttributeValue(contextUsage, "Width"));
+        Assert.Equal("34", AttributeValue(contextUsage, "Height"));
+        var contextDonut = Assert.Single(
+            contextUsage.Elements(),
+            element => element.Name.LocalName == "ContextWindowDonut");
+        Assert.Equal(
+            "{Binding AgentChat.ContextWindowPercent}",
+            AttributeValue(contextDonut, "Percentage"));
+        var composerToolbar = FindNamedElement(root, "AgentComposerToolbar");
+        Assert.Equal(
+            "Auto,*,Auto,*,Auto",
+            AttributeValue(composerToolbar, "ColumnDefinitions"));
+        Assert.Equal("0", AttributeValue(composerToolbar, "ColumnSpacing"));
+        var accessMode = Assert.Single(
+            composerToolbar.Elements(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "Choose how AI actions are approved");
+        Assert.Equal("0", AttributeValue(accessMode, "MinWidth"));
+        Assert.Contains(
+            accessMode.Elements(),
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "TextTrimming")
+                    == "CharacterEllipsis");
+        var modelPicker = FindNamedElement(root, "AgentModelPickerButton");
+        Assert.Equal("0", AttributeValue(modelPicker, "MinWidth"));
+        Assert.Contains(
+            modelPicker.Elements(),
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "TextTrimming")
+                    == "CharacterEllipsis");
+
+        var stop = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && string.Equals(
+                    AttributeValue(element, "Click"),
+                    "OnCancelAgentChatClick",
+                    StringComparison.Ordinal));
+        Assert.Equal(
+            "{Binding AgentChat.ShowStopAction}",
+            AttributeValue(stop, "IsVisible"));
+
+        var committedReasoning = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "StackPanel"
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "AI reasoning summary",
+                    StringComparison.Ordinal));
+        var reasoningDisclosure = Assert.Single(
+            committedReasoning.Descendants(),
+            element => element.Name.LocalName == "ToggleButton"
+                && AttributeValue(element, "Name")
+                    == "CommittedReasoningDisclosure");
+        Assert.Equal("False", AttributeValue(reasoningDisclosure, "IsChecked"));
+        Assert.Contains(
+            committedReasoning.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "BorderThickness") == "1,0,0,0"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding IsChecked, ElementName=CommittedReasoningDisclosure}");
+        Assert.Contains(
+            committedReasoning.Descendants(),
+            element => element.Name.LocalName == "MarkdownPreviewView"
+                && AttributeValue(element, "Text")
+                    == "{Binding ReasoningSummaryDisplay}");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "MarkdownPreviewView"
+                && AttributeValue(element, "Text")
+                    == "{Binding AgentChat.ProvisionalReasoningStageDisplay}");
+        var reasoningLoader = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ProgressBar"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "Reasoning in progress");
+        Assert.Equal("1", AttributeValue(reasoningLoader, "Grid.Row"));
+        Assert.Equal("2", AttributeValue(reasoningLoader, "Grid.ColumnSpan"));
+        Assert.Equal("0", AttributeValue(reasoningLoader, "MinWidth"));
+        Assert.Equal("Stretch", AttributeValue(reasoningLoader, "HorizontalAlignment"));
+        Assert.Equal(
+            "{Binding AgentChat.ShowProvisionalReasoningLoader}",
+            AttributeValue(reasoningLoader, "IsVisible"));
+        var provisionalReasoningBody = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding IsChecked, ElementName=ProvisionalReasoningDisclosure}");
+        Assert.Equal(
+            "{controls:Inset Top=Xs, Left=Sm, Bottom=Xs}",
+            AttributeValue(provisionalReasoningBody, "Margin"));
+        Assert.Equal(
+            "{controls:Inset Left=Md}",
+            AttributeValue(provisionalReasoningBody, "Padding"));
+        var reasoningHover = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "ToggleButton.ReasoningTraceDisclosure:pointerover");
+        Assert.Contains(
+            reasoningHover.Elements(),
+            element => AttributeValue(element, "Property") == "Background"
+                && AttributeValue(element, "Value") == "Transparent");
+        var messages = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && AttributeValue(element, "ItemsSource")
+                    == "{Binding AgentChat.Messages}");
+        Assert.Contains(
+            messages.Descendants(),
+            element => element.Name.LocalName == "Setter"
+                && AttributeValue(element, "Property")
+                    == "HorizontalContentAlignment"
+                && AttributeValue(element, "Value") == "Stretch");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "MarkdownPreviewView"
+                && AttributeValue(element, "Text") == "{Binding Content}");
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && (AttributeValue(element, "Text") == "{Binding Content}"
+                    || AttributeValue(element, "Text")
+                        == "{Binding ReasoningSummaryDisplay}"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Click") == "OnCopyAgentMessageClick");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Click") == "OnForkAgentConversationClick"
+                && AttributeValue(element, "IsVisible") == "{Binding CanFork}");
+    }
+
+    [Fact]
+    public void Model_picker_keeps_filter_content_reasoning_and_speed_in_separate_bands()
+    {
+        var root = Assert.IsType<XElement>(LoadView().Root);
+        var picker = FindNamedElement(root, "AgentModelPickerButton");
+        var flyout = Assert.Single(
+            picker.Descendants(),
+            element => element.Name.LocalName == "Flyout");
+        Assert.Equal("AgentModelMenu", AttributeValue(flyout, "FlyoutPresenterClasses"));
+
+        var layout = Assert.Single(
+            flyout.Elements(),
+            element => element.Name.LocalName == "Grid");
+        Assert.Equal("Auto,*,Auto", AttributeValue(layout, "RowDefinitions"));
+
+        var filter = Assert.Single(
+            layout.Descendants(),
+            element => element.Name.LocalName == "TextBox"
+                && AttributeValue(element, "PlaceholderText") == "Filter models");
+        Assert.Equal(
+            "{Binding AgentChat.ModelSearch, Mode=TwoWay}",
+            AttributeValue(filter, "Text"));
+
+        var modelList = Assert.Single(
+            layout.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && AttributeValue(element, "ItemsSource")
+                    == "{Binding AgentChat.FilteredModels}");
+        Assert.Equal(
+            "1",
+            AttributeValue(modelList.Ancestors().First(element =>
+                element.Name.LocalName == "ScrollViewer"), "Grid.Row"));
+        Assert.Contains(
+            modelList.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "Text") == "{Binding ProviderName}");
+        Assert.DoesNotContain(
+            modelList.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "Text") == "{Binding Id}");
+        var favorite = Assert.Single(
+            modelList.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Click")
+                    == "OnToggleFavoriteModelClick");
+        Assert.Equal("{Binding}", AttributeValue(favorite, "Tag"));
+        Assert.Equal(
+            "{Binding FavoriteAccessibleName}",
+            AttributeValue(favorite, "AutomationProperties.Name"));
+
+        var footer = Assert.Single(
+            layout.Elements(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "Grid.Row") == "2");
+        Assert.Equal("0,1,0,0", AttributeValue(footer, "BorderThickness"));
+        var reasoning = Assert.Single(
+            footer.Descendants(),
+            element => element.Name.LocalName == "ComboBox"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "AI reasoning effort");
+        Assert.Equal("1", AttributeValue(reasoning, "Grid.Column"));
+        var serviceTier = Assert.Single(
+            footer.Descendants(),
+            element => element.Name.LocalName == "ComboBox"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "AI service tier");
+        Assert.Equal("1", AttributeValue(serviceTier, "Grid.Column"));
+        Assert.Equal(
+            "{Binding AgentChat.HasServiceTiers}",
+            AttributeValue(
+                serviceTier.Ancestors().First(element => element.Name.LocalName == "Grid"),
+                "IsVisible"));
+    }
+
+    [Fact]
+    public void Conversation_picker_uses_the_same_filter_list_footer_structure()
+    {
+        var root = Assert.IsType<XElement>(LoadView().Root);
+        var picker = FindNamedElement(root, "AgentConversationHistoryButton");
+        var flyout = Assert.Single(
+            picker.Descendants(),
+            element => element.Name.LocalName == "Flyout");
+        Assert.Equal(
+            "AgentConversationMenu",
+            AttributeValue(flyout, "FlyoutPresenterClasses"));
+
+        var layout = Assert.Single(
+            flyout.Elements(),
+            element => element.Name.LocalName == "Grid");
+        Assert.Equal("Auto,*,Auto", AttributeValue(layout, "RowDefinitions"));
+
+        var filter = Assert.Single(
+            layout.Descendants(),
+            element => element.Name.LocalName == "TextBox"
+                && AttributeValue(element, "PlaceholderText")
+                    == "Filter conversations");
+        Assert.Equal(
+            "{Binding AgentChat.ConversationSearch, Mode=TwoWay}",
+            AttributeValue(filter, "Text"));
+
+        var conversations = Assert.Single(
+            layout.Descendants(),
+            element => element.Name.LocalName == "ItemsControl"
+                && AttributeValue(element, "ItemsSource")
+                    == "{Binding AgentChat.FilteredConversations}");
+        Assert.Contains(
+            conversations.Descendants(),
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "Text") == "{Binding Details}");
+
+        var footer = Assert.Single(
+            layout.Elements(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "Grid.Row") == "2");
+        Assert.Equal("0,1,0,0", AttributeValue(footer, "BorderThickness"));
+        Assert.Contains(
+            footer.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Click")
+                    == "OnStartNewConversationClick");
+    }
+
+    [Fact]
+    public void Full_access_is_a_normal_run_scoped_terminal_option()
+    {
+        var root = Assert.IsType<XElement>(LoadView().Root);
+        var fullAccess = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Content")
+                    == "Full access for terminal actions");
+
+        Assert.Null(AttributeValue(fullAccess, "IsEnabled"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => (AttributeValue(element, "Text") ?? string.Empty)
+                .Contains("exact terminal scope", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Macos_live_regions_always_have_stable_non_null_names()
+    {
+        var root = Assert.IsType<XElement>(LoadView().Root);
+        var liveRegions = root.Descendants().Where(element =>
+            AttributeValue(element, "AutomationProperties.LiveSetting") is not null);
+
+        Assert.NotEmpty(liveRegions);
+        Assert.All(
+            liveRegions,
+            element =>
+            {
+                var name = AttributeValue(element, "AutomationProperties.Name");
+                Assert.False(string.IsNullOrWhiteSpace(name));
+                Assert.DoesNotContain("{Binding", name, StringComparison.Ordinal);
+            });
     }
 
     [Fact]
@@ -230,6 +541,7 @@ public sealed class AgentWorkspaceViewContractTests
     private static readonly string[] NamedControls =
     [
         "AgentChatTranscript",
+        "AgentComposerToolbar",
         "AgentContextInspector",
         "AgentCurrentProgress",
         "AgentRunAudit",

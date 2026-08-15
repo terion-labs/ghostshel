@@ -452,6 +452,7 @@ public sealed partial class GovernedAgentRuntime
                                 AgentChatMessageRole.User,
                                 replacementUserMessage))),
                 ProvisionalAssistantText = string.Empty,
+                ProvisionalReasoningSummary = string.Empty,
                 SteeringAvailable = false,
                 SteeringGeneration = null,
                 Status = "Steering applied · waiting for the revised provider response…",

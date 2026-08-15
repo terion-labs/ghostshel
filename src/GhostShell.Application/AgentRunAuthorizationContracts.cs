@@ -218,6 +218,7 @@ public sealed record AgentRunCancellation
 public sealed record AgentYoloConfirmation
 {
     public static readonly TimeSpan MaximumLifetime = TimeSpan.FromHours(1);
+    public static readonly DateTimeOffset RunLifetimeExpiry = DateTimeOffset.MaxValue;
 
     public AgentYoloConfirmation(
         AgentRunId runId,
@@ -231,13 +232,15 @@ public sealed record AgentYoloConfirmation
         ArgumentNullException.ThrowIfNull(target);
         ArgumentOutOfRangeException.ThrowIfNegative(policyGeneration);
         ConfirmedBy = ValidateHuman(confirmedBy);
+        var expiresWithRun = expiresAtUtc == RunLifetimeExpiry;
         if (confirmedAtUtc.Offset != TimeSpan.Zero
             || expiresAtUtc.Offset != TimeSpan.Zero
             || expiresAtUtc <= confirmedAtUtc
-            || expiresAtUtc - confirmedAtUtc > MaximumLifetime)
+            || (!expiresWithRun
+                && expiresAtUtc - confirmedAtUtc > MaximumLifetime))
         {
             throw new ArgumentException(
-                "A YOLO confirmation requires ordered UTC timestamps within the maximum lifetime.",
+                "A full-access confirmation requires ordered UTC timestamps within its run or bounded lifetime.",
                 nameof(expiresAtUtc));
         }
 

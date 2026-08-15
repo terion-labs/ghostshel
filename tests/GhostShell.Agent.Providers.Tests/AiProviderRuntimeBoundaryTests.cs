@@ -89,6 +89,188 @@ public sealed class AiProviderRuntimeBoundaryTests
     }
 
     [Fact]
+    public async Task Google_native_protocol_fails_closed_before_model_discovery()
+    {
+        using var vault = new InMemorySecretVault();
+        var reference = SecretRef.New();
+        var profile = ApiKeyProfile(
+            AiProviderKind.Google,
+            "provider-google",
+            reference);
+        await StoreCredentialAsync(vault, profile.Id, reference, "google-test-key");
+        var handler = new StubHttpMessageHandler((_, _) => JsonResponseAsync(
+            """
+            {
+              "models": [
+                {
+                  "name": "models/gemini-test",
+                  "displayName": "Gemini Test"
+                }
+              ]
+            }
+            """));
+        var limits = new AiProviderRuntimeLimits(maximumModels: 9);
+        using var factory = new AiProviderFactory(vault, handler, limits);
+
+        var exception = await Assert.ThrowsAsync<AiProviderClientException>(async () =>
+            await factory.ListModelsAsync(profile, CancellationToken.None));
+
+        Assert.Equal(AiProviderRuntimeErrorCode.InvalidConfiguration, exception.Code);
+        Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public void Reasoning_policy_is_narrowed_by_provider_model_and_selected_wire_route()
+    {
+        var anthropic = ApiKeyProfile(
+            AiProviderKind.Anthropic,
+            "provider-anthropic-policy",
+            SecretRef.New());
+        var openAi = ApiKeyProfile(
+            AiProviderKind.OpenAi,
+            "provider-openai-policy",
+            SecretRef.New());
+        var copilot = new AiProviderProfile(
+            new AiProviderProfileId("provider-copilot-policy"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "Copilot",
+            AiProviderKind.GitHubCopilot,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.GitHubCopilot),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("copilot-session"),
+                AiProviderOAuthFlow.Device),
+            "gpt-5.3-codex",
+            order: 0);
+        var compatible = LoopbackProfile();
+
+        Assert.Equal(
+            [AgentReasoningEffort.Automatic],
+            AiProviderReasoningPolicy.SupportedEfforts(
+                anthropic,
+                "claude-sonnet-4-5").ToArray());
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+                AgentReasoningEffort.ExtraHigh,
+            ],
+            AiProviderReasoningPolicy.SupportedEfforts(
+                anthropic,
+                "claude-opus-4-6").ToArray());
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+                AgentReasoningEffort.ExtraHigh,
+                AgentReasoningEffort.Max,
+            ],
+            AiProviderReasoningPolicy.SupportedEfforts(
+                anthropic,
+                "claude-opus-4-7").ToArray());
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+                AgentReasoningEffort.ExtraHigh,
+                AgentReasoningEffort.Max,
+            ],
+            AiProviderReasoningPolicy.SupportedEfforts(
+                anthropic,
+                "claude-fable-5").ToArray());
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+            ],
+            AiProviderReasoningPolicy.SupportedEfforts(openAi).ToArray());
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+                AgentReasoningEffort.ExtraHigh,
+            ],
+            AiProviderReasoningPolicy.SupportedEfforts(copilot).ToArray());
+        Assert.Equal(
+            [AgentReasoningEffort.Automatic],
+            AiProviderReasoningPolicy.SupportedEfforts(
+                copilot,
+                "gpt-5.6-terra").ToArray());
+        Assert.Equal(
+            [AgentReasoningEffort.Automatic],
+            AiProviderReasoningPolicy.SupportedEfforts(compatible).ToArray());
+    }
+
+    [Fact]
+    public void Model_policy_projects_gpt56_reasoning_and_route_specific_service_tiers()
+    {
+        var openAi = ApiKeyProfile(
+            AiProviderKind.OpenAi,
+            "provider-openai-gpt56",
+            SecretRef.New(),
+            defaultModel: "gpt-5.6-terra");
+        var openAiOAuth = new AiProviderProfile(
+            new AiProviderProfileId("provider-openai-oauth-gpt56"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "OpenAI OAuth",
+            AiProviderKind.OpenAi,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("openai-oauth-session-gpt56"),
+                AiProviderOAuthFlow.Browser),
+            "gpt-5.6-terra",
+            order: 0);
+        var xai = ApiKeyProfile(
+            AiProviderKind.XAi,
+            "provider-xai-grok46",
+            SecretRef.New(),
+            defaultModel: "grok-4.6");
+
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+                AgentReasoningEffort.ExtraHigh,
+                AgentReasoningEffort.Max,
+            ],
+            AiProviderReasoningPolicy.SupportedEfforts(openAi).ToArray());
+        Assert.Equal(
+            [
+                AgentServiceTier.Automatic,
+                AgentServiceTier.Default,
+                AgentServiceTier.Flex,
+                AgentServiceTier.Priority,
+            ],
+            AiProviderServiceTierPolicy.SupportedTiers(
+                openAi,
+                openAi.DefaultModel).ToArray());
+        Assert.Empty(AiProviderServiceTierPolicy.SupportedTiers(
+            openAiOAuth,
+            openAiOAuth.DefaultModel));
+        Assert.Equal(
+            [AgentServiceTier.Default, AgentServiceTier.Priority],
+            AiProviderServiceTierPolicy.SupportedTiers(
+                xai,
+                xai.DefaultModel).ToArray());
+    }
+
+    [Fact]
     public async Task Loopback_provider_without_authentication_does_not_resolve_a_secret()
     {
         using var vault = new RecordingSecretVault();
@@ -124,6 +306,125 @@ public sealed class AiProviderRuntimeBoundaryTests
         Assert.Equal(AiProviderRuntimeErrorCode.CredentialUnavailable, exception.Code);
         Assert.Equal("ai_provider_credential_unavailable", exception.StableCode);
         Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task OpenAiOAuthTestDiscoversModelsFromTheAuthenticatedCodexCatalog()
+    {
+        using var vault = new InMemorySecretVault();
+        var profileId = new AiProviderProfileId("provider-openai-oauth");
+        var reference = new SecretRef("provider-openai-oauth-session");
+        await new AiProviderOAuthVault(vault).StoreAsync(
+            profileId,
+            reference,
+            new AiProviderOAuthSession(
+                AiProviderOAuthSession.CurrentSchemaVersion,
+                "openai",
+                "fresh-access-token",
+                "refresh-token",
+                DateTimeOffset.UtcNow.AddHours(1),
+                "account-id"),
+            CancellationToken.None);
+        var profile = new AiProviderProfile(
+            profileId,
+            AiProviderProfile.CurrentSchemaVersion,
+            "OpenAI OAuth",
+            AiProviderKind.OpenAi,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),
+            new AiProviderAuthentication.OAuth(reference, AiProviderOAuthFlow.Device),
+            "gpt-5.6-terra",
+            order: 0);
+        var handler = new StubHttpMessageHandler((_, _) => JsonResponseAsync(
+            """{"models":[{"slug":"gpt-5.6-terra","display_name":"GPT-5.6 Terra","visibility":"list"}]}"""));
+        using var factory = new AiProviderFactory(vault, handler);
+        using var runtime = new CatalogAiProviderRuntime(
+            new FixedDefinitionCatalog(DefinitionCatalogSnapshot.Empty),
+            factory);
+
+        var result = await runtime.TestAsync(profile, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("ai_provider_test_succeeded", result.Code);
+        Assert.Equal("gpt-5.6-terra", Assert.Single(result.Models).Id);
+        Assert.Equal(
+            new Uri("https://chatgpt.com/backend-api/codex/models?client_version=0.145.0"),
+            handler.LastRequest!.Uri);
+        Assert.Equal("Bearer fresh-access-token", handler.LastRequest.Authorization);
+        Assert.Equal("account-id", handler.LastRequest.ChatGptAccountId);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task OpenAiOAuthTestFailsWhenVaultSessionIsMissing()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = new AiProviderProfile(
+            new AiProviderProfileId("provider-openai-oauth-missing"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "OpenAI OAuth",
+            AiProviderKind.OpenAi,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("missing-oauth-session"),
+                AiProviderOAuthFlow.Device),
+            "gpt-5.6-terra",
+            order: 0);
+        var handler = new StubHttpMessageHandler(
+            (_, _) => throw new InvalidOperationException("HTTP must not run."));
+        using var runtime = CreateRuntime(vault, handler);
+
+        var result = await runtime.TestAsync(profile, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(AiProviderRuntimeErrorCode.CredentialUnavailable, result.ErrorCode);
+        Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task GitHubCopilotDiscoveryFiltersToSupportedModelFamilies()
+    {
+        using var vault = new InMemorySecretVault();
+        var profileId = new AiProviderProfileId("provider-github-copilot");
+        var reference = new SecretRef("provider-github-copilot-session");
+        await new AiProviderOAuthVault(vault).StoreAsync(
+            profileId,
+            reference,
+            new AiProviderOAuthSession(
+                AiProviderOAuthSession.CurrentSchemaVersion,
+                "github-copilot",
+                "copilot-access-token",
+                refreshToken: null,
+                expiresAt: DateTimeOffset.MaxValue),
+            CancellationToken.None);
+        var profile = new AiProviderProfile(
+            profileId,
+            AiProviderProfile.CurrentSchemaVersion,
+            "GitHub Copilot",
+            AiProviderKind.GitHubCopilot,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.GitHubCopilot),
+            new AiProviderAuthentication.OAuth(reference, AiProviderOAuthFlow.Device),
+            "gpt-5.6-terra",
+            order: 0);
+        var handler = new StubHttpMessageHandler((_, _) => JsonResponseAsync(
+            """
+            {"data":[
+              {"id":"gpt-5.6-terra"},
+              {"id":"gpt-5.3-codex"},
+              {"id":"claude-sonnet-4.6"},
+              {"id":"unsupported-preview"}
+            ]}
+            """));
+        using var factory = new AiProviderFactory(vault, handler);
+
+        var models = await factory.ListModelsAsync(profile, CancellationToken.None);
+
+        Assert.Equal(
+            ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.6-terra"],
+            models.Select(model => model.Id));
+        Assert.Equal(
+            new Uri("https://api.githubcopilot.com/models"),
+            handler.LastRequest!.Uri);
+        Assert.Equal("Bearer copilot-access-token", handler.LastRequest.Authorization);
+        Assert.Equal("conversation-edits", handler.LastRequest.OpenAiIntent);
     }
 
     [Fact]
@@ -451,6 +752,20 @@ public sealed class AiProviderRuntimeBoundaryTests
             runtime.Profiles.Select(profile => profile.Id));
         Assert.True(runtime.Profiles[0].RequiresCredential);
         Assert.False(runtime.Profiles[1].RequiresCredential);
+        Assert.True(runtime.Profiles[0].SupportsReasoning);
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+            ],
+            runtime.Profiles[0].SupportedReasoningEfforts.ToArray());
+        Assert.False(runtime.Profiles[1].SupportsReasoning);
+        Assert.Equal(
+            [AgentReasoningEffort.Automatic],
+            runtime.Profiles[1].SupportedReasoningEfforts.ToArray());
         var diagnostic = Assert.Single(runtime.Diagnostics);
         Assert.Equal(slow.Id, diagnostic.ProfileId);
         Assert.Equal("ai_provider_disabled", diagnostic.Code);
@@ -460,6 +775,169 @@ public sealed class AiProviderRuntimeBoundaryTests
         Assert.Equal(1, changed);
         Assert.Equal(fast.Id, Assert.Single(runtime.Profiles).Id);
         Assert.Empty(runtime.Diagnostics);
+    }
+
+    [Fact]
+    public async Task Catalog_runtime_discovers_and_projects_provider_models()
+    {
+        var reference = SecretRef.New();
+        var profile = ApiKeyProfile(
+            AiProviderKind.OpenAi,
+            "provider-discovery",
+            reference,
+            defaultModel: "gpt-default");
+        var catalog = new FixedDefinitionCatalog(Snapshot(profile));
+        using var vault = new InMemorySecretVault();
+        await StoreCredentialAsync(vault, profile.Id, reference, "provider-key");
+        var handler = new StubHttpMessageHandler((_, _) => JsonResponseAsync(
+            """{"data":[{"id":"gpt-default","display_name":"Default"},{"id":"gpt-fast","display_name":"Fast"}]}"""));
+        using var factory = new AiProviderFactory(vault, handler);
+        using var runtime = new CatalogAiProviderRuntime(catalog, factory);
+
+        var result = await runtime.DiscoverModelsAsync(
+            profile.Id,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["gpt-default", "gpt-fast"], result.Models.Select(model => model.Id));
+        Assert.Equal(
+            ["gpt-default", "gpt-fast"],
+            Assert.Single(runtime.Profiles).Models.Select(model => model.Id));
+        Assert.Equal(1, handler.CallCount);
+        Assert.EndsWith("/v1/models", handler.LastRequest!.Uri.AbsoluteUri);
+    }
+
+    [Fact]
+    public void Catalog_runtime_disables_profiles_whose_protocol_is_not_implemented()
+    {
+        var profile = ApiKeyProfile(
+            AiProviderKind.Google,
+            "provider-google-unavailable",
+            SecretRef.New());
+        var catalog = new FixedDefinitionCatalog(Snapshot(profile));
+        using var vault = new InMemorySecretVault();
+        var handler = new StubHttpMessageHandler((_, _) => JsonResponseAsync(
+            """{"models":[]}"""));
+        using var factory = new AiProviderFactory(vault, handler);
+        using var runtime = new CatalogAiProviderRuntime(catalog, factory);
+
+        var descriptor = Assert.Single(runtime.Profiles);
+        Assert.False(descriptor.IsEnabled);
+        Assert.False(descriptor.SupportsImageInput);
+        Assert.False(descriptor.SupportsReasoning);
+        var diagnostic = Assert.Single(runtime.Diagnostics);
+        Assert.Equal(profile.Id, diagnostic.ProfileId);
+        Assert.Equal(AiProviderRuntimeDiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Equal("ai_provider_runtime_unavailable", diagnostic.Code);
+        Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public void Catalog_runtime_projects_model_routed_reasoning_effort_sets()
+    {
+        var adaptive = ApiKeyProfile(
+            AiProviderKind.Anthropic,
+            "provider-anthropic-adaptive",
+            SecretRef.New(),
+            defaultModel: "claude-opus-4-6");
+        var nonAdaptive = ApiKeyProfile(
+            AiProviderKind.Anthropic,
+            "provider-anthropic-standard",
+            SecretRef.New(),
+            defaultModel: "claude-sonnet-4-5");
+        var copilotChat = new AiProviderProfile(
+            new AiProviderProfileId("provider-copilot-chat"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "Copilot chat",
+            AiProviderKind.GitHubCopilot,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.GitHubCopilot),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("copilot-chat-session"),
+                AiProviderOAuthFlow.Device),
+            "gpt-5.6-terra",
+            order: 2);
+        var copilotResponses = new AiProviderProfile(
+            new AiProviderProfileId("provider-copilot-responses"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "Copilot Responses",
+            AiProviderKind.GitHubCopilot,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.GitHubCopilot),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("copilot-responses-session"),
+                AiProviderOAuthFlow.Device),
+            "gpt-5.3-codex",
+            order: 3);
+        var catalog = new FixedDefinitionCatalog(
+            Snapshot(adaptive, nonAdaptive, copilotChat, copilotResponses));
+        using var vault = new InMemorySecretVault();
+        var handler = new StubHttpMessageHandler((_, _) => JsonResponseAsync("{}"));
+        using var factory = new AiProviderFactory(vault, handler);
+        using var runtime = new CatalogAiProviderRuntime(catalog, factory);
+
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+                AgentReasoningEffort.ExtraHigh,
+            ],
+            runtime.Profiles.Single(profile => profile.Id == adaptive.Id)
+                .SupportedReasoningEfforts.ToArray());
+        Assert.Equal(
+            [AgentReasoningEffort.Automatic],
+            runtime.Profiles.Single(profile => profile.Id == nonAdaptive.Id)
+                .SupportedReasoningEfforts.ToArray());
+        Assert.Equal(
+            [AgentReasoningEffort.Automatic],
+            runtime.Profiles.Single(profile => profile.Id == copilotChat.Id)
+                .SupportedReasoningEfforts.ToArray());
+        Assert.Equal(
+            [
+                AgentReasoningEffort.Automatic,
+                AgentReasoningEffort.Off,
+                AgentReasoningEffort.Low,
+                AgentReasoningEffort.Medium,
+                AgentReasoningEffort.High,
+                AgentReasoningEffort.ExtraHigh,
+            ],
+            runtime.Profiles.Single(profile => profile.Id == copilotResponses.Id)
+                .SupportedReasoningEfforts.ToArray());
+    }
+
+    [Fact]
+    public void Catalog_runtime_projects_codex_context_windows_for_compaction()
+    {
+        var profile = new AiProviderProfile(
+            new AiProviderProfileId("provider-openai-context"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "OpenAI",
+            AiProviderKind.OpenAi,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("openai-context-session"),
+                AiProviderOAuthFlow.Browser),
+            "gpt-5.6-terra",
+            order: 0);
+        using var vault = new InMemorySecretVault();
+        using var factory = new AiProviderFactory(
+            vault,
+            new StubHttpMessageHandler((_, _) => JsonResponseAsync("{}")));
+        using var runtime = new CatalogAiProviderRuntime(
+            new FixedDefinitionCatalog(Snapshot(profile)),
+            factory);
+
+        var descriptor = Assert.Single(runtime.Profiles);
+
+        Assert.Equal(
+            272_000,
+            descriptor.Models.Single(model => model.Id == "gpt-5.6-terra")
+                .ContextWindowTokens);
+        Assert.Equal(
+            128_000,
+            descriptor.Models.Single(model => model.Id == "gpt-5.3-codex-spark")
+                .ContextWindowTokens);
     }
 
     [Fact]
@@ -558,7 +1036,8 @@ public sealed class AiProviderRuntimeBoundaryTests
         SecretRef reference,
         string? name = null,
         int order = 0,
-        bool isEnabled = true) =>
+        bool isEnabled = true,
+        string? defaultModel = null) =>
         new(
             new AiProviderProfileId(id),
             AiProviderProfile.CurrentSchemaVersion,
@@ -566,7 +1045,10 @@ public sealed class AiProviderRuntimeBoundaryTests
             providerKind,
             AiProviderProfile.DefaultEndpoint(providerKind),
             new AiProviderAuthentication.ApiKey(reference),
-            providerKind == AiProviderKind.Anthropic ? "claude-test" : "gpt-test",
+            defaultModel
+                ?? (providerKind == AiProviderKind.Anthropic
+                    ? "claude-test"
+                    : "gpt-test"),
             order,
             isEnabled);
 
@@ -660,7 +1142,10 @@ public sealed class AiProviderRuntimeBoundaryTests
         string? Accept,
         string? Authorization,
         string? ApiKey,
-        string? AnthropicVersion)
+        string? AnthropicVersion,
+        string? GoogleApiKey,
+        string? OpenAiIntent,
+        string? ChatGptAccountId)
     {
         public static RequestSnapshot From(HttpRequestMessage request) => new(
             request.Method,
@@ -668,7 +1153,10 @@ public sealed class AiProviderRuntimeBoundaryTests
             request.Headers.Accept.SingleOrDefault()?.MediaType,
             request.Headers.Authorization?.ToString(),
             Header(request, "x-api-key"),
-            Header(request, "anthropic-version"));
+            Header(request, "anthropic-version"),
+            Header(request, "x-goog-api-key"),
+            Header(request, "Openai-Intent"),
+            Header(request, "ChatGPT-Account-Id"));
 
         private static string? Header(HttpRequestMessage request, string name) =>
             request.Headers.TryGetValues(name, out var values)

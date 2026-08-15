@@ -23,6 +23,152 @@ public sealed class AiProviderProfileTests
         Assert.DoesNotContain("secretValue", json, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SchemaOneProfileIsNormalizedToResponsesBasedSchemaTwo()
+    {
+        const string json =
+            """
+            {
+              "Id": { "Value": "legacy-openai" },
+              "SchemaVersion": 1,
+              "Name": "Legacy OpenAI",
+              "ProviderKind": 1,
+              "Endpoint": "https://api.openai.com/v1/",
+              "Authentication": {
+                "$type": "api-key",
+                "Secret": { "Value": "legacy-openai-key" }
+              },
+              "DefaultModel": "gpt-test",
+              "Order": 0,
+              "IsEnabled": true
+            }
+            """;
+
+        var profile = JsonSerializer.Deserialize<AiProviderProfile>(json);
+
+        Assert.NotNull(profile);
+        Assert.Equal(AiProviderProfile.CurrentSchemaVersion, profile.SchemaVersion);
+        Assert.Equal(AiProviderKind.OpenAi, profile.Identity);
+        Assert.Equal(AiProviderProtocol.OpenAiResponses, profile.Protocol);
+        Assert.True(profile.Capabilities.SupportsToolBatches);
+        var normalized = JsonSerializer.Serialize(profile);
+        Assert.Contains("\"SchemaVersion\":2", normalized, StringComparison.Ordinal);
+        Assert.Contains("\"Protocol\":1", normalized, StringComparison.Ordinal);
+        Assert.Contains("\"Capabilities\"", normalized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CatalogDefinesEveryProviderIdentityExactlyOnce()
+    {
+        var definitions = AiProviderCatalog.Definitions;
+
+        Assert.Equal(Enum.GetValues<AiProviderKind>().Length, definitions.Count);
+        Assert.Equal(
+            definitions.Count,
+            definitions.Select(definition => definition.Identity).Distinct().Count());
+        Assert.All(
+            definitions,
+            definition => Assert.Equal(
+                definition.DefaultEndpoint,
+                AiProviderProfile.DefaultEndpoint(definition.Identity)));
+        Assert.Equal(
+            AiProviderProtocol.OpenAiResponses,
+            AiProviderCatalog.Get(AiProviderKind.OpenAi).Protocol);
+        Assert.Equal(
+            AiProviderProtocol.OpenAiChatCompletions,
+            AiProviderCatalog.Get(AiProviderKind.OpenRouter).Protocol);
+        Assert.Equal(
+            AiProviderCategory.Local,
+            AiProviderCatalog.Get(AiProviderKind.Ollama).Category);
+        Assert.Equal(
+            AiProviderCategory.Custom,
+            AiProviderCatalog.Get(AiProviderKind.OpenAiCompatible).Category);
+        Assert.False(AiProviderCatalog.Get(AiProviderKind.Google).IsRuntimeSupported);
+        Assert.False(AiProviderCatalog.Get(AiProviderKind.Bedrock).IsRuntimeSupported);
+        Assert.False(AiProviderCatalog.Get(AiProviderKind.XAi).Capabilities.SupportsReasoning);
+        Assert.False(AiProviderCatalog.Get(AiProviderKind.DeepSeek).Capabilities.SupportsReasoning);
+        Assert.False(AiProviderCatalog.Get(AiProviderKind.MoonshotAi).Capabilities.SupportsReasoning);
+        Assert.False(AiProviderCatalog.Get(AiProviderKind.Google).Capabilities.SupportsReasoning);
+        Assert.False(AiProviderCatalog.Get(AiProviderKind.Bedrock).Capabilities.SupportsReasoning);
+    }
+
+    [Fact]
+    public void OAuthAndAwsAuthenticationPersistOnlyVaultOrPlatformReferences()
+    {
+        var openAi = CreateProfile(
+            AiProviderKind.OpenAi,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("openai-oauth-session"),
+                AiProviderOAuthFlow.Device));
+        var bedrock = CreateProfile(
+            AiProviderKind.Bedrock,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.Bedrock),
+            new AiProviderAuthentication.AwsCredentialChain());
+
+        var openAiJson = JsonSerializer.Serialize(openAi);
+        var restoredOpenAi = JsonSerializer.Deserialize<AiProviderProfile>(openAiJson);
+        var restoredBedrock = JsonSerializer.Deserialize<AiProviderProfile>(
+            JsonSerializer.Serialize(bedrock));
+
+        var oauth = Assert.IsType<AiProviderAuthentication.OAuth>(
+            Assert.IsType<AiProviderProfile>(restoredOpenAi).Authentication);
+        Assert.Equal(new SecretRef("openai-oauth-session"), oauth.Session);
+        Assert.Equal(AiProviderOAuthFlow.Device, oauth.Flow);
+        Assert.IsType<AiProviderAuthentication.AwsCredentialChain>(
+            Assert.IsType<AiProviderProfile>(restoredBedrock).Authentication);
+        Assert.DoesNotContain("access_token", openAiJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("refresh_token", openAiJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProviderIdentityRejectsUnsupportedAuthenticationMethod()
+    {
+        Assert.Throws<ArgumentException>(() => CreateProfile(
+            AiProviderKind.GitHubCopilot,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.GitHubCopilot),
+            new AiProviderAuthentication.ApiKey(new SecretRef("copilot-key"))));
+    }
+
+    [Fact]
+    public void ProfileCapabilitiesCanNarrowButCannotExceedIdentityCeiling()
+    {
+        var narrowed = new AiProviderProfile(
+            new AiProviderProfileId("narrowed-provider"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "Narrowed provider",
+            AiProviderKind.OpenAi,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),
+            new AiProviderAuthentication.ApiKey(new SecretRef("openai-key")),
+            "gpt-test",
+            order: 0,
+            isEnabled: true,
+            protocol: AiProviderProtocol.OpenAiResponses,
+            capabilities: new AiProviderCapabilities(
+                SupportsToolCalling: true,
+                SupportsToolBatches: false,
+                SupportsImageInput: false,
+                SupportsReasoning: false,
+                SupportsModelDiscovery: true));
+
+        Assert.False(narrowed.Capabilities.SupportsImageInput);
+        Assert.Throws<ArgumentException>(() => new AiProviderProfile(
+            new AiProviderProfileId("elevated-provider"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "Elevated provider",
+            AiProviderKind.DeepSeek,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.DeepSeek),
+            new AiProviderAuthentication.ApiKey(new SecretRef("deepseek-key")),
+            "deepseek-model",
+            order: 0,
+            isEnabled: true,
+            protocol: AiProviderProtocol.OpenAiChatCompletions,
+            capabilities: AiProviderCatalog.Get(AiProviderKind.DeepSeek).Capabilities with
+            {
+                SupportsImageInput = true,
+            }));
+    }
+
     [Theory]
     [InlineData("http://api.openai.com/v1/")]
     [InlineData("https://key@example.test/v1/")]
@@ -64,7 +210,7 @@ public sealed class AiProviderProfileTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new AiProviderProfile(
             new AiProviderProfileId("provider"),
-            schemaVersion: 2,
+            schemaVersion: AiProviderProfile.CurrentSchemaVersion + 1,
             "Provider",
             AiProviderKind.OpenAi,
             AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),

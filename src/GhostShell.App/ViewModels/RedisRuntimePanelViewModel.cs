@@ -684,7 +684,7 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
     public string SelectedKeyType => _selectedSnapshot?.Summary.Type ?? string.Empty;
 
     public string SelectedKeyMetadata => _selectedSnapshot is null
-        ? "Select a key to inspect its bounded value."
+        ? "Select a key to inspect its value."
         : string.Join(
             " · ",
             _selectedSnapshot.Summary.Type,

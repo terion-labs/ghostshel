@@ -2,10 +2,12 @@ using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
+using CSharpMath.Avalonia;
 
 namespace GhostShell.App.Views.Components;
 
@@ -18,6 +20,9 @@ public sealed partial class MarkdownPreviewView : UserControl
 {
     public static readonly StyledProperty<string?> TextProperty =
         AvaloniaProperty.Register<MarkdownPreviewView, string?>(nameof(Text));
+
+    public static readonly StyledProperty<bool> ContinuousSelectionProperty =
+        AvaloniaProperty.Register<MarkdownPreviewView, bool>(nameof(ContinuousSelection));
 
     /// <summary>
     /// Heading sizes, largest first. Markdown allows six levels; the shell's
@@ -39,19 +44,45 @@ public sealed partial class MarkdownPreviewView : UserControl
         set => SetValue(TextProperty, value);
     }
 
+    /// <summary>
+    /// Renders the document as one selectable text surface. Chat messages use
+    /// this because selection belongs to the message, not to Markdown's
+    /// internal paragraph and list-item boundaries.
+    /// </summary>
+    public bool ContinuousSelection
+    {
+        get => GetValue(ContinuousSelectionProperty);
+        set => SetValue(ContinuousSelectionProperty, value);
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         // Resources resolve against the tree, so a render before attachment
         // would silently draw every themed brush as nothing.
+        _hasRendered = false;
         Render();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _building?.Cancel();
+        _building?.Dispose();
+        _building = null;
+        base.OnDetachedFromVisualTree(e);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == TextProperty)
+        if ((change.Property == TextProperty || change.Property == ContinuousSelectionProperty)
+            && VisualRoot is not null)
         {
+            if (change.Property == ContinuousSelectionProperty)
+            {
+                _hasRendered = false;
+            }
+
             Render();
         }
     }
@@ -76,7 +107,7 @@ public sealed partial class MarkdownPreviewView : UserControl
         _building?.Cancel();
         _building?.Dispose();
         _building = new CancellationTokenSource();
-        _ = BuildAsync(_building.Token);
+        _ = BuildAsync(Text, _building.Token);
     }
 
     /// <summary>
@@ -85,12 +116,29 @@ public sealed partial class MarkdownPreviewView : UserControl
     /// into steps and the thread handed back between them; a document twice as
     /// long then takes twice as many steps rather than one twice as long.
     /// </summary>
-    private async Task BuildAsync(CancellationToken token)
+    private async Task BuildAsync(string? markdown, CancellationToken token)
     {
         try
         {
+            // Provider streams can update a partial Markdown block many times
+            // in one frame. Parse only the latest value, away from Avalonia's
+            // UI thread, then build native controls in short UI-thread steps.
+            await Task.Delay(TimeSpan.FromMilliseconds(24), token);
+            var blocks = await Task.Run(
+                () => MarkdownPreviewDocument.Parse(markdown),
+                token);
+            token.ThrowIfCancellationRequested();
             Blocks.Children.Clear();
-            var blocks = MarkdownPreviewDocument.Parse(Text);
+            if (ContinuousSelection)
+            {
+                if (!blocks.IsEmpty)
+                {
+                    Blocks.Children.Add(ContinuousDocument(blocks));
+                }
+
+                return;
+            }
+
             for (var index = 0; index < blocks.Length; index++)
             {
                 token.ThrowIfCancellationRequested();
@@ -118,17 +166,104 @@ public sealed partial class MarkdownPreviewView : UserControl
 
     private CancellationTokenSource? _building;
 
+    /// <summary>
+    /// Avalonia selection cannot cross control boundaries. Keeping all prose
+    /// in one native document gives it one drag-selection range while its
+    /// block layout retains headings and hanging list indents. Markdown syntax
+    /// markers are not exposed in the text being selected.
+    /// </summary>
+    private Control ContinuousDocument(ImmutableArray<MarkdownBlock> blocks)
+    {
+        if (!blocks.Any(IsEmbeddedBlock))
+        {
+            return ContinuousText(blocks);
+        }
+
+        // Fenced code and diagrams are real controls, so they cannot live
+        // inside the prose document. Keep every contiguous prose region as one
+        // selection surface and place embedded blocks at their Markdown
+        // position. This is the same code/diagram renderer file previews use.
+        var document = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Spacing = Metric("ShellSpaceSm", 8),
+        };
+        var prose = ImmutableArray.CreateBuilder<MarkdownBlock>();
+        foreach (var block in blocks)
+        {
+            if (!IsEmbeddedBlock(block))
+            {
+                prose.Add(block);
+                continue;
+            }
+
+            AddContinuousText(document, prose);
+            document.Children.Add(IsMermaid(block) ? Mermaid(block) : Code(block));
+        }
+
+        AddContinuousText(document, prose);
+        return document.Children.Count == 1 ? document.Children[0] : document;
+    }
+
+    private void AddContinuousText(
+        Panel document,
+        ImmutableArray<MarkdownBlock>.Builder prose)
+    {
+        if (prose.Count == 0)
+        {
+            return;
+        }
+
+        document.Children.Add(ContinuousText(prose.ToImmutable()));
+        prose.Clear();
+    }
+
+    private static Control ContinuousText(ImmutableArray<MarkdownBlock> blocks) =>
+        new SelectableMarkdownDocument(blocks);
+
     private Control? Build(MarkdownBlock block) => block.Kind switch
     {
         MarkdownBlockKind.Heading => Heading(block),
         MarkdownBlockKind.Paragraph => Paragraph(block),
         MarkdownBlockKind.ListItem => ListItem(block),
         MarkdownBlockKind.Quote => Quote(block),
-        MarkdownBlockKind.Code => Code(block),
+        MarkdownBlockKind.Code => IsMermaid(block) ? Mermaid(block) : Code(block),
         MarkdownBlockKind.ThematicBreak => ThematicBreak(),
         MarkdownBlockKind.Table => Table(block),
+        MarkdownBlockKind.Math => Formula(block),
         _ => null,
     };
+
+    private static bool IsMermaid(MarkdownBlock block) =>
+        block.Kind == MarkdownBlockKind.Code
+        && string.Equals(block.Language?.Trim(), "mermaid", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsEmbeddedBlock(MarkdownBlock block) =>
+        block.Kind == MarkdownBlockKind.Code;
+
+    private Control Mermaid(MarkdownBlock block)
+    {
+        var diagram = new DatabaseMermaidDiagramView
+        {
+            MermaidSource = block.Text ?? string.Empty,
+            Height = 320,
+            MinHeight = 220,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        AutomationProperties.SetName(diagram, "Rendered Mermaid diagram");
+        var frame = new Border
+        {
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            ClipToBounds = true,
+            Margin = new Thickness(0, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Child = diagram,
+        };
+        frame.Background = Brush("ShellBackgroundBrush") ?? Brushes.Transparent;
+        frame.BorderBrush = Brush("ShellBorderBrush") ?? Brushes.Gray;
+        return frame;
+    }
 
     private Control Heading(MarkdownBlock block)
     {
@@ -220,6 +355,31 @@ public sealed partial class MarkdownPreviewView : UserControl
         }
 
         return frame;
+    }
+
+    private Control Formula(MarkdownBlock block)
+    {
+        var formula = new MathView
+        {
+            LaTeX = block.Text,
+            DisplayErrorInline = false,
+            FontSize = (float)BodyFontSize,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 4),
+        };
+        if (Brush("ShellTextBrush") is ISolidColorBrush foreground)
+        {
+            formula.TextColor = foreground.Color;
+        }
+
+        return formula.ErrorMessage is null
+            ? formula
+            : new SelectableTextBlock
+            {
+                Text = block.Text,
+                FontSize = BodyFontSize,
+                TextWrapping = TextWrapping.Wrap,
+            };
     }
 
     private Control ThematicBreak()
@@ -338,8 +498,27 @@ public sealed partial class MarkdownPreviewView : UserControl
         return text;
     }
 
-    private Run Inline(MarkdownRun run)
+    private Inline Inline(MarkdownRun run)
     {
+        if (run.Style.HasFlag(MarkdownRunStyle.Math))
+        {
+            var formula = new MathView
+            {
+                LaTeX = run.Text,
+                DisplayErrorInline = false,
+                FontSize = (float)BodyFontSize,
+            };
+            if (Brush("ShellTextBrush") is ISolidColorBrush foreground)
+            {
+                formula.TextColor = foreground.Color;
+            }
+
+            if (formula.ErrorMessage is null)
+            {
+                return new InlineUIContainer { Child = formula };
+            }
+        }
+
         var inline = new Run(run.Text);
         if (run.Style.HasFlag(MarkdownRunStyle.Bold))
         {
@@ -399,6 +578,11 @@ public sealed partial class MarkdownPreviewView : UserControl
     }
 
     private IBrush? Brush(string key) => Resource<IBrush>(key);
+
+    private double Metric(string key, double fallback) =>
+        this.TryFindResource(key, ActualThemeVariant, out var value) && value is double metric
+            ? metric
+            : fallback;
 
     private T? Resource<T>(string key)
         where T : class =>

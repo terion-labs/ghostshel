@@ -9,11 +9,37 @@ namespace GhostShell.Core;
 /// </summary>
 public sealed record AiProviderProfile : IDurableDefinition
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int LegacySchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const int MaximumNameLength = 128;
     public const int MaximumModelIdLength = 256;
     public const int MaximumEndpointLength = 2_048;
     public const int MaximumOrder = 10_000;
+
+    public AiProviderProfile(
+        AiProviderProfileId id,
+        int schemaVersion,
+        string name,
+        AiProviderKind providerKind,
+        Uri endpoint,
+        AiProviderAuthentication authentication,
+        string defaultModel,
+        int order,
+        bool isEnabled = true)
+        : this(
+            id,
+            schemaVersion,
+            name,
+            providerKind,
+            endpoint,
+            authentication,
+            defaultModel,
+            order,
+            isEnabled,
+            AiProviderCatalog.Get(providerKind).Protocol,
+            capabilities: null)
+    {
+    }
 
     [JsonConstructor]
     public AiProviderProfile(
@@ -25,10 +51,12 @@ public sealed record AiProviderProfile : IDurableDefinition
         AiProviderAuthentication authentication,
         string defaultModel,
         int order,
-        bool isEnabled = true)
+        bool isEnabled,
+        AiProviderProtocol protocol,
+        AiProviderCapabilities? capabilities)
     {
         RuntimeId.Require(id.Value, nameof(id));
-        if (schemaVersion != CurrentSchemaVersion)
+        if (schemaVersion is not (LegacySchemaVersion or CurrentSchemaVersion))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(schemaVersion),
@@ -41,10 +69,34 @@ public sealed record AiProviderProfile : IDurableDefinition
             throw new ArgumentOutOfRangeException(nameof(providerKind), providerKind, null);
         }
 
+        if (schemaVersion == LegacySchemaVersion
+            && providerKind is not (AiProviderKind.Anthropic
+                or AiProviderKind.OpenAi
+                or AiProviderKind.OpenAiCompatible))
+        {
+            throw new ArgumentException(
+                "Schema-version 1 supports only the original provider identities.",
+                nameof(providerKind));
+        }
+
+        var definition = AiProviderCatalog.Get(providerKind);
+        var resolvedProtocol = schemaVersion == LegacySchemaVersion
+            ? definition.Protocol
+            : protocol;
+        if (!Enum.IsDefined(resolvedProtocol) || resolvedProtocol != definition.Protocol)
+        {
+            throw new ArgumentException(
+                "The provider protocol does not match its registered identity.",
+                nameof(protocol));
+        }
+
         Id = id;
-        SchemaVersion = schemaVersion;
+        // Loading a v1 definition performs the complete in-memory migration. Any
+        // subsequent save emits schema 2 without requiring credential material.
+        SchemaVersion = CurrentSchemaVersion;
         Name = RequirePrintable(name, nameof(name), MaximumNameLength);
         ProviderKind = providerKind;
+        Protocol = resolvedProtocol;
         Endpoint = NormalizeEndpoint(endpoint);
         Authentication = authentication ?? throw new ArgumentNullException(nameof(authentication));
         if (Authentication is AiProviderAuthentication.None && !IsLoopback(Endpoint))
@@ -53,6 +105,24 @@ public sealed record AiProviderProfile : IDurableDefinition
                 "A provider without authentication must use an exact loopback endpoint.",
                 nameof(authentication));
         }
+
+        if (Authentication is not AiProviderAuthentication.None
+            && !SupportsAuthentication(definition.AuthenticationMethods, Authentication))
+        {
+            throw new ArgumentException(
+                "The authentication method is not supported by this provider identity.",
+                nameof(authentication));
+        }
+
+        if (capabilities is { } requestedCapabilities
+            && !IsCapabilitySubset(requestedCapabilities, definition.Capabilities))
+        {
+            throw new ArgumentException(
+                "Profile capabilities cannot exceed the provider identity ceiling.",
+                nameof(capabilities));
+        }
+
+        Capabilities = capabilities ?? definition.Capabilities;
 
         DefaultModel = RequirePrintable(
             defaultModel,
@@ -83,9 +153,20 @@ public sealed record AiProviderProfile : IDurableDefinition
 
     public AiProviderKind ProviderKind { get; }
 
+    /// <summary>
+    /// Provider identity alias used by schema-v2 consumers. <see cref="ProviderKind"/>
+    /// remains the serialized name for backward compatibility with schema 1.
+    /// </summary>
+    [JsonIgnore]
+    public AiProviderKind Identity => ProviderKind;
+
+    public AiProviderProtocol Protocol { get; }
+
     public Uri Endpoint { get; }
 
     public AiProviderAuthentication Authentication { get; }
+
+    public AiProviderCapabilities Capabilities { get; }
 
     public string DefaultModel { get; }
 
@@ -93,13 +174,38 @@ public sealed record AiProviderProfile : IDurableDefinition
 
     public bool IsEnabled { get; }
 
-    public static Uri DefaultEndpoint(AiProviderKind providerKind) => providerKind switch
+    public static Uri DefaultEndpoint(AiProviderKind providerKind) =>
+        AiProviderCatalog.Get(providerKind).DefaultEndpoint;
+
+    private static bool SupportsAuthentication(
+        AiProviderAuthenticationMethod supported,
+        AiProviderAuthentication authentication)
     {
-        AiProviderKind.Anthropic => new("https://api.anthropic.com/v1/"),
-        AiProviderKind.OpenAi => new("https://api.openai.com/v1/"),
-        AiProviderKind.OpenAiCompatible => new("http://localhost:11434/v1/"),
-        _ => throw new ArgumentOutOfRangeException(nameof(providerKind), providerKind, null),
-    };
+        var requested = authentication switch
+        {
+            AiProviderAuthentication.None =>
+                AiProviderAuthenticationMethod.NoAuthentication,
+            AiProviderAuthentication.ApiKey => AiProviderAuthenticationMethod.ApiKey,
+            AiProviderAuthentication.OAuth { Flow: AiProviderOAuthFlow.Browser } =>
+                AiProviderAuthenticationMethod.OAuthBrowser,
+            AiProviderAuthentication.OAuth { Flow: AiProviderOAuthFlow.Device } =>
+                AiProviderAuthenticationMethod.OAuthDevice,
+            AiProviderAuthentication.AwsCredentialChain =>
+                AiProviderAuthenticationMethod.AwsCredentialChain,
+            _ => AiProviderAuthenticationMethod.None,
+        };
+        return requested != AiProviderAuthenticationMethod.None
+            && supported.HasFlag(requested);
+    }
+
+    private static bool IsCapabilitySubset(
+        AiProviderCapabilities requested,
+        AiProviderCapabilities ceiling) =>
+        (!requested.SupportsToolCalling || ceiling.SupportsToolCalling)
+        && (!requested.SupportsToolBatches || ceiling.SupportsToolBatches)
+        && (!requested.SupportsImageInput || ceiling.SupportsImageInput)
+        && (!requested.SupportsReasoning || ceiling.SupportsReasoning)
+        && (!requested.SupportsModelDiscovery || ceiling.SupportsModelDiscovery);
 
     private static Uri NormalizeEndpoint(Uri endpoint)
     {

@@ -47,8 +47,8 @@ active hosted `ProcessMonitor` panel whose live session advertises
 `processes.list`.
 
 For an exact panel scope, the closed schema contains only optional `sort` and
-`limit` fields. For a tab or workspace scope, the same schema additionally
-requires exactly one `panel_id` selected from the fresh host-enumerated enum of
+`limit` fields. For a Workspace or internal `OpenTab` scope, the same schema
+additionally requires exactly one `panel_id` selected from the fresh host-enumerated enum of
 eligible in-scope Process Monitor panels. The `panel_id` remains required when
 only one panel is eligible. An exact schema rejects `panel_id`.
 

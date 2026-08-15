@@ -296,5 +296,78 @@ internal static class SqliteSchema
             CREATE INDEX terminal_multiplexer_leases_state_idx
                 ON terminal_multiplexer_leases(state, updated_utc);
             """),
+        new(
+            11,
+            "durable-native-agent-checkpoints",
+            """
+            CREATE TABLE agent_session_checkpoints (
+                run_id TEXT PRIMARY KEY CHECK (
+                    length(run_id) BETWEEN 1 AND 256),
+                schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+                generation INTEGER NOT NULL CHECK (generation >= 0),
+                revision INTEGER NOT NULL CHECK (revision >= 0),
+                payload_json TEXT NOT NULL CHECK (
+                    json_valid(payload_json)
+                    AND json_type(payload_json) = 'object'
+                    AND length(CAST(payload_json AS BLOB)) BETWEEN 1 AND 33554432),
+                payload_sha256 TEXT NOT NULL CHECK (
+                    length(payload_sha256) = 64
+                    AND payload_sha256 NOT GLOB '*[^0-9a-f]*'),
+                updated_utc TEXT NOT NULL CHECK (
+                    length(updated_utc) BETWEEN 20 AND 64)
+            ) WITHOUT ROWID;
+
+            CREATE INDEX agent_session_checkpoints_updated_idx
+                ON agent_session_checkpoints(updated_utc DESC, run_id);
+            """),
+        new(
+            12,
+            "favorite-agent-models",
+            """
+            CREATE TABLE agent_model_favorites (
+                provider_id TEXT NOT NULL CHECK (
+                    length(provider_id) BETWEEN 1 AND 256),
+                model_id TEXT NOT NULL CHECK (
+                    length(model_id) BETWEEN 1 AND 256),
+                created_utc TEXT NOT NULL CHECK (
+                    length(created_utc) BETWEEN 20 AND 64),
+                PRIMARY KEY (provider_id, model_id)
+            ) WITHOUT ROWID;
+
+            CREATE INDEX agent_model_favorites_created_idx
+                ON agent_model_favorites(created_utc, provider_id, model_id);
+            """),
+        new(
+            13,
+            "default-agent-policy",
+            """
+            CREATE TABLE agent_policy_preference (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                policy_json TEXT CHECK (
+                    policy_json IS NULL
+                    OR (
+                        json_valid(policy_json)
+                        AND json_type(policy_json) = 'object'
+                        AND length(CAST(policy_json AS BLOB)) BETWEEN 2 AND 65536))
+            );
+
+            INSERT INTO agent_policy_preference(singleton_id, policy_json)
+            VALUES (1, NULL);
+            """),
+        new(
+            14,
+            "workspace-scoped-agent-checkpoints",
+            """
+            ALTER TABLE agent_session_checkpoints
+                ADD COLUMN workspace_id TEXT CHECK (
+                    workspace_id IS NULL
+                    OR length(workspace_id) BETWEEN 1 AND 256);
+
+            CREATE INDEX agent_session_checkpoints_workspace_updated_idx
+                ON agent_session_checkpoints(
+                    workspace_id,
+                    updated_utc DESC,
+                    run_id);
+            """),
     ];
 }

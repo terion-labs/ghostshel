@@ -348,20 +348,51 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
             }
 
             var importedDocument = document;
-            if (definition is McpServerProfile profile)
+            if (definition is AiProviderProfile aiProviderProfile)
             {
+                var disabledProfile = new AiProviderProfile(
+                    aiProviderProfile.Id,
+                    aiProviderProfile.SchemaVersion,
+                    aiProviderProfile.Name,
+                    aiProviderProfile.ProviderKind,
+                    aiProviderProfile.Endpoint,
+                    DetachImportedAuthentication(aiProviderProfile.Authentication),
+                    aiProviderProfile.DefaultModel,
+                    aiProviderProfile.Order,
+                    isEnabled: false,
+                    aiProviderProfile.Protocol,
+                    aiProviderProfile.Capabilities);
+                definition = disabledProfile;
+                importedDocument = document with
+                {
+                    SchemaVersion = disabledProfile.SchemaVersion,
+                    Name = disabledProfile.Name,
+                    PayloadJson = JsonSerializer.Serialize(
+                        disabledProfile,
+                        DefinitionJson.Options),
+                };
+                parsed.Issues.Add(new(
+                    DefinitionImportIssueCode.ImportedAiProviderProfileDisabled,
+                    disabledProfile.Key,
+                    "The imported AI provider was disabled and its API-key or OAuth binding was detached. Review its endpoint, model, capabilities, and authentication in Settings before enabling it.",
+                    false));
+            }
+            else if (definition is McpServerProfile profile)
+            {
+                importedDocument = document with
+                {
+                    SchemaVersion = profile.SchemaVersion,
+                    Name = profile.Name,
+                };
                 var disabledProfile = new McpServerProfile(
                     profile.Id,
                     profile.SchemaVersion,
                     profile.Name,
-                    profile.Executable,
-                    profile.Arguments,
-                    profile.WorkingDirectory,
-                    profile.Environment,
+                    profile.Transport,
                     profile.EnabledTools,
                     isEnabled: false);
                 definition = disabledProfile;
-                importedDocument = document with
+                importedDocument = importedDocument with
                 {
                     PayloadJson = JsonSerializer.Serialize(
                         disabledProfile,
@@ -389,6 +420,22 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
 
         return parsed;
     }
+
+    private static AiProviderAuthentication DetachImportedAuthentication(
+        AiProviderAuthentication authentication) => authentication switch
+        {
+            AiProviderAuthentication.ApiKey =>
+                new AiProviderAuthentication.ApiKey(SecretRef.New()),
+            AiProviderAuthentication.OAuth oauth =>
+                new AiProviderAuthentication.OAuth(SecretRef.New(), oauth.Flow),
+            AiProviderAuthentication.None => new AiProviderAuthentication.None(),
+            AiProviderAuthentication.AwsCredentialChain =>
+                new AiProviderAuthentication.AwsCredentialChain(),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(authentication),
+                authentication,
+                "The imported AI-provider authentication method is not supported."),
+        };
 
     private static DefinitionImportIssue InvalidBundle(string message) =>
         new(DefinitionImportIssueCode.InvalidBundle, null, message, true);

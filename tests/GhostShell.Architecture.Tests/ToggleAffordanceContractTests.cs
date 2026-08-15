@@ -20,7 +20,6 @@ public sealed class ToggleAffordanceContractTests
     [
         // Consent acknowledgements for insecure transports and untrusted servers.
         "McpServerTrustConfirmationDialog.axaml",
-        "AgentYoloConfirmationDialog.axaml",
         // A mutually exclusive authentication mode, not an on/off setting.
         "AiProviderProfileEditorDialog.axaml",
         // One-off persistence and consent choices: save-on-connect, keychain

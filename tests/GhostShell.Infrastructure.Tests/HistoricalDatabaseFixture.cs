@@ -62,6 +62,22 @@ internal static class HistoricalDatabaseFixture
                 "terminal-multiplexing",
                 "59810F6439B7063446C5414BD62625EFFEA20FDAE6466B7BD702DB99327BD1EF",
                 IsDestructive: false),
+            [11] = new(
+                "durable-native-agent-checkpoints",
+                "1A08829A461F76345327BC3C4138EAB9AF8583382A0E111F6228837D11009E76",
+                IsDestructive: false),
+            [12] = new(
+                "favorite-agent-models",
+                "959A4DDE73042D2347FFBB201304C8EDC56D73AA1392CDAB74CBBCA30E122BC3",
+                IsDestructive: false),
+            [13] = new(
+                "default-agent-policy",
+                "A44BE322605B06AB5907A7C7F8302B57D9F6D9E81566A9989D33B4F35ADE249C",
+                IsDestructive: false),
+            [14] = new(
+                "workspace-scoped-agent-checkpoints",
+                "7ECE2A9184D3EC0A189C45F4C405669B1730BEB80204CADE4E27A8E6DC620334",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -114,6 +130,8 @@ internal static class HistoricalDatabaseFixture
             currentVersion switch
             {
                 5 => $"CREATE INDEX {schemaObjectName} ON audit_events(sequence);",
+                13 => "ALTER TABLE agent_session_checkpoints "
+                      + "ADD COLUMN workspace_id TEXT;",
                 // Migration 9 adds no schema object of its own — it rewrites a
                 // row — so there is no name to collide with. A trigger that
                 // refuses the write is the same obstruction by other means.
@@ -140,6 +158,7 @@ internal static class HistoricalDatabaseFixture
             currentVersion switch
             {
                 5 => $"DROP INDEX {schemaObjectName};",
+                13 => "ALTER TABLE agent_session_checkpoints DROP COLUMN workspace_id;",
                 8 => $"DROP TRIGGER {schemaObjectName};",
                 _ => $"DROP TABLE {schemaObjectName};",
             });
@@ -322,6 +341,10 @@ internal static class HistoricalDatabaseFixture
             7 => "file_preview_settings",
             8 => "session_history_opt_in_collision",
             9 => "terminal_multiplexing_preference",
+            10 => "agent_session_checkpoints",
+            11 => "agent_model_favorites",
+            12 => "agent_policy_preference",
+            13 => "agent_session_checkpoints_workspace_updated_idx",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

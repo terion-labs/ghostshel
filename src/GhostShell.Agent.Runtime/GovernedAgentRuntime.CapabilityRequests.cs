@@ -183,6 +183,7 @@ public sealed partial class GovernedAgentRuntime
                 ActiveTool = null,
                 CurrentProgress = null,
                 ProvisionalAssistantText = string.Empty,
+                ProvisionalReasoningSummary = string.Empty,
                 Status =
                     "Waiting for your run-local Off-to-Ask capability decision…",
             };
@@ -516,6 +517,7 @@ public sealed partial class GovernedAgentRuntime
                 PendingCapabilityRequest = null,
                 ActiveTool = null,
                 ProvisionalAssistantText = string.Empty,
+                ProvisionalReasoningSummary = string.Empty,
                 CurrentProgress = null,
                 TerminalMutationPermission =
                     _baselinePolicy.GetPermission(AgentCapability.RunCommands),

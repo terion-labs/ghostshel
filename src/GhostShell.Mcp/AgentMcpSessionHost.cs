@@ -40,7 +40,9 @@ public sealed class AgentMcpSessionHost :
     private readonly IAgentApprovalPrincipal _approvalPrincipal;
     private readonly AgentMcpToolCallActionComposer _composer;
     private readonly TimeProvider _timeProvider;
-    private readonly McpStdioClientOptions _clientOptions;
+    private readonly McpSessionOptions _clientOptions;
+    private readonly Func<Uri, HttpMessageHandler?>
+        _streamableHttpHandlerFactory;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly SemaphoreSlim _testGate = new(1, 1);
     private readonly CancellationTokenSource _testShutdown = new();
@@ -80,7 +82,8 @@ public sealed class AgentMcpSessionHost :
             composer,
             timeProvider,
             approvalPrincipal,
-            CreateDefaultOptions())
+            CreateDefaultOptions(),
+            streamableHttpHandlerFactory: null)
     {
     }
 
@@ -93,7 +96,8 @@ public sealed class AgentMcpSessionHost :
         AgentMcpToolCallActionComposer composer,
         TimeProvider timeProvider,
         IAgentApprovalPrincipal approvalPrincipal,
-        McpStdioClientOptions clientOptions)
+        McpSessionOptions clientOptions,
+        Func<Uri, HttpMessageHandler?>? streamableHttpHandlerFactory = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _secretVault =
@@ -125,6 +129,8 @@ public sealed class AgentMcpSessionHost :
         _clientOptions =
             clientOptions ?? throw new ArgumentNullException(nameof(clientOptions));
         _clientOptions.Validate();
+        _streamableHttpHandlerFactory =
+            streamableHttpHandlerFactory ?? (_ => null);
         var catalogSnapshot = _catalog.Snapshot;
         _mcpCatalogState = McpCatalogState.Capture(catalogSnapshot);
         _mcpTestProfileFingerprint =
@@ -1176,7 +1182,7 @@ public sealed class AgentMcpSessionHost :
     {
         var profile = stored.Value;
         ValidateLaunch(profile);
-        var environment = await ResolveEnvironmentAsync(
+        var secrets = await ResolveTransportSecretsAsync(
                 profile,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -1188,24 +1194,51 @@ public sealed class AgentMcpSessionHost :
         }
         catch
         {
-            environment.Dispose();
+            secrets.Dispose();
             throw;
         }
-        McpStdioClient? client = null;
+        McpClientSession? client = null;
         try
         {
-            var launch = new McpStdioServerLaunch(
-                profile.Executable,
-                profile.Arguments,
-                profile.WorkingDirectory,
-                environment.Values);
-            var connected = await McpStdioClient.ConnectAsync(
-                    launch,
-                    new McpClientInfo("ghostshell", "1.0.0"),
-                    _clientOptions,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            environment.DropLaunchValues();
+            McpResult<McpClientSession> connected;
+            string transportTarget;
+            string? workingDirectory;
+            switch (profile.Transport)
+            {
+                case McpServerTransport.Stdio stdio:
+                    var launch = new McpStdioServerLaunch(
+                        stdio.Executable,
+                        stdio.Arguments,
+                        stdio.WorkingDirectory,
+                        secrets.Values);
+                    connected = await McpClientSession.ConnectStdioAsync(
+                            launch,
+                            new McpClientInfo("ghostshell", "1.0.0"),
+                            _clientOptions,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    transportTarget = stdio.Executable;
+                    workingDirectory = launch.WorkingDirectory;
+                    break;
+                case McpServerTransport.StreamableHttp http:
+                    connected = await McpStreamableHttpClient.ConnectAsync(
+                            http.Endpoint,
+                            secrets.Values,
+                            new McpClientInfo("ghostshell", "1.0.0"),
+                            _clientOptions,
+                            _streamableHttpHandlerFactory(http.Endpoint),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    transportTarget = http.Endpoint.AbsoluteUri;
+                    workingDirectory = null;
+                    break;
+                default:
+                    throw new McpHostFailureException(
+                        "mcp_transport_unsupported",
+                        "The MCP profile transport is unsupported.");
+            }
+
+            secrets.DropTransportValues();
             if (!connected.IsSuccess)
             {
                 var error = connected.Error!;
@@ -1257,18 +1290,18 @@ public sealed class AgentMcpSessionHost :
 
                 var schema = McpAgentSchemaSanitizer.Sanitize(
                     tool.InputSchema,
-                    environment.Redactor);
-                var serverName = environment.Redactor.Redact(
+                    secrets.Redactor);
+                var serverName = secrets.Redactor.Redact(
                     client.ServerInfo.Name,
                     out _);
-                var serverVersion = environment.Redactor.Redact(
+                var serverVersion = secrets.Redactor.Redact(
                     client.ServerInfo.Version,
                     out _);
                 var toolIdentity = CreateOpaqueToolIdentity(
                     toolIdentityKey,
                     profile.Id,
                     tool.Name);
-                var safeToolName = environment.Redactor.Redact(
+                var safeToolName = secrets.Redactor.Redact(
                     enabledTool,
                     out var toolNameRedacted);
                 if (toolNameRedacted)
@@ -1281,8 +1314,9 @@ public sealed class AgentMcpSessionHost :
                     profile.Id,
                     stored.Revision,
                     profile.Name,
-                    profile.Executable,
-                    launch.WorkingDirectory,
+                    profile.Transport.Kind,
+                    transportTarget,
+                    workingDirectory,
                     serverName,
                     serverVersion,
                     McpProtocol.Version,
@@ -1299,7 +1333,7 @@ public sealed class AgentMcpSessionHost :
             return new ProfileSession(
                 stored,
                 client,
-                environment.DetachRedactor(),
+                secrets.DetachRedactor(),
                 manifests,
                 protocolToolNames,
                 listedTools.Count);
@@ -1317,7 +1351,7 @@ public sealed class AgentMcpSessionHost :
                 }
             }
 
-            environment.Dispose();
+            secrets.Dispose();
             if (cleanupUncertain
                 && exception is not OutOfMemoryException)
             {
@@ -1648,26 +1682,51 @@ public sealed class AgentMcpSessionHost :
                 "The MCP call was cancelled before dispatch.");
     }
 
-    private async Task<ResolvedEnvironment> ResolveEnvironmentAsync(
+    private async Task<ResolvedTransportSecrets> ResolveTransportSecretsAsync(
         McpServerProfile profile,
         CancellationToken cancellationToken)
     {
+        var bindings = profile.Transport switch
+        {
+            McpServerTransport.Stdio stdio => stdio.Environment
+                .Select(variable => new SecretBinding(
+                    variable.Name,
+                    variable.Reference,
+                    SecretBindingKind.ProcessEnvironment))
+                .ToArray(),
+            McpServerTransport.StreamableHttp http => http.Headers
+                .Select(header => new SecretBinding(
+                    header.Name,
+                    header.Reference,
+                    SecretBindingKind.HttpHeader))
+                .ToArray(),
+            _ => throw new McpHostFailureException(
+                "mcp_transport_unsupported",
+                "The MCP profile transport is unsupported."),
+        };
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        var literals = new List<char[]>(profile.Environment.Count);
+        var literals = new List<char[]>(bindings.Length);
         var totalBytes = 0;
         var windowsEnvironmentBlockCodeUnits = 1;
         try
         {
-            foreach (var variable in profile.Environment)
+            foreach (var binding in bindings)
             {
                 var resolved = await _secretVault.ResolveAsync(
                         new ResolveSecretRequest(
-                            variable.Reference,
+                            binding.Reference,
                             new SecretScope(
                                 SecretScopeKind.McpServer,
                                 profile.Id.Value),
                             new SecretUsePurpose(
-                                SecretUseKind.McpServerEnvironment,
+                                binding.Kind switch
+                                {
+                                    SecretBindingKind.ProcessEnvironment =>
+                                        SecretUseKind.McpServerEnvironment,
+                                    SecretBindingKind.HttpHeader =>
+                                        SecretUseKind.McpServerHttpHeader,
+                                    _ => throw new InvalidOperationException(),
+                                },
                                 profile.Id.Value)),
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -1676,7 +1735,7 @@ public sealed class AgentMcpSessionHost :
                 {
                     throw new McpHostFailureException(
                         "mcp_secret_unavailable",
-                        "An MCP environment secret is unavailable.");
+                        "An MCP transport secret is unavailable.");
                 }
 
                 using var material = success.Value;
@@ -1686,7 +1745,7 @@ public sealed class AgentMcpSessionHost :
                 {
                     throw new McpHostFailureException(
                         "mcp_secret_limit_exceeded",
-                        "The MCP environment secrets exceed the process-value budget.");
+                        "The MCP transport secrets exceed their byte budget.");
                 }
 
                 totalBytes += material.Length;
@@ -1695,43 +1754,49 @@ public sealed class AgentMcpSessionHost :
                 {
                     material.CopyTo(bytes);
                     var chars = StrictUtf8.GetChars(bytes);
-                    if (chars.Contains('\0'))
+                    if (chars.Contains('\0')
+                        || binding.Kind == SecretBindingKind.HttpHeader
+                        && chars.Any(char.IsControl))
                     {
                         CryptographicOperations.ZeroMemory(
                             System.Runtime.InteropServices.MemoryMarshal.AsBytes(
                                 chars.AsSpan()));
                         throw new McpHostFailureException(
                             "mcp_secret_invalid",
-                            "An MCP environment secret is not a valid process value.");
+                            "An MCP transport secret is not a valid protocol value.");
                     }
 
-                    var windowsEntryCodeUnits = checked(
-                        variable.Name.Length
-                        + 1
-                        + chars.Length
-                        + 1);
-                    if (windowsEnvironmentBlockCodeUnits
-                        > MaximumWindowsEnvironmentBlockCodeUnits
-                            - windowsEntryCodeUnits)
+                    if (binding.Kind == SecretBindingKind.ProcessEnvironment)
                     {
-                        CryptographicOperations.ZeroMemory(
-                            System.Runtime.InteropServices.MemoryMarshal.AsBytes(
-                                chars.AsSpan()));
-                        throw new McpHostFailureException(
-                            "mcp_secret_limit_exceeded",
-                            "The MCP environment secrets exceed the process-value budget.");
+                        var windowsEntryCodeUnits = checked(
+                            binding.Name.Length
+                            + 1
+                            + chars.Length
+                            + 1);
+                        if (windowsEnvironmentBlockCodeUnits
+                            > MaximumWindowsEnvironmentBlockCodeUnits
+                                - windowsEntryCodeUnits)
+                        {
+                            CryptographicOperations.ZeroMemory(
+                                System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                                    chars.AsSpan()));
+                            throw new McpHostFailureException(
+                                "mcp_secret_limit_exceeded",
+                                "The MCP environment secrets exceed the process-value budget.");
+                        }
+
+                        windowsEnvironmentBlockCodeUnits +=
+                            windowsEntryCodeUnits;
                     }
 
-                    windowsEnvironmentBlockCodeUnits +=
-                        windowsEntryCodeUnits;
                     literals.Add(chars);
-                    values.Add(variable.Name, new string(chars));
+                    values.Add(binding.Name, new string(chars));
                 }
                 catch (DecoderFallbackException exception)
                 {
                     throw new McpHostFailureException(
                         "mcp_secret_invalid",
-                        "An MCP environment secret is not valid UTF-8.",
+                        "An MCP transport secret is not valid UTF-8.",
                         exception);
                 }
                 finally
@@ -1740,7 +1805,7 @@ public sealed class AgentMcpSessionHost :
                 }
             }
 
-            return new ResolvedEnvironment(values, literals);
+            return new ResolvedTransportSecrets(values, literals);
         }
         catch
         {
@@ -1769,8 +1834,13 @@ public sealed class AgentMcpSessionHost :
 
     private static void ValidateLaunch(McpServerProfile profile)
     {
-        if (!Path.IsPathFullyQualified(profile.Executable)
-            || profile.WorkingDirectory is { } workingDirectory
+        if (profile.Transport is not McpServerTransport.Stdio stdio)
+        {
+            return;
+        }
+
+        if (!Path.IsPathFullyQualified(stdio.Executable)
+            || stdio.WorkingDirectory is { } workingDirectory
             && !Path.IsPathFullyQualified(workingDirectory))
         {
             throw new McpHostFailureException(
@@ -1894,7 +1964,7 @@ public sealed class AgentMcpSessionHost :
     private void MarkCleanupUncertain() =>
         Interlocked.Exchange(ref _cleanupUncertain, 1);
 
-    private static McpStdioClientOptions CreateDefaultOptions() =>
+    private static McpSessionOptions CreateDefaultOptions() =>
         new()
         {
             MaxTools = MaximumToolsPerRun,
@@ -2170,7 +2240,7 @@ public sealed class AgentMcpSessionHost :
 
     private sealed class ProfileSession(
         StoredDefinition<McpServerProfile> stored,
-        McpStdioClient client,
+        McpClientSession client,
         McpSecretRedactor redactor,
         IReadOnlyList<AgentMcpToolManifest> manifests,
         IReadOnlyDictionary<string, string> protocolToolNames,
@@ -2178,7 +2248,7 @@ public sealed class AgentMcpSessionHost :
     {
         public StoredDefinition<McpServerProfile> Stored { get; } = stored;
 
-        public McpStdioClient Client { get; } = client;
+        public McpClientSession Client { get; } = client;
 
         public McpSecretRedactor Redactor { get; } = redactor;
 
@@ -2210,7 +2280,18 @@ public sealed class AgentMcpSessionHost :
         }
     }
 
-    private sealed class ResolvedEnvironment(
+    private readonly record struct SecretBinding(
+        string Name,
+        SecretRef Reference,
+        SecretBindingKind Kind);
+
+    private enum SecretBindingKind
+    {
+        ProcessEnvironment,
+        HttpHeader,
+    }
+
+    private sealed class ResolvedTransportSecrets(
         Dictionary<string, string> values,
         List<char[]> literals) : IDisposable
     {
@@ -2221,7 +2302,7 @@ public sealed class AgentMcpSessionHost :
 
         public McpSecretRedactor Redactor { get; } = new(literals);
 
-        public void DropLaunchValues() => values.Clear();
+        public void DropTransportValues() => values.Clear();
 
         public McpSecretRedactor DetachRedactor()
         {

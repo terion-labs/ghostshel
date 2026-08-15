@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
@@ -14,6 +15,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private static readonly FileProviderProfileId BuiltInHomeId = new("builtin.files.home");
     private readonly WorkspaceDefinition _original;
     private readonly IReadOnlyDictionary<ScreenId, ScreenDefinition> _screens;
+    private readonly IReadOnlyList<AiProviderProfileDescriptor>? _aiProviders;
     private readonly ObservableCollection<WorkspaceEntryEditorViewModel> _entries = [];
     private readonly ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> _readOnlyEntries;
     private string _name;
@@ -35,6 +37,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         IReadOnlyList<ScreenDefinition> screens,
         IReadOnlyList<LayoutDefinition> layouts,
         IReadOnlyList<FileProviderProfile>? fileProviders = null,
+        IReadOnlyList<AiProviderProfileDescriptor>? aiProviders = null,
         string name = "New workspace")
     {
         var workspace = new WorkspaceDefinition(
@@ -50,7 +53,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             connections,
             screens,
             layouts,
-            fileProviders ?? []);
+            fileProviders ?? [],
+            aiProviders);
     }
 
     public WorkspaceEditorViewModel(
@@ -59,7 +63,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         IReadOnlyList<ConnectionProfile> connections,
         IReadOnlyList<ScreenDefinition> screens,
         IReadOnlyList<LayoutDefinition> layouts)
-        : this(workspace, expectedRevision, connections, screens, layouts, [])
+        : this(workspace, expectedRevision, connections, screens, layouts, [], null)
     {
     }
 
@@ -69,7 +73,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         IReadOnlyList<ConnectionProfile> connections,
         IReadOnlyList<ScreenDefinition> screens,
         IReadOnlyList<LayoutDefinition> layouts,
-        IReadOnlyList<FileProviderProfile> fileProviders)
+        IReadOnlyList<FileProviderProfile> fileProviders,
+        IReadOnlyList<AiProviderProfileDescriptor>? aiProviders = null)
     {
         _original = workspace ?? throw new ArgumentNullException(nameof(workspace));
         ArgumentNullException.ThrowIfNull(connections);
@@ -83,6 +88,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _color = workspace.Color ?? string.Empty;
         _icon = workspace.Icon;
         _autoSave = workspace.AutoSave;
+        _aiProviders = aiProviders;
+        AgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
+            workspace.AgentPolicyOverride,
+            aiProviders);
+        AgentPolicy.Changed += OnAgentPolicyChanged;
         TerminalMultiplexingOptions =
         [
             new(null, "Use application setting"),
@@ -140,6 +150,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option)).ToArray();
 
     public IReadOnlyList<WorkspaceTerminalMultiplexingOption> TerminalMultiplexingOptions { get; }
+
+    public SavedScreenAgentPolicyEditorViewModel AgentPolicy { get; private set; }
 
     public WorkspaceTerminalMultiplexingOption SelectedTerminalMultiplexing
     {
@@ -658,6 +670,14 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SelectedTerminalMultiplexing));
         }
 
+        AgentPolicy.Changed -= OnAgentPolicyChanged;
+        AgentPolicy.Dispose();
+        AgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
+            _original.AgentPolicyOverride,
+            _aiProviders);
+        AgentPolicy.Changed += OnAgentPolicyChanged;
+        OnPropertyChanged(nameof(AgentPolicy));
+
         RestoreEntries();
         LastOperationError = null;
         SetDirty(false);
@@ -688,6 +708,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         }
 
         ClearEntries();
+        AgentPolicy.Changed -= OnAgentPolicyChanged;
+        AgentPolicy.Dispose();
         _disposed = true;
     }
 
@@ -738,7 +760,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         Description,
         Accent,
         _entries.Select(entry => entry.Build()).ToArray(),
-        _original.AgentPolicyOverride,
+        AgentPolicy.Build(),
         Icon,
         AutoSave,
         Color,
@@ -747,6 +769,17 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {
+        if (!AgentPolicy.IsValid)
+        {
+            return
+            [
+                new(
+                    DefinitionValidationCode.InvalidAgentPolicy,
+                    "Choose an enabled AI provider and a valid default model for this workspace.",
+                    Id.Value),
+            ];
+        }
+
         var definition = BuildDefinition();
         List<DefinitionValidationIssue> issues = [.. WorkspaceValidator.Validate(definition).Issues];
         foreach (var (value, label) in new[] { (Accent, "accent"), (Color, "color") })
@@ -801,6 +834,13 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     }
 
     private void OnEntryChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Changed();
+    }
+
+    private void OnAgentPolicyChanged(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;

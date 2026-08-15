@@ -293,7 +293,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task BroadScopeBindingChangeFailsClosedBeforeHostExecution()
+    public async Task BroadScopeBindingChangeRebindsTheLivePanelBeforeExecution()
     {
         await using var fixture = BroadScopeFixture.Create(
             ScopeKind.OpenTab,
@@ -307,17 +307,22 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Empty(fixture.Terminal.Actions);
+        var action = Assert.Single(fixture.Terminal.Actions);
+        Assert.Equal(
+            BroadScopeContextProxy.ReplacementSecondSessionId,
+            Assert.IsType<AgentTerminalRequest.ReadScreen>(action.Request)
+                .SessionId);
+        Assert.Equal(fixture.Context.SecondTarget, action.Proposal.Target);
         var continuation = fixture.Provider.Requests.ToArray()[1];
         var toolResult = Assert.Single(
             continuation.Messages,
             message => message.Role == AgentMessageRole.Tool).ToolResult;
         Assert.NotNull(toolResult);
-        Assert.Equal("target_changed", toolResult.StableCode);
+        Assert.Equal("tool_succeeded", toolResult.StableCode);
     }
 
     [Fact]
-    public async Task BroadScopeYoloIsRejected()
+    public async Task BroadScopeFullAccessIsBoundToTheConfirmedRunScope()
     {
         await using var fixture = BroadScopeFixture.Create(
             ScopeKind.Workspace,
@@ -334,11 +339,13 @@ public sealed partial class GovernedAgentRuntimeTests
             TimeSpan.FromMinutes(15),
             CancellationToken.None);
 
-        Assert.False(result.IsAccepted);
-        Assert.Equal("yolo_exact_panel_required", result.Code);
-        Assert.Null(fixture.Runtime.Snapshot.YoloAuthority);
+        Assert.True(result.IsAccepted);
+        Assert.Equal("yolo_enabled", result.Code);
         Assert.Equal(
-            AgentPermission.Ask,
+            fixture.Context.ScopeTarget,
+            fixture.Runtime.Snapshot.YoloAuthority?.Target);
+        Assert.Equal(
+            AgentPermission.Yolo,
             fixture.Runtime.Snapshot.TerminalMutationPermission);
     }
 
@@ -479,6 +486,8 @@ public sealed partial class GovernedAgentRuntimeTests
             new("logs-session");
         public static readonly SessionId ThirdSessionId =
             new("unselected-session");
+        public static readonly SessionId ReplacementSecondSessionId =
+            new("replacement-logs-session");
 
         private int _inspectionCount;
         private SessionId _currentSecondSessionId = SecondSessionId;
@@ -531,8 +540,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 : ScopeTarget;
 
         public void ReplaceSecondSession() =>
-            _currentSecondSessionId =
-                new SessionId("replacement-logs-session");
+            _currentSecondSessionId = ReplacementSecondSessionId;
 
         public void RemoveSecondPanel() =>
             _secondPanelRemoved = true;
@@ -596,8 +604,7 @@ public sealed partial class GovernedAgentRuntimeTests
             var inspection = Interlocked.Increment(ref _inspectionCount);
             if (inspection > ReplaceSecondSessionAfterInspection)
             {
-                _currentSecondSessionId =
-                    new SessionId("replacement-logs-session");
+                _currentSecondSessionId = ReplacementSecondSessionId;
             }
 
             _reversePanels = inspection > ReversePanelsAfterInspection;

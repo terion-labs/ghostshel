@@ -22,6 +22,166 @@ public sealed class ProviderTurnReducerTests
     }
 
     [Fact]
+    public void ReasoningSummaryAndUsageAreReducedAsBoundedMetadata()
+    {
+        var reducer = CreateReducer();
+        var usage = new AgentTokenUsage(
+            inputTokens: 120,
+            outputTokens: 30,
+            cachedInputTokens: 20,
+            reasoningTokens: 10);
+
+        reducer.Apply(new AgentProviderEvent.ResponseStarted());
+        reducer.Apply(new AgentProviderEvent.ReasoningSummaryDelta(
+            "Checked the workspace. "));
+        reducer.Apply(new AgentProviderEvent.ReasoningSummaryDelta(
+            "No mutation was needed."));
+        reducer.Apply(new AgentProviderEvent.TextDelta("Everything looks healthy."));
+        reducer.Apply(new AgentProviderEvent.Usage(usage));
+        reducer.Apply(new AgentProviderEvent.ResponseCompleted(
+            AgentProviderStopReason.EndTurn));
+
+        var turn = reducer.Build();
+
+        Assert.Equal(
+            "Checked the workspace. No mutation was needed.",
+            turn.ReasoningSummary);
+        Assert.Same(usage, turn.Usage);
+        Assert.Equal("Everything looks healthy.", turn.AssistantText);
+    }
+
+    [Fact]
+    public void DuplicateUsageIsRejected()
+    {
+        var reducer = CreateReducer();
+        reducer.Apply(new AgentProviderEvent.ResponseStarted());
+        reducer.Apply(new AgentProviderEvent.Usage(new AgentTokenUsage(1, 1)));
+
+        var failure = Assert.Throws<ProviderStreamException>(() =>
+            reducer.Apply(new AgentProviderEvent.Usage(
+                new AgentTokenUsage(1, 1))));
+
+        Assert.Equal(ProviderStreamErrorCode.InvalidValue, failure.Code);
+    }
+
+    [Fact]
+    public void ReplayStateMustBeUniqueAndImmediatelyPrecedeCompletion()
+    {
+        var replay = new AgentProviderReplayState(
+            new AgentProviderReplayBinding(
+                new GhostShell.Core.AiProviderProfileId("profile"),
+                GhostShell.Core.AiProviderKind.OpenAi,
+                GhostShell.Core.AiProviderProtocol.OpenAiResponses,
+                "model",
+                new Uri("https://provider.example/v1/"),
+                "responses:test"),
+            AgentProviderReplayFormat.OpenAiResponseItems,
+            [new AgentProviderReplayItem(
+                0,
+                AgentProviderReplayItemKind.OpenAiMessage,
+                "{\"type\":\"message\",\"id\":\"msg-1\"}")]);
+        var reducer = CreateReducer();
+        reducer.Apply(new AgentProviderEvent.ResponseStarted());
+        reducer.Apply(new AgentProviderEvent.ReplayStateFinalized(replay));
+
+        var failure = Assert.Throws<ProviderStreamException>(() =>
+            reducer.Apply(new AgentProviderEvent.TextDelta("late")));
+
+        Assert.Equal(ProviderStreamErrorCode.InvalidTransition, failure.Code);
+
+        var completed = CreateReducer();
+        completed.Apply(new AgentProviderEvent.ResponseStarted());
+        completed.Apply(new AgentProviderEvent.ReplayStateFinalized(replay));
+        completed.Apply(new AgentProviderEvent.ResponseCompleted(
+            AgentProviderStopReason.EndTurn));
+        Assert.Same(replay, completed.Build().ProviderReplayState);
+    }
+
+    [Fact]
+    public void ReplayStateRejectsDuplicateSlotsAndUnboundedJson()
+    {
+        var binding = new AgentProviderReplayBinding(
+            new GhostShell.Core.AiProviderProfileId("profile"),
+            GhostShell.Core.AiProviderKind.OpenAi,
+            GhostShell.Core.AiProviderProtocol.OpenAiResponses,
+            "model",
+            new Uri("https://provider.example/v1/"),
+            "responses-test");
+        var first = new AgentProviderReplayItem(
+            0,
+            AgentProviderReplayItemKind.OpenAiFunctionCall,
+            "{\"type\":\"function_call\"}",
+            toolIndex: 0);
+        var duplicate = new AgentProviderReplayItem(
+            1,
+            AgentProviderReplayItemKind.OpenAiFunctionCall,
+            "{\"type\":\"function_call\"}",
+            toolIndex: 0);
+
+        Assert.Throws<ArgumentException>(() => new AgentProviderReplayState(
+            binding,
+            AgentProviderReplayFormat.OpenAiResponseItems,
+            [first, duplicate]));
+        Assert.Throws<ArgumentException>(() => new AgentProviderReplayItem(
+            0,
+            AgentProviderReplayItemKind.OpenAiReasoning,
+            "{\"type\":\"reasoning\",\"type\":\"reasoning\"}"));
+        Assert.Throws<ArgumentException>(() => new AgentProviderReplayItem(
+            0,
+            AgentProviderReplayItemKind.OpenAiReasoning,
+            "{\"value\":" + new string('[', AgentProviderReplayState.MaximumJsonDepth + 1)
+            + "0" + new string(']', AgentProviderReplayState.MaximumJsonDepth + 1)
+            + "}"));
+        Assert.Throws<ArgumentException>(() => new AgentProviderReplayItem(
+            0,
+            AgentProviderReplayItemKind.OpenAiReasoning,
+            "{\"value\":\"" + new string('x', AgentProviderReplayState.MaximumItemBytes)
+            + "\"}"));
+    }
+
+    [Fact]
+    public void OpenAiResponseReplayFormatAcceptsExplicitGitHubCopilotRoute()
+    {
+        var state = new AgentProviderReplayState(
+            new AgentProviderReplayBinding(
+                new GhostShell.Core.AiProviderProfileId("copilot-profile"),
+                GhostShell.Core.AiProviderKind.GitHubCopilot,
+                GhostShell.Core.AiProviderProtocol.GitHubCopilot,
+                "gpt-5.3-codex",
+                new Uri("https://api.githubcopilot.com/"),
+                "github-copilot-oauth-responses"),
+            AgentProviderReplayFormat.OpenAiResponseItems,
+            [new AgentProviderReplayItem(
+                0,
+                AgentProviderReplayItemKind.OpenAiReasoning,
+                "{\"type\":\"reasoning\",\"id\":\"rs-1\",\"encrypted_content\":\"opaque\"}")]);
+
+        Assert.Equal(
+            GhostShell.Core.AiProviderProtocol.GitHubCopilot,
+            state.Binding.Protocol);
+        Assert.Equal(
+            AgentProviderReplayFormat.OpenAiResponseItems,
+            state.Format);
+    }
+
+    [Fact]
+    public void ReasoningSummaryUsesItsOwnAggregateByteLimit()
+    {
+        var limits = new AgentKernelLimits(
+            maximumProviderTextFragmentBytes: 4,
+            maximumAssistantTextBytes: 8,
+            maximumReasoningSummaryBytes: 4);
+        var reducer = CreateReducer([], limits);
+        reducer.Apply(new AgentProviderEvent.ResponseStarted());
+        reducer.Apply(new AgentProviderEvent.ReasoningSummaryDelta("ab"));
+
+        var failure = Assert.Throws<ProviderStreamException>(() =>
+            reducer.Apply(new AgentProviderEvent.ReasoningSummaryDelta("cde")));
+
+        Assert.Equal(ProviderStreamErrorCode.LimitExceeded, failure.Code);
+    }
+
+    [Fact]
     public void CompleteToolResponseParsesFragmentedArgumentsWithoutRetainingTheDocument()
     {
         var reducer = CreateReducer(["terminal.read_screen"]);

@@ -56,7 +56,12 @@ public sealed class CompositionTests
             services.GetRequiredService<IBrowserRendererViewFactory>();
         var aiProfiles = services.GetRequiredService<IAiProviderProfileRuntime>();
         var concreteAiProfiles = services.GetRequiredService<CatalogAiProviderRuntime>();
-        var governedAgent = services.GetRequiredService<IGovernedAgentRuntime>();
+        var aiAuthentication =
+            services.GetRequiredService<IAiProviderAuthenticationRuntime>();
+        var concreteAiAuthentication =
+            services.GetRequiredService<AiProviderAuthenticationRuntime>();
+        var workspaceAgentFactory =
+            services.GetRequiredService<IAgentWorkspaceRuntimeFactory>();
         var approvalPrincipal =
             services.GetRequiredService<IAgentApprovalPrincipal>();
         var capabilityBroker = services.GetRequiredService<IAgentCapabilityBroker>();
@@ -76,6 +81,18 @@ public sealed class CompositionTests
             services.GetRequiredService<IAgentProcessSessionHost>();
         var processActionComposer =
             services.GetRequiredService<AgentProcessListActionComposer>();
+        var agentStatisticsHost =
+            services.GetRequiredService<IAgentStatisticsSessionHost>();
+        var statisticsActionComposer =
+            services.GetRequiredService<AgentStatisticsReadActionComposer>();
+        var agentCheckpointStore =
+            services.GetRequiredService<IAgentSessionCheckpointStore>();
+        var agentModelFavoriteStore =
+            services.GetRequiredService<IAgentModelFavoriteStore>();
+        var agentPolicyPreferenceStore =
+            services.GetRequiredService<IAgentPolicyPreferenceStore>();
+        var agentPolicyCoordinator =
+            services.GetRequiredService<AgentPolicyCoordinator>();
         var diagnosticsExporter = services.GetRequiredService<IDiagnosticsBundleExporter>();
         var diagnosticsSource = services.GetRequiredService<IDiagnosticsBundleRequestSource>();
         var diagnosticsPresenter = services.GetRequiredService<IDiagnosticsArtifactPresenter>();
@@ -86,6 +103,7 @@ public sealed class CompositionTests
         var localArtifactViewModel = services.GetRequiredService<LocalArtifactControlViewModel>();
 
         Assert.Same(firstClient, secondClient);
+        Assert.Same(concreteAiAuthentication, aiAuthentication);
         Assert.Same(firstClient, viewModel.SessionClient);
         Assert.True(viewModel.IsWorkspaceVisible);
         Assert.NotNull(application);
@@ -137,7 +155,16 @@ public sealed class CompositionTests
             SessionCapabilities.BrowserOriginGuard));
         Assert.Same(concreteAiProfiles, aiProfiles);
         Assert.Null(services.GetService<IAgentChatRuntime>());
-        Assert.NotNull(governedAgent);
+        Assert.Null(services.GetService<IGovernedAgentRuntime>());
+        using (var firstWorkspaceAgent = workspaceAgentFactory.Create(
+                   new WorkspaceInstanceId("composition-workspace-one"),
+                   new AgentConversationScopeId("composition-scope-one")))
+        using (var secondWorkspaceAgent = workspaceAgentFactory.Create(
+                   new WorkspaceInstanceId("composition-workspace-two"),
+                   new AgentConversationScopeId("composition-scope-two")))
+        {
+            Assert.NotSame(firstWorkspaceAgent, secondWorkspaceAgent);
+        }
         Assert.Equal(
             approvalPrincipal.Actor.ClientId,
             viewModel.ClientId);
@@ -151,6 +178,12 @@ public sealed class CompositionTests
         Assert.Same(firstClient, agentBrowserHost);
         Assert.Same(firstClient, agentProcessHost);
         Assert.NotNull(processActionComposer);
+        Assert.Same(firstClient, agentStatisticsHost);
+        Assert.NotNull(statisticsActionComposer);
+        Assert.IsType<SqliteAgentSessionCheckpointStore>(agentCheckpointStore);
+        Assert.IsType<SqliteAgentModelFavoriteStore>(agentModelFavoriteStore);
+        Assert.IsType<SqliteAgentPolicyPreferenceStore>(agentPolicyPreferenceStore);
+        Assert.NotNull(agentPolicyCoordinator);
         Assert.IsType<DeterministicDiagnosticsBundleExporter>(diagnosticsExporter);
         Assert.IsType<SafeDiagnosticsBundleRequestSource>(diagnosticsSource);
         Assert.IsType<DesktopDiagnosticsArtifactPresenter>(diagnosticsPresenter);

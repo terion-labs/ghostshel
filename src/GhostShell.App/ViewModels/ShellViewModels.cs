@@ -667,9 +667,10 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
 {
     private long _revision;
     private string _name;
-    private string _executable;
+    private McpServerTransportKind _transportKind;
+    private string _address;
     private int _argumentCount;
-    private int _environmentBindingCount;
+    private int _credentialBindingCount;
     private int _enabledToolCount;
     private string _status;
     private string _statusDetail;
@@ -682,9 +683,10 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
         McpServerProfileId id,
         long revision,
         string name,
-        string executable,
+        McpServerTransportKind transportKind,
+        string address,
         int argumentCount,
-        int environmentBindingCount,
+        int credentialBindingCount,
         int enabledToolCount,
         string status,
         string statusDetail,
@@ -696,9 +698,10 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
         Id = id;
         _revision = revision;
         _name = name;
-        _executable = executable;
+        _transportKind = transportKind;
+        _address = address;
         _argumentCount = argumentCount;
-        _environmentBindingCount = environmentBindingCount;
+        _credentialBindingCount = credentialBindingCount;
         _enabledToolCount = enabledToolCount;
         _status = status;
         _statusDetail = statusDetail;
@@ -714,11 +717,19 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
 
     public string Name => _name;
 
-    public string Executable => _executable;
+    public McpServerTransportKind TransportKind => _transportKind;
+
+    public string Address => _address;
+
+    public string Executable => IsStdio ? Address : string.Empty;
+
+    public bool IsStdio => TransportKind == McpServerTransportKind.Stdio;
 
     public int ArgumentCount => _argumentCount;
 
-    public int EnvironmentBindingCount => _environmentBindingCount;
+    public int CredentialBindingCount => _credentialBindingCount;
+
+    public int EnvironmentBindingCount => IsStdio ? CredentialBindingCount : 0;
 
     public int EnabledToolCount => _enabledToolCount;
 
@@ -734,6 +745,16 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
 
     public bool CanTest => _canTest;
 
+    public string TransportSummary => TransportKind switch
+    {
+        McpServerTransportKind.Stdio => "Local stdio",
+        McpServerTransportKind.StreamableHttp => "Streamable HTTP",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(TransportKind),
+            TransportKind,
+            null),
+    };
+
     public string ArgumentSummary =>
         ArgumentCount == 1 ? "1 ordered arg" : $"{ArgumentCount} ordered args";
 
@@ -741,6 +762,11 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
         EnvironmentBindingCount == 1
             ? "1 vault binding"
             : $"{EnvironmentBindingCount} vault bindings";
+
+    public string CredentialBindingSummary =>
+        CredentialBindingCount == 1
+            ? "1 vault binding"
+            : $"{CredentialBindingCount} vault bindings";
 
     public string EnabledToolSummary =>
         EnabledToolCount == 1
@@ -761,7 +787,24 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
 
         _ = SetProperty(ref _revision, source.Revision, nameof(Revision));
         _ = SetProperty(ref _name, source.Name, nameof(Name));
-        _ = SetProperty(ref _executable, source.Executable, nameof(Executable));
+        if (SetProperty(
+                ref _transportKind,
+                source.TransportKind,
+                nameof(TransportKind)))
+        {
+            OnPropertyChanged(nameof(IsStdio));
+            OnPropertyChanged(nameof(Executable));
+            OnPropertyChanged(nameof(EnvironmentBindingCount));
+            OnPropertyChanged(nameof(EnvironmentBindingSummary));
+            OnPropertyChanged(nameof(TransportSummary));
+            OnPropertyChanged(nameof(ArgumentSummary));
+        }
+
+        if (SetProperty(ref _address, source.Address, nameof(Address)))
+        {
+            OnPropertyChanged(nameof(Executable));
+        }
+
         if (SetProperty(
                 ref _argumentCount,
                 source.ArgumentCount,
@@ -771,11 +814,13 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
         }
 
         if (SetProperty(
-                ref _environmentBindingCount,
-                source.EnvironmentBindingCount,
-                nameof(EnvironmentBindingCount)))
+                ref _credentialBindingCount,
+                source.CredentialBindingCount,
+                nameof(CredentialBindingCount)))
         {
+            OnPropertyChanged(nameof(EnvironmentBindingCount));
             OnPropertyChanged(nameof(EnvironmentBindingSummary));
+            OnPropertyChanged(nameof(CredentialBindingSummary));
         }
 
         if (SetProperty(
@@ -802,14 +847,31 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
     }
 }
 
-public sealed record McpEnvironmentSecretTargetViewModel(
+public enum McpServerCredentialBindingKind
+{
+    EnvironmentVariable,
+    HttpHeader,
+}
+
+public sealed record McpServerSecretTargetViewModel(
     McpServerProfileId ProfileId,
     string ServerName,
-    string VariableName,
+    McpServerCredentialBindingKind BindingKind,
+    string BindingName,
     SecretRef Reference)
 {
+    public string BindingKindName => BindingKind switch
+    {
+        McpServerCredentialBindingKind.EnvironmentVariable => "Environment",
+        McpServerCredentialBindingKind.HttpHeader => "HTTP header",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(BindingKind),
+            BindingKind,
+            null),
+    };
+
     public string DisplayName =>
-        $"{ServerName} · {VariableName} → {Reference.Value}";
+        $"{ServerName} · {BindingKindName} {BindingName} → {Reference.Value}";
 }
 
 public sealed class RuntimeWorkspaceViewModel : ObservableObject

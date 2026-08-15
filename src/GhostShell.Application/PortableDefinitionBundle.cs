@@ -34,6 +34,7 @@ public enum DefinitionImportIssueCode
     UnsupportedSchema,
     MissingDependency,
     ImportedMcpProfileDisabled,
+    ImportedAiProviderProfileDisabled,
 }
 
 public sealed record DefinitionImportIssue(

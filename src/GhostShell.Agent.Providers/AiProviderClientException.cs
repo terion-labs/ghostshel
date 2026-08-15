@@ -1,8 +1,9 @@
+using GhostShell.Agent;
 using GhostShell.Application;
 
 namespace GhostShell.Agent.Providers;
 
-internal sealed class AiProviderClientException : Exception
+internal sealed class AiProviderClientException : AgentProviderException
 {
     public AiProviderClientException(
         AiProviderRuntimeErrorCode code,
@@ -10,18 +11,15 @@ internal sealed class AiProviderClientException : Exception
         string message,
         TimeSpan? retryAfter = null,
         Exception? innerException = null)
-        : base(message, innerException)
+        : base(stableCode, message, innerException)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stableCode);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         Code = code;
-        StableCode = stableCode;
         RetryAfter = retryAfter;
     }
 
     public AiProviderRuntimeErrorCode Code { get; }
-
-    public string StableCode { get; }
 
     public TimeSpan? RetryAfter { get; }
 

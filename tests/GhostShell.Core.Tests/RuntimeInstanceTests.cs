@@ -73,6 +73,44 @@ public sealed class RuntimeInstanceTests
     }
 
     [Fact]
+    public void Runtime_graph_accepts_the_complete_panel_boundary_and_rejects_overflow()
+    {
+        var panels = Enumerable.Range(1, WorkspaceInstance.MaximumPanelCount)
+            .Select(index => new PanelInstance(
+                new PanelInstanceId($"panel-{index}"),
+                PanelKind.Terminal,
+                $"Panel {index}"))
+            .ToArray();
+        var tab = Tab("tab-1", panels);
+
+        var workspace = new WorkspaceInstance(
+            new WorkspaceInstanceId("workspace-1"),
+            "Workspace",
+            [tab],
+            tab.Id);
+
+        Assert.Equal(WorkspaceInstance.MaximumPanelCount, workspace.Tabs[0].Panels.Count);
+
+        var overflow = panels
+            .Append(new PanelInstance(
+                new PanelInstanceId("panel-overflow"),
+                PanelKind.Browser,
+                "Overflow"))
+            .ToArray();
+
+        var exception = Assert.Throws<ArgumentException>(() => new WorkspaceInstance(
+            new WorkspaceInstanceId("workspace-2"),
+            "Overflow",
+            [Tab("tab-overflow", overflow)],
+            new TabInstanceId("tab-overflow")));
+
+        Assert.Contains(
+            WorkspaceInstance.MaximumPanelCount.ToString(),
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Activation_targets_stable_ids_and_preserves_source_projection()
     {
         var first = Tab(

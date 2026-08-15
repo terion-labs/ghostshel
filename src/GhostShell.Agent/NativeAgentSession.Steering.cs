@@ -71,7 +71,7 @@ public sealed partial class NativeAgentSession
             var replacementConversation = activeTurn.BaseConversation.Add(replacementUser);
             try
             {
-                ValidateMessageBytes(
+                ValidateMessageBounds(
                     replacementUser,
                     _limits.MaximumAssistantTextBytes);
                 ValidateConversation(
@@ -95,6 +95,7 @@ public sealed partial class NativeAgentSession
                 activeTurn.BaseConversation,
                 [replacementUser],
                 activeTurn.Tools,
+                activeTurn.ReasoningEffort,
                 ActiveTurnKind.SteeredUser);
 
             // Steer and commit both linearize under this gate. The extra provider slot

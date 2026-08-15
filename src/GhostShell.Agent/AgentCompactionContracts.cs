@@ -8,6 +8,34 @@ public sealed record AgentCompactionRequest(
     long Generation,
     ImmutableArray<AgentMessage> Messages);
 
+public sealed record AgentCompactionSettings
+{
+    public AgentCompactionSettings(
+        bool enabled = true,
+        int reserveTokens = AgentContextWindowPolicy.DefaultReserveTokens,
+        int keepRecentTokens = AgentContextWindowPolicy.DefaultKeepRecentTokens)
+    {
+        if (reserveTokens <= 0 || keepRecentTokens <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(reserveTokens),
+                "Compaction token budgets must be positive.");
+        }
+
+        Enabled = enabled;
+        ReserveTokens = reserveTokens;
+        KeepRecentTokens = keepRecentTokens;
+    }
+
+    public bool Enabled { get; }
+
+    public int ReserveTokens { get; }
+
+    public int KeepRecentTokens { get; }
+}
+
+public sealed record AgentContextUsage(long EstimatedTokens, bool UsesProviderReportedUsage);
+
 public interface IAgentConversationCompactor
 {
     ValueTask<AgentMessage> CompactAsync(

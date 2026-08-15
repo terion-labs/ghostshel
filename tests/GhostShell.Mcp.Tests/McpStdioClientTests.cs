@@ -118,7 +118,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "oversized-message",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxMessageBytes = 1024,
                 MaxToolSchemaBytes = 512,
@@ -149,7 +149,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "control-message-flood",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxControlMessagesPerResponse = 4,
                 ShutdownGracePeriod = TimeSpan.FromMilliseconds(50),
@@ -167,7 +167,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "normal",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxControlMessagesPerResponse = 1,
                 ShutdownGracePeriod = TimeSpan.FromMilliseconds(50),
@@ -182,7 +182,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "oversized-schema",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxToolSchemaBytes = 128,
                 ShutdownGracePeriod = TimeSpan.FromMilliseconds(50),
@@ -224,7 +224,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "oversized-result",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxMessageBytes = 4096,
                 MaxToolSchemaBytes = 1024,
@@ -246,7 +246,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "many-tools",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxTools = 1,
                 ShutdownGracePeriod = TimeSpan.FromMilliseconds(50),
@@ -263,7 +263,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "normal",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxToolArgumentsBytes = 128,
                 ShutdownGracePeriod = TimeSpan.FromMilliseconds(50),
@@ -285,7 +285,7 @@ public sealed class McpStdioClientTests
     {
         await using var client = await ConnectAsync(
             "stderr",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 MaxStderrBytes = 64,
                 MaxStderrLines = 1,
@@ -310,7 +310,7 @@ public sealed class McpStdioClientTests
     {
         var client = await ConnectAsync(
             "normal",
-            options: new McpStdioClientOptions
+            options: new McpSessionOptions
             {
                 ShutdownGracePeriod = TimeSpan.FromMilliseconds(50),
             });
@@ -350,11 +350,11 @@ public sealed class McpStdioClientTests
         Assert.Equal(McpErrorCode.ToolNotListed, unknown.Error!.Code);
     }
 
-    private static async Task<McpStdioClient> ConnectAsync(
+    private static async Task<McpClientSession> ConnectAsync(
         string mode,
         string[]? hostArguments = null,
         IReadOnlyDictionary<string, string>? environment = null,
-        McpStdioClientOptions? options = null)
+        McpSessionOptions? options = null)
     {
         var result = await ConnectResultAsync(
             mode,
@@ -370,11 +370,11 @@ public sealed class McpStdioClientTests
         return result.Value!;
     }
 
-    private static async Task<McpResult<McpStdioClient>> ConnectResultAsync(
+    private static async Task<McpResult<McpClientSession>> ConnectResultAsync(
         string mode,
         string[]? hostArguments = null,
         IReadOnlyDictionary<string, string>? environment = null,
-        McpStdioClientOptions? options = null)
+        McpSessionOptions? options = null)
     {
         var assemblyPath = Assembly.GetExecutingAssembly().Location;
         var dotnetPath = Environment.ProcessPath
@@ -395,14 +395,14 @@ public sealed class McpStdioClientTests
         };
         arguments.AddRange(hostArguments ?? []);
 
-        return await McpStdioClient.ConnectAsync(
+        return await McpClientSession.ConnectStdioAsync(
             new McpStdioServerLaunch(
                 dotnetPath,
                 arguments,
                 Path.GetDirectoryName(assemblyPath),
                 childEnvironment),
             new McpClientInfo("ghostshell-tests", "1.0.0"),
-            options ?? new McpStdioClientOptions
+            options ?? new McpSessionOptions
             {
                 ShutdownGracePeriod = TimeSpan.FromMilliseconds(50),
             },
@@ -410,7 +410,7 @@ public sealed class McpStdioClientTests
     }
 
     private static async Task<McpStderrDiagnostics> WaitForDiagnosticsAsync(
-        McpStdioClient client)
+        McpClientSession client)
     {
         for (var attempt = 0; attempt < 50; attempt++)
         {

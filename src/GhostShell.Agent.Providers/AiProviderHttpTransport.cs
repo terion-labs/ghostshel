@@ -13,14 +13,25 @@ internal sealed class AiProviderHttpTransport : IDisposable
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     private readonly ISecretVault _secretVault;
+    private readonly AiProviderOAuthCredentialSource _oauthCredentials;
     private readonly HttpClient _client;
+    private static readonly HttpRequestOptionsKey<Uri> ExpectedEndpointKey =
+        new("GhostShell.AiProvider.ExpectedEndpoint");
     private bool _disposed;
 
     public AiProviderHttpTransport(
         ISecretVault secretVault,
-        HttpMessageHandler? handler = null)
+        HttpMessageHandler? handler = null,
+        AiProviderOAuthOptions? oauthOptions = null,
+        HttpMessageHandler? oauthHandler = null,
+        TimeProvider? timeProvider = null)
     {
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
+        _oauthCredentials = new AiProviderOAuthCredentialSource(
+            secretVault,
+            oauthOptions ?? new AiProviderOAuthOptions(),
+            oauthHandler,
+            timeProvider);
         _client = new HttpClient(handler ?? CreateHandler(), disposeHandler: true)
         {
             Timeout = Timeout.InfiniteTimeSpan,
@@ -44,15 +55,32 @@ internal sealed class AiProviderHttpTransport : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var requestEndpoint = profile.Endpoint;
+        AiProviderRequestCredential? oauthCredential = null;
+        if (profile.Authentication is AiProviderAuthentication.OAuth oauth)
+        {
+            oauthCredential = await _oauthCredentials.ResolveAsync(
+                profile,
+                oauth,
+                cancellationToken).ConfigureAwait(false);
+            requestEndpoint = oauthCredential.Endpoint;
+        }
+        else if (profile.Authentication is AiProviderAuthentication.AwsCredentialChain)
+        {
+            throw AiProviderClientException.Create(
+                AiProviderRuntimeErrorCode.InvalidConfiguration);
+        }
+
         var request = new HttpRequestMessage(
             method,
-            CreateRequestUri(profile.Endpoint, relativePath))
+            CreateRequestUri(requestEndpoint, relativePath))
         {
             Version = HttpVersion.Version20,
             VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
         };
         try
         {
+            request.Options.Set(ExpectedEndpointKey, requestEndpoint);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(acceptMediaType));
             request.Headers.UserAgent.ParseAdd("GhostShell/0.1");
             if (body is not null)
@@ -64,9 +92,22 @@ internal sealed class AiProviderHttpTransport : IDisposable
                 };
             }
 
-            if (profile.ProviderKind == AiProviderKind.Anthropic)
+            var definition = AiProviderCatalog.Get(profile.Identity);
+            if (profile.Protocol == AiProviderProtocol.AnthropicMessages)
             {
                 request.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
+            }
+
+            if (profile.Identity == AiProviderKind.GitHubCopilot)
+            {
+                GitHubCopilotHttpHeaders.Apply(request.Headers);
+                request.Headers.TryAddWithoutValidation(
+                    "Openai-Intent",
+                    "conversation-edits");
+                if (string.Equals(relativePath, "models", StringComparison.Ordinal))
+                {
+                    GitHubCopilotHttpHeaders.ApplyModelCatalogVersion(request.Headers);
+                }
             }
 
             if (profile.Authentication is AiProviderAuthentication.ApiKey apiKey)
@@ -75,15 +116,41 @@ internal sealed class AiProviderHttpTransport : IDisposable
                     profile.Id,
                     apiKey.Secret,
                     cancellationToken).ConfigureAwait(false);
-                if (profile.ProviderKind == AiProviderKind.Anthropic)
+                switch (definition.CredentialPlacement)
                 {
-                    request.Headers.TryAddWithoutValidation("x-api-key", credential);
+                    case AiProviderCredentialPlacement.AuthorizationBearer:
+                        request.Headers.Authorization = new AuthenticationHeaderValue(
+                            "Bearer",
+                            credential);
+                        break;
+                    case AiProviderCredentialPlacement.AnthropicApiKeyHeader:
+                        request.Headers.TryAddWithoutValidation("x-api-key", credential);
+                        break;
+                    case AiProviderCredentialPlacement.GoogleApiKeyHeader:
+                        request.Headers.TryAddWithoutValidation("x-goog-api-key", credential);
+                        break;
+                    default:
+                        throw AiProviderClientException.Create(
+                            AiProviderRuntimeErrorCode.InvalidConfiguration);
                 }
-                else
+            }
+            else if (oauthCredential is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    oauthCredential.AccessToken);
+                if (profile.Identity == AiProviderKind.OpenAi)
                 {
-                    request.Headers.Authorization = new AuthenticationHeaderValue(
-                        "Bearer",
-                        credential);
+                    request.Headers.TryAddWithoutValidation("originator", "ghostshell");
+                    request.Headers.TryAddWithoutValidation(
+                        "OpenAI-Beta",
+                        "responses=experimental");
+                    if (oauthCredential.AccountId is { } accountId)
+                    {
+                        request.Headers.TryAddWithoutValidation(
+                            "ChatGPT-Account-Id",
+                            accountId);
+                    }
                 }
             }
 
@@ -105,7 +172,9 @@ internal sealed class AiProviderHttpTransport : IDisposable
         ArgumentNullException.ThrowIfNull(request);
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
-        if (request.RequestUri is null || !HasSameOrigin(profile.Endpoint, request.RequestUri))
+        if (!request.Options.TryGetValue(ExpectedEndpointKey, out var expectedEndpoint)
+            || request.RequestUri is null
+            || !HasSameOrigin(expectedEndpoint, request.RequestUri))
         {
             throw AiProviderClientException.Create(
                 AiProviderRuntimeErrorCode.InvalidConfiguration);
@@ -129,7 +198,7 @@ internal sealed class AiProviderHttpTransport : IDisposable
         try
         {
             var responseUri = response.RequestMessage?.RequestUri;
-            if (responseUri is null || !HasSameOrigin(profile.Endpoint, responseUri))
+            if (responseUri is null || !HasSameOrigin(expectedEndpoint, responseUri))
             {
                 throw AiProviderClientException.Create(
                     AiProviderRuntimeErrorCode.ProtocolError);
@@ -159,7 +228,8 @@ internal sealed class AiProviderHttpTransport : IDisposable
     public static void ValidateContent(
         HttpResponseMessage response,
         string expectedMediaType,
-        int maximumBytes)
+        int maximumBytes,
+        bool allowMissingMediaType = false)
     {
         ArgumentNullException.ThrowIfNull(response);
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedMediaType);
@@ -171,10 +241,11 @@ internal sealed class AiProviderHttpTransport : IDisposable
         }
 
         var mediaType = response.Content.Headers.ContentType?.MediaType;
-        var matches = string.Equals(
-            mediaType,
-            expectedMediaType,
-            StringComparison.OrdinalIgnoreCase);
+        var matches = allowMissingMediaType && mediaType is null
+            || string.Equals(
+                mediaType,
+                expectedMediaType,
+                StringComparison.OrdinalIgnoreCase);
         if (!matches
             && string.Equals(expectedMediaType, "application/json", StringComparison.Ordinal)
             && mediaType?.EndsWith("+json", StringComparison.OrdinalIgnoreCase) == true)
@@ -219,6 +290,7 @@ internal sealed class AiProviderHttpTransport : IDisposable
         }
 
         _disposed = true;
+        _oauthCredentials.Dispose();
         _client.Dispose();
     }
 

@@ -39,7 +39,9 @@ public sealed record RuntimeAgentPolicyProvenance
         if (isLegacyFallback
             && (copiedSources.Length != 0
                 || hasPolicyOverride
-                || !PoliciesEqual(normalizedPolicy, AgentPolicy.Default)))
+                || !PoliciesEqual(
+                    normalizedPolicy,
+                    AgentPolicyResolver.Resolve(AgentPolicy.Default))))
         {
             throw new ArgumentException(
                 "Legacy recovery fallback must be the source-free default policy.",
@@ -50,14 +52,6 @@ public sealed record RuntimeAgentPolicyProvenance
         {
             throw new ArgumentException(
                 "A durable runtime policy override requires definition provenance.",
-                nameof(hasPolicyOverride));
-        }
-
-        if (!hasPolicyOverride
-            && !PoliciesEqual(normalizedPolicy, AgentPolicy.Default))
-        {
-            throw new ArgumentException(
-                "A runtime policy without an override must preserve the default baseline.",
                 nameof(hasPolicyOverride));
         }
 
@@ -107,6 +101,9 @@ public sealed record RuntimeAgentPolicyProvenance
     private static bool PoliciesEqual(AgentPolicy left, AgentPolicy right) =>
         string.Equals(left.Provider, right.Provider, StringComparison.Ordinal)
         && string.Equals(left.Model, right.Model, StringComparison.Ordinal)
+        && left.CompactionModel == right.CompactionModel
+        && left.TitleModel == right.TitleModel
+        && string.Equals(left.SystemPrompt, right.SystemPrompt, StringComparison.Ordinal)
         && AgentPolicy.Capabilities.All(capability =>
             left.GetPermission(capability) == right.GetPermission(capability));
 

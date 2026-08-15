@@ -129,6 +129,7 @@ public static class BuiltInAgentTools
     public const string FilesCreateDirectory = "files.mkdir";
     public const string FilesDelete = "files.delete";
     public const string ProcessesList = "processes.list";
+    public const string StatisticsRead = "statistics.read";
     public const string McpCall = "mcp.call";
 
     public static AgentToolCatalog Catalog { get; } = new(
@@ -262,6 +263,16 @@ public static class BuiltInAgentTools
         Tool(
             ProcessesList,
             "List local processes",
+            AgentCapability.ProcessControl,
+            AgentActionRisk.Observation),
+        // Statistics and process listing are the two read-only local
+        // system-monitor surfaces. Keeping them under the existing policy
+        // capability avoids silently enabling a new persisted permission;
+        // the distinct tool and session capability still authorize each
+        // observation independently.
+        Tool(
+            StatisticsRead,
+            "Read local system statistics",
             AgentCapability.ProcessControl,
             AgentActionRisk.Observation),
         Tool(

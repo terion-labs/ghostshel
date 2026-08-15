@@ -173,7 +173,7 @@
         <controls:StateOverlay
             Kind="Loading"
             Heading="Waiting for first sample…"
-            Body="The session host is collecting a bounded resource snapshot; commands and terminal content remain excluded."
+            Body="Collecting resource statistics…"
             IsVisible="{Binding ShowLoading}"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="Statistics loading" />

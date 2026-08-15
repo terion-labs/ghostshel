@@ -7,13 +7,136 @@ namespace GhostShell.App.ViewModels;
 
 public sealed record AgentChatMessageViewModel(
     AgentChatMessageRole Role,
-    string Content)
+    string Content,
+    string? ReasoningSummary = null,
+    AgentChatUsage? Usage = null,
+    IReadOnlyList<AgentChatImage>? Images = null,
+    AgentReasoningEffort? RequestedReasoningEffort = null,
+    AgentConversationForkPoint? ForkPoint = null)
 {
     public bool IsUser => Role == AgentChatMessageRole.User;
 
     public bool IsAssistant => Role == AgentChatMessageRole.Assistant;
 
     public string Author => IsUser ? "You" : "GhostSHELL";
+
+    public bool HasReasoningSummary =>
+        IsAssistant && !string.IsNullOrWhiteSpace(ReasoningSummary);
+
+    public string ReasoningSummaryDisplay =>
+        AgentReasoningSummaryPresentation.Format(ReasoningSummary);
+
+    public bool HasUsage => IsAssistant && Usage is not null;
+
+    public bool CanFork => IsAssistant && ForkPoint is not null;
+
+    public bool HasReasoningRequest =>
+        IsAssistant
+        && (RequestedReasoningEffort is not null and not AgentReasoningEffort.Automatic
+            || Usage?.ReasoningTokens > 0);
+
+    public bool HasImages => IsUser && Images is { Count: > 0 };
+
+    public string ImagesLabel => Images is not { Count: > 0 } images
+        ? string.Empty
+        : images.Count == 1
+            ? $"Image · {images[0].FileName}"
+            : $"{images.Count.ToString(CultureInfo.InvariantCulture)} images";
+
+    public string UsageLabel => Usage is not { } usage
+        ? string.Empty
+        : $"{usage.TotalTokens.ToString(CultureInfo.InvariantCulture)} tokens · "
+            + $"{usage.InputTokens.ToString(CultureInfo.InvariantCulture)} in / "
+            + $"{usage.OutputTokens.ToString(CultureInfo.InvariantCulture)} out"
+            + (usage.CachedInputTokens > 0
+                ? $" · {usage.CachedInputTokens.ToString(CultureInfo.InvariantCulture)} cached"
+                : string.Empty)
+            + (usage.ReasoningTokens > 0
+                ? $" · {usage.ReasoningTokens.ToString(CultureInfo.InvariantCulture)} reasoning"
+                : string.Empty);
+
+    public string ReasoningRequestLabel
+    {
+        get
+        {
+            if (RequestedReasoningEffort == AgentReasoningEffort.Off)
+            {
+                return "Reasoning off";
+            }
+
+            var effort = RequestedReasoningEffort ?? AgentReasoningEffort.Automatic;
+            var label = effort switch
+            {
+                AgentReasoningEffort.Automatic => "Automatic",
+                AgentReasoningEffort.Minimal => "Minimal",
+                AgentReasoningEffort.Low => "Low",
+                AgentReasoningEffort.Medium => "Medium",
+                AgentReasoningEffort.High => "High",
+                AgentReasoningEffort.ExtraHigh => "Extra high",
+                AgentReasoningEffort.Max => "Max",
+                _ => string.Empty,
+            };
+            if (Usage is not { } usage)
+            {
+                return $"{label} reasoning requested";
+            }
+
+            return $"{label} reasoning requested · provider reported "
+                + $"{usage.ReasoningTokens.ToString(CultureInfo.InvariantCulture)} reasoning tokens";
+        }
+    }
+
+    public string ReasoningTitle => Usage?.ReasoningTokens > 0
+        ? $"Reasoned · {Usage.ReasoningTokens.ToString(CultureInfo.InvariantCulture)} tokens"
+        : RequestedReasoningEffort is { } effort
+            && effort is not AgentReasoningEffort.Automatic
+            ? $"Reasoned · {ReasoningEffortLabel(effort)}"
+            : "Reasoning";
+
+    private static string ReasoningEffortLabel(AgentReasoningEffort effort) => effort switch
+    {
+        AgentReasoningEffort.Off => "Off",
+        AgentReasoningEffort.Automatic => "Automatic",
+        AgentReasoningEffort.Minimal => "Minimal",
+        AgentReasoningEffort.Low => "Low",
+        AgentReasoningEffort.Medium => "Medium",
+        AgentReasoningEffort.High => "High",
+        AgentReasoningEffort.ExtraHigh => "Extra high",
+        AgentReasoningEffort.Max => "Max",
+        _ => "Reasoning",
+    };
+}
+
+public sealed record AgentReasoningEffortOption(
+    AgentReasoningEffort Value,
+    string Label);
+
+public sealed record AgentServiceTierOption(
+    AgentServiceTier Value,
+    string Label);
+
+public sealed record AgentModelPickerItemViewModel(
+    AiProviderModelDescriptor Model,
+    string ProviderName,
+    bool IsFavorite)
+{
+    public string Id => Model.Id;
+
+    public string DisplayName => Model.DisplayName;
+
+    public string FavoriteAccessibleName => IsFavorite
+        ? $"Remove {DisplayName} from favorite models"
+        : $"Add {DisplayName} to favorite models";
+}
+
+public sealed record AgentConversationItemViewModel(
+    AgentRunId RunId,
+    string Title,
+    string Model,
+    string UpdatedAt,
+    bool IsCurrent)
+{
+    public string Details => $"{Model} · {UpdatedAt}";
 }
 
 public sealed record AgentApprovalArgumentViewModel(
@@ -181,28 +304,65 @@ public sealed record AgentYoloAuthorityViewModel(
 {
     public string Warning =>
         "Terminal input and destructive terminal actions can run without "
-        + "per-action approval. Exact scope, human preemption, stop, and audit remain active.";
+        + "per-action approval. The selected run scope, human preemption, stop, and audit remain active.";
 }
 
 public sealed class AgentChatViewModel : ObservableObject, IDisposable
 {
+    private static readonly TimeSpan MinimumStreamingRefreshInterval =
+        TimeSpan.FromMilliseconds(33);
     private const string PendingCapabilityNotice =
         "Capabilities are verified against the selected panel scope when you send.";
-    private const string ExactPanelYoloRequirement =
-        "Run-only YOLO requires an exact terminal panel. "
-        + "Clear this run and start a panel-scoped run to enable it.";
+    private static readonly IReadOnlyList<AgentReasoningEffortOption>
+        AllReasoningEffortOptions = Array.AsReadOnly<AgentReasoningEffortOption>(
+        [
+            new(AgentReasoningEffort.Automatic, "Auto"),
+            new(AgentReasoningEffort.Off, "Off"),
+            new(AgentReasoningEffort.Minimal, "Minimal"),
+            new(AgentReasoningEffort.Low, "Low"),
+            new(AgentReasoningEffort.Medium, "Medium"),
+            new(AgentReasoningEffort.High, "High"),
+            new(AgentReasoningEffort.ExtraHigh, "Extra High"),
+            new(AgentReasoningEffort.Max, "Max"),
+        ]);
+    private static readonly IReadOnlyList<AgentServiceTierOption>
+        AllServiceTierOptions = Array.AsReadOnly<AgentServiceTierOption>(
+        [
+            new(AgentServiceTier.Automatic, "Auto"),
+            new(AgentServiceTier.Default, "Standard"),
+            new(AgentServiceTier.Flex, "Flex"),
+            new(AgentServiceTier.Priority, "Priority"),
+        ]);
 
     private readonly IGovernedAgentRuntime _runtime;
     private readonly IAiProviderProfileRuntime _profiles;
     private readonly IUiThreadDispatcher _dispatcher;
     private readonly IAgentRunAuditReader? _auditReader;
+    private readonly IAgentModelFavoriteStore? _favoriteStore;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _sendGate = new();
     private Task _activeSend = Task.CompletedTask;
     private AiProviderProfileDescriptor? _selectedProvider;
+    private AiProviderModelDescriptor? _selectedModel;
+    private bool _modelSelectionExplicit;
+    private IReadOnlyList<AiProviderModelDescriptor> _models = [];
+    private string _modelSearch = string.Empty;
+    private string _conversationSearch = string.Empty;
+    private bool _isDiscoveringModels;
+    private string _modelDiscoveryStatus = string.Empty;
+    private long? _contextTokensUsed;
+    private readonly HashSet<AiProviderProfileId> _discoveredProviderIds = [];
+    private readonly HashSet<AgentModelFavorite> _favoriteModels = [];
+    private IReadOnlyList<AgentReasoningEffortOption> _reasoningEfforts =
+        Array.AsReadOnly([AllReasoningEffortOptions[0]]);
+    private AgentReasoningEffortOption _selectedReasoningEffort =
+        AllReasoningEffortOptions[0];
+    private IReadOnlyList<AgentServiceTierOption> _serviceTiers = [];
+    private AgentServiceTierOption _selectedServiceTier = AllServiceTierOptions[0];
     private string _prompt = string.Empty;
     private string _status = string.Empty;
     private string _provisionalAssistantText = string.Empty;
+    private string _provisionalReasoningSummary = string.Empty;
     private string _questionResponseDraft = string.Empty;
     private string _targetTitle = "No panel selected";
     private string _exactTarget = string.Empty;
@@ -218,23 +378,29 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private AgentToolActivityViewModel? _activeTool;
     private AgentProgressViewModel? _currentProgress;
     private AgentYoloAuthorityViewModel? _yoloAuthority;
+    private bool _fullAccessSelected;
+    private bool _approvalModeInitialized;
+    private bool _approvalModeChangePending;
     private AgentRunId? _runId;
     private AgentRunId? _auditRunId;
     private AgentRunAuditCursor? _nextAuditCursor;
     private CancellationTokenSource? _auditCancellation;
     private string _auditStatus =
-        "Expand to load durable, secret-free action evidence for this run.";
+        "Expand to load recorded actions for this conversation.";
     private AgentPermission _terminalMutationPermission = AgentPermission.Ask;
     private bool _terminalMutationAvailable;
     private bool _runtimeCanSend = true;
     private bool _runtimeCanSteer;
+    private bool _runtimeCanQueueFollowUp;
+    private int _queuedFollowUpCount;
     private long? _steeringGeneration;
     private bool _runtimeCanStop;
     private bool _isRunBound;
-    private bool _isExactTerminalPanelRun;
+    private bool _runHasTerminal;
     private bool _isContextInspectorExpanded;
     private bool _isAuditExpanded;
     private bool _isAuditLoading;
+    private bool _hasActionActivity;
     private bool _actionCancellationInFlight;
     private bool _decisionInFlight;
     private bool _questionResponseInFlight;
@@ -244,25 +410,68 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private bool _steerInFlight;
     private bool _clearInFlight;
     private bool _disposed;
+    private int _refreshPending;
+    private int _refreshLoopRunning;
+    private AgentPolicy _effectivePolicy = AgentPolicy.Default;
 
     public AgentChatViewModel(
         IGovernedAgentRuntime runtime,
         IAiProviderProfileRuntime profiles,
         IUiThreadDispatcher dispatcher,
-        IAgentRunAuditReader? auditReader = null)
+        IAgentRunAuditReader? auditReader = null,
+        IAgentModelFavoriteStore? favoriteStore = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _profiles = profiles ?? throw new ArgumentNullException(nameof(profiles));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _auditReader = auditReader;
+        _favoriteStore = favoriteStore;
         _runtime.Changed += OnRuntimeChanged;
         _profiles.ProfilesChanged += OnProfilesChanged;
+        if (_favoriteStore is not null)
+        {
+            _favoriteStore.Changed += OnFavoriteModelsChanged;
+            _ = LoadFavoriteModelsAsync(_lifetime.Token);
+        }
+
         Refresh();
+        _ = RestoreLatestConversationAsync(_lifetime.Token);
+    }
+
+    private async Task RestoreLatestConversationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _runtime.RestoreLatestConversationAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
     }
 
     public ObservableCollection<AiProviderProfileDescriptor> Providers { get; } = [];
 
     public ObservableCollection<AgentChatMessageViewModel> Messages { get; } = [];
+
+    public ObservableCollection<AgentConversationItemViewModel> Conversations { get; } = [];
+
+    public ObservableCollection<AgentConversationItemViewModel> FilteredConversations { get; } = [];
+
+    public ObservableCollection<AgentModelPickerItemViewModel> FilteredModels { get; } = [];
+
+    public bool HasNoModelMatches => FilteredModels.Count == 0;
+
+    public string ConversationSearch
+    {
+        get => _conversationSearch;
+        set
+        {
+            if (SetProperty(ref _conversationSearch, value ?? string.Empty))
+            {
+                RefreshFilteredConversations();
+            }
+        }
+    }
 
     public ObservableCollection<AgentContextItemViewModel> ContextItems { get; } = [];
 
@@ -271,6 +480,211 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<AgentAuditEntryViewModel> AuditEntries { get; } = [];
 
+    public ObservableCollection<AgentImageAttachment> PendingImages { get; } = [];
+
+    public IReadOnlyList<AiProviderModelDescriptor> Models
+    {
+        get => _models;
+        private set
+        {
+            if (SetProperty(ref _models, value))
+            {
+                OnPropertyChanged(nameof(HasMultipleModels));
+                OnPropertyChanged(nameof(CanChangeModel));
+            }
+        }
+    }
+
+    public AiProviderModelDescriptor? SelectedModel
+    {
+        get => _selectedModel;
+        set
+        {
+            if (value is not null && !Models.Contains(value))
+            {
+                throw new ArgumentException(
+                    "The model must come from the selected provider's available models.",
+                    nameof(value));
+            }
+
+            if (SetProperty(ref _selectedModel, value))
+            {
+                OnPropertyChanged(nameof(SelectedModelName));
+                NotifyContextWindowChanged();
+                UpdateModelCapabilities(value);
+            }
+        }
+    }
+
+    public string SelectedModelName => SelectedModel?.DisplayName ?? "No model";
+
+    public bool HasContextWindow => SelectedModel?.ContextWindowTokens is not null;
+
+    public long ContextUsedTokens => _contextTokensUsed ?? Messages
+        .LastOrDefault(message => message.IsAssistant && message.Usage is not null)
+        ?.Usage?.TotalTokens ?? 0;
+
+    public int ContextEffectiveLimit => SelectedModel?.ContextWindowTokens is { } capacity
+        ? AgentContextWindowPolicy.EffectiveLimit(capacity)
+        : 0;
+
+    public double ContextWindowPercent => ContextEffectiveLimit == 0
+        ? 0
+        : Math.Clamp(
+            ContextUsedTokens * 100d / ContextEffectiveLimit,
+            0,
+            100);
+
+    public string ContextWindowUsageLabel => HasContextWindow
+        ? $"{FormatTokenCount(ContextUsedTokens)} / {FormatTokenCount(ContextEffectiveLimit)} tokens used"
+        : string.Empty;
+
+    public string ModelSearch
+    {
+        get => _modelSearch;
+        set
+        {
+            if (SetProperty(ref _modelSearch, value))
+            {
+                RefreshFilteredModels();
+            }
+        }
+    }
+
+    public bool IsDiscoveringModels
+    {
+        get => _isDiscoveringModels;
+        private set => SetProperty(ref _isDiscoveringModels, value);
+    }
+
+    public string ModelDiscoveryStatus
+    {
+        get => _modelDiscoveryStatus;
+        private set
+        {
+            if (SetProperty(ref _modelDiscoveryStatus, value))
+            {
+                OnPropertyChanged(nameof(HasModelDiscoveryStatus));
+            }
+        }
+    }
+
+    public bool HasModelDiscoveryStatus => ModelDiscoveryStatus.Length > 0;
+
+    public bool HasConversationHistory => Conversations.Count > 0;
+
+    public bool HasNoConversationMatches =>
+        HasConversationHistory && FilteredConversations.Count == 0;
+
+    public bool HasMultipleModels => Models.Count > 1;
+
+    public IReadOnlyList<AgentReasoningEffortOption> ReasoningEfforts
+    {
+        get => _reasoningEfforts;
+        private set
+        {
+            if (SetProperty(ref _reasoningEfforts, value))
+            {
+                OnPropertyChanged(nameof(HasMultipleReasoningEfforts));
+            }
+        }
+    }
+
+    public bool HasMultipleReasoningEfforts => ReasoningEfforts.Count > 1;
+
+    public AgentReasoningEffortOption SelectedReasoningEffort
+    {
+        get => _selectedReasoningEffort;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!ReasoningEfforts.Contains(value))
+            {
+                throw new ArgumentException(
+                    "The reasoning effort must come from the supported selector options.",
+                    nameof(value));
+            }
+
+            SetProperty(ref _selectedReasoningEffort, value);
+        }
+    }
+
+    public IReadOnlyList<AgentServiceTierOption> ServiceTiers
+    {
+        get => _serviceTiers;
+        private set
+        {
+            if (SetProperty(ref _serviceTiers, value))
+            {
+                OnPropertyChanged(nameof(HasServiceTiers));
+                OnPropertyChanged(nameof(CanSelectServiceTier));
+            }
+        }
+    }
+
+    public bool HasServiceTiers => ServiceTiers.Count > 0;
+
+    public AgentServiceTierOption SelectedServiceTier
+    {
+        get => _selectedServiceTier;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!ServiceTiers.Contains(value))
+            {
+                throw new ArgumentException(
+                    "The service tier must come from the selected model's supported options.",
+                    nameof(value));
+            }
+
+            SetProperty(ref _selectedServiceTier, value);
+        }
+    }
+
+    public bool HasPendingImages => PendingImages.Count > 0;
+
+    public bool CanAttachImages =>
+        SelectedProvider?.SupportsImageInput == true
+        && State == GovernedAgentState.Ready
+        && !_clearInFlight
+        && PendingImages.Count < AgentImageAttachment.MaximumPerMessage;
+
+    public string PendingImagesLabel => PendingImages.Count == 1
+        ? PendingImages[0].FileName
+        : $"{PendingImages.Count.ToString(CultureInfo.InvariantCulture)} images attached";
+
+    public void AddPendingImage(AgentImageAttachment image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (PendingImages.Count >= AgentImageAttachment.MaximumPerMessage)
+        {
+            throw new InvalidOperationException(
+                "At most four images can be attached to one prompt.");
+        }
+
+        var totalBytes = PendingImages.Sum(item => (long)item.Content.Length)
+            + image.Content.Length;
+        if (totalBytes > AgentImageAttachment.MaximumTotalBytesPerMessage)
+        {
+            throw new InvalidOperationException(
+                "The images attached to one prompt exceed the 8 MiB limit.");
+        }
+
+        PendingImages.Add(image);
+        NotifyPendingImagesChanged();
+    }
+
+    public void ClearPendingImages()
+    {
+        if (PendingImages.Count == 0)
+        {
+            return;
+        }
+
+        PendingImages.Clear();
+        NotifyPendingImagesChanged();
+    }
+
     public AiProviderProfileDescriptor? SelectedProvider
     {
         get => _selectedProvider;
@@ -278,6 +692,15 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedProvider, value))
             {
+                _modelSelectionExplicit = false;
+                UpdateModels(value, value?.DefaultModel);
+
+                if (value is not null && _discoveredProviderIds.Add(value.Id))
+                {
+                    _ = DiscoverModelsAsync(value.Id, _lifetime.Token);
+                }
+
+                OnPropertyChanged(nameof(CanAttachImages));
                 NotifyAvailabilityChanged();
             }
         }
@@ -292,7 +715,10 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(CanSend));
                 OnPropertyChanged(nameof(CanSteer));
+                OnPropertyChanged(nameof(CanQueueFollowUp));
                 OnPropertyChanged(nameof(CanSubmitPrompt));
+                OnPropertyChanged(nameof(ShowPrimaryAction));
+                OnPropertyChanged(nameof(ShowStopAction));
             }
         }
     }
@@ -300,7 +726,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     public string Status
     {
         get => _status;
-        private set => SetProperty(ref _status, value);
+        private set
+        {
+            if (SetProperty(ref _status, value))
+            {
+                OnPropertyChanged(nameof(ShowFooterStatus));
+            }
+        }
     }
 
     public string ProvisionalAssistantText
@@ -310,10 +742,46 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _provisionalAssistantText, value))
             {
+                OnPropertyChanged(nameof(HasProvisionalAgentContent));
+                OnPropertyChanged(nameof(ShowProvisionalReasoningLoader));
                 NotifyContentChanged();
             }
         }
     }
+
+    public string ProvisionalReasoningSummary
+    {
+        get => _provisionalReasoningSummary;
+        private set
+        {
+            if (SetProperty(ref _provisionalReasoningSummary, value))
+            {
+                OnPropertyChanged(nameof(HasProvisionalReasoningSummary));
+                OnPropertyChanged(nameof(ProvisionalReasoningSummaryDisplay));
+                OnPropertyChanged(nameof(ProvisionalReasoningStageDisplay));
+                OnPropertyChanged(nameof(HasProvisionalAgentContent));
+                OnPropertyChanged(nameof(ShowProvisionalReasoningLoader));
+                NotifyContentChanged();
+            }
+        }
+    }
+
+    public string ProvisionalReasoningSummaryDisplay =>
+        AgentReasoningSummaryPresentation.Format(ProvisionalReasoningSummary);
+
+    public string ProvisionalReasoningStageDisplay =>
+        AgentReasoningSummaryPresentation.LatestStage(ProvisionalReasoningSummary);
+
+    public bool HasProvisionalReasoningSummary =>
+        ProvisionalReasoningSummary.Length > 0;
+
+    public bool ShowProvisionalReasoningLoader =>
+        State == GovernedAgentState.StreamingProvider
+        && HasProvisionalReasoningSummary
+        && !HasProvisionalAssistantText;
+
+    public bool HasProvisionalAgentContent =>
+        HasProvisionalAssistantText || HasProvisionalReasoningSummary;
 
     public GovernedAgentState State
     {
@@ -325,7 +793,9 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(StateLabel));
                 OnPropertyChanged(nameof(IsBusy));
                 OnPropertyChanged(nameof(IsStreaming));
+                OnPropertyChanged(nameof(ShowProvisionalReasoningLoader));
                 OnPropertyChanged(nameof(CanCancelActiveAction));
+                OnPropertyChanged(nameof(ShowFooterStatus));
                 NotifyQuestionAvailabilityChanged();
                 NotifyCapabilityRequestAvailabilityChanged();
             }
@@ -438,6 +908,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                 ContextItems.Count(item => item.Kind == PanelKind.Browser);
             var fileCount =
                 ContextItems.Count(item => item.Kind == PanelKind.FileViewer);
+            var statisticsCount =
+                ContextItems.Count(item => item.Kind == PanelKind.Statistics);
             var processMonitorCount =
                 ContextItems.Count(item => item.Kind == PanelKind.ProcessMonitor);
             if (terminalCount == ContextItems.Count)
@@ -459,6 +931,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                 return fileCount == 1
                     ? "1 File Viewer"
                     : $"{fileCount.ToString(CultureInfo.InvariantCulture)} File Viewers";
+            }
+
+            if (statisticsCount == ContextItems.Count)
+            {
+                return statisticsCount == 1
+                    ? "1 Statistics panel"
+                    : $"{statisticsCount.ToString(CultureInfo.InvariantCulture)} Statistics panels";
             }
 
             if (processMonitorCount == ContextItems.Count)
@@ -501,6 +980,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public bool CanShowAudit =>
         _auditReader is not null && _auditRunId is not null;
+
+    public bool HasAuditActivity => CanShowAudit && _hasActionActivity;
 
     public bool HasAuditEntries => AuditEntries.Count > 0;
 
@@ -545,6 +1026,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _capabilityNotice, value))
             {
                 OnPropertyChanged(nameof(HasCapabilityNotice));
+                OnPropertyChanged(nameof(HasStandingCapabilityNotice));
             }
         }
     }
@@ -556,6 +1038,9 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool HasCapabilityNotice => HasProvider && CapabilityNotice.Length > 0;
 
+    public bool HasStandingCapabilityNotice =>
+        HasCapabilityNotice && TerminalMutationAvailable;
+
     public bool TerminalMutationAvailable
     {
         get => _terminalMutationAvailable;
@@ -564,12 +1049,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _terminalMutationAvailable, value))
             {
                 OnPropertyChanged(nameof(CapabilityLabel));
+                OnPropertyChanged(nameof(HasStandingCapabilityNotice));
             }
         }
     }
 
     public string CapabilityLabel => TerminalMutationAvailable
-        ? "Governed input"
+        ? "Terminal access"
         : "Capability check";
 
     public string EffectivePolicyProvider
@@ -600,7 +1086,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         $"{EffectivePolicyProvider} · {EffectivePolicyModel}";
 
     public string RendererModeDescription =>
-        "Native .NET · governed panel-scope agent";
+        "AI agent for this workspace";
 
     public AgentApprovalCardViewModel? PendingApproval
     {
@@ -746,29 +1232,27 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public bool HasYoloAuthority => YoloAuthority is not null;
 
-    public bool CanOfferYolo =>
-        !HasYoloAuthority
-        && _isRunBound
-        && _isExactTerminalPanelRun
-        && HasExactTarget
-        && State == GovernedAgentState.Ready;
+    public bool CanOfferYolo => !_fullAccessSelected;
 
-    public bool CanEnableYolo => CanOfferYolo && !_policyChangeInFlight;
+    public bool CanEnableYolo => !_fullAccessSelected;
 
-    public bool CanDisableYolo =>
-        HasYoloAuthority
-        && !_policyChangeInFlight
-        && State != GovernedAgentState.Cancelled;
+    public bool CanDisableYolo => _fullAccessSelected;
 
-    public string PolicyModeLabel => HasYoloAuthority
-        ? "YOLO"
+    public string PolicyModeLabel => _fullAccessSelected
+        ? "Full access"
         : FormatEnum(_terminalMutationPermission);
+
+    public string AccessModeLabel => _fullAccessSelected
+        ? "Full access"
+        : "Ask approval";
 
     public bool HasProvider => Providers.Count > 0;
 
+    public bool HasMultipleProviders => Providers.Count > 1;
+
     public bool HasNoProvider => !HasProvider;
 
-    public bool HasConversation => Messages.Count > 0 || HasProvisionalAssistantText;
+    public bool HasConversation => Messages.Count > 0 || HasProvisionalAgentContent;
 
     public bool HasAgentContent =>
         HasConversation
@@ -777,9 +1261,18 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         || HasPendingApproval
         || HasActiveTool
         || HasCurrentProgress
-        || CanShowAudit;
+        || HasAuditActivity;
 
     public bool HasNoConversation => !HasAgentContent;
+
+    public bool HasFailedTurn =>
+        State == GovernedAgentState.Failed && !HasConversation;
+
+    public bool ShowFooterStatus => Status.Length > 0 && !HasFailedTurn;
+
+    public string FailureHeading => SelectedModel is null
+        ? "The response failed"
+        : $"{SelectedModel.DisplayName} couldn't respond";
 
     public bool CanStartConversation =>
         SelectedProvider is not null
@@ -791,10 +1284,11 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public bool CanSend =>
         SelectedProvider is not null
-        && _runtimeCanSend
-        && State == GovernedAgentState.Ready
+        && ((_runtimeCanSend && State == GovernedAgentState.Ready)
+            || State == GovernedAgentState.Cancelled)
         && !_clearInFlight
-        && !string.IsNullOrWhiteSpace(Prompt);
+        && (!HasPendingImages || SelectedProvider.SupportsImageInput)
+        && (!string.IsNullOrWhiteSpace(Prompt) || HasPendingImages);
 
     public bool IsSteeringAvailable =>
         SelectedProvider is not null
@@ -809,9 +1303,31 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         IsSteeringAvailable
         && !string.IsNullOrWhiteSpace(Prompt);
 
+    public bool CanOfferFollowUpQueue =>
+        SelectedProvider is not null
+        && _runtimeCanQueueFollowUp
+        && !_steerInFlight
+        && !_clearInFlight;
+
+    public bool CanQueueFollowUp =>
+        CanOfferFollowUpQueue
+        && !string.IsNullOrWhiteSpace(Prompt);
+
+    public int QueuedFollowUpCount => _queuedFollowUpCount;
+
+    public string QueuedFollowUpLabel => QueuedFollowUpCount == 1
+        ? "1 follow-up queued"
+        : $"{QueuedFollowUpCount.ToString(CultureInfo.InvariantCulture)} follow-ups queued";
+
+    public bool HasQueuedFollowUps => QueuedFollowUpCount > 0;
+
     public bool CanSubmitPrompt => CanSend || CanSteer;
 
-    public bool CanShowPrimaryAction => !IsStreaming || IsSteeringAvailable;
+    public bool CanShowPrimaryAction => !IsStreaming || CanSteer;
+
+    public bool ShowPrimaryAction => CanShowPrimaryAction && !HasFailedTurn;
+
+    public bool ShowStopAction => CanStop && !ShowPrimaryAction;
 
     public string PrimaryActionLabel =>
         IsSteeringAvailable ? "Steer" : "Send";
@@ -829,7 +1345,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     // Preserved as an alias for callers that still use the old chat naming.
     public bool CanCancel => CanStop;
 
-    public bool CanStop => _runtimeCanStop || IsBusy;
+    public bool CanStop => IsBusy;
 
     public bool CanRequestStop =>
         CanStop && !_stopInFlight && State != GovernedAgentState.Cancelling;
@@ -847,11 +1363,30 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         && !HasConversation
         && !_clearInFlight;
 
+    public bool CanBrowseModels =>
+        HasProvider
+        && !IsBusy
+        && !_clearInFlight;
+
+    public bool CanChangeModel => HasMultipleModels && CanBrowseModels;
+
+    public bool CanSelectReasoningEffort =>
+        ReasoningEfforts.Count > 1
+        && State == GovernedAgentState.Ready
+        && !_clearInFlight;
+
+    public bool CanSelectServiceTier =>
+        ServiceTiers.Count > 1
+        && State == GovernedAgentState.Ready
+        && !_clearInFlight;
+
     public bool CanEnterPrompt =>
         SelectedProvider is not null
         && !_clearInFlight
         && ((_runtimeCanSend && State == GovernedAgentState.Ready)
-            || IsSteeringAvailable);
+            || State == GovernedAgentState.Cancelled
+            || IsSteeringAvailable
+            || CanOfferFollowUpQueue);
 
     public bool NeedsProviderAttention =>
         SelectedProvider is null
@@ -918,6 +1453,43 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         }
     }
 
+    public async Task QueueFollowUpAsync(CancellationToken cancellationToken)
+    {
+        if (!CanQueueFollowUp)
+        {
+            return;
+        }
+
+        var followUp = Prompt;
+        Prompt = string.Empty;
+        try
+        {
+            var result = await _runtime.QueueFollowUpAsync(
+                new GovernedAgentFollowUp(
+                    followUp,
+                    SelectedReasoningEffort.Value),
+                cancellationToken);
+            if (!result.IsAccepted)
+            {
+                if (string.IsNullOrEmpty(Prompt))
+                {
+                    Prompt = followUp;
+                }
+
+                Status = result.Message;
+            }
+        }
+        catch
+        {
+            if (string.IsNullOrEmpty(Prompt))
+            {
+                Prompt = followUp;
+            }
+
+            throw;
+        }
+    }
+
     public Task SendAsync(
         AgentTarget target,
         AgentPolicy policy,
@@ -933,10 +1505,11 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        if (!_runtimeCanSend
-            || State != GovernedAgentState.Ready
+        var startsRun = !_isRunBound || State == GovernedAgentState.Cancelled;
+        if ((!_runtimeCanSend && State != GovernedAgentState.Cancelled)
+            || State is not (GovernedAgentState.Ready or GovernedAgentState.Cancelled)
             || _clearInFlight
-            || string.IsNullOrWhiteSpace(Prompt))
+            || (string.IsNullOrWhiteSpace(Prompt) && !HasPendingImages))
         {
             return Task.CompletedTask;
         }
@@ -959,29 +1532,90 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         if (policy is not null)
         {
             SelectedProvider = provider;
+            if (startsRun && !_modelSelectionExplicit)
+            {
+                UpdateModels(provider, policy.Model);
+            }
+        }
+
+        if (HasPendingImages && !provider.SupportsImageInput)
+        {
+            ReportTargetUnavailable(
+                "The selected AI provider does not support image input.");
+            return Task.CompletedTask;
         }
 
         var prompt = Prompt;
-        var request = policy is null
-            ? new GovernedAgentPrompt(
-                provider.Id,
-                prompt,
-                target)
-            : new GovernedAgentPrompt(
+        var images = PendingImages.ToArray();
+        var selectedModel = SelectedModel?.Id
+            ?? policy?.Model
+            ?? provider.DefaultModel;
+        AgentPolicy? requestedPolicy = policy;
+        if (requestedPolicy is null && startsRun)
+        {
+            requestedPolicy = new AgentPolicy(
+                provider.Id.Value,
+                SelectedModel?.Id ?? provider.DefaultModel,
+                _effectivePolicy.Permissions);
+        }
+
+        GovernedAgentPrompt request;
+        if (requestedPolicy is null)
+        {
+            request = new GovernedAgentPrompt(
                 provider.Id,
                 prompt,
                 target,
-                policy);
+                images,
+                SelectedReasoningEffort.Value,
+                SelectedServiceTier.Value)
+            {
+                Model = selectedModel,
+            };
+        }
+        else
+        {
+            request = new GovernedAgentPrompt(
+                provider.Id,
+                prompt,
+                target,
+                images,
+                SelectedReasoningEffort.Value,
+                SelectedServiceTier.Value,
+                requestedPolicy,
+                _fullAccessSelected
+                    ? AgentApprovalMode.FullAccess
+                    : AgentApprovalMode.Ask)
+            {
+                Model = selectedModel,
+            };
+        }
+
         Prompt = string.Empty;
+        ClearPendingImages();
         lock (_sendGate)
         {
             if (!_activeSend.IsCompleted)
             {
                 Prompt = prompt;
+                foreach (var image in images)
+                {
+                    AddPendingImage(image);
+                }
                 return Task.CompletedTask;
             }
 
-            _activeSend = SendCoreAsync(request, prompt, cancellationToken);
+            var embedsApprovalMode = startsRun;
+            if (embedsApprovalMode)
+            {
+                _approvalModeChangePending = false;
+            }
+
+            _activeSend = SendCoreAsync(
+                request,
+                prompt,
+                embedsApprovalMode,
+                cancellationToken);
             return _activeSend;
         }
     }
@@ -1129,46 +1763,53 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public async Task EnableYoloAsync(
         TimeSpan lifetime,
+        CancellationToken cancellationToken) =>
+        await SelectApprovalModeAsync(
+            fullAccess: true,
+            cancellationToken);
+
+    public Task SelectFullAccessAsync(CancellationToken cancellationToken) =>
+        SelectApprovalModeAsync(fullAccess: true, cancellationToken);
+
+    public Task SelectAskApprovalAsync(CancellationToken cancellationToken) =>
+        SelectApprovalModeAsync(fullAccess: false, cancellationToken);
+
+    public Task DisableYoloAsync(CancellationToken cancellationToken) =>
+        SelectAskApprovalAsync(cancellationToken);
+
+    private async Task SelectApprovalModeAsync(
+        bool fullAccess,
         CancellationToken cancellationToken)
     {
-        if (!CanEnableYolo)
-        {
-            return;
-        }
-
-        _policyChangeInFlight = true;
+        _fullAccessSelected = fullAccess;
+        _approvalModeChangePending = true;
         NotifyPolicyAvailabilityChanged();
-        try
-        {
-            var result = await _runtime.EnableYoloAsync(
-                lifetime,
-                cancellationToken);
-            if (!result.IsAccepted)
-            {
-                Status = result.Message;
-            }
-        }
-        finally
-        {
-            _policyChangeInFlight = false;
-            NotifyPolicyAvailabilityChanged();
-        }
+        await ApplySelectedApprovalModeAsync(cancellationToken);
     }
 
-    public async Task DisableYoloAsync(CancellationToken cancellationToken)
+    private async Task ApplySelectedApprovalModeAsync(
+        CancellationToken cancellationToken)
     {
-        if (!CanDisableYolo)
+        if (!_approvalModeChangePending
+            || _policyChangeInFlight
+            || !_isRunBound
+            || (_fullAccessSelected && State != GovernedAgentState.Ready))
         {
             return;
         }
 
+        var fullAccess = _fullAccessSelected;
+        _approvalModeChangePending = false;
         _policyChangeInFlight = true;
         NotifyPolicyAvailabilityChanged();
         try
         {
-            var result = await _runtime.DisableYoloAsync(cancellationToken);
+            var result = fullAccess
+                ? await _runtime.EnableFullAccessAsync(cancellationToken)
+                : await _runtime.DisableYoloAsync(cancellationToken);
             if (!result.IsAccepted)
             {
+                _fullAccessSelected = HasYoloAuthority;
                 Status = result.Message;
             }
         }
@@ -1199,6 +1840,166 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         {
             _clearInFlight = false;
             NotifyAvailabilityChanged();
+        }
+    }
+
+    public async Task StartNewConversationAsync(CancellationToken cancellationToken)
+    {
+        if (IsBusy || _clearInFlight)
+        {
+            return;
+        }
+
+        _clearInFlight = true;
+        NotifyAvailabilityChanged();
+        try
+        {
+            if (!await _runtime.StartNewConversationAsync(cancellationToken))
+            {
+                Status = "A new conversation cannot be started while work is active.";
+            }
+        }
+        finally
+        {
+            _clearInFlight = false;
+            NotifyAvailabilityChanged();
+        }
+    }
+
+    public Task SelectModelAsync(
+        AiProviderModelDescriptor model,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!Models.Contains(model) || !CanBrowseModels)
+        {
+            return Task.CompletedTask;
+        }
+
+        SelectedModel = model;
+        _modelSelectionExplicit = true;
+        return Task.CompletedTask;
+    }
+
+    public async Task ToggleFavoriteModelAsync(
+        AgentModelPickerItemViewModel item,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (SelectedProvider is not { } provider
+            || Models.All(model => !string.Equals(
+                model.Id,
+                item.Id,
+                StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var favorite = new AgentModelFavorite(provider.Id, item.Id);
+        var shouldFavorite = !item.IsFavorite;
+        SetFavorite(favorite, shouldFavorite);
+        RefreshFilteredModels();
+        if (_favoriteStore is null)
+        {
+            return;
+        }
+
+        var result = await _favoriteStore.SetAsync(
+            favorite,
+            shouldFavorite,
+            cancellationToken);
+        if (result.IsSuccess)
+        {
+            return;
+        }
+
+        SetFavorite(favorite, !shouldFavorite);
+        RefreshFilteredModels();
+        ModelDiscoveryStatus = result.Error?.Message
+            ?? "The favorite model could not be saved.";
+    }
+
+    public async Task OpenConversationAsync(
+        AgentRunId runId,
+        CancellationToken cancellationToken)
+    {
+        if (IsBusy || _clearInFlight)
+        {
+            return;
+        }
+
+        _clearInFlight = true;
+        NotifyAvailabilityChanged();
+        try
+        {
+            if (!await _runtime.OpenConversationAsync(runId, cancellationToken))
+            {
+                Status = "The saved conversation could not be opened.";
+            }
+        }
+        finally
+        {
+            _clearInFlight = false;
+            NotifyAvailabilityChanged();
+        }
+    }
+
+    public async Task ForkConversationAsync(
+        AgentConversationForkPoint forkPoint,
+        CancellationToken cancellationToken)
+    {
+        if (IsBusy || _clearInFlight)
+        {
+            return;
+        }
+
+        _clearInFlight = true;
+        NotifyAvailabilityChanged();
+        try
+        {
+            if (!await _runtime.ForkConversationAsync(forkPoint, cancellationToken))
+            {
+                Status = "The conversation could not be forked.";
+            }
+        }
+        finally
+        {
+            _clearInFlight = false;
+            NotifyAvailabilityChanged();
+        }
+    }
+
+    public async Task DeleteConversationAsync(
+        AgentRunId runId,
+        CancellationToken cancellationToken)
+    {
+        if (IsBusy || _clearInFlight)
+        {
+            return;
+        }
+
+        _clearInFlight = true;
+        NotifyAvailabilityChanged();
+        try
+        {
+            if (!await _runtime.DeleteConversationAsync(runId, cancellationToken))
+            {
+                Status = "The saved conversation could not be deleted.";
+            }
+        }
+        finally
+        {
+            _clearInFlight = false;
+            NotifyAvailabilityChanged();
+        }
+    }
+
+    public async Task RefreshModelsAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedProvider is { } provider)
+        {
+            await DiscoverModelsAsync(provider.Id, cancellationToken);
         }
     }
 
@@ -1248,6 +2049,10 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         _disposed = true;
         _runtime.Changed -= OnRuntimeChanged;
         _profiles.ProfilesChanged -= OnProfilesChanged;
+        if (_favoriteStore is not null)
+        {
+            _favoriteStore.Changed -= OnFavoriteModelsChanged;
+        }
         _auditCancellation?.Cancel();
         _auditCancellation?.Dispose();
         _auditCancellation = null;
@@ -1258,17 +2063,59 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private async Task SendCoreAsync(
         GovernedAgentPrompt request,
         string prompt,
+        bool embedsApprovalMode,
         CancellationToken cancellationToken)
     {
-        var result = await _runtime.SendAsync(request, cancellationToken);
-        if (!result.IsSuccess)
+        string? failureStatus = null;
+        try
         {
-            if (string.IsNullOrEmpty(Prompt))
+            var result = await _runtime.SendAsync(request, cancellationToken);
+            if (!result.IsSuccess)
             {
-                Prompt = prompt;
-            }
+                var recoverableDrafts = new List<string>();
+                if (!result.InitialPromptCommitted && prompt.Length > 0)
+                {
+                    recoverableDrafts.Add(prompt);
+                }
 
-            Status = result.Message;
+                if (result.RecoverableFollowUps is { Count: > 0 } followUps)
+                {
+                    recoverableDrafts.AddRange(
+                        followUps.Select(followUp => followUp.Message));
+                }
+
+                if (recoverableDrafts.Count > 0)
+                {
+                    var recovered = string.Join(
+                        Environment.NewLine + Environment.NewLine,
+                        recoverableDrafts);
+                    Prompt = string.IsNullOrEmpty(Prompt)
+                        ? recovered
+                        : Prompt + Environment.NewLine + Environment.NewLine + recovered;
+                }
+
+                if (!result.InitialPromptCommitted && PendingImages.Count == 0)
+                {
+                    foreach (var image in request.Images)
+                    {
+                        AddPendingImage(image);
+                    }
+                }
+
+                failureStatus = result.Message;
+            }
+        }
+        finally
+        {
+            if (embedsApprovalMode)
+            {
+                QueueRefresh();
+            }
+        }
+
+        if (failureStatus is not null)
+        {
+            Status = failureStatus;
         }
     }
 
@@ -1359,16 +2206,47 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         QueueRefresh();
     }
 
-    private void QueueRefresh() => _ = RefreshAsync();
+    private void OnFavoriteModelsChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        _ = LoadFavoriteModelsAsync(_lifetime.Token);
+    }
 
-    private async Task RefreshAsync()
+    private void QueueRefresh()
+    {
+        Interlocked.Exchange(ref _refreshPending, 1);
+        if (Interlocked.CompareExchange(ref _refreshLoopRunning, 1, 0) == 0)
+        {
+            _ = DrainRefreshesAsync();
+        }
+    }
+
+    private async Task DrainRefreshesAsync()
     {
         try
         {
-            await _dispatcher.InvokeAsync(Refresh, _lifetime.Token);
+            while (Interlocked.Exchange(ref _refreshPending, 0) == 1)
+            {
+                await _dispatcher.InvokeAsync(Refresh, _lifetime.Token);
+                if (_dispatcher.RequiresFramePacing)
+                {
+                    await Task.Delay(
+                        MinimumStreamingRefreshInterval,
+                        _lifetime.Token);
+                }
+            }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _refreshLoopRunning, 0);
+            if (!_disposed && Volatile.Read(ref _refreshPending) == 1)
+            {
+                QueueRefresh();
+            }
         }
     }
 
@@ -1378,6 +2256,12 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var previousState = State;
         var previousQuestionId = PendingQuestion?.Id;
         var selectedId = snapshot.ProviderId ?? SelectedProvider?.Id;
+        var selectedModelId = snapshot.ProviderId is not null
+            && snapshot.ProviderId == selectedId
+                ? snapshot.Model ?? snapshot.EffectivePolicy?.Model
+                : selectedId == SelectedProvider?.Id
+                    ? SelectedModel?.Id
+                    : null;
         var hadProvider = HasProvider;
         Replace(
             Providers,
@@ -1390,20 +2274,47 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(HasProvider));
             OnPropertyChanged(nameof(HasNoProvider));
         }
+        OnPropertyChanged(nameof(HasMultipleProviders));
 
         var selectedProvider = Providers.FirstOrDefault(profile => profile.Id == selectedId);
-        var isRunBound = snapshot.RunId is not null
-            || snapshot.ProviderId is not null && snapshot.HasMessages;
+        // A restored transcript has messages and a provider, but no live broker run.
+        // Keep approval-mode selection pending until the next prompt creates that run.
+        var isRunBound = snapshot.RunId is not null;
         var boundProviderMissing = snapshot.ProviderId is not null
             && isRunBound
             && selectedProvider is null;
         SelectedProvider = selectedProvider
             ?? (boundProviderMissing ? null : Providers.FirstOrDefault());
+        UpdateModels(SelectedProvider, selectedModelId);
+
+        _contextTokensUsed = snapshot.ContextTokensUsed;
 
         Replace(
             Messages,
             snapshot.Messages.Select(message =>
-                new AgentChatMessageViewModel(message.Role, message.Content)));
+                new AgentChatMessageViewModel(
+                    message.Role,
+                    message.Content,
+                    message.ReasoningSummary,
+                    message.Usage,
+                    message.Images,
+                    message.RequestedReasoningEffort,
+                    message.ForkPoint)));
+        NotifyContextWindowChanged();
+        Replace(
+            Conversations,
+            (snapshot.Conversations.IsDefault
+                    ? []
+                    : snapshot.Conversations)
+                .Select(item => new AgentConversationItemViewModel(
+                    item.RunId,
+                    item.Title,
+                    item.Model ?? "Model unavailable",
+                    AgentPresentationTime.Friendly(item.UpdatedAt),
+                    item.RunId == snapshot.RunId
+                        || item.RunId == _runId && snapshot.HasMessages)));
+        RefreshFilteredConversations();
+        OnPropertyChanged(nameof(HasConversationHistory));
         Replace(
             ContextItems,
             snapshot.ContextItems.Select(CreateContextItem));
@@ -1416,6 +2327,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         }
 
         ProvisionalAssistantText = snapshot.ProvisionalAssistantText;
+        ProvisionalReasoningSummary = snapshot.ProvisionalReasoningSummary;
         CurrentProgress = snapshot.CurrentProgress is { } progress
             ? new AgentProgressViewModel(progress)
             : null;
@@ -1434,6 +2346,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var auditRunChanged = _auditRunId != snapshot.RunId;
         if (auditRunChanged)
         {
+            _hasActionActivity = false;
             ResetAudit(snapshot.RunId);
         }
 
@@ -1442,6 +2355,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         ConnectionBoundary = snapshot.ConnectionBoundary ?? string.Empty;
         WorkingDirectory = snapshot.WorkingDirectory ?? string.Empty;
         var effectivePolicy = snapshot.EffectivePolicy ?? AgentPolicy.Default;
+        _effectivePolicy = effectivePolicy;
         EffectivePolicyProvider = effectivePolicy.Provider;
         EffectivePolicyModel = effectivePolicy.Model;
         Replace(
@@ -1452,14 +2366,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                     AgentPolicyPresentation.PermissionName(
                         effectivePolicy.GetPermission(capability)))));
         TerminalMutationAvailable = snapshot.TerminalMutationAvailable;
-        _isExactTerminalPanelRun = snapshot.Target is AgentTarget.Panel
-            && (snapshot.ContextItems.Length == 0
-                || snapshot.ContextItems is
-                [
-                {
-                    Kind: PanelKind.Terminal,
-                },
-                ]);
+        _runHasTerminal = snapshot.ContextItems.Length == 0
+            || snapshot.ContextItems.Any(item => item.Kind == PanelKind.Terminal);
         CapabilityNotice = ResolveCapabilityNotice(snapshot);
         PendingApproval = CreateApproval(snapshot.PendingApproval);
         ActiveTool = snapshot.ActiveTool is null
@@ -1471,11 +2379,31 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                 snapshot.ActiveTool.TargetTitle,
                 snapshot.ActiveTool.CancellationRequested);
         _terminalMutationPermission = snapshot.TerminalMutationPermission;
+        if (!_approvalModeInitialized)
+        {
+            _fullAccessSelected = snapshot.YoloAuthority is not null;
+            _approvalModeInitialized = true;
+        }
+
         YoloAuthority = CreateYoloAuthority(snapshot.YoloAuthority);
+        if (!_hasActionActivity
+            && (snapshot.ActiveTool is not null || snapshot.PendingApproval is not null))
+        {
+            _hasActionActivity = true;
+            OnPropertyChanged(nameof(HasAuditActivity));
+        }
 
         _runId = snapshot.RunId;
         _runtimeCanSend = snapshot.CanSend;
         _runtimeCanSteer = snapshot.CanSteer;
+        _runtimeCanQueueFollowUp = snapshot.CanQueueFollowUp;
+        if (_queuedFollowUpCount != snapshot.QueuedFollowUpCount)
+        {
+            _queuedFollowUpCount = snapshot.QueuedFollowUpCount;
+            OnPropertyChanged(nameof(QueuedFollowUpCount));
+            OnPropertyChanged(nameof(QueuedFollowUpLabel));
+            OnPropertyChanged(nameof(HasQueuedFollowUps));
+        }
         _steeringGeneration = snapshot.SteeringGeneration;
         _runtimeCanStop = snapshot.CanStop;
         _isRunBound = isRunBound;
@@ -1484,6 +2412,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             : snapshot.Status;
         NotifyAvailabilityChanged();
         NotifyContentChanged();
+        if (_approvalModeChangePending
+            && _isRunBound
+            && (!_fullAccessSelected || State == GovernedAgentState.Ready))
+        {
+            _ = ApplySelectedApprovalModeAsync(_lifetime.Token);
+        }
+
         if (IsAuditExpanded
             && CanShowAudit
             && (auditRunChanged
@@ -1518,8 +2453,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var cursor = replace ? null : _nextAuditCursor;
         IsAuditLoading = true;
         AuditStatus = replace
-            ? "Loading durable action evidence…"
-            : "Loading older durable action evidence…";
+            ? "Loading recorded actions…"
+            : "Loading older actions…";
 
         AuditStoreResult<AgentRunAuditPage>? result = null;
         try
@@ -1537,7 +2472,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             _ = exception;
             if (_auditRunId == runId)
             {
-                AuditStatus = "Durable action evidence is temporarily unavailable.";
+                AuditStatus = "Recorded actions are temporarily unavailable.";
             }
         }
         finally
@@ -1579,10 +2514,10 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         _nextAuditCursor = page.Next;
         NotifyAuditContentChanged();
         AuditStatus = AuditEntries.Count == 0
-            ? "No governed actions have durable audit evidence in this run yet."
+            ? "No recorded actions in this conversation yet."
             : _nextAuditCursor is null
-                ? "Showing all durable action evidence for this run."
-                : "Showing the newest durable action evidence. Older entries are available.";
+                ? "Showing all recorded actions."
+                : "Showing the newest actions. Older entries are available.";
     }
 
     private void ResetAudit(AgentRunId? runId)
@@ -1600,9 +2535,10 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         }
 
         AuditStatus = runId is null
-            ? "Start a governed run to inspect its durable action evidence."
-            : "Expand to load durable, secret-free action evidence for this run.";
+            ? "Send a message to record agent actions."
+            : "Expand to load recorded actions for this conversation.";
         OnPropertyChanged(nameof(CanShowAudit));
+        OnPropertyChanged(nameof(HasAuditActivity));
         NotifyAuditContentChanged();
         NotifyContentChanged();
     }
@@ -1659,9 +2595,9 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     {
         var transition = policy.Transition switch
         {
-            AgentRunPolicyTransition.YoloEnabled => "YOLO enabled",
-            AgentRunPolicyTransition.YoloDisabled => "YOLO disabled",
-            AgentRunPolicyTransition.YoloExpired => "YOLO expired",
+            AgentRunPolicyTransition.YoloEnabled => "Full access enabled",
+            AgentRunPolicyTransition.YoloDisabled => "Full access disabled",
+            AgentRunPolicyTransition.YoloExpired => "Full access expired",
             AgentRunPolicyTransition.Updated => "Run policy updated",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(policy),
@@ -1671,7 +2607,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var evidence =
             $"Policy generation {policy.PolicyGeneration.ToString(CultureInfo.InvariantCulture)}";
         var result = policy.YoloExpiresAtUtc is { } expiry
-            ? $"Authority window ends {LocalAuditTime(expiry)}"
+            ? $"Access ends {LocalAuditTime(expiry)}"
             : string.Empty;
         var target = $"Verified target · {ShortDigest(policy.TargetIdentity)}";
         var occurred = LocalAuditTime(policy.OccurredAtUtc);
@@ -1727,12 +2663,12 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         code switch
         {
             AuditStoreErrorCode.Cancelled =>
-                "Loading durable action evidence was cancelled.",
+                "Loading recorded actions was cancelled.",
             AuditStoreErrorCode.InvalidQuery =>
                 "The audit position changed. Refresh the current run.",
             AuditStoreErrorCode.StorageFailure =>
-                "Durable action evidence is invalid and cannot be shown safely.",
-            _ => "Durable action evidence is temporarily unavailable.",
+                "Recorded actions could not be loaded.",
+            _ => "Recorded actions are temporarily unavailable.",
         };
 
     private static bool IsStaleQuestionResponse(string code) =>
@@ -1785,6 +2721,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             PanelKind.Terminal => "terminal",
             PanelKind.Browser => "browser",
             PanelKind.FileViewer => "File Viewer",
+            PanelKind.Statistics => "Statistics",
             PanelKind.ProcessMonitor => "Process Monitor",
             _ => "panel",
         };
@@ -1798,15 +2735,17 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var context = item.Kind switch
         {
             PanelKind.Browser =>
-                "Browser state is available only through governed reads",
+                "Browser tools are available",
             PanelKind.FileViewer
                 when item.FileProviderProfileId is { } providerProfile
                      && item.FileRootDisplay is { } trustedRoot =>
                 $"{providerProfile} · trusted root {trustedRoot}",
             PanelKind.FileViewer =>
-                "No governed File Viewer scope is available",
+                "No File Viewer is available",
+            PanelKind.Statistics =>
+                "Local resource statistics are available",
             PanelKind.ProcessMonitor =>
-                "Local host process metadata is available only through governed reads",
+                "Local processes are available",
             _ => (item.ConnectionBoundary, item.WorkingDirectory) switch
             {
                 (not null, not null) =>
@@ -1851,51 +2790,58 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             item => item.Kind == PanelKind.Browser);
         var hasFiles = snapshot.ContextItems.Any(
             item => item.Kind == PanelKind.FileViewer);
+        var hasStatistics = snapshot.ContextItems.Any(
+            item => item.Kind == PanelKind.Statistics);
         var hasProcesses = snapshot.ContextItems.Any(
             item => item.Kind == PanelKind.ProcessMonitor);
+        var statisticsNotice =
+            (snapshot.EffectivePolicy ?? AgentPolicy.Default).GetPermission(
+                AgentCapability.ProcessControl) == AgentPermission.Off
+                ? "Local resource statistics are disabled in this workspace."
+                : "Local resource statistics are available.";
         var processNotice =
             (snapshot.EffectivePolicy ?? AgentPolicy.Default).GetPermission(
                 AgentCapability.ProcessControl) == AgentPermission.Off
-                ? "Process observation is local-host-only and disabled by the current policy."
-                : "Process metadata is local-host-only and uses governed one-action authorization.";
+                ? "Process tools are disabled in this workspace."
+                : "Local process information is available.";
         var capabilityNotice = !string.IsNullOrWhiteSpace(snapshot.CapabilityNotice)
             ? snapshot.CapabilityNotice
             : hasTerminal && snapshot.TerminalMutationAvailable
-                ? "Governed terminal input is available. Physical human input preempts the agent."
+                ? "Terminal tools are available."
                 : hasTerminal
                     ? PendingCapabilityNotice
                     : hasBrowser
-                        ? "Browser state and navigation use governed one-action authorization."
+                        ? "Browser tools are available."
                         : hasFiles
-                            ? "File observations are bounded to the trusted File Viewer root."
-                            : hasProcesses
-                                ? processNotice
-                                : PendingCapabilityNotice;
+                            ? "File tools are limited to the selected File Viewer location."
+                            : hasStatistics
+                                ? statisticsNotice
+                                : hasProcesses
+                                    ? processNotice
+                                    : PendingCapabilityNotice;
         if (hasBrowser && hasTerminal)
         {
-            capabilityNotice +=
-                " Browser state and navigation use governed one-action authorization.";
+            capabilityNotice += " Browser tools are available.";
         }
 
         if (hasFiles && (hasTerminal || hasBrowser))
         {
             capabilityNotice +=
-                " File observations remain bounded to the trusted File Viewer root.";
+                " File tools are limited to the selected File Viewer location.";
         }
 
-        if (hasProcesses && (hasTerminal || hasBrowser || hasFiles))
+        if (hasStatistics && (hasTerminal || hasBrowser || hasFiles))
+        {
+            capabilityNotice += $" {statisticsNotice}";
+        }
+
+        if (hasProcesses
+            && (hasTerminal || hasBrowser || hasFiles || hasStatistics))
         {
             capabilityNotice += $" {processNotice}";
         }
 
-        if (!hasTerminal
-            || snapshot.Target is null or AgentTarget.Panel
-            || snapshot.YoloAuthority is not null)
-        {
-            return capabilityNotice;
-        }
-
-        return $"{capabilityNotice} {ExactPanelYoloRequirement}";
+        return capabilityNotice;
     }
 
     private static AgentApprovalCardViewModel? CreateApproval(
@@ -1952,6 +2898,14 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             return null;
         }
 
+        if (authority.ExpiresAtUtc == AgentYoloConfirmation.RunLifetimeExpiry)
+        {
+            return new AgentYoloAuthorityViewModel(
+                FormatTarget(authority.Target),
+                "Until changed",
+                string.Empty);
+        }
+
         var duration = authority.ExpiresAtUtc - authority.ConfirmedAtUtc;
         return new AgentYoloAuthorityViewModel(
             FormatTarget(authority.Target),
@@ -1991,13 +2945,40 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         where T : struct, Enum =>
         value.ToString();
 
+    private static string FormatTokenCount(long value)
+    {
+        if (value < 1_000)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        var divisor = value >= 1_000_000 ? 1_000_000d : 1_000d;
+        var suffix = value >= 1_000_000 ? "m" : "k";
+        var scaled = value / divisor;
+        var format = scaled >= 100 ? "0" : scaled >= 10 ? "0.#" : "0.#";
+        return scaled.ToString(format, CultureInfo.InvariantCulture) + suffix;
+    }
+
+    private void NotifyContextWindowChanged()
+    {
+        OnPropertyChanged(nameof(HasContextWindow));
+        OnPropertyChanged(nameof(ContextUsedTokens));
+        OnPropertyChanged(nameof(ContextEffectiveLimit));
+        OnPropertyChanged(nameof(ContextWindowPercent));
+        OnPropertyChanged(nameof(ContextWindowUsageLabel));
+    }
+
     private void NotifyAvailabilityChanged()
     {
         OnPropertyChanged(nameof(CanSend));
         OnPropertyChanged(nameof(IsSteeringAvailable));
         OnPropertyChanged(nameof(CanSteer));
+        OnPropertyChanged(nameof(CanOfferFollowUpQueue));
+        OnPropertyChanged(nameof(CanQueueFollowUp));
         OnPropertyChanged(nameof(CanSubmitPrompt));
         OnPropertyChanged(nameof(CanShowPrimaryAction));
+        OnPropertyChanged(nameof(ShowPrimaryAction));
+        OnPropertyChanged(nameof(ShowStopAction));
         OnPropertyChanged(nameof(PrimaryActionLabel));
         OnPropertyChanged(nameof(PrimaryActionAccessibleName));
         OnPropertyChanged(nameof(PromptPlaceholder));
@@ -2006,14 +2987,197 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanRequestStop));
         OnPropertyChanged(nameof(CanClear));
         OnPropertyChanged(nameof(CanChangeProvider));
+        OnPropertyChanged(nameof(CanBrowseModels));
+        OnPropertyChanged(nameof(CanChangeModel));
+        OnPropertyChanged(nameof(CanSelectReasoningEffort));
+        OnPropertyChanged(nameof(CanSelectServiceTier));
+        OnPropertyChanged(nameof(CanAttachImages));
         OnPropertyChanged(nameof(CanEnterPrompt));
         OnPropertyChanged(nameof(CanStartConversation));
         OnPropertyChanged(nameof(ConnectionStatus));
         OnPropertyChanged(nameof(NeedsProviderAttention));
         OnPropertyChanged(nameof(HasCapabilityNotice));
+        OnPropertyChanged(nameof(HasStandingCapabilityNotice));
         NotifyPolicyAvailabilityChanged();
         NotifyQuestionAvailabilityChanged();
         NotifyCapabilityRequestAvailabilityChanged();
+    }
+
+    private void UpdateModelCapabilities(AiProviderModelDescriptor? model)
+    {
+        var supported = model?.SupportedReasoningEfforts
+            ?? [AgentReasoningEffort.Automatic];
+        ReasoningEfforts = Array.AsReadOnly(
+            AllReasoningEffortOptions
+                .Where(option => supported.Contains(option.Value))
+                .ToArray());
+        if (ReasoningEfforts.Any(option => option.Value == SelectedReasoningEffort.Value))
+        {
+            UpdateServiceTiers(model);
+            return;
+        }
+
+        SelectedReasoningEffort = ReasoningEfforts[0];
+        UpdateServiceTiers(model);
+    }
+
+    private void UpdateServiceTiers(AiProviderModelDescriptor? model)
+    {
+        var supported = model?.SupportedServiceTiers ?? [];
+        ServiceTiers = Array.AsReadOnly(
+            AllServiceTierOptions
+                .Where(option => supported.Contains(option.Value))
+                .ToArray());
+        if (ServiceTiers.Any(option => option.Value == SelectedServiceTier.Value))
+        {
+            return;
+        }
+
+        _selectedServiceTier = ServiceTiers.FirstOrDefault()
+            ?? AllServiceTierOptions[0];
+        OnPropertyChanged(nameof(SelectedServiceTier));
+    }
+
+    private void UpdateModels(
+        AiProviderProfileDescriptor? provider,
+        string? preferredModelId)
+    {
+        if (provider is null)
+        {
+            Models = [];
+            SelectedModel = null;
+            return;
+        }
+
+        var models = provider.Models;
+        if (!string.IsNullOrWhiteSpace(preferredModelId)
+            && models.All(model => !string.Equals(
+                model.Id,
+                preferredModelId,
+                StringComparison.Ordinal)))
+        {
+            models = models.Insert(
+                0,
+                new AiProviderModelDescriptor(preferredModelId, preferredModelId));
+        }
+
+        Models = models;
+        SelectedModel = models.FirstOrDefault(model => string.Equals(
+                model.Id,
+                preferredModelId ?? provider.DefaultModel,
+                StringComparison.Ordinal))
+            ?? models[0];
+        RefreshFilteredModels();
+    }
+
+    private async Task DiscoverModelsAsync(
+        AiProviderProfileId profileId,
+        CancellationToken cancellationToken)
+    {
+        IsDiscoveringModels = true;
+        ModelDiscoveryStatus = string.Empty;
+        try
+        {
+            var result = await _profiles.DiscoverModelsAsync(profileId, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                ModelDiscoveryStatus = result.Message;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            IsDiscoveringModels = false;
+        }
+    }
+
+    private void RefreshFilteredModels()
+    {
+        var query = ModelSearch.Trim();
+        var provider = SelectedProvider;
+        var providerName = provider?.Name ?? "Provider unavailable";
+        Replace(
+            FilteredModels,
+            Models
+                .Select(model => new AgentModelPickerItemViewModel(
+                    model,
+                    providerName,
+                    provider is not null && _favoriteModels.Contains(
+                        new AgentModelFavorite(provider.Id, model.Id))))
+                .Where(item => query.Length == 0
+                    || item.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || item.Id.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || item.ProviderName.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(item => item.IsFavorite));
+        OnPropertyChanged(nameof(HasNoModelMatches));
+    }
+
+    private void RefreshFilteredConversations()
+    {
+        var query = ConversationSearch.Trim();
+        Replace(
+            FilteredConversations,
+            Conversations.Where(item => query.Length == 0
+                || item.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || item.Model.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || item.UpdatedAt.Contains(query, StringComparison.OrdinalIgnoreCase)));
+        OnPropertyChanged(nameof(HasNoConversationMatches));
+    }
+
+    private async Task LoadFavoriteModelsAsync(CancellationToken cancellationToken)
+    {
+        if (_favoriteStore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _favoriteStore.ListAsync(cancellationToken);
+            if (!result.IsSuccess || result.Value is null)
+            {
+                return;
+            }
+
+            await _dispatcher.InvokeAsync(
+                () =>
+                {
+                    _favoriteModels.Clear();
+                    foreach (var favorite in result.Value)
+                    {
+                        _favoriteModels.Add(favorite);
+                    }
+
+                    RefreshFilteredModels();
+                },
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void SetFavorite(AgentModelFavorite favorite, bool isFavorite)
+    {
+        if (isFavorite)
+        {
+            _favoriteModels.Add(favorite);
+        }
+        else
+        {
+            _favoriteModels.Remove(favorite);
+        }
+    }
+
+    private void NotifyPendingImagesChanged()
+    {
+        OnPropertyChanged(nameof(HasPendingImages));
+        OnPropertyChanged(nameof(PendingImagesLabel));
+        OnPropertyChanged(nameof(CanAttachImages));
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanSubmitPrompt));
     }
 
     private void NotifyActionCancellationChanged()
@@ -2028,6 +3192,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanEnableYolo));
         OnPropertyChanged(nameof(CanDisableYolo));
         OnPropertyChanged(nameof(PolicyModeLabel));
+        OnPropertyChanged(nameof(AccessModeLabel));
     }
 
     private void NotifyQuestionAvailabilityChanged()
@@ -2048,6 +3213,10 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasAgentContent));
         OnPropertyChanged(nameof(HasNoConversation));
         OnPropertyChanged(nameof(CanStartConversation));
+        OnPropertyChanged(nameof(HasFailedTurn));
+        OnPropertyChanged(nameof(ShowPrimaryAction));
+        OnPropertyChanged(nameof(ShowFooterStatus));
+        OnPropertyChanged(nameof(FailureHeading));
         OnPropertyChanged(nameof(CanClear));
         OnPropertyChanged(nameof(HasProvisionalAssistantText));
     }
@@ -2056,8 +3225,14 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         ObservableCollection<T> destination,
         IEnumerable<T> source)
     {
+        var replacement = source as IReadOnlyList<T> ?? source.ToArray();
+        if (destination.SequenceEqual(replacement))
+        {
+            return;
+        }
+
         destination.Clear();
-        foreach (var item in source)
+        foreach (var item in replacement)
         {
             destination.Add(item);
         }

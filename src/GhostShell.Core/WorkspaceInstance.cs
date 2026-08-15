@@ -5,6 +5,13 @@ namespace GhostShell.Core;
 
 public sealed class WorkspaceInstance
 {
+    /// <summary>
+    /// Maximum number of panels in one live workspace. This bound keeps the
+    /// complete workspace graph and provider tool schemas finite without
+    /// omitting panels from an otherwise valid workspace.
+    /// </summary>
+    public const int MaximumPanelCount = 64;
+
     public WorkspaceInstance(
         WorkspaceInstanceId id,
         string title,
@@ -37,6 +44,14 @@ public sealed class WorkspaceInstance
         if (tabCopies.Length == 0)
         {
             throw new ArgumentException("A workspace must contain at least one tab.", nameof(tabs));
+        }
+
+        var panelCount = tabCopies.Sum(tab => (long)tab.Panels.Count);
+        if (panelCount > MaximumPanelCount)
+        {
+            throw new ArgumentException(
+                $"A workspace cannot contain more than {MaximumPanelCount} panels.",
+                nameof(tabs));
         }
 
         RuntimeInstanceValidation.RequireUniqueIds(

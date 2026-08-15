@@ -119,7 +119,7 @@
           <TextBlock
               Classes="Muted"
               FontSize="{DynamicResource ShellFontSize9}"
-              Text="Off, Ask, and Auto are durable. YOLO can only be enabled for a confirmed live run."
+              Text="Off, Ask, and Auto are saved with this screen. Full access can be changed from the agent."
               TextWrapping="Wrap" />
           <Grid
               ColumnDefinitions="*,*"
@@ -144,6 +144,52 @@
                   AutomationProperties.Name="Saved screen agent policy model" />
             </controls:LabeledField>
           </Grid>
+          <controls:LabeledField
+              Label="System prompt override"
+              IsVisible="{Binding AgentPolicy.IsEnabled}">
+            <TextBox
+                MinHeight="120"
+                MaxLength="8000"
+                AcceptsReturn="True"
+                TextWrapping="Wrap"
+                VerticalContentAlignment="Top"
+                Text="{Binding AgentPolicy.SystemPrompt, Mode=TwoWay}"
+                PlaceholderText="Leave empty to inherit workspace or global instructions."
+                AutomationProperties.Name="Saved screen agent system prompt" />
+          </controls:LabeledField>
+          <Grid
+              ColumnDefinitions="*,*"
+              ColumnSpacing="{DynamicResource ShellSpaceSm}"
+              IsVisible="{Binding AgentPolicy.IsEnabled}">
+            <controls:LabeledField Label="Compaction model">
+              <ComboBox
+                  ItemsSource="{Binding AgentPolicy.AgentTaskModelOptions}"
+                  SelectedItem="{Binding AgentPolicy.SelectedCompactionModel, Mode=TwoWay}"
+                  AutomationProperties.Name="Saved screen conversation compaction model">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </controls:LabeledField>
+            <controls:LabeledField Grid.Column="1" Label="Title model">
+              <Grid MinHeight="{DynamicResource ShellControlMinHeight}">
+                <ComboBox
+                    IsVisible="{Binding AgentPolicy.HasMultipleTitleModelOptions}"
+                    ItemsSource="{Binding AgentPolicy.TitleModelOptions}"
+                    SelectedItem="{Binding AgentPolicy.SelectedTitleModel, Mode=TwoWay}"
+                    AutomationProperties.Name="Saved screen conversation title model">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    IsVisible="{Binding AgentPolicy.HasSingleTitleModelOption}"
+                    Text="{Binding AgentPolicy.SelectedTitleModel.DisplayName}" />
+              </Grid>
+            </controls:LabeledField>
+          </Grid>
           <TextBlock
               Foreground="{DynamicResource ShellDangerBrush}"
               FontSize="{DynamicResource ShellFontSize9}"
@@ -157,22 +203,18 @@
               IsVisible="{Binding AgentPolicy.IsEnabled}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Grid Margin="{controls:Inset Vertical=Xs}" ColumnDefinitions="*,180" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                  <TextBlock
-                      VerticalAlignment="Center"
-                      Text="{Binding DisplayName}"
-                      TextWrapping="Wrap" />
-                  <ComboBox
-                      Grid.Column="1"
-                      ItemsSource="{Binding Options}"
-                      SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
-                      AutomationProperties.Name="{Binding DisplayName, StringFormat={}Saved screen agent permission for {0}}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate>
-                        <TextBlock Text="{Binding DisplayName}" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
+                <Grid Margin="{controls:Inset Vertical=Sm}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                  <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Description}" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <Border Grid.Column="1" VerticalAlignment="Center" Classes="Segmented">
+                    <Grid ColumnDefinitions="60,60,60">
+                      <ToggleButton Classes="Segment" IsChecked="{Binding IsOff, Mode=TwoWay}" Content="Off" />
+                      <ToggleButton Grid.Column="1" Classes="Segment" IsChecked="{Binding IsAsk, Mode=TwoWay}" Content="Ask" />
+                      <ToggleButton Grid.Column="2" Classes="Segment" IsChecked="{Binding IsAuto, Mode=TwoWay}" Content="Auto" />
+                    </Grid>
+                  </Border>
                 </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>

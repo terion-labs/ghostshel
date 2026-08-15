@@ -194,7 +194,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task BroadScopeOrderDriftFailsClosedAndKeepsPinnedContextOrder()
+    public async Task BroadScopeOrderDriftRefreshesLiveContextAndExecutesExactAction()
     {
         await using var fixture = BroadScopeFixture.Create(
             ScopeKind.Workspace,
@@ -208,16 +208,36 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Empty(fixture.Terminal.Actions);
+        var action = Assert.Single(fixture.Terminal.Actions);
+        var request = Assert.IsType<AgentTerminalRequest.ReadScreen>(
+            action.Request);
+        Assert.Equal(BroadScopeContextProxy.SecondSessionId, request.SessionId);
+        Assert.Equal(fixture.Context.SecondTarget, action.Proposal.Target);
         Assert.Equal(
             [
-                BroadScopeContextProxy.FirstPanelId,
                 BroadScopeContextProxy.SecondPanelId,
+                BroadScopeContextProxy.FirstPanelId,
             ],
             fixture.Runtime.Snapshot.ContextItems.Select(item => item.PanelId));
         var continuation = fixture.Provider.Requests.ToArray()[1];
+        var refreshedPanelIds = continuation.Tools
+            .Single(tool =>
+                tool.Name == BuiltInAgentTools.TerminalReadScreen)
+            .InputSchema
+            .GetProperty("properties")
+            .GetProperty("panel_id")
+            .GetProperty("enum")
+            .EnumerateArray()
+            .Select(panelId => panelId.GetString()!)
+            .ToArray();
         Assert.Equal(
-            "target_changed",
+            [
+                BroadScopeContextProxy.SecondPanelId.Value,
+                BroadScopeContextProxy.FirstPanelId.Value,
+            ],
+            refreshedPanelIds);
+        Assert.Equal(
+            "tool_succeeded",
             Assert.Single(
                 continuation.Messages,
                 message => message.Role == AgentMessageRole.Tool)

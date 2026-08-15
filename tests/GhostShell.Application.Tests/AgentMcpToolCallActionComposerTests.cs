@@ -158,6 +158,43 @@ public sealed class AgentMcpToolCallActionComposerTests
     }
 
     [Fact]
+    public void RemoteManifestPresentsExactEndpointWithoutProcessFields()
+    {
+        var manifest = new AgentMcpToolManifest(
+            new McpServerProfileId("mcp.remote"),
+            7,
+            "Remote tools",
+            McpServerTransportKind.StreamableHttp,
+            "https://mcp.example.test/rpc",
+            workingDirectory: null,
+            "remote-server",
+            "1.0.0",
+            "2025-11-25",
+            "deploy",
+            JsonDocument.Parse("""{"type":"object"}""")
+                .RootElement.Clone(),
+            AgentActionDigest.FromUtf8("remote tool identity"));
+        var request = new AgentMcpToolCallRequest(
+            manifest,
+            JsonDocument.Parse("{}").RootElement.Clone());
+
+        var action = new AgentMcpToolCallActionComposer().Prepare(
+            Envelope(),
+            Context(graphRevision: 11),
+            request);
+
+        Assert.Equal(
+            "Remote MCP Streamable HTTP server",
+            action.Proposal.Presentation.Host);
+        Assert.Null(action.Proposal.Presentation.WorkingDirectory);
+        Assert.Equal(
+            ("endpoint", "https://mcp.example.test/rpc"),
+            (
+                action.Proposal.Presentation.Arguments[0].Name,
+                action.Proposal.Presentation.Arguments[0].DisplayValue));
+    }
+
+    [Fact]
     public void Fresh_binding_recomputes_target_evidence_and_rejects_manifest_drift()
     {
         var composer = new AgentMcpToolCallActionComposer();

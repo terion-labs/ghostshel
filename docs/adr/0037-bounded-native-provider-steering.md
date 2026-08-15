@@ -47,8 +47,9 @@ run. The presentation receives `SteeringAvailable` and its generation only
 after the run has pinned its exact target, provider, policy, tool manifest,
 native session, turn-cancellation owner, and initial kernel generation.
 
-Before applying the update, the governed runtime re-inspects the complete
-pinned target. Under its lifecycle gate it then revalidates:
+Before applying the update, the governed runtime re-inspects the pinned target
+identity and the current live topology for Workspace or internal `OpenTab`
+targets. Under its lifecycle gate it then revalidates:
 
 - the exact run, target, native session, and turn-cancellation owner;
 - the immutable provider binding, provider revision, and current-profile

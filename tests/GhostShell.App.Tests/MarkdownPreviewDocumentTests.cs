@@ -131,6 +131,41 @@ public sealed class MarkdownPreviewDocumentTests
     }
 
     [Fact]
+    public void Backslash_delimited_inline_and_display_math_are_structured()
+    {
+        var blocks = MarkdownPreviewDocument.Parse(
+            "Let \\(B\\) be true.\n\n\\[\nB \\rightarrow G_T\n\\]");
+
+        Assert.Collection(
+            blocks,
+            paragraph =>
+            {
+                Assert.Equal(MarkdownBlockKind.Paragraph, paragraph.Kind);
+                Assert.Contains(
+                    paragraph.Runs,
+                    run => run.Text == "B"
+                        && run.Style.HasFlag(MarkdownRunStyle.Math));
+            },
+            display =>
+            {
+                Assert.Equal(MarkdownBlockKind.Math, display.Kind);
+                Assert.Equal("B \\rightarrow G_T", display.Text);
+                Assert.True(Assert.Single(display.Runs).Style.HasFlag(MarkdownRunStyle.Math));
+            });
+    }
+
+    [Fact]
+    public void Formula_delimiters_inside_code_are_not_interpreted()
+    {
+        var blocks = MarkdownPreviewDocument.Parse(
+            "`\\(not math\\)`\n\n```text\n\\[still not math\\]\n```");
+
+        Assert.False(Assert.Single(blocks[0].Runs).Style.HasFlag(MarkdownRunStyle.Math));
+        Assert.Equal(MarkdownBlockKind.Code, blocks[1].Kind);
+        Assert.Contains("\\[still not math\\]", blocks[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_empty_document_parses_to_nothing()
     {
         Assert.Empty(MarkdownPreviewDocument.Parse(string.Empty));

@@ -335,22 +335,6 @@ public sealed partial class RepositoryConventionTests
             row => Assert.False(
                 string.IsNullOrWhiteSpace(AttributeValue(row, "MinHeight")),
                 "Text-bearing agent header rows require minima, not fixed heights."));
-        Assert.Contains(
-            agentLayout.Descendants(),
-            element => element.Name.LocalName == "ComboBox"
-                && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding AgentRunScopeOptions}",
-                    StringComparison.Ordinal)
-                && string.Equals(
-                    AttributeValue(element, "AutomationProperties.Name"),
-                    "AI agent target scope",
-                    StringComparison.Ordinal)
-                && !string.IsNullOrWhiteSpace(
-                    AttributeValue(
-                        element,
-                        "AutomationProperties.HelpText")));
-
         var activityScroller = Assert.Single(
             agentLayout.Elements(),
             element => element.Name.LocalName == "ScrollViewer"
@@ -360,24 +344,6 @@ public sealed partial class RepositoryConventionTests
                     StringComparison.Ordinal));
         Assert.Equal("2", AttributeValue(activityScroller, "Grid.Row"));
 
-        // The authority notice and the capability boundary are anchored to the
-        // panel, not to the transcript. Inside the scroller they were the first
-        // items in a list that grows, so a live YOLO grant scrolled out of sight
-        // as soon as the run said anything — the moment it most needs to be read.
-        Assert.Contains(
-            agentLayout.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "IsVisible"),
-                    "{Binding AgentChat.HasYoloAuthority}",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            agentLayout.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "IsVisible"),
-                    "{Binding AgentChat.HasCapabilityNotice}",
-                    StringComparison.Ordinal));
         var contextInspector = Assert.Single(
             agentLayout.Descendants(),
             element => element.Name.LocalName == "Expander"
@@ -441,164 +407,45 @@ public sealed partial class RepositoryConventionTests
                     AttributeValue(element, "IsEnabled"),
                     "{Binding AgentChat.CanRequestStop}",
                     StringComparison.Ordinal));
-        Assert.Contains(
-            "AgentChat.Status",
-            AttributeValue(activityScroller, "AutomationProperties.Name"),
-            StringComparison.Ordinal);
+        Assert.Equal(
+            "AI agent activity",
+            AttributeValue(activityScroller, "AutomationProperties.Name"));
         Assert.Contains(
             mainWindow.Descendants(),
             element => element.Name.LocalName == "StatusChip"
-                && (AttributeValue(element, "AutomationProperties.Name") ?? string.Empty)
-                    .Contains("AgentChat.ConnectionStatus", StringComparison.Ordinal));
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "AI agent state");
         Assert.Contains(
             agentLayout.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && (AttributeValue(element, "AutomationProperties.Name") ?? string.Empty)
-                    .Contains("AgentChat.YoloAuthority.Scope", StringComparison.Ordinal));
-
-        var dialog = XDocument.Load(
-            Path.Combine(views, "AgentYoloConfirmationDialog.axaml"),
-            LoadOptions.SetLineInfo);
-        var window = Assert.IsType<XElement>(dialog.Root);
-        Assert.Equal("True", AttributeValue(window, "CanResize"));
-        Assert.Equal("OnOpened", AttributeValue(window, "Opened"));
-        Assert.False(
-            string.IsNullOrWhiteSpace(AttributeValue(window, "MaxHeight")));
-        // The body scrolls through DialogShell, whose template hosts the
-        // auto-visibility ScrollViewer; a dialog that opted out with
-        // Scrolls="False" would stop reflowing at large text scales.
-        var shell = Assert.Single(
-            dialog.Descendants(),
-            element => element.Name.LocalName == "DialogShell");
-        Assert.NotEqual("False", AttributeValue(shell, "Scrolls"));
-        Assert.Contains(
-            dialog.Descendants(),
-            element => element.Name.LocalName == "CheckBox"
-                && element.Descendants().Any(child =>
-                    child.Name.LocalName == "TextBlock"
-                    && string.Equals(
-                        AttributeValue(child, "TextWrapping"),
-                        "Wrap",
-                        StringComparison.Ordinal)));
-
-        var acknowledgement = Assert.Single(
-            dialog.Descendants(),
-            element => element.Name.LocalName == "CheckBox"
-                && string.Equals(
-                    AttributeValue(element, "Name"),
-                    "Acknowledgement",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            "destructive terminal actions will not ask again",
-            AttributeValue(acknowledgement, "AutomationProperties.Name"),
-            StringComparison.OrdinalIgnoreCase);
-
-        var confirm = Assert.Single(
-            dialog.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
-                    AttributeValue(element, "Name"),
-                    "ConfirmButton",
-                    StringComparison.Ordinal));
-        Assert.Equal("False", AttributeValue(confirm, "IsEnabled"));
-        Assert.Equal("True", AttributeValue(confirm, "IsDefault"));
-        Assert.False(
-            string.IsNullOrWhiteSpace(
-                AttributeValue(confirm, "AutomationProperties.Name")));
-
-        var cancel = Assert.Single(
-            dialog.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
-                    AttributeValue(element, "IsCancel"),
-                    "True",
-                    StringComparison.Ordinal));
-        Assert.False(
-            string.IsNullOrWhiteSpace(
-                AttributeValue(cancel, "AutomationProperties.Name")));
-
-        var dialogCode = File.ReadAllText(
-            Path.Combine(views, "AgentYoloConfirmationDialog.axaml.cs"));
-        Assert.Contains(
-            "FindControl<CheckBox>(\"Acknowledgement\")!.Focus()",
-            dialogCode,
-            StringComparison.Ordinal);
+            element => element.Name.LocalName == "TextBlock"
+                && AttributeValue(element, "Text") == "{Binding AgentChat.Status}"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "AI agent status");
+        Assert.DoesNotContain(
+            agentLayout.Descendants(),
+            element => (AttributeValue(element, "Text") ?? string.Empty)
+                .Contains("Expires ·", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void AgentSelectedTerminalScopeUsesAnAccessibleExactChoiceList()
+    public void AgentPanelDoesNotExposeLegacyTargetSelectors()
     {
         var mainWindow = ApplicationViews.FindUniqueOwnerDocument(
-            "the selected-terminal agent scope chooser",
+            "the AI agent panel",
             element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "IsVisible"),
-                    "{Binding IsAgentSelectedPanelsScope}",
-                    StringComparison.Ordinal))
+                && HasClass(element, "AgentPanel"))
             .Document;
-        var chooser = Assert.Single(
-            mainWindow.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "IsVisible"),
-                    "{Binding IsAgentSelectedPanelsScope}",
-                    StringComparison.Ordinal));
-
-        Assert.Equal(
-            "{Binding AgentChat.CanChangeProvider}",
-            AttributeValue(chooser, "IsEnabled"));
-        Assert.Equal(
-            "Selected terminals for the AI agent",
-            AttributeValue(chooser, "AutomationProperties.Name"));
-        Assert.Contains(
-            "stable IDs",
-            AttributeValue(chooser, "AutomationProperties.HelpText"),
-            StringComparison.Ordinal);
         Assert.DoesNotContain(
-            chooser.Descendants(),
-            element => element.Name.LocalName == "TextBox");
-
-        var choices = Assert.Single(
-            chooser.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
+            mainWindow.Descendants(),
+            element => string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding AgentRunScopeOptions}",
+                    StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            mainWindow.Descendants(),
+            element => string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding AgentTerminalSelectionOptions}",
-                    StringComparison.Ordinal));
-        var choice = Assert.Single(
-            choices.Descendants(),
-            element => element.Name.LocalName == "CheckBox");
-        Assert.Equal(
-            "{Binding IsSelected, Mode=TwoWay}",
-            AttributeValue(choice, "IsChecked"));
-        Assert.Equal(
-            "{Binding AutomationName}",
-            AttributeValue(choice, "AutomationProperties.Name"));
-        Assert.Contains(
-            "AutomationHelpText",
-            AttributeValue(choice, "AutomationProperties.HelpText"),
-            StringComparison.Ordinal);
-        Assert.Contains(
-            choice.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
-                    AttributeValue(element, "Text"),
-                    "{Binding IdentityLabel}",
-                    StringComparison.Ordinal));
-
-        Assert.Contains(
-            chooser.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
-                    AttributeValue(element, "AutomationProperties.LiveSetting"),
-                    "Polite",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            chooser.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
-                    AttributeValue(element, "AutomationProperties.LiveSetting"),
-                    "Assertive",
                     StringComparison.Ordinal));
     }
 

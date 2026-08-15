@@ -99,7 +99,7 @@
             ItemsSource="{Binding Processes}"
             SelectedItem="{Binding SelectedProcess}"
             IsVisible="{Binding ShowContent}"
-            AutomationProperties.Name="Bounded process list">
+            AutomationProperties.Name="Process list">
           <ListBox.ItemTemplate>
             <DataTemplate>
               <!-- The File Viewer's row height: every list in the shell stands
@@ -129,7 +129,7 @@
         <controls:StateOverlay
             Kind="Loading"
             Heading="Waiting for first sample…"
-            Body="Process names and resource counters are bounded. Command lines, users, environments, and open files are excluded."
+            Body="Command lines, users, environments, and open files are not shown."
             IsVisible="{Binding ShowLoading}"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="Process monitor loading" />

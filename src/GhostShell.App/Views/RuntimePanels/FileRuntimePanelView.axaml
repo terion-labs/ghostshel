@@ -584,9 +584,15 @@
                   IsVisible="{Binding $parent[UserControl].DataContext.HasTreePreview}" />
               <!-- Markdown is laid out as native controls, so its text stays
                    selectable and copyable like any other text in the shell. -->
-              <components:MarkdownPreviewView
-                  IsVisible="{Binding HasMarkdownPreview}"
-                  Text="{Binding PreviewText}" />
+              <ScrollViewer
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  IsVisible="{Binding HasMarkdownPreview}">
+                <components:MarkdownPreviewView
+                    ContinuousSelection="True"
+                    Padding="{controls:Inset Lg}"
+                    Text="{Binding PreviewText}" />
+              </ScrollViewer>
               <!-- A database file previews as the database viewer itself,
                    sharing the docked panel's workspace component. Embedded,
                    it carries its own perspectives row and forwards the same

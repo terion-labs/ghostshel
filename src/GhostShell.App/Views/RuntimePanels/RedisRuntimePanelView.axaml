@@ -296,7 +296,7 @@
                 IsVisible="{Binding !HasSelectedKey}"
                 Glyph="Database"
                 Heading="Select a Redis key"
-                Body="Values are read in bounded pages; metadata and editing are tailored to the key type." />
+                Body="Values load a page at a time, with editing matched to each key type." />
 
             <Grid
                 IsVisible="{Binding HasSelectedKey}"
@@ -682,7 +682,7 @@
               <controls:StateOverlay
                   Glyph="Search"
                   Heading="No results"
-                  Body="Choose an index and run a query — results are read in one bounded page."
+                  Body="Choose an index and run a query."
                   IsVisible="{Binding !HasSearchResults}" />
             </Grid>
           </controls:SurfaceCard>

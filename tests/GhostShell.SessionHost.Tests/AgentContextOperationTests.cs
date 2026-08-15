@@ -135,6 +135,36 @@ public sealed class AgentContextOperationTests
     }
 
     [Fact]
+    public async Task Workspace_scope_returns_every_panel_at_the_live_workspace_boundary()
+    {
+        await using var harness = new SessionHostTestHarness();
+        var panels = Enumerable.Range(1, WorkspaceInstance.MaximumPanelCount)
+            .Select(index => new PanelInstance(
+                new PanelInstanceId($"panel-{index:D2}"),
+                PanelKind.Browser,
+                $"Browser {index:D2}"))
+            .ToArray();
+        var tab = new TabInstance(
+            harness.TabId,
+            "Complete workspace",
+            panels,
+            panels[0].Id);
+        var workspace = new WorkspaceInstance(
+            harness.WorkspaceId,
+            "Workspace",
+            [tab],
+            tab.Id);
+        await RegisterAsync(harness, harness.WindowId, workspace);
+
+        var context = await InspectAsync(
+            harness,
+            new AgentTarget.Workspace(harness.WindowId, harness.WorkspaceId));
+
+        Assert.Equal(WorkspaceInstance.MaximumPanelCount, context.Panels.Count);
+        Assert.Equal(panels.Select(panel => panel.Id), PanelIds(context));
+    }
+
+    [Fact]
     public async Task Terminal_context_preserves_launch_boundary_and_refreshes_current_directory()
     {
         await using var harness = new SessionHostTestHarness();

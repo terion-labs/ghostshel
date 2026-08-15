@@ -39,8 +39,8 @@ filesystem or provider-SDK path from the agent runtime.
 
 The model supplies only a bounded, typed, non-empty `path_segments` array
 relative to the trusted File Viewer root. Exact panel/session schemas contain
-only that path. Broad tab or workspace schemas additionally require one
-`panel_id` selected from the current host-generated eligible-panel enum.
+only that path. Broad Workspace or internal `OpenTab` schemas additionally
+require one `panel_id` selected from the current host-generated eligible-panel enum.
 
 The model cannot supply or replace the session ID, provider profile, authority,
 root, absolute location, version, provider capability, mutation precondition,

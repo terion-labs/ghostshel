@@ -8,17 +8,17 @@ using SdkMcpClient = ModelContextProtocol.Client.McpClient;
 namespace GhostShell.Mcp;
 
 /// <summary>
-/// A closed-capability MCP client for one directly launched stdio server.
+/// A closed-capability MCP protocol session over a bounded client transport.
 /// </summary>
-internal sealed class McpStdioClient : IAsyncDisposable
+internal sealed class McpClientSession : IAsyncDisposable
 {
     private const int MaximumServerInstructionsBytes = 4 * 1024;
     private const int MaximumToolTitleBytes = 1024;
     private const int MaximumToolDescriptionBytes = 4 * 1024;
 
     private readonly SdkMcpClient _client;
-    private readonly BoundedStdioClientTransport _transport;
-    private readonly McpStdioClientOptions _options;
+    private readonly IMcpClientTransportBoundary _transport;
+    private readonly McpSessionOptions _options;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private readonly IAsyncDisposable _toolChangeRegistration;
@@ -30,10 +30,10 @@ internal sealed class McpStdioClient : IAsyncDisposable
     private int _catalogVersion = -1;
     private int _disposed;
 
-    private McpStdioClient(
+    private McpClientSession(
         SdkMcpClient client,
-        BoundedStdioClientTransport transport,
-        McpStdioClientOptions options,
+        IMcpClientTransportBoundary transport,
+        McpSessionOptions options,
         McpServerInfo serverInfo)
     {
         _client = client;
@@ -62,18 +62,33 @@ internal sealed class McpStdioClient : IAsyncDisposable
 
     public McpStderrDiagnostics StandardErrorDiagnostics => _transport.Diagnostics;
 
-    public static async Task<McpResult<McpStdioClient>> ConnectAsync(
+    public static Task<McpResult<McpClientSession>> ConnectStdioAsync(
         McpStdioServerLaunch launch,
         McpClientInfo clientInfo,
-        McpStdioClientOptions? options = null,
+        McpSessionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(launch);
+        options ??= new McpSessionOptions();
+        options.Validate();
+        return ConnectAsync(
+            new BoundedStdioClientTransport(launch, options),
+            clientInfo,
+            options,
+            cancellationToken);
+    }
+
+    internal static async Task<McpResult<McpClientSession>> ConnectAsync(
+        IMcpClientTransportBoundary transport,
+        McpClientInfo clientInfo,
+        McpSessionOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(clientInfo);
-        options ??= new McpStdioClientOptions();
+        ArgumentNullException.ThrowIfNull(options);
         options.Validate();
 
-        var transport = new BoundedStdioClientTransport(launch, options);
         SdkMcpClient? client = null;
         try
         {
@@ -102,7 +117,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
                     StringComparison.Ordinal))
             {
                 await DisposeConnectionAsync(client, transport).ConfigureAwait(false);
-                return Failure<McpStdioClient>(
+                return Failure<McpClientSession>(
                     McpErrorCode.UnsupportedProtocolVersion,
                     "The MCP server did not negotiate the required protocol version.");
             }
@@ -110,7 +125,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
             if (client.ServerCapabilities.Tools is not { } toolsCapability)
             {
                 await DisposeConnectionAsync(client, transport).ConfigureAwait(false);
-                return Failure<McpStdioClient>(
+                return Failure<McpClientSession>(
                     McpErrorCode.MissingToolsCapability,
                     "The MCP server does not advertise the tools capability.");
             }
@@ -121,21 +136,21 @@ internal sealed class McpStdioClient : IAsyncDisposable
                     out var serverInfo))
             {
                 await DisposeConnectionAsync(client, transport).ConfigureAwait(false);
-                return Failure<McpStdioClient>(
+                return Failure<McpClientSession>(
                     McpErrorCode.InvalidResult,
                     "The MCP server returned invalid or oversized initialization metadata.");
             }
 
-            return McpResult<McpStdioClient>.Success(
-                new McpStdioClient(client, transport, options, serverInfo!));
+            return McpResult<McpClientSession>.Success(
+                new McpClientSession(client, transport, options, serverInfo!));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             await DisposeConnectionAsync(client, transport).ConfigureAwait(false);
 
-            return Failure<McpStdioClient>(
+            return Failure<McpClientSession>(
                 McpErrorCode.Cancelled,
-                "The MCP connection was cancelled and its process was stopped.",
+                "The MCP connection was cancelled and its transport was closed.",
                 cleanupUncertain: transport.CleanupUncertain);
         }
         catch (Exception exception)
@@ -146,7 +161,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
             {
                 CleanupUncertain = transport.CleanupUncertain,
             };
-            return McpResult<McpStdioClient>.Failure(error);
+            return McpResult<McpClientSession>.Failure(error);
         }
     }
 
@@ -248,7 +263,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
             await DisposeAsync().ConfigureAwait(false);
             return Failure<IReadOnlyList<McpTool>>(
                 McpErrorCode.Cancelled,
-                "MCP tool discovery was cancelled and the server process was stopped.",
+                "MCP tool discovery was cancelled and the transport was closed.",
                 cleanupUncertain: _transport.CleanupUncertain);
         }
         catch (Exception exception)
@@ -366,7 +381,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
             return Failure<McpToolCallResult>(
                 McpErrorCode.Cancelled,
                 dispatched
-                    ? "The MCP tool call was cancelled; its remote outcome is unknown and the server process was stopped."
+                    ? "The MCP tool call was cancelled; its remote outcome is unknown and the transport was closed."
                     : "The MCP tool call was cancelled before dispatch.",
                 cleanupUncertain: dispatched && _transport.CleanupUncertain,
                 outcomeUncertain: dispatched);
@@ -440,7 +455,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
 
     private static bool TryConvertTool(
         Tool sdkTool,
-        McpStdioClientOptions options,
+        McpSessionOptions options,
         out McpTool? tool)
     {
         tool = null;
@@ -470,7 +485,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
 
     private static bool TryConvertCallResult(
         CallToolResult sdkResult,
-        McpStdioClientOptions options,
+        McpSessionOptions options,
         out McpToolCallResult? result)
     {
         result = null;
@@ -692,7 +707,7 @@ internal sealed class McpStdioClient : IAsyncDisposable
 
     private static async Task DisposeConnectionAsync(
         IAsyncDisposable? client,
-        BoundedStdioClientTransport transport)
+        IMcpClientTransportBoundary transport)
     {
         if (client is not null)
         {

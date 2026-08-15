@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GhostShell.Application;
+using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
 
@@ -14,7 +15,7 @@ internal static class QuickTerminalRecoveryCodec
     public const string SnapshotKey = "desktop.quick-terminal";
     public const int SchemaVersion = 1;
 
-    private const int MaximumTabs = 64;
+    private const int MaximumTabs = WorkspaceInstance.MaximumPanelCount;
 
     public static string Serialize(QuickTerminalViewModel viewModel)
     {

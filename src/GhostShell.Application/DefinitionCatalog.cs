@@ -1030,7 +1030,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
         return Snapshot.AiProviderProfiles.Any(item =>
             item.Value.Key != definition.Key
             && item.Value.Order == definition.Order)
-            ? Invalid("Each AI provider must have a distinct fallback order.")
+            ? Invalid("Each AI provider must have a distinct display order.")
             : null;
     }
 

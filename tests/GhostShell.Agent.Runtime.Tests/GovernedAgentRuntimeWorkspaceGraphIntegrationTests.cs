@@ -379,7 +379,7 @@ public sealed partial class GovernedAgentRuntimeTests
     [InlineData(WorkspaceGraphChange.PanelRemoved)]
     [InlineData(WorkspaceGraphChange.PanelsReordered)]
     [InlineData(WorkspaceGraphChange.PanelKindChanged)]
-    public async Task StructuralDriftReturnsTargetChangedBeforeHostProjection(
+    public async Task BroadScopeStructuralDriftRefreshesBeforeHostProjection(
         WorkspaceGraphChange change)
     {
         var provider = ScriptedWorkspaceGraphProvider.Create(
@@ -402,18 +402,18 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(0, fixture.GraphHost.CallCount);
-        var rejected = ToolResult(
+        Assert.Equal(1, fixture.GraphHost.CallCount);
+        var inspected = ToolResult(
             provider.Requests.ToArray()[1],
             "workspace-graph-call-1");
-        Assert.Equal("target_changed", rejected.StableCode);
+        Assert.Equal("workspace_inspected", inspected.StableCode);
         Assert.Equal(
-            AgentToolResultStatus.Failed,
-            rejected.Status);
+            AgentToolResultStatus.Succeeded,
+            inspected.Status);
     }
 
     [Fact]
-    public async Task ClearAllowsRepinningAChangedGraph()
+    public async Task BroadScopeRepinsAChangedGraphOnTheNextTurn()
     {
         var provider = ScriptedWorkspaceGraphProvider.Create(
             WorkspaceGraphProviderRound.Answer("Initial graph pinned."),
@@ -432,20 +432,11 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None)).IsSuccess);
         await fixture.ReplaceGraphAsync(WorkspaceGraphChange.PanelAdded);
 
-        var rejected = await fixture.Runtime.SendAsync(
+        var refreshed = await fixture.Runtime.SendAsync(
             fixture.Prompt("Reuse the old run."),
             CancellationToken.None);
 
-        Assert.False(rejected.IsSuccess);
-        Assert.Equal("agent_target_changed", rejected.Code);
-        Assert.Single(provider.Requests);
-        Assert.True(await fixture.Runtime.ClearAsync(CancellationToken.None));
-
-        var repinned = await fixture.Runtime.SendAsync(
-            fixture.Prompt("Inspect the changed graph in a new run."),
-            CancellationToken.None);
-
-        Assert.True(repinned.IsSuccess);
+        Assert.True(refreshed.IsSuccess);
         Assert.Equal(1, fixture.GraphHost.CallCount);
         Assert.Equal(3, provider.Requests.Count);
         Assert.Equal(

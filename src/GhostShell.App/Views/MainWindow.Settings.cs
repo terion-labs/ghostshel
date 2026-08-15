@@ -169,6 +169,15 @@ public sealed partial class MainWindow
     private void OnAgentSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Agent);
 
+    private async void OnSaveDefaultAgentPolicyClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await ViewModel.SaveDefaultAgentPolicyAsync(CancellationToken.None);
+    }
+
     private void OnMcpSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Mcp);
 
@@ -957,7 +966,7 @@ public sealed partial class MainWindow
         var input = SettingsRoute.CaptureMcpServerSecretForm();
         if (input.Target is null || input.Kind is not { } secretKind)
         {
-            ViewModel.SetError("Choose an MCP environment binding and credential kind.");
+            ViewModel.SetError("Choose an MCP credential binding and credential kind.");
             return;
         }
 

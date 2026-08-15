@@ -68,6 +68,50 @@ internal sealed class QaOfflineAgentRuntime : IGovernedAgentRuntime
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public void PublishSampleReasoningConversation()
+    {
+        _snapshot = Offline with
+        {
+            State = GovernedAgentState.Ready,
+            RunId = new AgentRunId("qa-reasoning-run"),
+            ProviderId = new AiProviderProfileId("qa-openai"),
+            Target = new AgentTarget.Workspace(
+                new WindowInstanceId("qa-window"),
+                new WorkspaceInstanceId("qa-workspace")),
+            TargetTitle = "Current workspace",
+            Messages =
+            [
+                new AgentChatMessage(
+                    AgentChatMessageRole.User,
+                    "Keep the conversation, but move the next turn to **GPT-5.6 Terra**."),
+                new AgentChatMessage(
+                    AgentChatMessageRole.Assistant,
+                    "The conversation stays intact. The next turn will use the selected model; "
+                    + "provider-private replay data is reused only when its original route still matches.\n\n"
+                    + "- Visible messages remain in the chat\n"
+                    + "- The branch can continue independently",
+                    "**Checked the conversation boundary**\n\n"
+                    + "Confirmed that visible messages belong to the chat, not to one provider route.\n\n"
+                    + "**Compared the selected model**\n\n"
+                    + "Kept provider-private replay data only where its original route still matches.\n\n"
+                    + "**Prepared the next turn**\n\n"
+                    + "Preserved the transcript and applied GPT-5.6 Terra to the next request.",
+                    new AgentChatUsage(3177, 72, 0, 56, 3249),
+                    RequestedReasoningEffort: AgentReasoningEffort.High,
+                    ForkPoint: new AgentConversationForkPoint(3)),
+            ],
+            EffectivePolicy = AgentPolicy.Default with
+            {
+                Provider = "qa-openai",
+                Model = "gpt-5.6-terra",
+            },
+            CapabilityNotice = string.Empty,
+            Status = string.Empty,
+        };
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>
     /// Publishes a pending run-local capability request so the decision card is
     /// reviewable. The card asks the panel's one governance question, and it
@@ -104,6 +148,28 @@ internal sealed class QaOfflineAgentRuntime : IGovernedAgentRuntime
             CapabilityNotice =
                 "Terminal writes are asked for one action at a time, in this panel only.",
             Status = "Waiting for your run-local capability decision.",
+        };
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void PublishSampleFailure()
+    {
+        _snapshot = Offline with
+        {
+            State = GovernedAgentState.Failed,
+            RunId = new AgentRunId("qa-failed-run"),
+            ProviderId = new AiProviderProfileId("qa-openai"),
+            Target = new AgentTarget.Workspace(
+                new WindowInstanceId("qa-window"),
+                new WorkspaceInstanceId("qa-workspace")),
+            TargetTitle = "Current workspace",
+            Status = "The configured AI model is unavailable.",
+            EffectivePolicy = AgentPolicy.Default with
+            {
+                Provider = "qa-openai",
+                Model = "gpt-5.6-terra",
+            },
         };
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -179,8 +245,8 @@ internal sealed class QaAiProfileRuntime : IAiProviderProfileRuntime
 
     /// <summary>
     /// Empty until a route asks for the connected panel. The harness holds no
-    /// credential and reaches no endpoint; the descriptor only names a model so
-    /// the footer's provider chip has something truthful to render.
+    /// credential and reaches no endpoint; the descriptor supplies realistic
+    /// model choices so the run configuration can be visually reviewed.
     /// </summary>
     public IReadOnlyList<AiProviderProfileDescriptor> Profiles { get; private set; } = [];
 
@@ -189,14 +255,20 @@ internal sealed class QaAiProfileRuntime : IAiProviderProfileRuntime
         Profiles =
         [
             new AiProviderProfileDescriptor(
-                new AiProviderProfileId("qa-anthropic"),
-                "Anthropic",
-                AiProviderKind.Anthropic,
-                new Uri("https://api.anthropic.com"),
-                "claude-opus-4-5",
+                new AiProviderProfileId("qa-openai"),
+                "OpenAI",
+                AiProviderKind.OpenAi,
+                new Uri("https://api.openai.com/v1/"),
+                "gpt-5.6-terra",
                 Order: 0,
                 IsEnabled: true,
-                RequiresCredential: false),
+                RequiresCredential: false,
+                Models:
+                [
+                    new AiProviderModelDescriptor("gpt-5.6-terra", "GPT-5.6 Terra"),
+                    new AiProviderModelDescriptor("gpt-5.6-sol", "GPT-5.6 Sol"),
+                    new AiProviderModelDescriptor("gpt-5.6-luna", "GPT-5.6 Luna"),
+                ]),
         ];
 
         ProfilesChanged?.Invoke(this, EventArgs.Empty);

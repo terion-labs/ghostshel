@@ -31,8 +31,11 @@ internal sealed record ReducedToolCall(
 
 internal sealed record ReducedProviderTurn(
     string AssistantText,
+    string? ReasoningSummary,
+    AgentTokenUsage? Usage,
     ImmutableArray<ReducedToolCall> ToolCalls,
-    AgentProviderStopReason StopReason);
+    AgentProviderStopReason StopReason,
+    AgentProviderReplayState? ProviderReplayState);
 
 internal sealed class ProviderTurnReducer
 {
@@ -43,11 +46,15 @@ internal sealed class ProviderTurnReducer
     private readonly HashSet<string> _providerCallIds = new(StringComparer.Ordinal);
     private readonly SortedDictionary<int, ToolCallBuilder> _toolCalls = [];
     private readonly StringBuilder _assistantText = new();
+    private readonly StringBuilder _reasoningSummary = new();
     private ReducerState _state;
     private int _assistantTextBytes;
+    private int _reasoningSummaryBytes;
     private int _eventCount;
     private int _toolArgumentBytes;
     private AgentProviderStopReason? _stopReason;
+    private AgentTokenUsage? _usage;
+    private AgentProviderReplayState? _providerReplayState;
 
     public ProviderTurnReducer(
         IReadOnlyDictionary<string, string> toolNamesByProviderName,
@@ -95,6 +102,14 @@ internal sealed class ProviderTurnReducer
                 "The provider emitted an event after response completion.");
         }
 
+        if (_providerReplayState is not null
+            && providerEvent is not AgentProviderEvent.ResponseCompleted)
+        {
+            throw Failure(
+                ProviderStreamErrorCode.InvalidTransition,
+                "The finalized provider replay state must be the final event before completion.");
+        }
+
         switch (providerEvent)
         {
             case AgentProviderEvent.ResponseStarted:
@@ -102,6 +117,9 @@ internal sealed class ProviderTurnReducer
                 break;
             case AgentProviderEvent.TextDelta textDelta:
                 AppendText(textDelta.Value);
+                break;
+            case AgentProviderEvent.ReasoningSummaryDelta reasoningDelta:
+                AppendReasoningSummary(reasoningDelta.Value);
                 break;
             case AgentProviderEvent.ToolCallStarted toolCallStarted:
                 StartToolCall(toolCallStarted);
@@ -111,6 +129,12 @@ internal sealed class ProviderTurnReducer
                 break;
             case AgentProviderEvent.ToolCallCompleted toolCallCompleted:
                 CompleteToolCall(toolCallCompleted.Index);
+                break;
+            case AgentProviderEvent.Usage usage:
+                ApplyUsage(usage.Value);
+                break;
+            case AgentProviderEvent.ReplayStateFinalized replayState:
+                ApplyReplayState(replayState.Value);
                 break;
             case AgentProviderEvent.ResponseCompleted responseCompleted:
                 CompleteResponse(responseCompleted.StopReason);
@@ -133,10 +157,15 @@ internal sealed class ProviderTurnReducer
 
         return new ReducedProviderTurn(
             _assistantText.ToString(),
+            _reasoningSummary.Length == 0
+                ? null
+                : _reasoningSummary.ToString(),
+            _usage,
             _toolCalls.Values
                 .Select(toolCall => toolCall.Build())
                 .ToImmutableArray(),
-            _stopReason.Value);
+            _stopReason.Value,
+            _providerReplayState);
     }
 
     private void StartResponse()
@@ -167,6 +196,51 @@ internal sealed class ProviderTurnReducer
 
         _assistantText.Append(value);
         _assistantTextBytes += byteCount;
+    }
+
+    private void AppendReasoningSummary(string value)
+    {
+        EnsureStreaming();
+        var byteCount = ValidateFragment(
+            value,
+            _limits.MaximumProviderTextFragmentBytes,
+            "The provider reasoning-summary fragment is invalid.");
+        if (_reasoningSummaryBytes
+            > _limits.MaximumReasoningSummaryBytes - byteCount)
+        {
+            throw Failure(
+                ProviderStreamErrorCode.LimitExceeded,
+                "The provider reasoning summary exceeded its byte limit.");
+        }
+
+        _reasoningSummary.Append(value);
+        _reasoningSummaryBytes += byteCount;
+    }
+
+    private void ApplyUsage(AgentTokenUsage usage)
+    {
+        EnsureStreaming();
+        if (usage is null || _usage is not null)
+        {
+            throw Failure(
+                ProviderStreamErrorCode.InvalidValue,
+                "The provider supplied invalid or duplicate token usage.");
+        }
+
+        _usage = usage;
+    }
+
+    private void ApplyReplayState(AgentProviderReplayState replayState)
+    {
+        EnsureStreaming();
+        if (replayState is null || _providerReplayState is not null)
+        {
+            throw Failure(
+                ProviderStreamErrorCode.InvalidValue,
+                "The provider supplied invalid or duplicate replay state.");
+        }
+
+        _providerReplayState = replayState;
     }
 
     private void StartToolCall(AgentProviderEvent.ToolCallStarted toolCall)

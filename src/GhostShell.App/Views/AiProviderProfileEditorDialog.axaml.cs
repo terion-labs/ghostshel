@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -47,6 +48,36 @@ public sealed partial class AiProviderProfileEditorDialog : Window
         await ViewModel.TestAsync(_lifetime.Token);
     }
 
+    private async void OnAuthenticateClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            HideValidationError();
+            var launch = await ViewModel.BeginAuthenticationAsync(_lifetime.Token);
+            if (launch is null)
+            {
+                return;
+            }
+
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = launch.AuthorizationUri.AbsoluteUri,
+                UseShellExecute = true,
+            });
+            process?.Dispose();
+            await launch.Completion;
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            ShowValidationError("Authentication could not be started.");
+        }
+    }
+
     private void OnSaveClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -58,12 +89,7 @@ public sealed partial class AiProviderProfileEditorDialog : Window
         }
         catch (Exception exception) when (exception is ArgumentException or UriFormatException)
         {
-            var error = this.FindControl<TextBlock>("ValidationError");
-            if (error is not null)
-            {
-                error.Text = exception.Message;
-                error.IsVisible = true;
-            }
+            ShowValidationError(exception.Message);
         }
     }
 
@@ -73,6 +99,16 @@ public sealed partial class AiProviderProfileEditorDialog : Window
         if (error is not null)
         {
             error.IsVisible = false;
+        }
+    }
+
+    private void ShowValidationError(string message)
+    {
+        var error = this.FindControl<TextBlock>("ValidationError");
+        if (error is not null)
+        {
+            error.Text = message;
+            error.IsVisible = true;
         }
     }
 

@@ -6,13 +6,12 @@ using System.Text.Json.Serialization;
 namespace GhostShell.Core;
 
 /// <summary>
-/// Durable configuration for one directly launched stdio MCP server. The
-/// executable and argv are retained as separate values so no shell command is
-/// persisted. Environment values are opaque vault references only.
+/// Durable configuration for one stdio or Streamable HTTP MCP server. Secrets
+/// are represented only as opaque profile-scoped vault references.
 /// </summary>
 public sealed record McpServerProfile : IDurableDefinition
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const int MaximumIdentifierBytes = 256;
     public const int MaximumNameBytes = 128;
     public const int MaximumExecutableBytes = 2_048;
@@ -21,6 +20,8 @@ public sealed record McpServerProfile : IDurableDefinition
     public const int MaximumArgumentsBytes = 16 * 1_024;
     public const int MaximumWorkingDirectoryBytes = 4_096;
     public const int MaximumEnvironmentVariableCount = 64;
+    public const int MaximumEndpointBytes = 4_096;
+    public const int MaximumHttpHeaderCount = 32;
     public const int MaximumEnabledToolCount = 128;
     public const int MaximumToolNameBytes = 128;
     public const int MaximumSecretReferenceBytes = 256;
@@ -29,7 +30,10 @@ public sealed record McpServerProfile : IDurableDefinition
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
 
-    [JsonConstructor]
+    /// <summary>
+    /// Compatibility constructor for existing stdio call sites. New durable
+    /// JSON uses the transport-discriminated constructor below.
+    /// </summary>
     public McpServerProfile(
         McpServerProfileId id,
         int schemaVersion,
@@ -38,6 +42,28 @@ public sealed record McpServerProfile : IDurableDefinition
         IReadOnlyList<string> arguments,
         string? workingDirectory,
         IReadOnlyList<McpServerEnvironmentVariable> environment,
+        IReadOnlyList<string> enabledTools,
+        bool isEnabled = true)
+        : this(
+            id,
+            schemaVersion,
+            name,
+            new McpServerTransport.Stdio(
+                executable,
+                arguments,
+                workingDirectory,
+                environment),
+            enabledTools,
+            isEnabled)
+    {
+    }
+
+    [JsonConstructor]
+    public McpServerProfile(
+        McpServerProfileId id,
+        int schemaVersion,
+        string name,
+        McpServerTransport transport,
         IReadOnlyList<string> enabledTools,
         bool isEnabled = true)
     {
@@ -55,22 +81,8 @@ public sealed record McpServerProfile : IDurableDefinition
         Name = RequireSecretFreeText(
             RequireTrimmedText(name, nameof(name), MaximumNameBytes),
             nameof(name));
-        Executable = RequireSecretFreeText(
-            RequireTrimmedText(
-                executable,
-                nameof(executable),
-                MaximumExecutableBytes),
-            nameof(executable));
-        Arguments = CopyArguments(arguments);
-        WorkingDirectory = workingDirectory is null
-            ? null
-            : RequireSecretFreeText(
-                RequireTrimmedText(
-                    workingDirectory,
-                    nameof(workingDirectory),
-                    MaximumWorkingDirectoryBytes),
-                nameof(workingDirectory));
-        Environment = CopyEnvironment(environment);
+        Transport = transport
+            ?? throw new ArgumentNullException(nameof(transport));
         EnabledTools = CopyEnabledTools(enabledTools);
         IsEnabled = isEnabled;
     }
@@ -86,13 +98,26 @@ public sealed record McpServerProfile : IDurableDefinition
 
     public string Name { get; }
 
-    public string Executable { get; }
+    public McpServerTransport Transport { get; }
 
-    public IReadOnlyList<string> Arguments { get; }
+    [JsonIgnore]
+    public string Executable =>
+        (Transport as McpServerTransport.Stdio)?.Executable
+        ?? string.Empty;
 
-    public string? WorkingDirectory { get; }
+    [JsonIgnore]
+    public IReadOnlyList<string> Arguments =>
+        (Transport as McpServerTransport.Stdio)?.Arguments
+        ?? [];
 
-    public IReadOnlyList<McpServerEnvironmentVariable> Environment { get; }
+    [JsonIgnore]
+    public string? WorkingDirectory =>
+        (Transport as McpServerTransport.Stdio)?.WorkingDirectory;
+
+    [JsonIgnore]
+    public IReadOnlyList<McpServerEnvironmentVariable> Environment =>
+        (Transport as McpServerTransport.Stdio)?.Environment
+        ?? [];
 
     public IReadOnlyList<string> EnabledTools { get; }
 
@@ -109,7 +134,7 @@ public sealed record McpServerProfile : IDurableDefinition
         RequireSecretFreeText(reference.Value, parameterName);
     }
 
-    private static IReadOnlyList<string> CopyArguments(
+    internal static IReadOnlyList<string> CopyArguments(
         IReadOnlyList<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
@@ -156,7 +181,7 @@ public sealed record McpServerProfile : IDurableDefinition
         return new ReadOnlyCollection<string>(copies);
     }
 
-    private static IReadOnlyList<McpServerEnvironmentVariable> CopyEnvironment(
+    internal static IReadOnlyList<McpServerEnvironmentVariable> CopyEnvironment(
         IReadOnlyList<McpServerEnvironmentVariable> environment)
     {
         ArgumentNullException.ThrowIfNull(environment);
@@ -238,7 +263,7 @@ public sealed record McpServerProfile : IDurableDefinition
         return copy;
     }
 
-    private static string RequireSecretFreeText(
+    internal static string RequireSecretFreeText(
         string value,
         string parameterName)
     {
@@ -252,7 +277,7 @@ public sealed record McpServerProfile : IDurableDefinition
         return value;
     }
 
-    private static string RequireTrimmedText(
+    internal static string RequireTrimmedText(
         string value,
         string parameterName,
         int maximumBytes)

@@ -37,7 +37,26 @@ public enum AgentChatMessageRole
     Assistant,
 }
 
-public sealed record AgentChatMessage(AgentChatMessageRole Role, string Content);
+public sealed record AgentChatUsage(
+    long InputTokens,
+    long OutputTokens,
+    long CachedInputTokens,
+    long ReasoningTokens,
+    long TotalTokens);
+
+public sealed record AgentChatImage(
+    string FileName,
+    string MediaType,
+    int ByteLength);
+
+public sealed record AgentChatMessage(
+    AgentChatMessageRole Role,
+    string Content,
+    string? ReasoningSummary = null,
+    AgentChatUsage? Usage = null,
+    IReadOnlyList<AgentChatImage>? Images = null,
+    AgentReasoningEffort? RequestedReasoningEffort = null,
+    AgentConversationForkPoint? ForkPoint = null);
 
 public sealed record AgentChatSnapshot(
     AgentChatState State,

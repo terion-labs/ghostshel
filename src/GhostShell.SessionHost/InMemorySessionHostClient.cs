@@ -15,6 +15,7 @@ public sealed partial class InMemorySessionHostClient :
     IAgentPanelSessionHost,
     IAgentWorkspaceGraphSessionHost,
     IAgentProcessSessionHost,
+    IAgentStatisticsSessionHost,
     IAsyncDisposable
 {
     private const int DefaultEventRetention = 256;
@@ -44,6 +45,8 @@ public sealed partial class InMemorySessionHostClient :
         _agentWorkspaceGraphActionComposer;
     private readonly AgentProcessListActionComposer?
         _agentProcessListActionComposer;
+    private readonly AgentStatisticsReadActionComposer?
+        _agentStatisticsReadActionComposer;
     private readonly IAgentAuthorizationConsumer? _agentAuthorizationConsumer;
     private readonly int _eventRetention;
     private readonly CapabilitySet _hostCapabilities;
@@ -65,7 +68,9 @@ public sealed partial class InMemorySessionHostClient :
         AgentWorkspaceGraphActionComposer?
             agentWorkspaceGraphActionComposer = null,
         AgentProcessListActionComposer?
-            agentProcessListActionComposer = null)
+            agentProcessListActionComposer = null,
+        AgentStatisticsReadActionComposer?
+            agentStatisticsReadActionComposer = null)
     {
         ArgumentNullException.ThrowIfNull(terminalFactory);
         ArgumentNullException.ThrowIfNull(lifecyclePolicy);
@@ -90,6 +95,8 @@ public sealed partial class InMemorySessionHostClient :
         _agentWorkspaceGraphActionComposer =
             agentWorkspaceGraphActionComposer;
         _agentProcessListActionComposer = agentProcessListActionComposer;
+        _agentStatisticsReadActionComposer =
+            agentStatisticsReadActionComposer;
         _agentAuthorizationConsumer = agentAuthorizationConsumer;
         _eventRetention = eventRetention;
         _workspaceGraphs = new WorkspaceGraphRegistry(_eventRetention, _timeProvider);

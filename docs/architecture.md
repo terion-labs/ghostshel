@@ -17,7 +17,8 @@ Build GhostSHELL as a cross-platform terminal workspace in which a user can:
 2. arrange terminal, browser, file, statistics, and process panels into reusable screens;
 3. group active work into workspaces and restore it reliably;
 4. operate the entire application from a configurable keyboard model;
-5. use a built-in agent that can inspect and operate every authorized panel in a connection, screen, or workspace, including interactive terminal TUIs;
+5. use a built-in agent that can inspect and operate every authorized eligible
+   panel in its current Workspace, including interactive terminal TUIs;
 6. use a visual language that resembles the supplied design while adapting naturally to macOS, Windows 11, GNOME, and KDE;
 7. later attach a web/WASM client or a headless ACP/A2A client without replacing the domain or runtime model.
 
@@ -149,7 +150,7 @@ For desktop v1, the session host runs in the desktop process behind an in-memory
 | `GhostShell.Files` | Provider-neutral file locations, capabilities, transfers, previews, and protocol adapters | Core/Application contracts; protocol SDKs privately |
 | `GhostShell.Agent` | Provider-neutral conversation loop, strict stream reduction, bounded context, and inert tool proposals | Core primitives only |
 | `GhostShell.Agent.Providers` | Anthropic and OpenAI-compatible model discovery/streaming plus zero-tool chat composition | Agent, Application, Core; BCL HTTP/SSE privately |
-| `GhostShell.Mcp` | Governed native MCP client, bounded stdio process transport, discovery, manifest freezing, and result projection | Application, Core; official MCP SDK privately |
+| `GhostShell.Mcp` | Governed native MCP client, bounded stdio and Streamable HTTP transports, discovery, manifest freezing, and result projection | Application, Core; official MCP SDK privately |
 | `GhostShell.Infrastructure` | SQLite, migrations, vaults, SSH/Docker/WSL, logging | Application ports and vendor libraries |
 | `GhostShell.Platform.*` | macOS, Windows, and Linux appearance, window, hotkey, notification, and native-view bridges | Platform SDKs and Application ports |
 | `GhostShell.App` | Avalonia composition, routes, view models, controls, accessibility | Application client contracts; never vendor engines directly |
@@ -564,9 +565,9 @@ and event-ordering evidence.
 gate.
 
 An exact panel/session tool schema receives its browser identity from the
-host-owned run target and does not accept `panel_id`. A current-tab or workspace
-schema always requires one enumerated eligible `panel_id`, even when only one
-browser currently qualifies. The runtime freshly resolves that selection, and
+host-owned run target and does not accept `panel_id`. An internal `OpenTab` or
+Workspace schema always requires one enumerated eligible `panel_id`, even when
+only one browser currently qualifies. The runtime freshly resolves that selection, and
 the trusted composer narrows it to one exact panel/session before the broker
 issues an expiring one-use authorization. The session host captures and
 revalidates the exact current interactive browser attachment owned by the
@@ -804,29 +805,33 @@ An `AgentTarget` is one of:
 - workspace;
 - explicit user-selected live-terminal set.
 
-The production selector exposes `Active panel`, `Current tab`, `Workspace`, and
-`Selected terminals`. The active-panel choice accepts a supported terminal or
-browser or File Viewer. Current-tab and workspace runs pin the initial ordered
-mixed membership of supported terminal, browser, and File Viewer panels and
-re-resolve those exact members before tool composition. `Selected terminals` is a terminal-only,
-checkbox-built subset of between 1 and 64 currently live terminals in one
-window/workspace; callers cannot enter or submit free-form IDs. A prepared
-connection plan or pending session request is not live; the desktop offers a
-choice only after observing the exact active host session. Each choice shows
-its exact stable tab and panel IDs, while panel and tab names are explicitly
-marked as untrusted labels. The selection and scope control lock once a run
-binds. A missing panel, replaced or invalidated session, capability loss, or
-membership mismatch fails closed without shrinking, substituting, or widening
-the set. Before binding, the user must explicitly review and reselect stale
-choices; after binding, the failed run must be cleared before a new selection
-can be made.
+The desktop product surface exposes one `Workspace` scope. A run pins the
+window/workspace identity, not one initial panel roster. Before each provider
+continuation it re-inspects the authoritative workspace graph, accepts the
+current ordered set of supported live Terminal, Browser, File Viewer,
+Statistics, and Process Monitor panels, and rebuilds the runtime-contributed tool
+manifest. Closed panels disappear and newly opened eligible panels become
+available without retargeting the run. Every operation still narrows to one
+host-enumerated current panel/session binding and revalidates that binding
+immediately before execution. Exact panel, connection-session, and selected-set
+targets remain internal/testable contracts and retain fixed-topology fail-closed
+semantics; they are not separate workspace/tab/window concepts in the current
+agent UI.
+
+A valid live workspace contains at most 64 panels in total. The runtime graph,
+context resolver, fixed graph pages, and provider `panel_id` enums share that
+authoritative bound, so a workspace-scoped run observes every panel rather than
+silently truncating the graph. Creating, restoring, or registering a 65th panel
+fails atomically; increasing this product bound requires coordinated graph-page,
+prompt, per-schema, and aggregate tool-schema budget changes.
 
 The context resolver translates a target into currently authorized panels and resources. The agent sees stable IDs, human titles, connection boundaries, working directories, visibility, and capabilities. Widening scope always requires a visible user action or an approval governed by policy.
 
 An exact terminal-panel or connection-session tool schema omits `panel_id`.
-Every broader tab, workspace, or selected-terminal schema requires a
-host-enumerated eligible `panel_id`, even when exactly one terminal can perform
-the operation. The parser does not infer authority from current cardinality.
+Every broader Workspace schema and every internal `OpenTab` or
+selected-terminal schema requires a host-enumerated eligible `panel_id`, even
+when exactly one terminal can perform the operation. The parser does not infer
+authority from current cardinality.
 
 **Implementation status (2026-07-24):** The complete first governed
 workspace-graph family is production-reachable. `workspace.list`,
@@ -835,15 +840,17 @@ graph objects already inside the immutable run target; they never discover
 sibling workspaces, tabs, or panels. `panel.inspect` and `panel.focus` select
 one exact current member. An exact panel or connection-session scope resolves
 to one graph-backed panel and accepts no provider-selected identity. A broader
-tab, workspace, or selected-panel scope is narrowed for panel actions by one
-required `panel_id` whose schema enum contains only eligible members, even when
-exactly one member is eligible.
+Workspace scope or internal `OpenTab`/selected-panel scope is narrowed for
+panel actions by one required `panel_id` whose schema enum contains only
+eligible members, even when exactly one member is eligible.
 
-The runtime pins graph structure independently from operational session state.
-In-scope membership, relative order, ownership, or kind drift fails closed,
-while title, focus, visibility, lifecycle, revision, and sequence refreshes do
-not. A connection-session scope must still own its exact current session, and
-out-of-scope sibling changes neither invalidate nor leak into a clipped scope.
+The runtime pins graph structure independently from operational session state
+for exact scopes. For Workspace and internal `OpenTab` targets, membership,
+order, and session bindings are live and replace the prior tool manifest after
+each successful round; the target's window/tab/workspace identity remains fixed.
+A connection-session scope must still own its exact current session, and
+out-of-scope sibling changes neither invalidate nor leak into a clipped exact
+scope.
 Clipped provider results omit the workspace revision and graph sequence because
 those global clocks would reveal unrelated sibling activity; a complete
 workspace scope retains them.
@@ -870,6 +877,8 @@ The initial tool families are:
 - `processes.list` for one hosted local Process Monitor, followed by scoped
   Git, process mutation/control, and Docker operations exposed by application
   services;
+- `statistics.read` for one hosted local Statistics panel, returning bounded
+  numeric observations through the same observation policy and audit path;
 - `agent.ask_user`, `agent.request_capability`, and `agent.report_progress`.
 
 Tools return structured data, stable errors, truncation metadata, and links to full local artifacts when applicable. Screen reads and terminal output use explicit byte/token budgets. Tool execution is cancellable.
@@ -1014,9 +1023,9 @@ grant from the absence of desktop UI. These decisions are recorded in
 local Process Monitor panel. It maps to `ProcessControl`/`Observation`, whose
 default policy remains `Off`, and uses the normal one-action broker,
 SessionHost, and durable audit path when enabled. Exact panel schemas contain
-only optional fixed sort and limit enums; tab/workspace schemas also require
-one fresh host-enumerated Process Monitor `panel_id`, even when only one is
-eligible. The model cannot choose a connection/session, command, PID/name
+only optional fixed sort and limit enums; Workspace and internal `OpenTab`
+schemas also require one fresh host-enumerated Process Monitor `panel_id`, even
+when only one is eligible. The model cannot choose a connection/session, command, PID/name
 filter, arbitrary limit, offset, or continuation token. Limits are
 `16`/`32`/`64` and sorts are CPU, memory, name, or PID, with CPU/32 as the
 defaults.
@@ -1075,20 +1084,19 @@ At minimum, distinct capabilities exist for terminal input, destructive terminal
 
 Durable policies accept only `Off`, `Ask`, and `Auto`. `YOLO` is never stored
 in a screen, workspace, or recovery snapshot and is never the default. It is a
-separately confirmed, scoped, expiring live-run overlay. Enabling it requires
-an explicit high-risk confirmation and produces a persistent, unmistakable
-indicator on every affected agent surface. Its configured scope and duration
-are displayed alongside the stop control. Disabling it takes effect before the
-next tool action. Audit records distinguish `Auto` policy execution from
-`YOLO` execution.
+separately selected, scoped live-run overlay. The composer exposes Full access
+as an ordinary approval mode at all times; no secondary confirmation dialog or
+visible timer is required. The selection remains until the user chooses Ask or
+the run ends. Disabling it revokes the current policy generation. Audit records
+distinguish `Auto` policy execution from `YOLO` execution.
 
 Within one live run, the governed runtime preserves the immutable accepted
 durable policy as its **baseline policy**, initializes a separate **run
 policy** from it, and registers a broker-enforced **effective policy**. The
 bounded `agent.request_capability` intrinsic may change one run-policy
-permission only from `Off` to `Ask`. A confirmed YOLO window is an effective
-overlay on the run policy, not a replacement for it; disabling or expiring
-YOLO restores the run policy. Stop, Clear, disposal, and a new run discard the
+permission only from `Off` to `Ask`. A confirmed Full access mode is an
+effective overlay on the run policy, not a replacement for it; selecting Ask
+restores the run policy. Stop, Clear, disposal, and a new run discard the
 run policy and reconstruct future authority from a newly accepted baseline.
 
 The built-in agent MUST:
@@ -1102,39 +1110,53 @@ The built-in agent MUST:
 
 ### 10.5 MCP servers
 
-MCP configuration includes add/edit/remove, executable or endpoint, environment
-as secret references, working directory, enabled tools, health, logs,
-reconnect, and per-scope enablement. Adding a server, changing its command, or
+MCP configuration includes add/edit/remove, a local stdio executable or remote
+Streamable HTTP endpoint, environment/header secret references, working
+directory, enabled tools, bounded diagnostics, and per-scope enablement.
+Adding a server, changing its transport authority, credential bindings, or
 expanding tools requires explicit confirmation. MCP tools are wrapped by the
 same capability and audit path as built-in tools.
 
-**Implementation status (2026-07-25):** the first governed stdio MCP slice is
-production-composed. Durable `McpServerProfile` definitions, SQLite
-persistence, import/export, dependency-aware secret handling, and an accessible
-Settings editor cover one absolute executable, ordered arguments, optional
-working directory, exact enabled-tool names, enabled state, and
-profile-scoped environment `SecretRef` values. Authority-expanding saves show a
-separate trusted review of the process, arguments, environment names and secret
-references, credential label/kind/scope status, and tool allowlist without
-loading secret values. Literal environment values and shell command strings
-are absent from the durable model; credential-shaped literals are rejected
-from profile text and call arguments. Every imported MCP profile is normalized
-to disabled before publication and must pass the normal trust-confirmed editor
-path before it can become eligible for a new run.
+**Implementation status (2026-08-13):** governed stdio and Streamable HTTP MCP
+transports are production-composed. Schema-two `McpServerProfile` definitions
+use a closed transport discriminator: stdio contains one absolute executable,
+ordered arguments, optional working directory, and environment-name-to-
+`SecretRef` bindings; Streamable HTTP contains one bounded HTTP(S) endpoint,
+an explicit acknowledgement for plaintext HTTP, and HTTP-header-name-to-
+`SecretRef` bindings. Both carry exact enabled-tool names and enabled state.
+Released schema-one stdio profiles are strictly migrated in memory at the
+infrastructure boundary; the next save or import emits schema two. SQLite,
+import/export, and dependency-aware secret handling preserve references rather
+than values. Every imported MCP profile is normalized to disabled before
+publication. The Settings editor and trust-confirmation dialog author both
+transport variants. Remote authoring requires HTTPS except for exact loopback
+HTTP, persists the Core insecure-transport acknowledgement only for that
+loopback exception, and exposes bounded header-name-to-`SecretRef` rows without
+loading or displaying header values.
 
 `GhostShell.Mcp` pins `ModelContextProtocol.Core` `1.3.0` and the stable
 `2025-11-25` protocol. The official SDK owns initialization, JSON-RPC
 correlation, lifecycle, pagination DTOs, and typed `tools/call` messages.
-GhostSHELL supplies the SDK with a private bounded `IClientTransport` because
+GhostSHELL supplies the SDK with a private bounded stdio `IClientTransport` because
 the SDK's built-in stdio transport inherits the ambient environment and does
 not provide the required pre-deserialization message/shape and retained-stderr
-bounds. The private transport launches directly without a shell, clears the
+bounds. That transport launches directly without a shell, clears the
 environment before adding only vault-resolved profile values, validates strict
 newline-delimited UTF-8 JSON, drains stderr to count-only metadata, and performs
 bounded child-process cleanup. A cumulative incoming control-message budget
 applies to initialization and resets for every list page and tool call, so a
 notification or server-request flood closes the transport instead of starving
 the expected response. SDK types do not cross the project boundary.
+
+For remote profiles, the official SDK `HttpClientTransport` runs in forced
+Streamable HTTP mode; legacy SSE fallback is disabled. A private HTTP boundary
+rejects redirects and cross-origin requests, disables cookies, ambient proxy
+use, decompression, and automatic redirects, and bounds response headers,
+session identifiers, and JSON/SSE body bytes. The SDK owns POST framing and
+the `Accept`, `MCP-Session-Id`, and `MCP-Protocol-Version` protocol headers.
+Only non-reserved configured headers are added, after resolving their exact
+profile-scoped references with `SecretUseKind.McpServerHttpHeader`; header
+values are bounded UTF-8 and cannot contain null or control characters.
 
 `McpTools=Off` opens no MCP run and advertises no MCP aliases. Under `Ask` or
 `Auto`, the runtime opens eligible enabled profiles, intersects bounded
@@ -1152,7 +1174,7 @@ All aliases map back to the one trusted `mcp.call` catalog action, classified as
 `McpTools` plus `Mutation`. Both `Ask` and `Auto` therefore require an exact
 human approval; MCP rejects YOLO.
 
-Before any catalog, vault, or process access, the execution host also requires
+Before any catalog, vault, or transport access, the execution host also requires
 a broker-issued launch lease for the exact registered agent/run and live
 `Ask`/`Auto` policy generation. Immediately before one dispatch, it re-inspects
 the run target, recomputes its binding, verifies the frozen manifest, current
@@ -1168,28 +1190,30 @@ Replacing or deleting an MCP-scoped credential closes every run that resolved
 it and waits for any in-flight Settings probe to dispose before returning, so
 the next launch is the first one allowed to resolve the replacement.
 
-The MCP Settings surface also exposes an explicit one-shot **Test** operation.
+The MCP diagnostics boundary also exposes an explicit one-shot **Test** operation.
 It requires an authenticated human client and the exact current profile
 revision, serializes one initialization-and-discovery probe under a maximum
 30-second deadline, projects discovered and enabled counts while withholding
-server-chosen tool identifiers, and explicitly disposes the directly launched
-test process before returning. The probe never calls a tool, creates broker or
-agent-action authority, or exposes retained stderr or log content. In this
-first schema, Test remains limited to enabled profiles because trust provenance
+server-chosen tool identifiers, and explicitly disposes the transport session
+before returning. The probe never calls a tool, creates broker or
+agent-action authority, or exposes retained stderr or log content. In schema
+two, Test remains limited to enabled profiles because trust provenance
 is not yet persisted separately from enablement; a later schema may allow a
 trusted-but-disabled profile to be tested without making an imported,
 unreviewed definition executable.
 
-This slice is intentionally narrower than the complete product requirement:
-it supports direct local stdio processes only. Streamable HTTP/SSE, endpoints,
-resources, prompts, sampling, elicitation, tasks, reconnect, per-scope server
-selection, persistent health polling, and retained log viewing are deferred.
+The intentionally excluded protocol surfaces are legacy SSE fallback,
+resources, prompts, sampling, elicitation, tasks, durable session resume,
+per-scope server selection, persistent health polling, and retained log
+viewing. The SDK may reconnect an interrupted SSE response up to two times
+inside one live Streamable HTTP session, but GhostSHELL never retries a
+dispatched tool call and does not persist a remote session for later resume.
 MCP profile add/edit/disable/delete/import/reload rotates a host-owned catalog
 generation, immediately marks affected runs closing, and disposes their
-directly launched processes without waiting for another tool call. Tool-list
+transport sessions without waiting for another tool call. Tool-list
 notifications likewise cannot expand a frozen run and fail the next adjacent
 check.
-The configured MCP process runs with the desktop user's OS authority and is not
+Each configured stdio process runs with the desktop user's OS authority and is not
 a sandbox; environment isolation only prevents accidental ambient-variable
 inheritance. Shutdown confirms the directly launched root process and requests
 best-effort process-tree termination when needed, but portable .NET process
@@ -1353,7 +1377,7 @@ The desktop has five primary surfaces:
 | Layout Designer | Keyboard editing, grid resize, min sizes, overlap rejection, panel order/accessibility, reset, cancel with unsaved changes. |
 | Workspaces settings | Empty state, reorder, missing item, workspace-only tab, icon/color picker, delete/migrate open instances. |
 | Appearance | System profiles, contrast-safe custom colors, live preview, terminal palette, import/export/reset, unsupported material. |
-| AI Providers | Add/edit/test, OAuth/API-key flows, unavailable model, refresh, quota/rate-limit, fallback order, local provider discovery. |
+| AI Providers | Add/edit/test, OAuth/API-key flows, unavailable model, refresh, quota/rate-limit, display order, local provider discovery. |
 | Agent | Effective scope and permission mode including persistent YOLO warning, live run, tool details, approval, denied, waiting, provider offline, retry, cancellation, compaction, history, audit link. |
 | Quick Terminal settings | Hotkey recorder/conflict, monitor/space, size, animation/reduced motion, restore and focus behavior. |
 
@@ -1570,10 +1594,10 @@ scope-clipped workspace-graph observations, governed bounded File Viewer
 observations plus exact mkdir/permanent-delete contracts (with production
 delete fail-closed pending an eligible provider), production browser
 state/navigation contracts (now on CEF OSR), deferred
-snapshot/click/fill/check implementation, mixed panel/tab/workspace targeting,
-selected-terminal targeting, bounded initial provider steering, governed native
-stdio MCP, and the embedded Chromium foundation are in progress
-(2026-08-08).**
+snapshot/click/fill/check implementation, visible Workspace targeting with
+internal exact/`OpenTab`/selected contracts, bounded initial provider steering, governed native
+stdio and Streamable HTTP MCP, and the embedded Chromium foundation are in
+progress (2026-08-13).**
 `GhostShell.Agent` now provides the native, in-process, provider-neutral kernel
 selected by ADR 0017. It accepts a closed typed provider stream, reduces it
 under event/text/tool/JSON limits, preserves provider stop reasons, commits only
@@ -1587,6 +1611,45 @@ result set to the proposal generation without giving the kernel an executor.
 Pending proposals still block unrelated turns and cancellation rolls an
 unexecuted pending turn back.
 
+Long conversations now compact automatically using Pi's budget model: the
+active provider/model publishes its context capacity, the kernel triggers above
+`contextWindow - 16,384`, retains roughly 20,000 tokens of the newest whole
+user turns, and asks a separately configured provider/model to roll older state
+into the structured summary. The composer displays current usage against that
+effective capacity. Global AI settings select the compaction model and an
+title-generation model; workspace and saved-screen policy layers can override
+both independently. The editor defaults legacy policies to their primary model
+and never presents first-message fallback as a title-model option.
+Maintenance
+providers receive no tools or execution authority, and a compaction/title
+failure cannot erase a provider answer that already committed. Quick Terminal
+uses the same saved global AI configuration but keeps its runtime and transcript
+inside its own workspace identity.
+
+The kernel also exposes an explicit idle-checkpoint boundary. It captures only
+fully committed `Ready` state: run identity, schema/generation/revision
+metadata, stable conversation (including assistant reasoning summaries and
+token usage, bounded signature-validated user images, and safe exact-bound
+provider replay artifacts needed by later tool continuations), and
+deterministic provider-tool aliases. Signed/summarized Anthropic blocks,
+opaque redacted blocks, and encrypted/finalized OpenAI Responses items may be
+durable. When a provider-private replay state contains suppressed raw Anthropic
+or OpenAI reasoning, checkpoint capture retains the visible assistant turn but
+omits that entire replay state; hidden reasoning never becomes durable. Active streams,
+pending approvals, compactions, tool manifests, provider clients, policy
+authority, capability leases, and secrets are excluded. Credential-shaped
+literal content fails closed. The application checkpoint-store port has a
+dedicated SQLite adapter whose immediate transactions, per-run revision fence,
+workspace-bound payload checksum, bounded reads, and frozen migration receipt
+make one settled snapshot atomic and corruption-detecting. The desktop owns one
+governed runtime per live workspace, including Quick Terminal; it saves every
+settled turn, projects only that workspace's newest valid transcript when the
+workspace chat is created, and
+lazily continues it only after the current trusted workspace manifest and the
+provider-private replay binding both match. It never resumes in-flight work or
+durable authority, and Clear removes the stored checkpoint. See
+[ADR 0043](adr/0043-idle-native-agent-checkpoints.md).
+
 One human steering update can now replace the actively streaming initial
 provider generation before commit. The original turn owner transparently runs
 the replacement with the same provider and exact tool manifest, while a
@@ -1599,16 +1662,33 @@ no authority and uses no broker, SessionHost action, or audit path.
 The kernel references only `GhostShell.Core` and the BCL. Compiled-boundary
 tests reject process, network, filesystem, native-loading, terminal,
 session-host, secret-vault, JavaScript, and Node.js authority. A separate
-`GhostShell.Agent.Providers` project now implements bounded Anthropic and
-OpenAI-compatible model discovery and streaming, including the official OpenAI
-endpoint. Durable AI-provider settings support endpoint, model, ordering,
-enabled state, and exact profile-scoped OS-vault credential references.
+`GhostShell.Agent.Providers` project implements bounded Anthropic Messages,
+OpenAI Responses, OpenAI-compatible Chat Completions, and model-aware GitHub
+Copilot routing. The provider catalog also describes Google and Bedrock, whose
+native runtime paths remain visibly unavailable and fail closed. OpenAI browser
+PKCE/device authorization and GitHub device authorization keep access and
+refresh material in scoped vault sessions; profiles retain only opaque
+references. OpenAI browser login binds the public Codex client to its registered
+literal `http://localhost:1455/auth/callback` redirect. GitHub device login uses
+GitHub's public first-party Copilot client by default and permits a deployment's
+registered public client ID to override it through
+`GHOSTSHELL_GITHUB_OAUTH_CLIENT_ID`; neither client ID is secret. Durable
+GitHub device tokens remain vault-only refresh material and are exchanged for
+short-lived Copilot API tokens before provider requests. Durable AI-provider
+settings support endpoint, model, display
+order, enabled state, and exact profile-scoped OS-vault credential references.
 Transport tests cover exact request origins and headers, strict JSON/SSE
 parsing, response and event limits, cancellation, sanitized errors, inert tool
 proposals, and native result messages. A governed run pins an immutable
 provider-profile revision and one request-scoped adapter through all of its
 tool rounds. Editing, disabling, or removing that profile fails the run closed
 before retained transcript can be sent to changed provider configuration.
+Provider-private reasoning continuity is replayed only when the profile,
+provider identity, protocol, model, actual routed endpoint, and adapter/auth
+route identity all still match; vault-backed routes also bind a one-way digest
+of the opaque credential reference. Any detectable drift fails before HTTP.
+Replacing material behind the same vault reference cannot be distinguished
+until the vault contract exposes an immutable credential revision.
 `AgentPolicy.Provider` is the exact `AiProviderProfileId` value, not a provider
 brand or display name, and `AgentPolicy.Model` is passed unchanged to creation
 of the pinned request adapter. An explicit saved policy must resolve to its
@@ -1619,26 +1699,29 @@ provider request therefore describe the same endpoint.
 
 The desktop-v1 [agent-to-tool threat model](security/agent-tool-threat-model.md)
 and [ADR 0019](adr/0019-one-action-agent-capability-broker.md) now define and
-implement the first governed control-plane boundary. `AgentTarget` uses full
-live window/workspace/tab/panel identities for panel, session, tab, workspace,
-and bounded same-workspace selected-terminal scopes. A selected-terminal target
-is a canonical set of 1 to 64 exact live terminal panel identities from one
-window/workspace; there is no free-form-ID construction path in the desktop.
-The session host resolves those targets against its authoritative graph and
-live-session registry in stable order, fails stale or cross-owner identities
-closed, preserves exact graphless and superseded session targets without
-substituting a replacement, and returns bounded immutable descriptive metadata.
-Context snapshots expose a canonical graph/session binding fingerprint for
-execution-time comparison but explicitly convey no reusable authority.
+implement the first governed control-plane boundary. The desktop visibly binds
+each run to one exact window/workspace identity. `AgentTarget` also retains
+full panel, connection-session, `OpenTab`, and bounded same-workspace
+selected-terminal variants as internal/testable contracts; these are not
+additional visible scope choices. Workspace and `OpenTab` refresh current
+eligible topology between provider rounds while retaining their enclosing
+identity. Exact and selected targets retain fixed membership. The session host
+resolves every target against its authoritative graph and live-session registry
+in stable order, fails stale or cross-owner identities closed, preserves exact
+graphless and superseded session targets without substituting a replacement,
+and returns bounded immutable descriptive metadata. Each action snapshot
+exposes a canonical graph/session binding fingerprint for execution-time
+comparison but explicitly conveys no reusable authority.
 
 The four read-only workspace-graph observations selected by
 [ADR 0029](adr/0029-scope-clipped-governed-workspace-graph-observations.md)
 are now connected end to end. Their schemas accept no identity or discovery
 query and only fixed page offsets where applicable. SessionHost clips every
-projection to the original target and binds the ordered relative
-window/workspace/tab/panel/kind sequence before consuming one authorization.
-In-scope structural drift or exact-session supersession fails closed; an
-out-of-scope sibling change and presentation/lifecycle-only refresh do not
+projection to the original target and binds the current ordered relative
+window/workspace/tab/panel/kind sequence around one authorization. Structural
+drift during that action or exact-session supersession fails closed; Workspace
+and `OpenTab` may establish a new current topology at the next round refresh.
+An out-of-scope sibling change and presentation/lifecycle-only refresh do not
 invalidate or widen the observation. Results include non-session Statistics
 and Process Monitor panels but exclude operational/session metadata, use
 bounded secret-redacted titles labeled
@@ -1687,22 +1770,18 @@ interrupt or grant authority to the live run. Full cross-run history,
 retention/export, and policy comparison remain later work.
 
 `GhostShell.Agent.Runtime` now connects those boundaries without adding provider
-or terminal/browser/file-provider/process authority to the agent kernel. The visible selector
-offers `Active panel`, `Current tab`, `Workspace`, and `Selected terminals`.
-Active panel accepts a supported terminal, browser, File Viewer, or hosted
-Process Monitor. Current-tab and workspace runs pin their initial ordered mixed
-terminal/browser/File Viewer/Process Monitor membership. The
-selected-terminal picker remains terminal-only: it lists current live terminals
-in the current workspace, accepts 1 to 64 checkbox selections, shows exact
-stable tab/panel IDs, and accepts no free-form identifiers. A connection plan
-or pending ensure request does not qualify; the picker waits for an exact
-active session snapshot from the host. Descriptive panel and tab labels are
-visibly untrusted. The scope and checkboxes lock once a run binds.
-Before every tool composition the runtime re-resolves the pinned membership;
-disappearance, session replacement, capability loss, or identity drift fails
-the run closed. It never silently removes or substitutes a member. The user
-must explicitly review and reselect stale choices before binding, or clear a
-bound/failed run and select again.
+or terminal/browser/file-provider/process authority to the agent kernel. The
+visible product scope is `Workspace`. Before every provider continuation the
+runtime re-resolves its current supported live Terminal, Browser, File Viewer,
+Statistics, and Process Monitor membership and rebuilds the runtime's
+tool-family contribution manifest. Disappearance removes a panel family from
+the eligible schemas, and a newly opened eligible panel makes that family
+available, without changing the pinned window/workspace
+identity. Descriptive panel and tab labels remain visibly untrusted. Internal
+`OpenTab` retains its exact tab identity while following the same live-topology
+rule; exact panel/session/selected-set contracts continue to pin their graph
+bindings and fail closed on drift. None is a separate scope choice in the
+current desktop surface.
 The runtime labels panel context as untrusted and adds a bounded host-generated
 manifest containing only available panel IDs, relevant descriptive metadata,
 and supported operations. For a broad scope, schemas require an enumerated
@@ -1791,9 +1870,9 @@ The governed File Viewer observations are `files.list`, `files.stat`, and
 are `files.mkdir` and `files.delete`, recorded in
 [ADR 0030](adr/0030-governed-file-viewer-mkdir-and-delete.md). Exact
 panel/session schemas accept only typed `path_segments` relative to the
-host-owned root; both mutations require a non-root path. Broad
-current-tab/workspace schemas additionally require a `panel_id` from the
-freshly generated eligible-panel enum. The provider cannot name a profile,
+host-owned root; both mutations require a non-root path. Broad Workspace and
+internal `OpenTab` schemas additionally require a `panel_id` from the freshly
+generated eligible-panel enum. The provider cannot name a profile,
 authority, absolute root, version, continuation token, page size, hidden-file
 policy, read limit, mutation precondition, recursive flag, trash behavior,
 retry policy, or provider option.
@@ -1872,8 +1951,8 @@ governed contract's fixed `permanent: true` receipt.
 
 The first governed browser set is `read_state`, `snapshot`, `click`, `fill`,
 `check`, `navigate`, `back`, `forward`, `reload`, and `stop`. An exact-panel/session
-schema omits `panel_id`; a broad current-tab/workspace schema always requires
-an eligible `panel_id`, even when only one browser currently qualifies.
+schema omits `panel_id`; a broad Workspace or internal `OpenTab` schema always
+requires an eligible `panel_id`, even when only one browser currently qualifies.
 `read_state` and `snapshot` use `BrowserData`; click, fill, and check use
 `BrowserInteraction`; and the five navigation mutations use
 `BrowserNavigation`. The host requires the exact current interactive browser
@@ -2008,8 +2087,8 @@ The session host returns the same trusted cancellation cause that it records;
 permit, session, attachment, or terminal input-lease revocation takes precedence
 over a concurrent caller request.
 
-The same fixed host-resolved membership is now visible to the user through an
-expandable context inspector in the agent card. It preserves host order and
+The current host-resolved Workspace topology is visible to the user through an
+expandable context inspector in the agent card. Each projection preserves host order and
 shows exact window/workspace/tab/panel/session identities, lifecycle and health,
 focus/visibility, terminal connection/current-directory metadata where
 applicable, browser-safe metadata, the File Viewer provider/trusted relative
@@ -2020,8 +2099,9 @@ uses an explicit details-withheld fallback when displaying the path would
 exceed its bound or expose secret-shaped/unsafe text.
 Descriptive labels use the same secret redaction and UTF-8 bounds as the
 provider manifest and are explicitly marked untrusted. Inspector rows convey no
-permit, attachment, or reusable execution authority; order or membership drift
-fails the run closed, and clearing the run removes the rows.
+permit, attachment, or reusable execution authority. Workspace and internal
+`OpenTab` rows are replaced after a round refresh; exact/selected rows remain
+fixed and reject membership drift. Clearing the run removes the rows.
 
 The desktop binds approval to one composition-owned human principal shared
 with the main window. Its agent surface shows provider and target state,
@@ -2063,27 +2143,21 @@ Trusted connection adapters now attach bounded, non-secret connection-boundary
 and initial-directory metadata to terminal launch requests. SessionHost owns
 that metadata, refreshes current working directory from canonical terminal
 screen state, includes it in context fingerprints, and supplies it to approval
-presentation. The live agent header, capability card, approval card, and YOLO
-confirmation expose the exact target, connection boundary, and current
-directory.
+presentation. The live agent header, capability card, and approval card expose
+the exact target, connection boundary, and current directory.
 
-The visible exact-panel YOLO lifecycle is also complete for this slice. Broader
-tab/workspace/selected-terminal YOLO is deliberately rejected, and browser
-YOLO is unavailable. The user must clear the run and start from `Active panel`
-with an exact terminal before the runtime will offer terminal YOLO. YOLO cannot
-be loaded as a durable runtime default. After a governed run is bound, an
-explicit high-risk top-level confirmation enables terminal input and
-destructive terminal actions for one fixed 15-minute run-only window (the
-contract enforces a one-hour maximum). A persistent danger card shows scope,
-expiry, Disable, and Stop. Disable remains available during active tool work,
-revokes the current policy generation and in-flight permit before returning,
-and restores `Ask`; expiry performs the same downgrade automatically. Policy
-transitions use deterministic, secret-free audit records that distinguish
-enabled, disabled, expired, and other updates. Focused tests cover bypass under
-confirmed YOLO, exact-target mismatch, expiry, active-action revocation,
-next-action approval, ambiguous audit commit, and audit-failure suspension.
+The run-scoped full-access lifecycle supports exact panels, `OpenTab`, selected
+panels, and Workspace whenever the selected run scope contains a terminal.
+Browser and MCP actions remain governed and cannot consume terminal full-access
+authority. The override cannot be loaded as a durable runtime default.
+Selecting Full access is itself the explicit human choice; it remains run-bound
+until Ask is selected or the run ends, revokes on downgrade, and records
+deterministic secret-free policy transitions.
+Focused tests cover confirmed bypass, target mismatch, broad-scope binding,
+active-action revocation, next-action approval, ambiguous audit commit,
+and audit-failure suspension.
 
-Saved-screen template targeting beyond the live current-tab scope, browser
+Saved-screen template targeting and additional visible agent scopes, browser
 profiles and permission/download/error flows, reference-backed interactions
 beyond click/fill/check, named-platform snapshot/redirect/click/fill/check, and browser
 automation conformance and document automation remain incomplete. The
@@ -2092,10 +2166,10 @@ snapshot/click/fill/check contracts, and top-level origin containment are
 implemented. Snapshot/click/fill/check are not implemented by or
 production-advertised on the CEF adapter, and the work
 does not yet satisfy all browser or agent-control exit criteria below. The
-governed direct-stdio MCP bridge, profile management, and bounded one-shot
-Settings initialization/discovery test are implemented; persistent health
-polling, retained logs, reconnect, per-scope server selection, and non-stdio MCP
-transports remain later work.
+governed stdio and Streamable HTTP MCP bridges, profile persistence, bounded
+one-shot initialization/discovery diagnostics, and remote-profile Settings
+authoring are implemented; persistent health polling, retained logs, durable
+session resume, and per-scope server selection remain later work.
 
 Deliver:
 
@@ -2104,7 +2178,8 @@ Deliver:
   common browser automation subset and capability matrix;
 - AI provider settings and secure credential references;
 - ADR-approved native .NET agent runtime;
-- panel/screen/workspace/selected-terminal agent scopes;
+- one visible Workspace agent scope plus internal exact/`OpenTab`/selected
+  target contracts;
 - terminal TUI control tools, scope-clipped workspace-graph and bounded File
   Viewer observations, initial browser tools, mixed-panel context
   inspector, approvals, cancellation, and audit;
@@ -2164,13 +2239,12 @@ product/platform/runtime state and truthfully says that updates are not
 configured. Its component inventory is supplied by the desktop composition
 boundary, so presentation remains independent of the concrete terminal engine.
 The governed agent surface reports its native in-process .NET boundary, the
-visible active-panel/current-tab/workspace/selected-terminals target, fixed live
-mixed terminal/browser/File Viewer/Process Monitor membership, live
-capabilities, and effective
-policy. It
-does not claim saved-screen-template targeting, broad-scope or browser YOLO,
+visible workspace target, live mixed terminal/browser/File Viewer/Statistics/
+Process Monitor membership, live capabilities, and effective policy. It
+does not claim saved-screen-template targeting or browser YOLO,
 browser interactions beyond exact-object click/fill/check, cross-platform browser
-automation conformance, non-stdio MCP, persistent MCP health/reconnect, or
+automation conformance, persistent MCP
+health/session resume, or
 unattended MCP decision routing.
 The macOS package includes the exact osx-arm64 .NET runtime license/notices, the
 pinned Ghostty root license, deterministic managed dependency evidence, the

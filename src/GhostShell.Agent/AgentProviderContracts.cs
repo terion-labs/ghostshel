@@ -18,7 +18,33 @@ public enum AgentMessageRole
 public sealed record AgentMessage
 {
     public AgentMessage(AgentMessageRole role, string content)
-        : this(role, content, [], toolResult: null)
+        : this(
+            role,
+            content,
+            [],
+            toolResult: null,
+            reasoningSummary: null,
+            usage: null,
+            images: [],
+            providerReplayState: null,
+            requestedReasoningEffort: null)
+    {
+    }
+
+    public AgentMessage(
+        AgentMessageRole role,
+        string content,
+        ImmutableArray<AgentImageAttachment> images)
+        : this(
+            role,
+            content,
+            [],
+            toolResult: null,
+            reasoningSummary: null,
+            usage: null,
+            images,
+            providerReplayState: null,
+            requestedReasoningEffort: null)
     {
     }
 
@@ -26,7 +52,12 @@ public sealed record AgentMessage
         AgentMessageRole role,
         string content,
         ImmutableArray<AgentToolProposal> toolCalls,
-        AgentToolResult? toolResult)
+        AgentToolResult? toolResult,
+        string? reasoningSummary,
+        AgentTokenUsage? usage,
+        ImmutableArray<AgentImageAttachment> images,
+        AgentProviderReplayState? providerReplayState,
+        AgentReasoningEffort? requestedReasoningEffort)
     {
         if (!Enum.IsDefined(role))
         {
@@ -41,19 +72,46 @@ public sealed record AgentMessage
                 nameof(toolCalls));
         }
 
+        if (images.IsDefault || images.Any(image => image is null))
+        {
+            throw new ArgumentException(
+                "The image collection is required.",
+                nameof(images));
+        }
+
         var hasToolCalls = toolCalls.Length > 0;
         var hasToolResult = toolResult is not null;
+        var hasReasoningSummary = reasoningSummary is not null;
+        var hasUsage = usage is not null;
+        var hasRequestedReasoning = requestedReasoningEffort is not null;
         if ((role != AgentMessageRole.Assistant && hasToolCalls)
             || (hasToolResult && role != AgentMessageRole.Tool)
-            || (hasToolCalls && hasToolResult))
+            || (hasToolCalls && hasToolResult)
+            || (role != AgentMessageRole.Assistant
+                && (hasReasoningSummary || hasUsage))
+            || (role != AgentMessageRole.Assistant
+                && providerReplayState is not null)
+            || (role != AgentMessageRole.Assistant && hasRequestedReasoning)
+            || (role != AgentMessageRole.User && images.Length > 0)
+            || reasoningSummary is { Length: 0 })
         {
             throw new ArgumentException("The structured message shape is invalid.");
+        }
+
+        if (requestedReasoningEffort is { } effort && !Enum.IsDefined(effort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestedReasoningEffort));
         }
 
         Role = role;
         Content = content;
         ToolCalls = toolCalls;
         ToolResult = toolResult;
+        ReasoningSummary = reasoningSummary;
+        Usage = usage;
+        Images = images;
+        ProviderReplayState = providerReplayState;
+        RequestedReasoningEffort = requestedReasoningEffort;
     }
 
     public AgentMessageRole Role { get; }
@@ -64,17 +122,54 @@ public sealed record AgentMessage
 
     public AgentToolResult? ToolResult { get; }
 
+    /// <summary>
+    /// Optional provider-authored reasoning summary. This is bounded model
+    /// output, not hidden chain-of-thought and not trusted authority.
+    /// </summary>
+    public string? ReasoningSummary { get; }
+
+    public AgentTokenUsage? Usage { get; }
+
+    public ImmutableArray<AgentImageAttachment> Images { get; }
+
+    /// <summary>
+    /// The provider-neutral effort requested for this assistant generation.
+    /// This records what GhostShell sent; token usage records what the provider
+    /// reports it actually used.
+    /// </summary>
+    public AgentReasoningEffort? RequestedReasoningEffort { get; }
+
+    internal AgentProviderReplayState? ProviderReplayState { get; }
+
     internal static AgentMessage Assistant(
         string content,
-        ImmutableArray<AgentToolProposal> toolCalls) =>
-        new(AgentMessageRole.Assistant, content, toolCalls, toolResult: null);
+        ImmutableArray<AgentToolProposal> toolCalls,
+        string? reasoningSummary = null,
+        AgentTokenUsage? usage = null,
+        AgentProviderReplayState? providerReplayState = null,
+        AgentReasoningEffort? requestedReasoningEffort = null) =>
+        new(
+            AgentMessageRole.Assistant,
+            content,
+            toolCalls,
+            toolResult: null,
+            reasoningSummary,
+            usage,
+            images: [],
+            providerReplayState,
+            requestedReasoningEffort);
 
     internal static AgentMessage FromToolResult(AgentToolResult result) =>
         new(
             AgentMessageRole.Tool,
             result?.Value.Content ?? throw new ArgumentNullException(nameof(result)),
             [],
-            result);
+            result,
+            reasoningSummary: null,
+            usage: null,
+            images: [],
+            providerReplayState: null,
+            requestedReasoningEffort: null);
 }
 
 public sealed record AgentToolDefinition
@@ -300,7 +395,8 @@ public sealed record AgentProviderRequest
         AgentRunId runId,
         long generation,
         ImmutableArray<AgentMessage> messages,
-        ImmutableArray<AgentToolDefinition> tools)
+        ImmutableArray<AgentToolDefinition> tools,
+        AgentReasoningEffort reasoningEffort = AgentReasoningEffort.Automatic)
     {
         if (runId == default)
         {
@@ -318,10 +414,16 @@ public sealed record AgentProviderRequest
             throw new ArgumentException("The tool collection is required.", nameof(tools));
         }
 
+        if (!Enum.IsDefined(reasoningEffort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(reasoningEffort));
+        }
+
         RunId = runId;
         Generation = generation;
         Messages = messages;
         Tools = tools;
+        ReasoningEffort = reasoningEffort;
     }
 
     public AgentRunId RunId { get; }
@@ -331,6 +433,8 @@ public sealed record AgentProviderRequest
     public ImmutableArray<AgentMessage> Messages { get; }
 
     public ImmutableArray<AgentToolDefinition> Tools { get; }
+
+    public AgentReasoningEffort ReasoningEffort { get; }
 }
 
 /// <summary>
@@ -366,6 +470,12 @@ public abstract record AgentProviderEvent
     public sealed record TextDelta(string Value) : AgentProviderEvent;
 
     /// <summary>
+    /// A provider-authored summary of its reasoning. Adapters must not map
+    /// hidden chain-of-thought or opaque reasoning payloads into this event.
+    /// </summary>
+    public sealed record ReasoningSummaryDelta(string Value) : AgentProviderEvent;
+
+    /// <summary>
     /// Begins a provider tool call. <paramref name="Name"/> must equal the
     /// advertised <see cref="AgentToolDefinition.ProviderName"/>.
     /// </summary>
@@ -379,6 +489,15 @@ public abstract record AgentProviderEvent
         string Value) : AgentProviderEvent;
 
     public sealed record ToolCallCompleted(int Index) : AgentProviderEvent;
+
+    public sealed record Usage(AgentTokenUsage Value) : AgentProviderEvent;
+
+    /// <summary>
+    /// Final provider-private continuity state. The kernel reduces this only as
+    /// part of a successfully completed response and never projects it.
+    /// </summary>
+    internal sealed record ReplayStateFinalized(
+        AgentProviderReplayState Value) : AgentProviderEvent;
 
     public sealed record ResponseCompleted(
         AgentProviderStopReason StopReason) : AgentProviderEvent;

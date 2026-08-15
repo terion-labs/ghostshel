@@ -149,7 +149,7 @@ internal sealed class SqliteDefinitionGraphValidator
         var other = conflict.First(profile => profile.Key != owner.Key);
         return new(
             DefinitionProblemKind.InvalidDefinition,
-            $"AI providers '{owner.Key}' and '{other.Key}' both use fallback order {owner.Order}. Each AI provider must have a distinct fallback order.",
+            $"AI providers '{owner.Key}' and '{other.Key}' both use display order {owner.Order}. Each AI provider must have a distinct display order.",
             owner.Key);
     }
 

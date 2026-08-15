@@ -218,7 +218,12 @@ public sealed class SqliteDatabaseTests
         var error = await Assert.ThrowsAsync<SqliteException>(async () =>
             await temporary.Database.EnsureInitializedAsync(CancellationToken.None));
         Assert.Contains(
-            sourceVersion == 8 ? "next migration collision" : "already exists",
+            sourceVersion switch
+            {
+                8 => "next migration collision",
+                13 => "duplicate column name",
+                _ => "already exists",
+            },
             error.Message,
             StringComparison.OrdinalIgnoreCase);
 

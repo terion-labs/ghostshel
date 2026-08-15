@@ -183,6 +183,7 @@ public sealed partial class NativeAgentSession
                 conversationWithResults,
                 [],
                 continuationTools,
+                pendingTurn.ReasoningEffort,
                 ActiveTurnKind.ToolContinuation);
             _activeTurn = activeTurn;
             _providerOperationsInFlight = checked(_providerOperationsInFlight + 1);
@@ -191,7 +192,8 @@ public sealed partial class NativeAgentSession
                 RunId,
                 generation,
                 conversationWithResults,
-                continuationTools);
+                continuationTools,
+                pendingTurn.ReasoningEffort);
             AppendEventUnsafe(AgentRunEventKind.TurnStarted, generation);
         }
 

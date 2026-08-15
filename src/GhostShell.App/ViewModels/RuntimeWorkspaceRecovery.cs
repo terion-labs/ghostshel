@@ -13,8 +13,8 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
     private const int OldestSupportedSchemaVersion = 4;
 
-    private const int MaximumTabs = 128;
-    private const int MaximumPanelsPerTab = 128;
+    private const int MaximumTabs = WorkspaceInstance.MaximumPanelCount;
+    private const int MaximumPanelsPerTab = WorkspaceInstance.MaximumPanelCount;
     private const int MaximumGridDimension = 64;
 
     public static string Serialize(
@@ -257,6 +257,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
         error = null;
         var tabKeys = new HashSet<string>(StringComparer.Ordinal);
+        var panelCount = 0;
         foreach (var tab in workspace.Tabs)
         {
             if (tab is null
@@ -268,6 +269,13 @@ internal static class RuntimeWorkspaceRecoveryCodec
                     out error))
             {
                 error ??= "Runtime tab recovery metadata is invalid.";
+                return false;
+            }
+
+            panelCount += tab.Panels!.Length;
+            if (panelCount > WorkspaceInstance.MaximumPanelCount)
+            {
+                error = $"A recovered workspace cannot contain more than {WorkspaceInstance.MaximumPanelCount} panels.";
                 return false;
             }
         }
@@ -541,7 +549,10 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
     Dictionary<AgentCapability, AgentPermission> Permissions,
     RuntimeAgentPolicySourceRecoveryPayload[] Sources,
     bool IsLegacyFallback,
-    bool HasPolicyOverride)
+    bool HasPolicyOverride,
+    AgentModelSelection? CompactionModel = null,
+    AgentModelSelection? TitleModel = null,
+    string? SystemPrompt = null)
 {
     public static RuntimeAgentPolicyRecoveryPayload Capture(
         RuntimeAgentPolicyProvenance provenance)
@@ -557,7 +568,10 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
                 .Select(RuntimeAgentPolicySourceRecoveryPayload.Capture)
                 .ToArray(),
             provenance.IsLegacyFallback,
-            provenance.HasPolicyOverride);
+            provenance.HasPolicyOverride,
+            provenance.EffectivePolicy.CompactionModel,
+            provenance.EffectivePolicy.TitleModel,
+            provenance.EffectivePolicy.SystemPrompt);
     }
 
     public bool TryValidate()
@@ -576,7 +590,12 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
         var policy = new AgentPolicy(
             Provider,
             Model,
-            Permissions.ToImmutableDictionary());
+            Permissions.ToImmutableDictionary())
+        {
+            CompactionModel = CompactionModel,
+            TitleModel = TitleModel,
+            SystemPrompt = SystemPrompt,
+        };
         return policy.IsValidForDurableStorage()
             && (!IsLegacyFallback
                 || Sources.Length == 0
@@ -600,7 +619,12 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
             new AgentPolicy(
                 Provider,
                 Model,
-                Permissions.ToImmutableDictionary()),
+                Permissions.ToImmutableDictionary())
+            {
+                CompactionModel = CompactionModel,
+                TitleModel = TitleModel,
+                SystemPrompt = SystemPrompt,
+            },
             Sources.Select(source => source.ToSource()),
             IsLegacyFallback,
             HasPolicyOverride);
@@ -611,18 +635,27 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
         ArgumentNullException.ThrowIfNull(other);
         return string.Equals(Provider, other.Provider, StringComparison.Ordinal)
             && string.Equals(Model, other.Model, StringComparison.Ordinal)
+            && CompactionModel == other.CompactionModel
+            && TitleModel == other.TitleModel
+            && string.Equals(SystemPrompt, other.SystemPrompt, StringComparison.Ordinal)
             && Permissions.Count == other.Permissions.Count
             && Permissions.All(item =>
                 other.Permissions.TryGetValue(item.Key, out var permission)
                 && item.Value == permission);
     }
 
-    private bool HasSamePolicyAs(AgentPolicy other) =>
-        string.Equals(Provider, other.Provider, StringComparison.Ordinal)
-        && string.Equals(Model, other.Model, StringComparison.Ordinal)
+    private bool HasSamePolicyAs(AgentPolicy other)
+    {
+        var resolved = AgentPolicyResolver.Resolve(other);
+        return string.Equals(Provider, resolved.Provider, StringComparison.Ordinal)
+        && string.Equals(Model, resolved.Model, StringComparison.Ordinal)
+        && CompactionModel == resolved.CompactionModel
+        && TitleModel == resolved.TitleModel
+        && string.Equals(SystemPrompt, resolved.SystemPrompt, StringComparison.Ordinal)
         && AgentPolicy.Capabilities.All(capability =>
             Permissions.TryGetValue(capability, out var permission)
-            && permission == other.GetPermission(capability));
+            && permission == resolved.GetPermission(capability));
+    }
 }
 
 internal sealed record RuntimeAgentPolicySourceRecoveryPayload(

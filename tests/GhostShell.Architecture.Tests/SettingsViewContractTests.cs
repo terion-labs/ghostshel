@@ -66,6 +66,8 @@ public sealed class SettingsViewContractTests
             ["SaveKeybindingsRequested"] = "OnSaveKeybindingsClick",
             ["SaveQuickTerminalSettingsRequested"] =
                 "OnSaveQuickTerminalSettingsClick",
+            ["SaveDefaultAgentPolicyRequested"] =
+                "OnSaveDefaultAgentPolicyClick",
             ["SaveTerminalProfileRequested"] = "OnSaveTerminalProfileClick",
             ["SecretsSettingsRequested"] = "OnSecretsSettingsClick",
             ["SelectTerminalPaletteRequested"] = "OnSelectTerminalPaletteClick",
@@ -108,6 +110,70 @@ public sealed class SettingsViewContractTests
                     AttributeValue(element, "Name"),
                     extractedName,
                     StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void Ai_settings_group_defaults_providers_and_mcp_without_a_second_navigation_page()
+    {
+        var settings = LoadView("SettingsView");
+        var aiNavigation = Assert.Single(
+            settings.Descendants(),
+            element => element.Name.LocalName == "ShellNavigationItem"
+                && AttributeValue(element, "Label") == "AI");
+        Assert.Equal("AI settings", AttributeValue(aiNavigation, "AutomationName"));
+        Assert.DoesNotContain(
+            settings.Descendants(),
+            element => element.Name.LocalName == "ShellNavigationItem"
+                && AttributeValue(element, "Label") == "MCP servers");
+        Assert.Contains(
+            settings.Descendants(),
+            element => AttributeValue(element, "Heading")
+                == "Default agent configuration");
+        Assert.Contains(
+            settings.Descendants(),
+            element => AttributeValue(element, "Heading") == "System prompt");
+        var systemPrompt = Assert.Single(
+            settings.Descendants(),
+            element => element.Name.LocalName == "TextBox"
+                && AttributeValue(element, "AutomationProperties.Name")
+                    == "Default agent system prompt");
+        Assert.Equal(
+            "{Binding DefaultAgentPolicy.SystemPrompt, Mode=TwoWay}",
+            AttributeValue(systemPrompt, "Text"));
+        Assert.DoesNotContain(
+            settings.Descendants(),
+            element => AttributeValue(element, "Content")
+                    == "Use first message as title"
+                || AttributeValue(element, "Text")
+                    == "Use first message as title");
+        var aiPage = FindNamedElement(settings.Root!, "AiSettingsPage");
+        Assert.Equal(
+            "{Binding IsAgentSettingsVisible}",
+            AttributeValue(aiPage, "IsVisible"));
+        var visibleCopy = string.Join(
+            '\n',
+            aiPage.DescendantsAndSelf()
+                .Attributes()
+                .Where(attribute => attribute.Name.LocalName is
+                    "Text" or "Description" or "Body" or "Footnote")
+                .Select(attribute => attribute.Value));
+        foreach (var internalPhrase in new[]
+        {
+            "bounded request",
+            "capability broker",
+            "governed agent run",
+            "inert tool proposals",
+            "not live MCP session state",
+            "opaque SecretRef",
+            "provider-private",
+            "session-host authority",
+        })
+        {
+            Assert.DoesNotContain(
+                internalPhrase,
+                visibleCopy,
+                StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -216,7 +282,9 @@ public sealed class SettingsViewContractTests
         var pageHeaders = root.Descendants()
             .Where(element => element.Name.LocalName == "SettingsPageHeader")
             .ToArray();
-        Assert.Equal(InlineSettingsPageVisibilityBindings.Length, pageHeaders.Length);
+        // AI is one navigation page with two explicit groups: agent defaults/providers
+        // and MCP servers. Every other page has one page header.
+        Assert.Equal(InlineSettingsPageVisibilityBindings.Length + 1, pageHeaders.Length);
         Assert.All(pageHeaders, header =>
         {
             Assert.False(string.IsNullOrWhiteSpace(AttributeValue(header, "Heading")));
@@ -651,6 +719,48 @@ public sealed class SettingsViewContractTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Ai_provider_editor_balances_rows_and_does_not_render_single_options_as_selectors()
+    {
+        var editor = LoadView("AiProviderProfileEditorDialog");
+
+        Assert.Equal(
+            "*,*",
+            AttributeValue(FindNamedElement(editor.Root!, "IdentityFields"), "ColumnDefinitions"));
+        Assert.Equal(
+            "*,*",
+            AttributeValue(FindNamedElement(editor.Root!, "ModelFields"), "ColumnDefinitions"));
+
+        var providerSelector = FindNamedElement(editor.Root!, "ProviderSelector");
+        Assert.Contains(
+            providerSelector.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Text"),
+                "{Binding Summary}",
+                StringComparison.Ordinal));
+
+        Assert.Equal(
+            "{Binding HasMultipleAuthenticationOptions}",
+            AttributeValue(
+                FindNamedElement(editor.Root!, "AuthenticationSelector"),
+                "IsVisible"));
+        Assert.Equal(
+            "{Binding HasSingleAuthenticationOption}",
+            AttributeValue(
+                FindNamedElement(editor.Root!, "AuthenticationValue"),
+                "IsVisible"));
+        Assert.Equal(
+            "{Binding HasMultipleCredentialOptions}",
+            AttributeValue(
+                FindNamedElement(editor.Root!, "CredentialSelector"),
+                "IsVisible"));
+        Assert.Equal(
+            "{Binding HasSingleCredentialOption}",
+            AttributeValue(
+                FindNamedElement(editor.Root!, "CredentialValue"),
+                "IsVisible"));
+    }
+
     private static readonly string[] InlineSettingsPageVisibilityBindings =
     [
         "IsWorkspaceSettingsVisible",
@@ -659,7 +769,6 @@ public sealed class SettingsViewContractTests
         "IsTerminalSettingsVisible",
         "IsSecretsSettingsVisible",
         "IsAgentSettingsVisible",
-        "IsMcpSettingsVisible",
         "IsDiagnosticsSettingsVisible",
         "IsAboutSettingsVisible",
     ];
@@ -749,7 +858,7 @@ public sealed class SettingsViewContractTests
         "KeybindingPrefixRepeatable",
         "KeybindingPrefixTimeout",
         "LocalArtifactControlView",
-        "McpEnvironmentSecretTargetPicker",
+        "McpServerSecretTargetPicker",
         "McpServerSecretKindPicker",
         "McpServerSecretLabelInput",
         "McpServerSecretValueInput",

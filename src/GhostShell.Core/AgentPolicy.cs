@@ -51,11 +51,19 @@ public enum AgentPermission
     Yolo,
 }
 
+public sealed record AgentModelSelection(string Provider, string Model)
+{
+    public bool IsStructurallyValid() =>
+        AgentPolicy.IsValidProvider(Provider)
+        && AgentPolicy.IsValidModel(Model);
+}
+
 public sealed record AgentPolicy(
     string Provider,
     string Model,
     ImmutableDictionary<AgentCapability, AgentPermission> Permissions)
 {
+    public const int MaximumSystemPromptLength = 8_000;
     public const int MaximumProviderLength = 256;
     public const int MaximumModelLength = 256;
 
@@ -111,6 +119,24 @@ public sealed record AgentPolicy(
             [AgentCapability.SecretUse] = AgentPermission.Ask,
         }.ToImmutableDictionary());
 
+    /// <summary>
+    /// Optional summarization route. Null means inherit the next broader layer;
+    /// a fully resolved policy falls back to the global primary model.
+    /// </summary>
+    public AgentModelSelection? CompactionModel { get; init; }
+
+    /// <summary>
+    /// Optional conversation-title route. Null inherits an explicitly configured
+    /// broader route; resolved legacy policies fall back to their primary model.
+    /// </summary>
+    public AgentModelSelection? TitleModel { get; init; }
+
+    /// <summary>
+    /// Optional user-authored instructions appended to the invariant runtime
+    /// safety prompt. Null inherits the next broader policy layer.
+    /// </summary>
+    public string? SystemPrompt { get; init; }
+
     public string EffectiveSummary =>
         $"Commands: {Format(GetPermission(AgentCapability.RunCommands))} · " +
         $"Files: {Format(GetPermission(AgentCapability.EditFiles))} · " +
@@ -140,6 +166,9 @@ public sealed record AgentPolicy(
     {
         if (!IsValidProvider(Provider)
             || !IsValidModel(Model)
+            || CompactionModel is not null && !CompactionModel.IsStructurallyValid()
+            || TitleModel is not null && !TitleModel.IsStructurallyValid()
+            || SystemPrompt is not null && !IsValidSystemPrompt(SystemPrompt)
             || Permissions is null
             || Permissions.Keys.Any(capability => !Enum.IsDefined(capability))
             || Permissions.Values.Any(permission => !Enum.IsDefined(permission)))
@@ -166,6 +195,13 @@ public sealed record AgentPolicy(
 
     public static bool IsValidModel(string? value) =>
         IsValidIdentityValue(value, MaximumModelLength);
+
+    public static bool IsValidSystemPrompt(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length <= MaximumSystemPromptLength
+        && value.All(character =>
+            !char.IsControl(character)
+            || character is '\r' or '\n' or '\t');
 
     private static string Format(AgentPermission permission) =>
         permission == AgentPermission.Yolo ? "YOLO" : permission.ToString();

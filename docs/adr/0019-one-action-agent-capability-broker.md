@@ -32,19 +32,18 @@ screen/wait/input/interrupt/resize operations, browser state/navigation and
 candidate exact-object interactions, and bounded read-only File Viewer
 list/stat/text-preview observations. Adding a tool is a code and test change,
 not runtime schema expansion from provider content.
-Within the workspace-graph family, only `panel.inspect` and `panel.focus` are
-currently production-reachable. `workspace.list`, `workspace.inspect`,
-`tab.list`, and `panel.list` remain closed catalog entries and are not
-advertised to providers.
+All six workspace-graph tools—`workspace.list`, `workspace.inspect`,
+`tab.list`, `panel.list`, `panel.inspect`, and `panel.focus`—are
+production-reachable through this governed path.
 
 Capabilities distinguish terminal reads, terminal input, destructive terminal
 actions, file reads/writes, Git mutation, browser navigation/data, network
 fetch, Docker, processes, MCP, and secret use. Policy modes are `Off`, `Ask`,
-`Auto`, and `Yolo` (displayed as `YOLO`). Default terminal input is `Ask`.
+`Auto`, and `Yolo` (displayed as `Full access`). Default terminal input is `Ask`.
 `Auto` authorizes trusted observation/routine classifications only; mutation,
 destructive, and privileged classifications require approval. `YOLO` may
-authorize those classifications but never bypasses target binding, expiry,
-policy generation, cancellation, secret isolation, or audit.
+authorize those classifications but never bypasses target binding, run
+lifecycle, policy generation, cancellation, secret isolation, or audit.
 
 Effective policy resolves from global, workspace, screen, and run layers. The
 most specific explicit capability value wins. The broker then owns the
@@ -55,10 +54,10 @@ remain readable; newly introduced capabilities absent from an old policy fail
 closed or inherit a more general explicit layer. Malformed layers are rejected
 rather than partially applied.
 
-`YOLO` is not authorized by the enum value alone. Enabling it requires a
-short-lived human confirmation bound to the run, exact target identity,
-approving desktop client, policy generation, and expiry. A policy update or run
-stop revokes pending approvals and issued tokens and cancels active permits
+`YOLO` is not authorized by the enum value alone. Selecting Full access creates
+a human confirmation bound to the run, exact target identity, approving desktop
+client, and policy generation. Selecting Ask, stopping, clearing, or replacing
+the run revokes pending approvals and issued tokens and cancels active permits
 before waiting for broker audit I/O.
 
 An `AgentActionProposal` binds:
@@ -148,27 +147,32 @@ consumes the exact one-action authorization. Provider adapters receive neither
 the broker nor an executor.
 
 The first production surface is deliberately narrower than the complete M3
-catalog: its visible run selector offers the active terminal, current live tab,
-current workspace, or `Selected terminals`, and exposes `panel.inspect`,
-`panel.focus`, read-screen, wait, send-text, paste, send-key, send-mouse,
-interrupt, and resize. `Selected terminals` is a checkbox-built subset of 1 to
-64 current live terminals from one
-window/workspace. The desktop shows each choice's exact stable tab and panel IDs
-and marks its terminal/tab labels as untrusted; it accepts no free-form target
-IDs. A prepared connection plan or pending ensure request is not a live choice;
-the desktop waits for an exact active host-session observation. Scope and
-selection controls lock when the run binds. The runtime
-canonicalizes and pins the exact selected membership, then re-resolves those
-same panel/session identities before each tool composition. A disappeared
-panel, invalidated or replaced session, or membership mismatch fails closed
-without automatic removal, substitution, or widening. The user must explicitly
-review and reselect stale choices before binding, or clear a bound/failed run
-before choosing again. The initial ordered live terminal/session membership is
-fixed for every bound scope; panel creation, closure, or session replacement
-therefore requires a cleared/new run rather than changing an existing run. The
-provider receives a bounded host-generated manifest of panel IDs and
-descriptive title, tab, connection, and working-directory metadata plus
-supported operations. Those labels remain untrusted content.
+catalog: its visible run scope is the current `Workspace`, and it exposes the
+closed contributed panel, terminal, browser, File Viewer, Process Monitor,
+Statistics, MCP, and intrinsic tools supported by that workspace. The desktop
+pins the exact window/workspace identity and accepts no provider-supplied scope
+identity. Before the initial provider call and after every tool-result round,
+the runtime re-inspects that workspace, accepts its current ordered eligible
+panel topology, and rebuilds the provider tool schemas and context projection.
+Newly opened eligible panels can therefore appear and closed panels can
+disappear without retargeting the run.
+
+`AgentTarget` still retains exact panel/session, `OpenTab`, and explicit
+selected-terminal variants as internal/testable contracts. Exact and selected
+targets pin their complete membership and fail closed on disappearance,
+replacement, or structural drift. `OpenTab` follows the same live-topology
+refresh rule as Workspace while retaining its exact window/workspace/tab
+identity. These variants are not additional visible desktop scope choices.
+
+For every broad-scope proposal, the current schema requires a host-enumerated
+eligible `panel_id`. The runtime parses it against a fresh resolution and the
+trusted composer narrows the request to that exact panel/session before
+approval. SessionHost revalidates that binding adjacent to one-action permit
+consumption and dispatch, so topology may change between provider rounds but
+cannot silently retarget an action already being authorized or executed. The
+provider receives bounded host-generated panel IDs and descriptive title, tab,
+connection, and working-directory metadata plus supported operations. Those
+labels remain untrusted content.
 
 The two production panel tools have no generic graph-command or provider
 execution path. For an exact panel/session target their schemas are closed empty
@@ -191,10 +195,10 @@ panel returns `changed=false` without advancing graph revision or sequence. The
 provider receives only the committed window/workspace/tab/panel identity,
 revision, sequence, and change flag.
 
-An exact single-terminal tool schema omits `panel_id`. Every broader
-tab/workspace/selected-terminal schema requires `panel_id` and enumerates only
-panels that support that tool's capability, even when one terminal is
-currently eligible. The parser checks the selected ID against a fresh target
+An exact single-terminal tool schema omits `panel_id`. Every broader Workspace
+schema and every internal `OpenTab` or selected-terminal schema requires
+`panel_id` and enumerates only panels that support that tool's capability, even
+when one terminal is currently eligible. The parser checks the selected ID against a fresh target
 resolution immediately before composition. The trusted composer then narrows
 the enclosing scope to one exact panel and session; approval presents that
 exact action target, and the structured result includes the trusted panel ID.
@@ -261,30 +265,32 @@ authority still fails closed. libghostty-vt state and Porta.Pty apply and
 verify the exact cell grid. Absence, ambiguity, replacement, revocation, or
 exact-grid failure never causes inference, substitution, or a second resize.
 
-The desktop renders the pinned ordered scope in an expandable context
-inspector. Its immutable rows expose exact identities, state, and advertised
-operations alongside bounded/redacted untrusted labels. This projection is
-descriptive evidence only: it carries no attachment, permit, authorization, or
-execution path, and it disappears when the run is cleared.
+The desktop renders the current ordered Workspace topology in an expandable
+context inspector. Each published snapshot is immutable, but Workspace and
+internal `OpenTab` snapshots are replaced after a successful round refresh;
+exact and selected-target snapshots retain their pinned membership. Rows expose
+exact identities, state, and advertised operations alongside bounded/redacted
+untrusted labels. This projection is descriptive evidence only: it carries no
+attachment, permit, authorization, or execution path, and it disappears when
+the run is cleared.
 
 Run-local YOLO is an ephemeral runtime overlay, not a durable setting. The
-runtime rejects any baseline policy containing YOLO and deliberately rejects
-tab/workspace/selected-terminal runs. Enabling it requires an already
-registered idle exact-panel run and a confirmation from the composition-owned
-authenticated desktop principal. The current UI offers one fixed 15-minute
-window while the application contract caps any future choice at one hour.
-Disable and expiry advance the broker-owned policy generation even while a tool
-is active, cancel the old generation and permit, and restore the baseline
-per-action policy before another action can start.
+runtime rejects any baseline policy containing YOLO. Enabling it requires an
+explicit selection whose run scope contains at least one terminal and a
+confirmation from the composition-owned authenticated desktop principal.
+The same contract supports the visible Workspace scope and the internal/testable
+exact-panel, `OpenTab`, and selected-panel targets. The desktop keeps that mode
+selected until the user chooses Ask or the run ends. Disable advances the
+broker-owned policy generation even while a tool is active, cancels the old
+generation and permit, and restores the baseline per-action policy before
+another action can start.
 
 Each policy change stays suspended until a deterministic, secret-free
 transition record is durable. That record binds the run, generation, exact
 target-identity digest, transition (`enabled`, `disabled`, `expired`, or other
-update), and optional YOLO expiry. A retry after ambiguous storage completion
+update), and optional legacy bounded-authority expiry. A retry after ambiguous storage completion
 accepts only the exact previously committed event. The live agent surface
-shows the exact target plus trusted connection boundary/current working
-directory, and keeps an unmistakable YOLO warning, expiry, Disable, and Stop
-visible for the whole window.
+shows the selected approval mode directly in the composer.
 
 ## Consequences
 
@@ -300,27 +306,27 @@ visible for the whole window.
   session-host consume-and-execute bridge, active cancellation, human input
   preemption, and restart-safe action audit state are implemented and covered
   by end-to-end broker/host tests.
-- The governed `panel.inspect` and `panel.focus` slice is implemented through a
-  closed typed composer and session-host port. Exact/broad schema selection,
+- All six workspace-graph tools are implemented through closed typed composers
+  and session-host ports. Exact/broad schema selection, scope-clipped reads,
   permit-before-focus, revision drift, committed receipts, already-focused
-  revision stability, and bounded redacted inspection results have focused
-  automated coverage. The other four workspace-graph catalog tools are not
-  production-reachable.
+  revision stability, and bounded redacted results have focused automated
+  coverage.
 - Governed provider tool composition, native structured result continuation,
-  the visible one-action approval/run surface, exact active-tool cancellation,
-  and a separate persistent run-wide Stop control are implemented for
-  active-panel, current-tab, current-workspace, and explicitly selected
-  live-terminal scopes.
-  Multi-terminal actions are selected with capability-specific panel IDs and
-  narrowed to exact panel/session approvals and execution.
-- Exact-panel host/working-directory context and the complete visible run-local
-  `YOLO` lifecycle, including immediate in-flight disable, automatic expiry,
-  and policy-transition audit, are implemented.
+  the visible Workspace approval/run surface, exact active-tool cancellation,
+  and a separate persistent run-wide Stop control are implemented. Workspace
+  topology refreshes between rounds; each action is selected with a
+  capability-specific panel ID and narrowed to exact panel/session approval and
+  execution. Exact, `OpenTab`, and selected-terminal variants remain internal
+  contracts.
+- The host/working-directory and run-local `YOLO` lifecycle, including broad
+  Workspace scopes containing terminals, immediate in-flight disable,
+  run teardown, and policy-transition audit, is covered as a confirmed
+  run-scoped contract. Browser and MCP actions reject YOLO authority.
 - Completion-audit uncertainty quarantines the immutable result, revokes run
   authority, prevents provider continuation, and never retries terminal input.
-- Saved-screen-template targeting beyond the live current-tab scope and
-  session/persistent approvals remain separate M3 work. Broader-scope YOLO is
-  intentionally not enabled by this decision.
+- Saved-screen-template targeting, additional visible scope choices, and
+  session/persistent approvals remain separate M3 work. Broad terminal scope
+  does not create persistent or cross-run authority.
 
 ## Alternatives rejected
 

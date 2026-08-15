@@ -435,6 +435,18 @@ internal static class TerminalAgentToolSet
             _ => false,
         };
 
+    internal static bool IsToolName(string toolName) =>
+        toolName is
+            BuiltInAgentTools.TerminalReadScreen
+            or BuiltInAgentTools.TerminalSendText
+            or BuiltInAgentTools.TerminalPaste
+            or BuiltInAgentTools.TerminalSendKeys
+            or BuiltInAgentTools.TerminalSendChord
+            or BuiltInAgentTools.TerminalSendMouse
+            or BuiltInAgentTools.TerminalWait
+            or BuiltInAgentTools.TerminalInterrupt
+            or BuiltInAgentTools.TerminalResize;
+
     private static bool IsActiveTerminal(AgentContextPanel panel) =>
         panel.Kind == PanelKind.Terminal
         && panel.SessionId is not null

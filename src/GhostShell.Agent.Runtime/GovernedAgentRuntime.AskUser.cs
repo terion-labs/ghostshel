@@ -125,6 +125,7 @@ public sealed partial class GovernedAgentRuntime
                 ActiveTool = null,
                 CurrentProgress = null,
                 ProvisionalAssistantText = string.Empty,
+                ProvisionalReasoningSummary = string.Empty,
                 Status = "Waiting for your non-sensitive clarification…",
             };
         }

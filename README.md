@@ -1,11 +1,11 @@
 # GhostSHELL
 
-GhostSHELL is a cross-platform terminal workspace for local and remote sessions. Its agent foundation is native .NET: the provider-neutral kernel, provider adapters, and governed runtime run in-process and add neither a Node.js sidecar nor software to remote machines. Anthropic, OpenAI, and OpenAI-compatible profiles use OS-vault credential references. The current production slice can inspect and operate exact terminal panels or fixed live tab/workspace/selected-terminal scopes through trusted screen, wait, text, paste, key, character-chord, mouse, interrupt, resize, workspace-graph, and bounded File Viewer tools; every mutation crosses the session-host capability broker, human-preemption or attachment barrier, policy, cancellation, and durable audit boundary. In the user's attached native-browser panel it can read state and perform governed navigation/stop. Snapshot, click, fill, and check contracts are implemented and tested through an explicit full-automation candidate profile, but remain disabled in production pending the native conformance and approval-context gates.
+GhostSHELL is a cross-platform terminal workspace for local and remote sessions. Its agent foundation is native .NET: the provider-neutral kernel, provider adapters, and governed runtime run in-process and add neither a Node.js sidecar nor software to remote machines. Provider profiles cover Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI, OpenRouter, GitHub Copilot, Amazon Bedrock, Ollama, and custom OpenAI-compatible endpoints; credentials and OAuth sessions are stored behind OS-vault references, and protocols without a production adapter remain explicitly fail-closed. The agent is workspace-scoped in the desktop surface: it re-discovers supported live panels and rebuilds the tools supplied by the runtime's family contribution registry between rounds while preserving the workspace identity and revalidating every narrowed action. Terminal, browser, File Viewer, Process Monitor, Statistics, workspace-graph, and governed MCP operations all cross the session-host capability broker, policy, cancellation, and durable audit boundary. MCP supports both directly launched stdio servers and remote Streamable HTTP profiles. Browser snapshot, click, fill, and check contracts remain disabled in production pending native conformance and approval-context gates.
 
 The repository contains a runnable vertical slice of the Pencil terminal-workspace design:
 
 - durable workspaces, tabs, connections, screens, hosted terminal/File Viewer panels, live bounded local Statistics and Process Monitor panels, and metadata-only recent sessions;
-- a docked governed-agent surface with provider and exact-target context, streaming, active-tool state, one-action approvals, cancellation, and an explicitly confirmed run-only YOLO window; the native kernel keeps model tool calls inert until the trusted runtime and session host authorize one typed action;
+- a docked workspace agent with streaming reasoning summaries and token usage, bounded image input for capable providers, reasoning-effort selection, steering and queued follow-ups, active-tool state, one-action approvals, cancellation, and an explicitly confirmed run-only full-access window for terminal actions; the native kernel keeps model tool calls inert until the trusted runtime and session host authorize one typed action;
 - CEF off-screen browser panels composed as ordinary Avalonia content, with closed governed state/navigation contracts, fail-closed prompts and permissions, renderer-crash replacement, deterministic shutdown, and verified per-RID runtime packaging; semantic snapshot/click/fill/check integration is deferred to a separate agentic-browser pass;
 - a live local shell with one cross-platform libghostty-vt state engine, Porta.Pty transport, and ordinary Avalonia-managed renderer on macOS, Windows, and Linux;
 - keyboard/IME, mouse, focus, resize, clipboard, terminal-screen reads, typed waits, and executable programmatic terminal input with physical-human preemption of agent input;
@@ -40,6 +40,22 @@ Build, test, and run:
 ./scripts/check.sh
 ./.dotnet/dotnet run --project src/GhostShell.Desktop/GhostShell.Desktop.csproj
 ```
+
+GitHub Copilot device authorization uses GitHub's public first-party Copilot
+client identity by default. A distribution with its own registered GitHub OAuth
+app can override the public client ID before launching the desktop process:
+
+```sh
+export GHOSTSHELL_GITHUB_OAUTH_CLIENT_ID="your-ghostshell-oauth-app-client-id"
+```
+
+OpenAI browser and device authorization likewise use OpenAI's public Codex
+client identity and need no additional environment variable. Browser login owns
+the registered `http://localhost:1455/auth/callback` listener for the bounded
+duration of the flow; if another process owns that port, login fails closed.
+GitHub's long-lived device token remains vault-only refresh material; GhostShell
+exchanges it for a bounded Copilot API token before provider traffic and repeats
+that exchange locally when the Copilot token expires.
 
 On macOS, `dotnet run` assembles the framework-dependent build into a private
 development `.app` under `src/GhostShell.Desktop/obj` before starting it. This
@@ -89,9 +105,10 @@ Unsafe terminal paste fails closed into an explicit in-terminal confirmation pro
 - `src/GhostShell.Core`: framework-independent IDs, definitions, invariants, and state machines.
 - `src/GhostShell.Application`: typed application/session operations, results, lifecycle, capability, attachment, input-lease, and engine ports.
 - `src/GhostShell.Protocol`: versioned transport envelopes and stream contracts.
-- `src/GhostShell.Agent`: provider-neutral native conversation loop, strict stream reduction, inert tool proposals, bounded run events, cancellation fencing, and atomic compaction.
-- `src/GhostShell.Agent.Providers`: native Anthropic and OpenAI-compatible model discovery and streaming adapters, exact-scope vault resolution, bounded HTTP/SSE parsing, and provider bindings for the governed runtime.
-- `src/GhostShell.Agent.Runtime`: exact-target provider/tool orchestration that converts inert proposals into closed typed terminal or browser requests and returns bounded structured results.
+- `src/GhostShell.Agent`: provider-neutral native conversation loop, strict stream reduction, inert tool batches, bounded run events, reasoning/usage/image metadata, steering, cancellation fencing, atomic compaction, and idle checkpoint capture/restore.
+- `src/GhostShell.Agent.Providers`: bounded native provider adapters, request-local API-key/OAuth resolution, OpenAI browser/device and GitHub device authorization, HTTP/SSE parsing, model discovery, and governed-runtime bindings.
+- `src/GhostShell.Agent.Runtime`: workspace-scoped provider/tool orchestration with a family contribution registry filtered by live panels, sequential correlated tool batches, steering/follow-ups, and closed typed execution requests.
+- `src/GhostShell.Mcp`: governed stdio and remote Streamable HTTP MCP sessions, bounded discovery/calls, and frozen run manifests.
 - `src/GhostShell.SessionHost`: in-process runtime registry, ordered events, revisions, attachments, leases, browser-domain policy, and close policy.
 - `src/GhostShell.Terminal`: the cross-platform libghostty-vt state/input adapter and Porta.Pty process transport behind render-state, automation, typed input, and lifecycle ports.
 - `src/GhostShell.Monitoring`: package-free, cross-platform local resource sampling behind privacy-bounded statistics and process-session ports.

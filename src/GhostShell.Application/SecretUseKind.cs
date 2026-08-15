@@ -6,6 +6,7 @@ public enum SecretUseKind
     ConnectionEnvironment,
     AiProviderAuthentication,
     McpServerEnvironment,
+    McpServerHttpHeader,
     BrowserProfileAuthentication,
     FileProviderAuthentication,
     UserManagement,

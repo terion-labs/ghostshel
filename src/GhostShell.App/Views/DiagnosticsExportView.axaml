@@ -8,7 +8,7 @@
     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
       <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
         <TextBlock FontSize="{DynamicResource ShellFontSize18}" FontWeight="SemiBold" Text="Diagnostics bundle" />
-        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Create a bounded support archive after mandatory safety review." TextWrapping="Wrap" />
+        <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Create a support archive after reviewing what it contains." TextWrapping="Wrap" />
       </StackPanel>
       <controls:StatusChip Grid.Column="1" VerticalAlignment="Center" Classes.Warning="{Binding IsWarning}" IsVisible="{Binding HasStatus}" Content="{Binding StatusLabel}" />
     </Grid>

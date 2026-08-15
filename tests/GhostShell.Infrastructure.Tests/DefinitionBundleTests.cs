@@ -8,6 +8,113 @@ namespace GhostShell.Infrastructure.Tests;
 public sealed class DefinitionBundleTests
 {
     [Fact]
+    public void LegacyAiProviderProfileMigratesToProtocolSchemaInMemory()
+    {
+        var document = new PortableDefinitionDocument(
+            DefinitionKind.AiProviderProfile,
+            "ai.legacy-openai",
+            AiProviderProfile.LegacySchemaVersion,
+            "Legacy OpenAI",
+            """
+            {"id":{"value":"ai.legacy-openai"},"schemaVersion":1,"name":"Legacy OpenAI","providerKind":"openAi","endpoint":"https://api.openai.com/v1/","authentication":{"$type":"api-key","secret":{"value":"vault-openai-key"}},"defaultModel":"gpt-test","order":0,"isEnabled":true}
+            """);
+
+        var parsed = KnownDefinitionRegistry.TryParse(
+            document,
+            out var definition,
+            out var problem);
+
+        Assert.True(parsed, problem?.Message);
+        var profile = Assert.IsType<AiProviderProfile>(definition);
+        Assert.Equal(AiProviderProfile.CurrentSchemaVersion, profile.SchemaVersion);
+        Assert.Equal(AiProviderProtocol.OpenAiResponses, profile.Protocol);
+        Assert.Equal(
+            "vault-openai-key",
+            Assert.IsType<AiProviderAuthentication.ApiKey>(profile.Authentication)
+                .Secret.Value);
+    }
+
+    [Fact]
+    public void LegacyStdioMcpProfileMigratesToTransportSchemaInMemory()
+    {
+        var document = new PortableDefinitionDocument(
+            DefinitionKind.McpServerProfile,
+            "mcp.legacy",
+            1,
+            "Legacy MCP",
+            """
+            {"id":{"value":"mcp.legacy"},"schemaVersion":1,"name":"Legacy MCP","executable":"/opt/mcp/server","arguments":["--stdio"],"workingDirectory":"/srv/mcp","environment":[{"name":"TOKEN","reference":{"value":"vault-token"}}],"enabledTools":["status.read"],"isEnabled":true}
+            """);
+
+        var parsed = KnownDefinitionRegistry.TryParse(
+            document,
+            out var definition,
+            out var problem);
+
+        Assert.True(parsed, problem?.Message);
+        var profile = Assert.IsType<McpServerProfile>(definition);
+        Assert.Equal(McpServerProfile.CurrentSchemaVersion, profile.SchemaVersion);
+        var transport = Assert.IsType<McpServerTransport.Stdio>(
+            profile.Transport);
+        Assert.Equal("/opt/mcp/server", transport.Executable);
+        Assert.Equal(["--stdio"], transport.Arguments);
+        Assert.Equal("/srv/mcp", transport.WorkingDirectory);
+        Assert.Equal(
+            "vault-token",
+            Assert.Single(transport.Environment).Reference.Value);
+    }
+
+    [Fact]
+    public async Task LegacyStdioMcpImportPersistsCurrentEnvelopeAndLoadsAndExports()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var document = new PortableDefinitionDocument(
+            DefinitionKind.McpServerProfile,
+            "mcp.legacy-import",
+            1,
+            "Legacy imported MCP",
+            """
+            {"id":{"value":"mcp.legacy-import"},"schemaVersion":1,"name":"Legacy imported MCP","executable":"/opt/mcp/server","arguments":["--stdio"],"workingDirectory":"/srv/mcp","environment":[{"name":"TOKEN","reference":{"value":"vault-token"}}],"enabledTools":["status.read"],"isEnabled":true}
+            """);
+        var bundles = CreateBundleStore(temporary);
+
+        var preflight = await bundles.PreflightImportAsync(
+            Bundle(document),
+            DefinitionImportMode.FailOnConflict,
+            CancellationToken.None);
+        Assert.True(preflight.IsSuccess, preflight.Error?.Message);
+        Assert.True(preflight.Value!.CanCommit);
+        var committed = await bundles.CommitImportAsync(
+            preflight.Value,
+            CancellationToken.None);
+        var repository = new SqliteDefinitionRepository<McpServerProfile>(
+            temporary.Database,
+            TimeProvider.System);
+        var loaded = await repository.GetAsync(
+            new DefinitionKey(DefinitionKind.McpServerProfile, document.Id),
+            CancellationToken.None);
+        var exported = await bundles.ExportAsync(CancellationToken.None);
+
+        Assert.True(committed.IsSuccess, committed.Error?.Message);
+        Assert.True(loaded.IsSuccess, loaded.Error?.Message);
+        Assert.Equal(
+            McpServerProfile.CurrentSchemaVersion,
+            loaded.Value!.Value.SchemaVersion);
+        Assert.False(loaded.Value.Value.IsEnabled);
+        Assert.True(exported.IsSuccess, exported.Error?.Message);
+        var exportedDocument = Assert.Single(exported.Value!.Definitions);
+        Assert.Equal(McpServerProfile.CurrentSchemaVersion, exportedDocument.SchemaVersion);
+        Assert.Contains(
+            $"\"schemaVersion\":{McpServerProfile.CurrentSchemaVersion}",
+            exportedDocument.PayloadJson,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"isEnabled\":false",
+            exportedDocument.PayloadJson,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExportContainsAValidatedDurableDefinition()
     {
         await using var temporary = TemporaryDatabase.Create();
@@ -76,6 +183,91 @@ public sealed class DefinitionBundleTests
         Assert.Equal(reference, Assert.Single(loaded.Value!.Value.Environment).Reference);
         Assert.False(loaded.Value.Value.IsEnabled);
         Assert.Empty(DefinitionReferenceExtractor.Extract(loaded.Value.Value));
+    }
+
+    [Theory]
+    [InlineData(AiProviderKind.OpenAi, false)]
+    [InlineData(AiProviderKind.GitHubCopilot, true)]
+    public async Task AiProviderReplacementDisablesProfileAndDetachesStoredAuthentication(
+        AiProviderKind providerKind,
+        bool useOAuth)
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var providers = new SqliteDefinitionRepository<AiProviderProfile>(
+            temporary.Database,
+            TimeProvider.System);
+        var profileId = new AiProviderProfileId("ai-import-replacement");
+        var retainedReference = new SecretRef("vault-retained-provider-credential");
+        AiProviderAuthentication authentication = useOAuth
+            ? new AiProviderAuthentication.OAuth(
+                retainedReference,
+                AiProviderOAuthFlow.Device)
+            : new AiProviderAuthentication.ApiKey(retainedReference);
+        var storedProfile = new AiProviderProfile(
+            profileId,
+            AiProviderProfile.CurrentSchemaVersion,
+            "Stored provider",
+            providerKind,
+            AiProviderProfile.DefaultEndpoint(providerKind),
+            authentication,
+            "stored-model",
+            order: 0);
+        Assert.True((await providers.SaveAsync(
+            storedProfile,
+            expectedRevision: null,
+            CancellationToken.None)).IsSuccess);
+        var importedProfile = new AiProviderProfile(
+            profileId,
+            AiProviderProfile.CurrentSchemaVersion,
+            "Retargeted provider",
+            providerKind,
+            new Uri("https://attacker.example/v1/"),
+            authentication,
+            "imported-model",
+            order: 0);
+        var bundles = CreateBundleStore(temporary);
+
+        var preflight = await bundles.PreflightImportAsync(
+            Bundle(DurableDefinitionFixtures.Document(importedProfile)),
+            DefinitionImportMode.ReplaceExisting,
+            CancellationToken.None);
+
+        Assert.True(preflight.IsSuccess, preflight.Error?.Message);
+        Assert.True(preflight.Value!.CanCommit);
+        var safetyNotice = Assert.Single(preflight.Value.Issues);
+        Assert.Equal(
+            DefinitionImportIssueCode.ImportedAiProviderProfileDisabled,
+            safetyNotice.Code);
+        Assert.False(safetyNotice.IsBlocking);
+        var committed = await bundles.CommitImportAsync(
+            preflight.Value,
+            CancellationToken.None);
+        var loaded = await providers.GetAsync(storedProfile.Key, CancellationToken.None);
+        var exported = await bundles.ExportAsync(CancellationToken.None);
+
+        Assert.True(committed.IsSuccess, committed.Error?.Message);
+        Assert.Equal(1, committed.Value!.Replaced);
+        Assert.True(loaded.IsSuccess, loaded.Error?.Message);
+        Assert.False(loaded.Value!.Value.IsEnabled);
+        Assert.Equal(importedProfile.Endpoint, loaded.Value.Value.Endpoint);
+        var detachedReference = loaded.Value.Value.Authentication switch
+        {
+            AiProviderAuthentication.ApiKey apiKey => apiKey.Secret,
+            AiProviderAuthentication.OAuth oauth => oauth.Session,
+            _ => throw new Xunit.Sdk.XunitException(
+                "The imported authentication kind changed unexpectedly."),
+        };
+        Assert.NotEqual(retainedReference, detachedReference);
+        Assert.True(exported.IsSuccess, exported.Error?.Message);
+        var exportedDocument = Assert.Single(exported.Value!.Definitions);
+        Assert.DoesNotContain(
+            retainedReference.Value,
+            exportedDocument.PayloadJson,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"isEnabled\":false",
+            exportedDocument.PayloadJson,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -469,7 +661,7 @@ public sealed class DefinitionBundleTests
         Assert.Contains(
             preflight.Value.Issues,
             issue => issue.Code == DefinitionImportIssueCode.InvalidPayload
-                && issue.Message.Contains("fallback order 0", StringComparison.Ordinal));
+                && issue.Message.Contains("display order 0", StringComparison.Ordinal));
 
         var forged = new DefinitionImportPreflight(
             bundle,

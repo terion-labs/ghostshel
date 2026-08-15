@@ -366,7 +366,7 @@
            moves aside instead of being covered. -->
       <Border
           DockPanel.Dock="Right"
-          Width="352"
+          Width="{Binding #AgentWorkspaceSurface.Bounds.Width}"
           Margin="{controls:Inset Right=Sm}"
           IsVisible="{Binding IsAgentPanelDockedVisible}" />
 
@@ -503,6 +503,8 @@
           ClipToBounds="False"
           HorizontalAlignment="Right"
           Classes.floating="{Binding !IsAgentPanelDocked}"
+          Classes.edgeResizable="{Binding IsAgentPanelDocked}"
+          Classes.edgeRight="{Binding IsAgentPanelDocked}"
           AgentQuestionResponseKeyDownRequested="OnAgentQuestionResponseKeyDown"
           ApproveAgentActionRequested="OnApproveAgentActionClick"
           CancelAgentActionRequested="OnCancelAgentActionClick"
@@ -516,7 +518,18 @@
           KeepAgentCapabilityOffRequested="OnKeepAgentCapabilityOffClick"
           LoadOlderAgentAuditRequested="OnLoadOlderAgentAuditClick"
           RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
+          StartNewAgentConversationRequested="OnStartNewAgentConversationClick"
+          OpenAgentConversationRequested="OnOpenAgentConversationClick"
+          DeleteAgentConversationRequested="OnDeleteAgentConversationClick"
+          CopyAgentMessageRequested="OnCopyAgentMessageClick"
+          ForkAgentConversationRequested="OnForkAgentConversationClick"
+          SelectAgentModelRequested="OnSelectAgentModelClick"
+          ToggleAgentModelFavoriteRequested="OnToggleAgentModelFavoriteClick"
+          RefreshAgentModelsRequested="OnRefreshAgentModelsClick"
           SendAgentChatRequested="OnSendAgentChatClick"
+          QueueAgentFollowUpRequested="OnQueueAgentFollowUpClick"
+          AttachAgentImageRequested="OnAttachAgentImageClick"
+          ClearAgentImagesRequested="OnClearAgentImagesClick"
           ShowAgentSettingsRequested="OnShowAgentSettingsClick"
           SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick"
           ToggleAgentPinRequested="OnToggleAgentPinClick" />

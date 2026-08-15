@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using FluentIcons.Common;
 using GhostShell.App;
@@ -104,6 +105,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly TerminalStartupCommandDispatcher _startupCommandDispatcher;
     private readonly IFileProviderProfileRuntime? _fileProviderRuntime;
     private readonly IAiProviderProfileRuntime? _aiProviderRuntime;
+    private readonly IAgentWorkspaceRuntimeFactory? _agentRuntimeFactory;
+    private readonly IAgentRunAuditReader? _agentRunAuditReader;
+    private readonly IAgentModelFavoriteStore? _agentModelFavoriteStore;
+    private readonly Dictionary<WorkspaceInstanceId, WorkspaceAgentChat>
+        _workspaceAgentChats = [];
+    private readonly IAiProviderAuthenticationRuntime? _aiProviderAuthenticationRuntime;
     private readonly IMcpServerDiagnostics? _mcpServerDiagnostics;
     private readonly IMcpCredentialSessionInvalidator?
         _mcpCredentialSessionInvalidator;
@@ -111,6 +118,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly RuntimeRecoveryWriter? _runtimeRecoveryWriter;
     private readonly SessionRestoreCoordinator? _sessionRestoreCoordinator;
     private readonly TerminalMultiplexerCoordinator? _terminalMultiplexerCoordinator;
+    private readonly AgentPolicyCoordinator? _agentPolicyCoordinator;
     private readonly RecentSessionHistory? _recentSessionHistory;
     private readonly IUiThreadDispatcher _uiThreadDispatcher;
     private readonly TimeProvider _timeProvider;
@@ -148,6 +156,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private ShellOverlay _overlay;
     private long _overlayRevision;
     private RuntimeWorkspaceViewModel? _runtimeWorkspace;
+    private AgentChatViewModel? _agentChat;
     private string? _operationError;
     private string _tabReorderStatus = string.Empty;
     private string _launcherSearchQuery = string.Empty;
@@ -168,7 +177,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private bool _isHistoryExporting;
     private bool _historyOperationsSealed;
     private string _definitionBundleStatus =
-        "Exported bundles contain durable definitions only; credential values and runtime terminal data are excluded.";
+        "Exports include saved settings but not credentials or terminal content.";
     private string? _applicationKeySequenceHint;
     private LayoutDesignerViewModel? _layoutDesignerEditor;
     private WorkspaceEditorViewModel? _workspaceEditor;
@@ -193,7 +202,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         "History exports contain definition metadata only; terminal commands and content are excluded.";
     private string _historyRetentionStatus = "Loading local history privacy settings…";
     private AgentRunScopeOption _selectedAgentRunScope =
-        AgentRunScopeOptionsValue[0];
+        AgentRunScopeOptionsValue[2];
     private bool _agentTerminalSelectionStale;
     private bool _hasAgentTerminalSelectionError;
     private string _agentTerminalSelectionStatus =
@@ -219,6 +228,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         OnboardingViewModel? onboarding = null,
         IProductComponentCatalog? productComponentCatalog = null,
         IAiProviderProfileRuntime? aiProviderRuntime = null,
+        IAiProviderAuthenticationRuntime? aiProviderAuthenticationRuntime = null,
         IGovernedAgentRuntime? agentChatRuntime = null,
         IAgentApprovalPrincipal? agentApprovalPrincipal = null,
         IBrowserRendererViewFactory? browserRendererViewFactory = null,
@@ -241,7 +251,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         SessionRestoreCoordinator? sessionRestoreCoordinator = null,
         ISqlLanguageService? sqlLanguageService = null,
         IDockerEngineClient? dockerEngineClient = null,
-        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null)
+        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null,
+        IAgentModelFavoriteStore? agentModelFavoriteStore = null,
+        AgentPolicyCoordinator? agentPolicyCoordinator = null,
+        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         OpenWorkspaces = new(_openWorkspaces);
@@ -278,6 +291,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
         _aiProviderRuntime = aiProviderRuntime;
+        _agentRuntimeFactory = agentRuntimeFactory;
+        _agentRunAuditReader = agentRunAuditReader;
+        _agentModelFavoriteStore = agentModelFavoriteStore;
+        _aiProviderAuthenticationRuntime = aiProviderAuthenticationRuntime;
         _mcpServerDiagnostics = mcpServerDiagnostics;
         _mcpCredentialSessionInvalidator =
             mcpCredentialSessionInvalidator;
@@ -285,6 +302,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _runtimeRecoveryWriter = runtimeRecoveryWriter;
         _sessionRestoreCoordinator = sessionRestoreCoordinator;
         _terminalMultiplexerCoordinator = terminalMultiplexerCoordinator;
+        _agentPolicyCoordinator = agentPolicyCoordinator;
         if (_terminalMultiplexerCoordinator is not null)
         {
             _terminalMultiplexerCoordinator.LeasesChanged +=
@@ -297,13 +315,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             ? ClientId.New()
             : RequireDesktopClientId(agentApprovalPrincipal);
         WindowId = WindowInstanceId.New();
-        AgentChat = agentChatRuntime is not null && _aiProviderRuntime is not null
+        AgentChat = _agentRuntimeFactory is null
+            && agentChatRuntime is not null
+            && _aiProviderRuntime is not null
             ? new AgentChatViewModel(
                 agentChatRuntime,
                 _aiProviderRuntime,
                 _uiThreadDispatcher,
-                agentRunAuditReader)
+                agentRunAuditReader,
+                agentModelFavoriteStore)
             : null;
+        DefaultAgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
+            _agentPolicyCoordinator?.Policy,
+            _aiProviderRuntime?.Profiles);
+        DefaultAgentPolicy.IsEnabled = true;
+        DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
         Onboarding = onboarding;
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
@@ -361,7 +387,52 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public OnboardingViewModel? Onboarding { get; }
 
-    public AgentChatViewModel? AgentChat { get; }
+    public AgentChatViewModel? AgentChat
+    {
+        get => _agentChat;
+        private set => SetProperty(ref _agentChat, value);
+    }
+
+    public SavedScreenAgentPolicyEditorViewModel DefaultAgentPolicy { get; private set; }
+
+    public bool CanSaveDefaultAgentPolicy =>
+        _agentPolicyCoordinator is not null && DefaultAgentPolicy.IsValid;
+
+    public async Task SaveDefaultAgentPolicyAsync(CancellationToken cancellationToken)
+    {
+        if (_agentPolicyCoordinator is null)
+        {
+            SetError("Default AI configuration storage is unavailable.");
+            return;
+        }
+
+        AgentPolicy? policy;
+        try
+        {
+            policy = DefaultAgentPolicy.Build();
+        }
+        catch (ArgumentException exception)
+        {
+            SetError(exception.Message);
+            return;
+        }
+
+        if (policy is null)
+        {
+            SetError("The default AI configuration cannot be disabled.");
+            return;
+        }
+
+        var result = await _agentPolicyCoordinator
+            .SaveAsync(policy, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            SetError(result.Error!.Message);
+            return;
+        }
+
+        ClearError();
+    }
 
     public SavedScreenDeleteUndoViewModel SavedScreenDeleteUndo { get; }
 
@@ -519,8 +590,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<McpServerProfileItemViewModel> McpServerDefinitions { get; } = [];
 
-    public ObservableCollection<McpEnvironmentSecretTargetViewModel>
-        McpEnvironmentSecretTargets
+    public ObservableCollection<McpServerSecretTargetViewModel>
+        McpServerSecretTargets
     { get; } = [];
 
     public ObservableCollection<RecentSessionHistoryItemViewModel> RecentSessions { get; } = [];
@@ -875,7 +946,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool HasNoMcpServers => !HasMcpServers;
 
-    public bool HasMcpEnvironmentSecretTargets => McpEnvironmentSecretTargets.Count > 0;
+    public bool HasMcpServerSecretTargets => McpServerSecretTargets.Count > 0;
 
     public bool HasFileTransfers => FileTransfers.Count > 0;
 
@@ -1052,6 +1123,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 _runtimeHistorySource = value is null
                     ? null
                     : _runtimeSources.GetValueOrDefault(value.Id);
+                ActivateWorkspaceAgentChat(value?.Id);
                 SyncAgentPanelPlacement(value);
                 StartTrackingRecovery(value);
                 StartTrackingAgentTerminalSelection(value);
@@ -1069,6 +1141,63 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public bool HasRuntimeWorkspace => RuntimeWorkspace is not null;
+
+    private void ActivateWorkspaceAgentChat(WorkspaceInstanceId? workspaceId)
+    {
+        if (_agentRuntimeFactory is null || _aiProviderRuntime is null)
+        {
+            return;
+        }
+
+        if (workspaceId is not { } id)
+        {
+            AgentChat = null;
+            return;
+        }
+
+        if (!_workspaceAgentChats.TryGetValue(id, out var owned))
+        {
+            var runtime = _agentRuntimeFactory.Create(
+                id,
+                ConversationScopeOf(id));
+            try
+            {
+                owned = new WorkspaceAgentChat(
+                    runtime,
+                    new AgentChatViewModel(
+                        runtime,
+                        _aiProviderRuntime,
+                        _uiThreadDispatcher,
+                        _agentRunAuditReader,
+                        _agentModelFavoriteStore));
+                _workspaceAgentChats.Add(id, owned);
+            }
+            catch
+            {
+                runtime.Dispose();
+                throw;
+            }
+        }
+
+        AgentChat = owned.ViewModel;
+    }
+
+    private AgentConversationScopeId ConversationScopeOf(
+        WorkspaceInstanceId workspaceId) =>
+        _runtimeSources.TryGetValue(workspaceId, out var source)
+            ? new AgentConversationScopeId(
+                "definition:"
+                + Convert.ToHexStringLower(SHA256.HashData(
+                    Encoding.UTF8.GetBytes(source.SourceDefinition.ToString()))))
+            : new AgentConversationScopeId($"runtime:{workspaceId.Value}");
+
+    private void RemoveWorkspaceAgentChat(WorkspaceInstanceId workspaceId)
+    {
+        if (_workspaceAgentChats.Remove(workspaceId, out var owned))
+        {
+            owned.Dispose();
+        }
+    }
 
     /// <summary>
     /// The accent the open workspace asks the shell to wear, or null to go back
@@ -1218,7 +1347,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (RuntimeWorkspace is not { ActiveTab: { } activeTab } workspace)
         {
             agentChat.ReportTargetUnavailable(
-                "Open a terminal, browser, File Viewer, or Process Monitor panel "
+                "Open a terminal, browser, File Viewer, Statistics, or Process Monitor panel "
                 + "before sending a request to the agent.");
             return Task.CompletedTask;
         }
@@ -1231,8 +1360,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     || !IsAgentCapablePanel(activePanel))
                 {
                     agentChat.ReportTargetUnavailable(
-                        "Select an active terminal, browser, File Viewer, or hosted "
-                        + "Process Monitor panel, "
+                        "Select an active terminal, browser, File Viewer, hosted "
+                        + "Statistics, or hosted Process Monitor panel, "
                         + "or choose a broader agent scope.");
                     return Task.CompletedTask;
                 }
@@ -1283,7 +1412,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             : agentChat.SendAsync(target, policy, cancellationToken);
     }
 
-    private static bool TryResolveAgentPolicy(
+    private RuntimeAgentPolicyProvenance CurrentAgentPolicyProvenance() =>
+        new(_agentPolicyCoordinator?.Policy ?? AgentPolicy.Default);
+
+    private bool TryResolveAgentPolicy(
         RuntimeWorkspaceViewModel workspace,
         AgentTarget target,
         out AgentPolicy? policy,
@@ -1320,7 +1452,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var overrideCount = tabs.Count(tab => tab.AgentPolicy.HasPolicyOverride);
         if (overrideCount == 0)
         {
-            policy = null;
+            policy = _agentPolicyCoordinator?.Policy;
             error = string.Empty;
             return true;
         }
@@ -1359,7 +1491,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             policy = null;
             error =
-                "The selected scope does not have a valid durable agent policy. "
+                "The selected workspace does not have valid agent settings. "
                 + "Choose a narrower scope.";
             return false;
         }
@@ -1438,6 +1570,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         panel is TerminalRuntimePanelViewModel
             or BrowserRuntimePanelViewModel
             or FileRuntimePanelViewModel
+            or StatisticsRuntimePanelViewModel
             or ProcessMonitorRuntimePanelViewModel
         {
             HasHostedSession: true,
@@ -1511,7 +1644,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool IsDiagnosticsSettingsVisible => SettingsPage == SettingsPage.Diagnostics;
 
-    public bool IsAgentSettingsVisible => SettingsPage == SettingsPage.Agent;
+    public bool IsAgentSettingsVisible => SettingsPage is SettingsPage.Agent or SettingsPage.Mcp;
 
     public bool IsMcpSettingsVisible => SettingsPage == SettingsPage.Mcp;
 
@@ -2173,7 +2306,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             snapshot.Connections.Select(item => item.Value).ToArray(),
             snapshot.Screens.Select(item => item.Value).ToArray(),
             snapshot.Layouts.Select(item => item.Value).ToArray(),
-            snapshot.FileProviderProfiles.Select(item => item.Value).ToArray());
+            snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
+            _aiProviderRuntime?.Profiles);
         WorkspaceEditor.SetPeers(snapshot.Workspaces.Select(item => item.Value).ToArray());
         _editingDefinition = stored.Value.Key;
         _editingRevision = stored.Revision;
@@ -2212,7 +2346,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             snapshot.Connections.Select(item => item.Value).ToArray(),
             snapshot.Screens.Select(item => item.Value).ToArray(),
             snapshot.Layouts.Select(item => item.Value).ToArray(),
-            snapshot.FileProviderProfiles.Select(item => item.Value).ToArray());
+            snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
+            _aiProviderRuntime?.Profiles);
         WorkspaceEditor.SetPeers(snapshot.Workspaces.Select(item => item.Value).ToArray());
         _editingDefinition = definition.Key;
         _editingRevision = null;
@@ -2420,7 +2555,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             workspace.Name,
             WorkspaceTints.Of(workspace),
             ResolveWorkspaceConnections(workspace),
-            RuntimeAgentPolicyProvenance.Default.WithOverride(
+            CurrentAgentPolicyProvenance().WithOverride(
                 workspace.AgentPolicyOverride,
                 workspace.Key,
                 storedWorkspace.Revision),
@@ -2541,7 +2676,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             connection.Name,
             ThemePreference.BronzeFallback.ToString(),
-            Connections.Where(item => item.Id == connection.Id).ToArray());
+            Connections.Where(item => item.Id == connection.Id).ToArray(),
+            CurrentAgentPolicyProvenance());
         try
         {
             runtime.Tabs.Add(CreateConnectionTab(runtime.Id, connection));
@@ -2580,7 +2716,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             screen.Name,
             ThemePreference.BronzeFallback.ToString(),
-            Connections.ToArray());
+            Connections.ToArray(),
+            CurrentAgentPolicyProvenance());
         try
         {
             runtime.Tabs.Add(CreateRuntimeTab(
@@ -2665,7 +2802,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             profile.Name,
             ThemePreference.BronzeFallback.ToString(),
-            []);
+            [],
+            CurrentAgentPolicyProvenance());
         try
         {
             var tab = CreateFileProviderTab(runtimeWorkspace.Id, profile);
@@ -2724,7 +2862,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             profile.Name,
             ThemePreference.BronzeFallback.ToString(),
-            []);
+            [],
+            CurrentAgentPolicyProvenance());
         try
         {
             var tab = CreateSavedDatabaseTab(profile);
@@ -2775,7 +2914,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             "Local system",
             ThemePreference.BronzeFallback.ToString(),
-            []);
+            [],
+            CurrentAgentPolicyProvenance());
         try
         {
             var tab = new RuntimeTabViewModel(
@@ -2821,7 +2961,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             "Database",
             ThemePreference.BronzeFallback.ToString(),
-            []);
+            [],
+            CurrentAgentPolicyProvenance());
         try
         {
             var tab = new RuntimeTabViewModel(
@@ -2862,7 +3003,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             "Browser",
             ThemePreference.BronzeFallback.ToString(),
-            []);
+            [],
+            CurrentAgentPolicyProvenance());
         try
         {
             var tab = new RuntimeTabViewModel(
@@ -3573,7 +3715,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return new AiProviderProfileEditorViewModel(
                 runtime,
                 Secrets.ToArray(),
-                suggestedOrder: NextAiProviderOrder(_catalog.Snapshot));
+                suggestedOrder: NextAiProviderOrder(_catalog.Snapshot),
+                authenticationRuntime: _aiProviderAuthenticationRuntime);
         }
 
         var stored = _catalog.Snapshot.AiProviderProfiles
@@ -3587,7 +3730,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             runtime,
             Secrets.ToArray(),
             stored.Value,
-            stored.Revision);
+            stored.Revision,
+            authenticationRuntime: _aiProviderAuthenticationRuntime);
     }
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<AiProviderProfile>>>
@@ -3637,7 +3781,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (!request.IsAuthorizedForSave)
         {
             return Fail<StoredDefinition<McpServerProfile>>(
-                "Confirm the trusted MCP launch details before saving this profile.");
+                "Confirm the trusted MCP transport details before saving this profile.");
         }
 
         var result = await _catalog.SaveMcpServerProfileAsync(
@@ -3732,7 +3876,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     revision,
                     McpServerTestPresentationState.Failed,
                     "Test cancelled",
-                    "The bounded MCP server test was cancelled."));
+                    "The MCP server test was cancelled."));
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -3896,7 +4040,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public async ValueTask<bool> CreateMcpServerSecretAsync(
-        McpEnvironmentSecretTargetViewModel target,
+        McpServerSecretTargetViewModel target,
         string label,
         SecretKind kind,
         string value,
@@ -3907,12 +4051,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var profile = _catalog.Snapshot.McpServerProfiles
             .Select(item => item.Value)
             .SingleOrDefault(item => item.Id == target.ProfileId);
-        var bindingStillExists = profile?.Environment.Any(binding =>
-            string.Equals(binding.Name, target.VariableName, StringComparison.Ordinal)
-            && binding.Reference == target.Reference) == true;
+        var bindingStillExists = profile is not null
+            && EnumerateMcpServerCredentialBindings(profile).Any(binding =>
+                binding.Kind == target.BindingKind
+                && string.Equals(
+                    binding.Name,
+                    target.BindingName,
+                    StringComparison.Ordinal)
+                && binding.Reference == target.Reference);
         if (!bindingStillExists)
         {
-            SetError("That MCP environment binding changed. Reopen the server settings.");
+            SetError("That MCP credential binding changed. Reopen the server settings.");
             return false;
         }
 
@@ -4166,7 +4315,45 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         && apiKey.Secret == reference;
 
     private static bool UsesSecret(McpServerProfile profile, SecretRef reference) =>
-        profile.Environment.Any(binding => binding.Reference == reference);
+        EnumerateMcpServerCredentialBindings(profile).Any(binding =>
+            binding.Reference == reference);
+
+    private static IEnumerable<McpServerCredentialBindingDescriptor>
+        EnumerateMcpServerCredentialBindings(McpServerProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        switch (profile.Transport)
+        {
+            case McpServerTransport.Stdio stdio:
+                foreach (var binding in stdio.Environment)
+                {
+                    yield return new McpServerCredentialBindingDescriptor(
+                        McpServerCredentialBindingKind.EnvironmentVariable,
+                        binding.Name,
+                        binding.Reference);
+                }
+
+                break;
+            case McpServerTransport.StreamableHttp http:
+                foreach (var header in http.Headers)
+                {
+                    yield return new McpServerCredentialBindingDescriptor(
+                        McpServerCredentialBindingKind.HttpHeader,
+                        header.Name,
+                        header.Reference);
+                }
+
+                break;
+            default:
+                throw new InvalidOperationException(
+                    "The MCP server transport is unavailable.");
+        }
+    }
+
+    private sealed record McpServerCredentialBindingDescriptor(
+        McpServerCredentialBindingKind Kind,
+        string Name,
+        SecretRef Reference);
 
     private static int NextAiProviderOrder(DefinitionCatalogSnapshot snapshot)
     {
@@ -4182,7 +4369,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         throw new InvalidOperationException(
-            "Every available AI-provider fallback position is already in use.");
+            "Every available AI-provider display position is already in use.");
     }
 
     public async Task RefreshSecretsAsync(CancellationToken cancellationToken)
@@ -5917,6 +6104,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var attached = false;
         try
         {
+            if (tab.ReplaceTarget is null
+                && !HasRuntimeWorkspacePanelCapacity(
+                    workspace,
+                    removedPanelCount: 0,
+                    addedPanelCount: 1))
+            {
+                return false;
+            }
+
             return await ReplaceRuntimeWorkspaceGraphAsync(
                 workspace,
                 operation,
@@ -6482,6 +6678,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
+            if (!HasRuntimeWorkspacePanelCapacity(
+                    workspace,
+                    removedPanelCount: 0,
+                    addedPanelCount: tab.Panels.Count))
+            {
+                return false;
+            }
+
             var current = CaptureRuntimeWorkspaceGraph(workspace);
             var proposal = new WorkspaceInstance(
                 current.Id,
@@ -6583,6 +6787,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
             tab = createTab(workspace);
             if (tab is null)
+            {
+                return false;
+            }
+
+            if (!HasRuntimeWorkspacePanelCapacity(
+                    workspace,
+                    replacedTab.Panels.Count,
+                    tab.Panels.Count))
             {
                 return false;
             }
@@ -6970,12 +7182,42 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
         {
             RefreshAiProviderDefinitions(_catalog.Snapshot);
+            RefreshDefaultAgentPolicyOptions();
         }
         else
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                RefreshAiProviderDefinitions(_catalog.Snapshot));
+            {
+                RefreshAiProviderDefinitions(_catalog.Snapshot);
+                RefreshDefaultAgentPolicyOptions();
+            });
         }
+    }
+
+    private void RefreshDefaultAgentPolicyOptions()
+    {
+        AgentPolicy? draft = null;
+        if (DefaultAgentPolicy.IsValid)
+        {
+            draft = DefaultAgentPolicy.Build();
+        }
+
+        DefaultAgentPolicy.Changed -= OnDefaultAgentPolicyChanged;
+        DefaultAgentPolicy.Dispose();
+        DefaultAgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
+            draft ?? _agentPolicyCoordinator?.Policy,
+            _aiProviderRuntime?.Profiles);
+        DefaultAgentPolicy.IsEnabled = true;
+        DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
+        OnPropertyChanged(nameof(DefaultAgentPolicy));
+        OnPropertyChanged(nameof(CanSaveDefaultAgentPolicy));
+    }
+
+    private void OnDefaultAgentPolicyChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        OnPropertyChanged(nameof(CanSaveDefaultAgentPolicy));
     }
 
     private void StartTrackingAgentTerminalSelection(
@@ -8411,12 +8653,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 RefreshWorkspaceRuntimeFlags();
             }
 
+            RemoveWorkspaceAgentChat(runtime.Id);
+
             return;
         }
 
         StopTrackingRecovery(runtime);
         StopTrackingAgentTerminalSelection(runtime);
         runtime.DisposePanels();
+        RemoveWorkspaceAgentChat(runtime.Id);
         RefreshWorkspaceRuntimeFlags();
     }
 
@@ -8632,7 +8877,19 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
         try
         {
-            var proposal = CaptureRuntimeWorkspaceGraph(runtime);
+            WorkspaceInstance proposal;
+            try
+            {
+                proposal = CaptureRuntimeWorkspaceGraph(runtime);
+            }
+            catch (ArgumentException)
+            {
+                SetError(
+                    $"A workspace can contain at most " +
+                    $"{WorkspaceInstance.MaximumPanelCount} panels.");
+                return false;
+            }
+
             HostResult<WorkspaceGraphSnapshot> result;
             try
             {
@@ -8686,6 +8943,25 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             _runtimeGraphGate.Release();
         }
+    }
+
+    private bool HasRuntimeWorkspacePanelCapacity(
+        RuntimeWorkspaceViewModel workspace,
+        int removedPanelCount,
+        int addedPanelCount)
+    {
+        var proposedPanelCount = workspace.Tabs.Sum(tab => (long)tab.Panels.Count)
+            - removedPanelCount
+            + addedPanelCount;
+        if (proposedPanelCount <= WorkspaceInstance.MaximumPanelCount)
+        {
+            return true;
+        }
+
+        SetError(
+            $"A workspace can contain at most " +
+            $"{WorkspaceInstance.MaximumPanelCount} panels.");
+        return false;
     }
 
     private async Task<bool> ReplaceRuntimeWorkspaceGraphAsync(
@@ -10473,13 +10749,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     item.Value.Id,
                     item.Revision,
                     item.Value.Name,
-                    item.Value.ProviderKind switch
-                    {
-                        AiProviderKind.OpenAi => "OpenAI",
-                        AiProviderKind.OpenAiCompatible => "OpenAI compatible",
-                        AiProviderKind.Anthropic => "Anthropic",
-                        _ => item.Value.ProviderKind.ToString(),
-                    },
+                    AiProviderCatalog.Get(item.Value.Identity).DisplayName,
                     item.Value.Endpoint.AbsoluteUri,
                     item.Value.DefaultModel,
                     item.Value.Order,
@@ -10487,10 +10757,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     error?.Message
                         ?? warning?.Message
                         ?? (needsCredential
-                            ? "Store the profile-scoped API key in the OS vault before testing."
+                            ? "Store the API key in the system keychain before testing."
                             : item.Value.IsEnabled
-                                ? "Configuration loaded; credentials resolve only for a bounded request."
-                                : "This provider is excluded from fallback selection."),
+                                ? "Ready."
+                                : "This provider is disabled."),
                     item.Value.IsEnabled,
                     error is not null || needsCredential,
                     warning is not null,
@@ -10514,9 +10784,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 _mcpServerDiagnostics is not null))
             .ToArray();
         ReconcileMcpServerDefinitions(projectedProfiles);
-        Replace(McpEnvironmentSecretTargets, snapshot.McpServerProfiles
+        Replace(McpServerSecretTargets, snapshot.McpServerProfiles
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .SelectMany(item => item.Value.Environment
+            .SelectMany(item => EnumerateMcpServerCredentialBindings(item.Value)
                 .Where(binding => Secrets.All(secret =>
                     secret.Reference != binding.Reference
                     || secret.SecretScope.Kind != SecretScopeKind.McpServer
@@ -10524,14 +10794,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         secret.SecretScope.OwnerId,
                         item.Value.Id.Value,
                         StringComparison.Ordinal)))
-                .Select(binding => new McpEnvironmentSecretTargetViewModel(
+                .Select(binding => new McpServerSecretTargetViewModel(
                     item.Value.Id,
                     item.Value.Name,
+                    binding.Kind,
                     binding.Name,
                     binding.Reference))));
         OnPropertyChanged(nameof(HasMcpServers));
         OnPropertyChanged(nameof(HasNoMcpServers));
-        OnPropertyChanged(nameof(HasMcpEnvironmentSecretTargets));
+        OnPropertyChanged(nameof(HasMcpServerSecretTargets));
     }
 
     private void ReconcileMcpServerDefinitions(
@@ -10600,7 +10871,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(stored);
         ArgumentNullException.ThrowIfNull(secrets);
         var profile = stored.Value;
-        var missingSecretCount = profile.Environment.Count(binding =>
+        var credentialBindings = EnumerateMcpServerCredentialBindings(profile)
+            .ToArray();
+        var missingSecretCount = credentialBindings.Count(binding =>
             secrets.All(secret =>
                 secret.Reference != binding.Reference
                 || secret.SecretScope.Kind != SecretScopeKind.McpServer
@@ -10617,14 +10890,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     ? "Credential missing"
                     : "Enabled for new runs";
         var baselineDetail = !profile.IsEnabled
-            ? "This saved configuration is excluded from new governed runs. Settings does not show live MCP process state."
+            ? "This server is disabled."
             : hasNoEnabledTools
-                ? "This saved configuration is excluded from new governed runs until its exact tool allowlist contains at least one name. Live process state is not shown here."
+                ? "Choose at least one tool before enabling this server."
                 : missingSecretCount > 0
                     ? missingSecretCount == 1
-                        ? "One environment binding has no matching profile-scoped vault entry. Live process state is not shown here."
-                        : $"{missingSecretCount} environment bindings have no matching profile-scoped vault entries. Live process state is not shown here."
-                    : "This saved configuration is eligible for new governed runs. Settings does not show live MCP process state.";
+                        ? "Add the missing credential."
+                        : $"Add {missingSecretCount} missing credentials."
+                    : "Ready.";
         var currentTest = missingSecretCount == 0
             && test?.Revision == stored.Revision
                 ? test
@@ -10637,9 +10910,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             profile.Id,
             stored.Revision,
             profile.Name,
-            profile.Executable,
+            profile.Transport.Kind,
+            profile.Transport switch
+            {
+                McpServerTransport.Stdio stdio => stdio.Executable,
+                McpServerTransport.StreamableHttp http =>
+                    http.Endpoint.AbsoluteUri,
+                _ => string.Empty,
+            },
             profile.Arguments.Count,
-            profile.Environment.Count,
+            credentialBindings.Length,
             profile.EnabledTools.Count,
             currentTest?.Status ?? baselineStatus,
             currentTest?.Detail ?? baselineDetail,
@@ -10699,7 +10979,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     revision,
                     McpServerTestPresentationState.Testing,
                     "Testing",
-                    "Starting a bounded test session for initialization and tool discovery only…");
+                    "Testing the connection and loading its tools…");
             return true;
         }
     }
@@ -10781,15 +11061,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 stored.Revision,
                 McpServerTestPresentationState.Failed,
                 "Test failed",
-                "The MCP diagnostics result did not match the saved profile revision and allowlist.");
+                "The test result did not match the saved server settings.");
         }
 
         var discovered = report.DiscoveredToolCount == 1
             ? "1 tool"
             : $"{report.DiscoveredToolCount} tools";
         var enabled = report.EnabledToolCount == 1
-            ? "1 saved allowlist entry matched."
-            : $"{report.EnabledToolCount} saved allowlist entries matched.";
+            ? "1 enabled tool matched."
+            : $"{report.EnabledToolCount} enabled tools matched.";
         var eligibility = report.EnabledToolCount == 0
                 ? " No tools are enabled for agent runs."
                 : string.Empty;
@@ -10800,11 +11080,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             stored.Revision,
             McpServerTestPresentationState.Succeeded,
             "Last test passed",
-            $"Tested {completed}. Bounded initialization discovered {discovered}; {enabled} "
-                + "The test session closed its directly launched process without calling a tool. "
-                + "Settings does not show live process state for governed runs."
-                + eligibility
-                + " Server-supplied identifiers are withheld from diagnostics.");
+            $"Tested {completed}. Found {discovered}; {enabled}"
+                + eligibility);
     }
 
     private void RefreshKeybindings(DefinitionCatalogSnapshot snapshot)
@@ -13603,12 +13880,41 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         KeybindingEditorSession = null;
         Onboarding?.Dispose();
         AgentChat?.Cancel();
-        AgentChat?.Dispose();
+        if (_agentRuntimeFactory is null)
+        {
+            AgentChat?.Dispose();
+        }
+        else
+        {
+            foreach (var owned in _workspaceAgentChats.Values)
+            {
+                owned.Dispose();
+            }
+
+            _workspaceAgentChats.Clear();
+            AgentChat = null;
+        }
+        DefaultAgentPolicy.Changed -= OnDefaultAgentPolicyChanged;
+        DefaultAgentPolicy.Dispose();
         _runtimeGraphLifetime.Cancel();
         StopRuntimeGraphWatch();
         _historyLifetime.Cancel();
         _runtimeGraphLifetime.Dispose();
         _historyLifetime.Dispose();
+    }
+
+    private sealed class WorkspaceAgentChat(
+        IGovernedAgentRuntime runtime,
+        AgentChatViewModel viewModel) : IDisposable
+    {
+        public AgentChatViewModel ViewModel { get; } = viewModel;
+
+        public void Dispose()
+        {
+            ViewModel.Cancel();
+            ViewModel.Dispose();
+            runtime.Dispose();
+        }
     }
 
     private static string FormatTransferProgress(FilePanelTransferSnapshot snapshot)

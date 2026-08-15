@@ -19,7 +19,7 @@
       CloseRequested="OnCancelClick"
       Title="{Binding EditorTitle}"
       Subtitle="{Binding ProfileId, StringFormat={}Profile: {0}}"
-      FooterHint="Command and ordered arguments stay separate.">
+      FooterHint="Server settings and saved credentials are managed separately.">
     <controls:DialogShell.Footer>
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
         <Button
@@ -47,27 +47,57 @@
                 AutomationProperties.Name="MCP server name" />
           </controls:LabeledField>
           <controls:LabeledField
-              Label="Executable"
-              Hint="Enter one fully qualified executable path. GhostSHELL launches it directly; this field is not a shell command.">
-            <TextBox
-                Text="{Binding Executable}"
-                PlaceholderText="/absolute/path/to/server"
-                AutomationProperties.Name="MCP server executable path" />
+              Label="Transport"
+              Hint="Choose a directly launched local process or one remote Streamable HTTP endpoint.">
+            <ComboBox
+                x:Name="McpServerTransportPicker"
+                ItemsSource="{Binding TransportOptions}"
+                SelectedItem="{Binding SelectedTransport}"
+                AutomationProperties.Name="MCP server transport">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Description}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </controls:LabeledField>
-          <controls:LabeledField Label="Working directory">
-            <TextBox
-                Text="{Binding WorkingDirectory}"
-                PlaceholderText="Optional absolute directory"
-                AutomationProperties.Name="MCP server working directory" />
-          </controls:LabeledField>
+          <StackPanel IsVisible="{Binding IsStdio}" Spacing="{DynamicResource ShellSpaceMd}">
+            <controls:LabeledField
+                Label="Executable"
+                Hint="Enter one fully qualified executable path. GhostSHELL launches it directly; this field is not a shell command.">
+              <TextBox
+                  Text="{Binding Executable}"
+                  PlaceholderText="/absolute/path/to/server"
+                  AutomationProperties.Name="MCP server executable path" />
+            </controls:LabeledField>
+            <controls:LabeledField Label="Working directory">
+              <TextBox
+                  Text="{Binding WorkingDirectory}"
+                  PlaceholderText="Optional absolute directory"
+                  AutomationProperties.Name="MCP server working directory" />
+            </controls:LabeledField>
+          </StackPanel>
+          <StackPanel IsVisible="{Binding IsStreamableHttp}" Spacing="{DynamicResource ShellSpaceMd}">
+            <controls:LabeledField
+                Label="Streamable HTTP endpoint"
+                Hint="Use HTTPS. Plaintext HTTP is accepted only for localhost or an exact loopback IP address.">
+              <TextBox
+                  Text="{Binding Endpoint}"
+                  PlaceholderText="https://mcp.example.com/mcp"
+                  AutomationProperties.Name="MCP Streamable HTTP endpoint" />
+            </controls:LabeledField>
+          </StackPanel>
           <controls:ToggleField
-              Label="Enable this server for future governed agent runs"
+              Label="Enable this server"
               IsChecked="{Binding IsEnabled}"
-              AutomationProperties.Name="Enable this server for future governed agent runs" />
+              AutomationProperties.Name="Enable this server" />
         </StackPanel>
       </controls:SurfaceCard>
 
-      <controls:SurfaceCard>
+      <controls:SurfaceCard IsVisible="{Binding IsStdio}">
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -130,7 +160,7 @@
         </StackPanel>
       </controls:SurfaceCard>
 
-      <controls:SurfaceCard>
+      <controls:SurfaceCard IsVisible="{Binding IsStdio}">
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -138,7 +168,7 @@
               <TextBlock
                   Classes="Muted"
                   FontSize="{DynamicResource ShellFontSize10}"
-                  Text="Map a portable variable name to an opaque SecretRef. Credential values remain in the operating-system vault and are never shown here."
+                  Text="Choose an environment variable name and the saved credential it should use."
                   TextWrapping="Wrap" />
             </StackPanel>
             <Button
@@ -159,9 +189,9 @@
                   <TextBox
                       Grid.Column="1"
                       Text="{Binding SecretReference}"
-                      PlaceholderText="Opaque SecretRef"
+                      PlaceholderText="Saved credential ID"
                       AutomationProperties.Name="{Binding SecretReferenceAccessibleName}"
-                      AutomationProperties.HelpText="This is an opaque vault reference, never the secret value." />
+                      AutomationProperties.HelpText="Select a saved credential; do not enter the secret value." />
                   <Button
                       Grid.Column="2"
                       Classes="IconButton Danger"
@@ -177,11 +207,58 @@
         </StackPanel>
       </controls:SurfaceCard>
 
+      <controls:SurfaceCard IsVisible="{Binding IsStreamableHttp}">
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="SectionHeading" Text="Secret HTTP headers" />
+              <TextBlock
+                  Classes="Muted"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  Text="Choose an HTTP header name and the saved credential it should use."
+                  TextWrapping="Wrap" />
+            </StackPanel>
+            <Button
+                Grid.Column="1"
+                Classes="SecondaryButton"
+                Click="OnAddHttpHeaderBindingClick"
+                Content="Add header"
+                AutomationProperties.Name="Add MCP HTTP header binding" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding HttpHeaders}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="{controls:Inset Top=Xs}" ColumnDefinitions="2*,3*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <TextBox
+                      Text="{Binding Name}"
+                      PlaceholderText="Authorization"
+                      AutomationProperties.Name="{Binding NameAccessibleName}" />
+                  <TextBox
+                      Grid.Column="1"
+                      Text="{Binding SecretReference}"
+                      PlaceholderText="Saved credential ID"
+                      AutomationProperties.Name="{Binding SecretReferenceAccessibleName}"
+                      AutomationProperties.HelpText="Select a saved credential; do not enter the HTTP header value." />
+                  <Button
+                      Grid.Column="2"
+                      Classes="IconButton Danger"
+                      Click="OnRemoveHttpHeaderBindingClick"
+                      ToolTip.Tip="Remove HTTP header binding"
+                      AutomationProperties.Name="{Binding RemoveAccessibleName}">
+                    <icons:SymbolIcon Symbol="Delete" FontSize="13" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </controls:SurfaceCard>
+
       <controls:SurfaceCard>
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-              <TextBlock Classes="SectionHeading" Text="Enabled tool allowlist" />
+              <TextBlock Classes="SectionHeading" Text="Enabled tools" />
               <TextBlock
                   Classes="Muted"
                   FontSize="{DynamicResource ShellFontSize10}"
@@ -217,11 +294,6 @@
           </ItemsControl>
         </StackPanel>
       </controls:SurfaceCard>
-
-      <controls:Callout
-          Tone="Notice"
-          Glyph="Shield"
-          Text="Adding a server or expanding its launch details, environment access, or tool allowlist opens a separate trusted review before anything is saved." />
 
       <TextBlock
           x:Name="ValidationError"

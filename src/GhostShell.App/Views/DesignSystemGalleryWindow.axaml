@@ -84,7 +84,7 @@
         <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
           <controls:StatusChip Content="Connected" />
           <controls:StatusChip Tone="Warning" Content="Needs attention" />
-          <controls:StatusChip Tone="Danger" Content="YOLO enabled" />
+          <controls:StatusChip Tone="Danger" Content="Full access enabled" />
           <controls:StatusChip Tone="Notice" Content="Provider model" />
           <controls:StatusChip Tone="Default" Content="Ask" />
           <controls:StatusChip Shape="Rounded" Content="SSH" />
@@ -109,7 +109,7 @@
           <controls:Callout
               Tone="Warning"
               Glyph="Warning"
-              Title="Local process authority"
+              Title="Run a local process"
               Text="This server runs as a local process with your user's permissions."
               Footnote="Trust is granted per profile and can be withdrawn in settings." />
           <controls:Callout Tone="Danger" Glyph="ErrorCircle" Title="Delivery failed" Text="The startup command was not delivered to the session.">
@@ -137,7 +137,7 @@
             <controls:StateOverlay
                 Kind="Loading"
                 Heading="Waiting for first sample…"
-                Body="The session host is collecting a bounded snapshot." />
+                Body="Collecting resource statistics…" />
           </controls:SurfaceCard>
           <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
             <controls:StateOverlay
@@ -297,7 +297,7 @@
           <controls:EmptyStatePanel
               Glyph="Bot"
               Heading="Connect an AI provider"
-              Body="Add an Anthropic, OpenAI, or compatible endpoint. Credentials stay in the OS vault and panel actions remain broker-governed.">
+              Body="Add a model provider to start using the AI agent.">
             <Button Classes="PrimaryButton" Content="Open provider settings" />
           </controls:EmptyStatePanel>
         </controls:SurfaceCard>

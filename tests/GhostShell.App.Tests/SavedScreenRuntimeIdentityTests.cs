@@ -1903,6 +1903,47 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     [Fact]
+    public void Recovery_snapshot_rejects_more_panels_than_a_live_workspace_can_register()
+    {
+        var workspace = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            "Oversized workspace",
+            "Bronze",
+            []);
+        for (var tabIndex = 0; tabIndex < 2; tabIndex++)
+        {
+            var tab = new RuntimeTabViewModel(
+                TabInstanceId.New(),
+                $"Tab {tabIndex + 1}",
+                "WORKSPACE TAB");
+            var panelCount = tabIndex == 0
+                ? WorkspaceInstance.MaximumPanelCount / 2
+                : WorkspaceInstance.MaximumPanelCount / 2 + 1;
+            for (var panelIndex = 0; panelIndex < panelCount; panelIndex++)
+            {
+                tab.AddPanel(new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Browser,
+                    $"Panel {tabIndex + 1}-{panelIndex + 1}",
+                    "BROWSER",
+                    "Unavailable."));
+            }
+
+            workspace.Tabs.Add(tab);
+        }
+
+        workspace.ActiveTab = workspace.Tabs[0];
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            RuntimeWorkspaceRecoveryCodec.Serialize(workspace));
+
+        Assert.Contains(
+            WorkspaceInstance.MaximumPanelCount.ToString(),
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RecoveryPolicyProvenanceIsVersionedAndWorkspaceLineageFailsClosed()
     {
         var workspaceDefinition = new DefinitionKey(

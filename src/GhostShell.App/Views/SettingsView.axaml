@@ -112,17 +112,11 @@
                     IsActive="{Binding IsDiagnosticsSettingsVisible}"
                     Label="Data &amp; diagnostics" />
                 <components:ShellNavigationItem
-                    AutomationName="AI provider settings"
+                    AutomationName="AI settings"
                     Click="OnAgentSettingsClick"
                     Icon="Bot"
                     IsActive="{Binding IsAgentSettingsVisible}"
-                    Label="AI providers" />
-                <components:ShellNavigationItem
-                    AutomationName="MCP server settings"
-                    Click="OnMcpSettingsClick"
-                    Icon="Code"
-                    IsActive="{Binding IsMcpSettingsVisible}"
-                    Label="MCP servers" />
+                    Label="AI" />
                 <components:ShellNavigationItem
                     AutomationName="About GhostSHELL"
                     Click="OnAboutSettingsClick"
@@ -152,7 +146,7 @@
               <Grid ColumnDefinitions="*,Auto">
                 <components:SettingsPageHeader
                     Heading="Workspaces &amp; saved screens"
-                    Description="Edit persistent launch definitions. Runtime terminal instances remain independent." />
+                    Description="Manage saved workspaces and launch layouts." />
                 <Button Grid.Column="1" Classes="PrimaryButton" Click="OnShowNewItemClick" Content="New definition" />
               </Grid>
               <controls:SettingsGroup>
@@ -434,7 +428,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsFilesSettingsVisible}">
               <components:SettingsPageHeader
                   Heading="Files &amp; transfers"
-                  Description="Provider capabilities stay explicit; queued copies and moves are bounded, cancellable, and conflict-aware." />
+                  Description="Manage file locations, transfers, and previews." />
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <Grid ColumnDefinitions="*,Auto"><TextBlock Classes="SectionHeading" Text="Configured providers" /><Button Grid.Column="1" Classes="PrimaryButton" Click="OnAddFileProviderClick" Content="Add provider" /></Grid>
                 <ItemsControl ItemsSource="{Binding FileProviderDefinitions}">
@@ -510,7 +504,7 @@
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceLg}">
                 <components:SettingsPageHeader
                     Heading="Terminal"
-                    Description="Tune the stored renderer profile. Existing sessions keep the snapshot they launched with." />
+                    Description="Customize terminal behavior and appearance. Changes apply to new sessions." />
                 <Button Grid.Column="1" VerticalAlignment="Bottom" Classes="PrimaryButton" Click="OnSaveTerminalProfileClick" Content="Save profile" />
               </Grid>
 
@@ -658,7 +652,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsSecretsSettingsVisible}">
               <components:SettingsPageHeader
                   Heading="Security &amp; secrets"
-                  Description="Credential values live only in the operating-system vault. GhostSHELL stores opaque references in definitions." />
+                  Description="Manage app encryption and saved credentials." />
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <TextBlock Classes="SectionHeading" Text="Application security" />
                 <controls:SettingsGroup>
@@ -804,7 +798,7 @@
                 </StackPanel>
                 <controls:SettingsGroup.Footer>
                   <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="The connection editor uses the resulting opaque reference." />
+                    <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Use this credential when editing a connection." />
                     <Button Grid.Column="1" Classes="PrimaryButton" Click="OnCreateConnectionSecretClick" Content="Store credential" />
                   </Grid>
                 </controls:SettingsGroup.Footer>
@@ -836,7 +830,7 @@
                 </StackPanel>
                 <controls:SettingsGroup.Footer>
                   <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Save the provider first, store its scoped credential here, then select the opaque reference while editing." TextWrapping="Wrap" />
+                    <TextBlock VerticalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Save the provider first, then store and select its credential." TextWrapping="Wrap" />
                     <Button Grid.Column="1" Classes="PrimaryButton" Click="OnCreateFileProviderSecretClick" Content="Store credential" />
                   </Grid>
                 </controls:SettingsGroup.Footer>
@@ -869,16 +863,155 @@
                   <controls:EmptyStatePanel
                       Glyph="Key"
                       Heading="No stored credentials"
-                      Body="Credentials you store above appear here as opaque references." />
+                      Body="Saved credentials appear here." />
                 </controls:SurfaceCard>
               </StackPanel>
             </StackPanel>
 
-            <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsAgentSettingsVisible}">
+            <StackPanel x:Name="AiSettingsPage" Spacing="{DynamicResource ShellSpaceXl}" IsVisible="{Binding IsAgentSettingsVisible}">
+              <StackPanel Spacing="{DynamicResource ShellSpaceLg}">
+              <components:SettingsPageHeader
+                  Heading="AI"
+                  Description="Choose agent defaults, connect model providers, and manage MCP servers. Workspaces and saved screens can override agent defaults." />
+
+              <controls:SettingsGroup
+                  Heading="System prompt"
+                  Description="Base instructions added to every new agent conversation. A workspace or saved screen can override them.">
+                <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceSm}">
+                  <TextBox
+                      MinHeight="160"
+                      MaxLength="8000"
+                      AcceptsReturn="True"
+                      TextWrapping="Wrap"
+                      VerticalContentAlignment="Top"
+                      Text="{Binding DefaultAgentPolicy.SystemPrompt, Mode=TwoWay}"
+                      PlaceholderText="Add instructions for how the agent should work…"
+                      AutomationProperties.Name="Default agent system prompt" />
+                  <TextBlock
+                      HorizontalAlignment="Right"
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize9}"
+                      Text="{Binding DefaultAgentPolicy.SystemPromptUsage}" />
+                </StackPanel>
+              </controls:SettingsGroup>
+
+              <controls:SettingsGroup
+                  Heading="Default agent configuration"
+                  Description="Used by the floating agent unless the current workspace or saved screen supplies an override.">
+                <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <controls:LabeledField Label="Provider profile">
+                      <Grid MinHeight="{DynamicResource ShellControlMinHeight}">
+                        <ComboBox
+                            IsVisible="{Binding DefaultAgentPolicy.HasMultipleProviderOptions}"
+                            ItemsSource="{Binding DefaultAgentPolicy.ProviderOptions}"
+                            SelectedItem="{Binding DefaultAgentPolicy.SelectedProvider, Mode=TwoWay}"
+                            AutomationProperties.Name="Default AI provider profile">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            IsVisible="{Binding DefaultAgentPolicy.HasSingleProviderOption}"
+                            Text="{Binding DefaultAgentPolicy.SelectedProvider.DisplayName}" />
+                      </Grid>
+                    </controls:LabeledField>
+                    <controls:LabeledField Grid.Column="1" Label="Default model">
+                      <Grid MinHeight="{DynamicResource ShellControlMinHeight}">
+                        <ComboBox
+                            IsVisible="{Binding DefaultAgentPolicy.HasMultipleModelOptions}"
+                            ItemsSource="{Binding DefaultAgentPolicy.ModelOptions}"
+                            SelectedItem="{Binding DefaultAgentPolicy.SelectedModel, Mode=TwoWay}"
+                            AutomationProperties.Name="Default AI model">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            IsVisible="{Binding DefaultAgentPolicy.HasSingleModelOption}"
+                            Text="{Binding DefaultAgentPolicy.SelectedModel.DisplayName}" />
+                      </Grid>
+                    </controls:LabeledField>
+                  </Grid>
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <controls:LabeledField Label="Compaction model">
+                      <ComboBox
+                          ItemsSource="{Binding DefaultAgentPolicy.AgentTaskModelOptions}"
+                          SelectedItem="{Binding DefaultAgentPolicy.SelectedCompactionModel, Mode=TwoWay}"
+                          AutomationProperties.Name="Model used to compact long AI conversations">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </controls:LabeledField>
+                    <controls:LabeledField Grid.Column="1" Label="Title model">
+                      <Grid MinHeight="{DynamicResource ShellControlMinHeight}">
+                        <ComboBox
+                            IsVisible="{Binding DefaultAgentPolicy.HasMultipleTitleModelOptions}"
+                            ItemsSource="{Binding DefaultAgentPolicy.TitleModelOptions}"
+                            SelectedItem="{Binding DefaultAgentPolicy.SelectedTitleModel, Mode=TwoWay}"
+                            AutomationProperties.Name="Model used to generate AI conversation titles">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            IsVisible="{Binding DefaultAgentPolicy.HasSingleTitleModelOption}"
+                            Text="{Binding DefaultAgentPolicy.SelectedTitleModel.DisplayName}" />
+                      </Grid>
+                    </controls:LabeledField>
+                  </Grid>
+                  <TextBlock
+                      Classes="Muted"
+                      FontSize="{DynamicResource ShellFontSize9}"
+                      Text="Long conversations compact automatically before the provider context limit. When configured, title generation runs once after the first completed response."
+                      TextWrapping="Wrap" />
+                  <ItemsControl ItemsSource="{Binding DefaultAgentPolicy.Capabilities}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Grid Margin="{controls:Inset Vertical=Sm}" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                          <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceXs}">
+                            <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Description}" TextWrapping="Wrap" />
+                          </StackPanel>
+                          <Border Grid.Column="1" VerticalAlignment="Center" Classes="Segmented">
+                            <Grid ColumnDefinitions="60,60,60">
+                              <ToggleButton Classes="Segment" IsChecked="{Binding IsOff, Mode=TwoWay}" Content="Off" />
+                              <ToggleButton Grid.Column="1" Classes="Segment" IsChecked="{Binding IsAsk, Mode=TwoWay}" Content="Ask" />
+                              <ToggleButton Grid.Column="2" Classes="Segment" IsChecked="{Binding IsAuto, Mode=TwoWay}" Content="Auto" />
+                            </Grid>
+                          </Border>
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Foreground="{DynamicResource ShellDangerBrush}"
+                        FontSize="{DynamicResource ShellFontSize9}"
+                        Text="Choose an available provider and a valid model."
+                        IsVisible="{Binding !DefaultAgentPolicy.IsValid}" />
+                    <Button
+                        Grid.Column="1"
+                        Classes="PrimaryButton"
+                        Click="OnSaveDefaultAgentPolicyClick"
+                        Content="Save defaults"
+                        IsEnabled="{Binding CanSaveDefaultAgentPolicy}" />
+                  </Grid>
+                </StackPanel>
+              </controls:SettingsGroup>
+
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-                <components:SettingsPageHeader
-                    Heading="AI providers"
-                    Description="Native Anthropic and OpenAI-compatible adapters. Credentials resolve from the OS vault only for a bounded request." />
+                <components:SectionHeader
+                    Heading="Providers"
+                    Description="Connect and manage model providers." />
                 <Button Grid.Column="1" VerticalAlignment="Center" Classes="PrimaryButton" Click="OnAddAiProviderClick" Content="Add provider" AutomationProperties.Name="Add AI provider" />
               </Grid>
 
@@ -917,7 +1050,7 @@
                 <controls:EmptyStatePanel Margin="{controls:Inset Xl}"
                     Glyph="Bot"
                     Heading="No provider configured"
-                    Body="Add a provider to enable the governed agent. Every run stays bound to its selected live panel scope and all panel actions pass through the capability broker.">
+                    Body="Add a provider to start using the AI agent.">
                   <Button HorizontalAlignment="Center" Classes="SecondaryButton" Click="OnAddAiProviderClick" Content="Add first provider" />
                 </controls:EmptyStatePanel>
               </controls:SurfaceCard>
@@ -928,7 +1061,7 @@
                    inviting a keystroke that cannot go anywhere. -->
               <controls:SettingsGroup
                   Heading="Store profile credential"
-                  Description="Save the profile first. Its opaque credential slot is fixed in the definition; this action fills that exact profile-scoped slot in the OS vault."
+                  Description="Store an API key for a saved provider. Keys are kept in the system keychain."
                   IsEnabled="{Binding HasAiProviders}">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
                   <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -952,16 +1085,13 @@
                 </StackPanel>
               </controls:SettingsGroup>
 
-              <controls:Callout
-                  Glyph="Shield"
-                  Text="Provider output currently becomes text or inert tool proposals only. It has no terminal, process, filesystem, browser, or session-host authority." />
-            </StackPanel>
+              </StackPanel>
 
-            <StackPanel x:Name="McpSettingsSection" Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsMcpSettingsVisible}">
+              <StackPanel x:Name="McpSettingsSection" Spacing="{DynamicResource ShellSpaceLg}">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
                 <components:SettingsPageHeader
                     Heading="MCP servers"
-                    Description="Native .NET stdio integrations for governed agent runs. Each server is a direct local process; no agent is installed on connected remote machines." />
+                    Description="Connect local or remote MCP servers and choose which tools they provide." />
                 <Button
                     Grid.Column="1"
                     VerticalAlignment="Center"
@@ -984,12 +1114,13 @@
                           <TextBlock
                               Classes="Muted"
                               FontSize="{DynamicResource ShellFontSize9}"
-                              Text="{Binding Executable}"
+                              Text="{Binding Address}"
                               TextTrimming="CharacterEllipsis"
-                              ToolTip.Tip="{Binding Executable}" />
+                              ToolTip.Tip="{Binding Address}" />
                           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ArgumentSummary}" />
-                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding EnvironmentBindingSummary}" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding TransportSummary}" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ArgumentSummary}" IsVisible="{Binding IsStdio}" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding CredentialBindingSummary}" />
                             <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding EnabledToolSummary}" />
                           </StackPanel>
                         </StackPanel>
@@ -1036,22 +1167,22 @@
                 <controls:EmptyStatePanel Margin="{controls:Inset Xl}"
                     Glyph="Code"
                     Heading="No MCP server configured"
-                    Body="Add a trusted stdio server, map only the vault references it needs, and enable an exact tool allowlist. The agent cannot discover or call anything outside that saved boundary.">
+                    Body="Add a local or remote MCP server to make its selected tools available to the agent.">
                   <Button Classes="SecondaryButton" Click="OnAddMcpServerClick" Content="Add first server" AutomationProperties.Name="Add first MCP server" />
                 </controls:EmptyStatePanel>
               </controls:SurfaceCard>
 
               <controls:SettingsGroup
-                  Heading="Store environment credential"
-                  Description="Save the server and its environment binding first. This fills that exact opaque SecretRef in the operating-system vault; the value is never displayed again.">
+                  Heading="Store MCP credential"
+                  Description="Store a credential for a saved MCP server. Values are kept in the system keychain.">
                 <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
                   <Grid ColumnDefinitions="2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                    <controls:LabeledField Label="Environment binding">
+                    <controls:LabeledField Label="Credential binding">
                       <ComboBox
-                          x:Name="McpEnvironmentSecretTargetPicker"
-                          ItemsSource="{Binding McpEnvironmentSecretTargets}"
+                          x:Name="McpServerSecretTargetPicker"
+                          ItemsSource="{Binding McpServerSecretTargets}"
                           SelectedIndex="0"
-                          AutomationProperties.Name="MCP environment binding">
+                          AutomationProperties.Name="MCP credential binding">
                         <ComboBox.ItemTemplate>
                           <DataTemplate>
                             <TextBlock FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayName}" />
@@ -1064,22 +1195,22 @@
                           x:Name="McpServerSecretKindPicker"
                           ItemsSource="{Binding SecretKinds}"
                           SelectedIndex="0"
-                          AutomationProperties.Name="MCP environment credential kind" />
+                          AutomationProperties.Name="MCP credential kind" />
                     </controls:LabeledField>
                   </Grid>
                   <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                     <controls:LabeledField Label="Label">
                       <TextBox
-                          x:Name="McpServerSecretLabelInput"
-                          PlaceholderText="Server token"
-                          AutomationProperties.Name="MCP environment credential label" />
+                        x:Name="McpServerSecretLabelInput"
+                        PlaceholderText="Server token"
+                        AutomationProperties.Name="MCP credential label" />
                     </controls:LabeledField>
                     <controls:LabeledField Grid.Column="1" Label="Value">
                       <TextBox
                           x:Name="McpServerSecretValueInput"
-                          PasswordChar="●"
-                          PlaceholderText="Never displayed again"
-                          AutomationProperties.Name="MCP environment credential value" />
+                        PasswordChar="●"
+                        PlaceholderText="Never displayed again"
+                        AutomationProperties.Name="MCP credential value" />
                     </controls:LabeledField>
                   </Grid>
                 </StackPanel>
@@ -1089,32 +1220,30 @@
                         VerticalAlignment="Center"
                         Classes="Muted"
                         FontSize="{DynamicResource ShellFontSize10}"
-                        Text="Only a selected profile-scoped binding can receive this value."
+                        Text="Choose a credential binding above."
                         TextWrapping="Wrap" />
                     <Button
                         Grid.Column="1"
                         Classes="PrimaryButton"
                         Click="OnCreateMcpServerSecretClick"
                         Content="Store credential"
-                        IsEnabled="{Binding HasMcpEnvironmentSecretTargets}"
-                        AutomationProperties.Name="Store MCP environment credential" />
+                        IsEnabled="{Binding HasMcpServerSecretTargets}"
+                        AutomationProperties.Name="Store MCP credential" />
                   </Grid>
                 </controls:SettingsGroup.Footer>
               </controls:SettingsGroup>
 
-              <controls:Callout
-                  Glyph="Shield"
-                  Text="Settings shows saved configuration and the last bounded test result, not live MCP process state. Governed runs initialize eligible servers only when needed, and each MCP tool call requires explicit human approval." />
+              </StackPanel>
             </StackPanel>
 
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsDiagnosticsSettingsVisible}">
               <components:SettingsPageHeader
                   Heading="Data &amp; diagnostics"
-                  Description="Export bounded support information without terminal content, commands, credentials, or environment values." />
+                  Description="Export support information without terminal content, commands, credentials, or environment values." />
               <controls:SettingsGroup>
                 <controls:SettingRow
                     Label="Getting started &amp; local privacy"
-                    Description="Review local shell and credential prerequisites, import durable definitions, or change bounded session-history retention.">
+                    Description="Review setup, import or export settings, and manage session-history retention.">
                   <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
                     <Button Classes="SecondaryButton" Click="OnReviewOnboardingClick" Content="Review setup" AutomationProperties.Name="Review getting started setup" />
                     <Button Classes="SecondaryButton" Click="OnReviewHistoryPrivacyClick" Content="History privacy" AutomationProperties.Name="Open session history privacy controls" />
@@ -1132,7 +1261,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsAboutSettingsVisible}">
               <components:SettingsPageHeader
                   Heading="About GhostSHELL"
-                  Description="The native .NET agent can operate governed terminal, browser, and File Viewer panels. Actions stay scoped to exact live targets; risky mutations require explicit one-time approval." />
+                  Description="View version, platform, and application information." />
 
               <controls:SurfaceCard>
                 <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}" ColumnSpacing="{DynamicResource ShellSpaceXl}">

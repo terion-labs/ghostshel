@@ -996,7 +996,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
             {
                 await ApplyFailureAsync(
                     "Process refresh failed",
-                    $"The bounded process list for {ConnectionDisplayName} could not be captured.",
+                    $"The process list for {ConnectionDisplayName} could not be loaded.",
                     linked.Token);
                 return;
             }

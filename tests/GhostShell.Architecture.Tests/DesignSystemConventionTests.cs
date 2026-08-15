@@ -110,6 +110,39 @@ public sealed partial class DesignSystemConventionTests
             + "progress in, or the ratchet stops holding.");
     }
 
+    [Fact]
+    public void Thickness_properties_never_consume_scalar_spacing_tokens()
+    {
+        string[] thicknessProperties =
+        [
+            "Margin",
+            "Padding",
+            "BorderThickness",
+            "ContentPadding",
+        ];
+        foreach (var file in ApplicationXamlFiles())
+        {
+            var source = File.ReadAllText(file);
+            foreach (var property in thicknessProperties)
+            {
+                foreach (var pattern in new[]
+                         {
+                             property + "=\"\\{(?:Dynamic|Static)Resource ShellSpace[^}]+\\}\"",
+                             "Property=\"" + property
+                             + "\" Value=\"\\{(?:Dynamic|Static)Resource ShellSpace[^}]+\\}\"",
+                         })
+                {
+                    var match = Regex.Match(source, pattern);
+                    Assert.False(
+                        match.Success,
+                        $"{Path.GetRelativePath(ApplicationViews.RepositoryRoot, file)} "
+                        + $"assigns the scalar token in {match.Value} to a Thickness property. "
+                        + "Use a ShellInset* or another typed Thickness resource.");
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Shape and tone are separate axes. Conflating them is what produced a
     /// "danger button" that was really a fixed-size icon button, and so a labelled

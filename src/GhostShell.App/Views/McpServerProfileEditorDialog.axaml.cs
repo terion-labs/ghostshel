@@ -90,6 +90,27 @@ public sealed partial class McpServerProfileEditorDialog : Window
         }
     }
 
+    private void OnAddHttpHeaderBindingClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RunEditorMutation(ViewModel.AddHttpHeaderBinding);
+    }
+
+    private void OnRemoveHttpHeaderBindingClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control
+            {
+                DataContext: McpHttpHeaderBindingEditorItemViewModel binding,
+            })
+        {
+            ViewModel.RemoveHttpHeaderBinding(binding);
+        }
+    }
+
     private void OnAddEnabledToolClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

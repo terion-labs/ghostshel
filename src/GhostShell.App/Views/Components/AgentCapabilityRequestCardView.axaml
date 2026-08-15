@@ -92,7 +92,7 @@
             IsEnabled="{Binding AgentChat.CanDecideCapabilityRequest}"
             TabIndex="0"
             AutomationProperties.Name="Keep this AI agent capability Off"
-            AutomationProperties.HelpText="Declines the run-local capability request and grants no authority" />
+            AutomationProperties.HelpText="Decline this request" />
         <Button
             Grid.Column="1"
             Classes="PrimaryButton"

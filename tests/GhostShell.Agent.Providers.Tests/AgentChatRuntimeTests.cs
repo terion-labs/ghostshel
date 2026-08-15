@@ -64,7 +64,10 @@ public sealed class AgentChatRuntimeTests
                 new AgentChatMessage(AgentChatMessageRole.User, "Say hello."),
                 message),
             message => Assert.Equal(
-                new AgentChatMessage(AgentChatMessageRole.Assistant, "Hello"),
+                new AgentChatMessage(
+                    AgentChatMessageRole.Assistant,
+                    "Hello",
+                    RequestedReasoningEffort: AgentReasoningEffort.Automatic),
                 message));
         Assert.Contains(
             snapshots,
@@ -104,13 +107,19 @@ public sealed class AgentChatRuntimeTests
                 new AgentChatMessage(AgentChatMessageRole.User, "first question"),
                 message),
             message => Assert.Equal(
-                new AgentChatMessage(AgentChatMessageRole.Assistant, "first answer"),
+                new AgentChatMessage(
+                    AgentChatMessageRole.Assistant,
+                    "first answer",
+                    RequestedReasoningEffort: AgentReasoningEffort.Automatic),
                 message),
             message => Assert.Equal(
                 new AgentChatMessage(AgentChatMessageRole.User, "second question"),
                 message),
             message => Assert.Equal(
-                new AgentChatMessage(AgentChatMessageRole.Assistant, "second answer"),
+                new AgentChatMessage(
+                    AgentChatMessageRole.Assistant,
+                    "second answer",
+                    RequestedReasoningEffort: AgentReasoningEffort.Automatic),
                 message));
 
         var secondRequest = handler.Requests[1];
@@ -205,7 +214,10 @@ public sealed class AgentChatRuntimeTests
                 new AgentChatMessage(AgentChatMessageRole.User, "fresh question"),
                 message),
             message => Assert.Equal(
-                new AgentChatMessage(AgentChatMessageRole.Assistant, "fresh answer"),
+                new AgentChatMessage(
+                    AgentChatMessageRole.Assistant,
+                    "fresh answer",
+                    RequestedReasoningEffort: AgentReasoningEffort.Automatic),
                 message));
         using var body = JsonDocument.Parse(handler.Requests[1].Body);
         Assert.Collection(

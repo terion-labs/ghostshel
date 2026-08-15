@@ -921,6 +921,65 @@ public sealed class AgentMcpSessionHostTests
     }
 
     [Fact]
+    public async Task GovernedRemoteCallUsesVaultHeaderAndFrozenEndpoint()
+    {
+        var endpoint = new Uri("https://mcp.example.test/rpc");
+        var handler = new McpStreamableHttpClientTests.FakeMcpHttpHandler(
+            callResponseUsesSse: true);
+        var fixture = await HostFixture.CreateAsync(
+            mode: "unused-for-http",
+            enabledTools: ["first"],
+            transport: new McpServerTransport.StreamableHttp(
+                endpoint,
+                [
+                    new McpServerHttpHeader(
+                        "Authorization",
+                        new SecretRef("mcp-http-authorization")),
+                ]),
+            streamableHttpHandlerFactory: uri =>
+            {
+                Assert.Equal(endpoint, uri);
+                return handler;
+            });
+        fixture.Vault.Values["mcp-http-authorization"] =
+            Encoding.UTF8.GetBytes("Bearer remote-vault-token");
+        await using (fixture)
+        {
+            var manifest = Assert.Single(
+                (await fixture.OpenAsync()).Tools);
+            Assert.Equal(
+                McpServerTransportKind.StreamableHttp,
+                manifest.TransportKind);
+            Assert.Equal(endpoint.AbsoluteUri, manifest.TransportTarget);
+            Assert.Null(manifest.WorkingDirectory);
+            Assert.Contains(
+                fixture.Vault.Purposes,
+                purpose => purpose.Kind
+                    == SecretUseKind.McpServerHttpHeader);
+
+            var action = fixture.Prepare(manifest, "{}");
+            Assert.Equal(
+                "Remote MCP Streamable HTTP server",
+                action.Proposal.Presentation.Host);
+            var authorizationId = await fixture.AuthorizeAsync(action);
+            var result = await fixture.Host.RunToolAsync(
+                authorizationId,
+                action,
+                CancellationToken.None);
+
+            Assert.IsType<
+                AgentMcpHostResult<
+                    AgentMcpToolCallReceipt>.Success>(result);
+            Assert.All(
+                handler.Requests.Where(request =>
+                    request.Method == HttpMethod.Post),
+                request => Assert.Equal(
+                    "Bearer remote-vault-token",
+                    request.Authorization));
+        }
+    }
+
+    [Fact]
     public async Task GovernedCallUsesFrozenManifestAndRedactsResolvedSecrets()
     {
         var ambientName =
@@ -1467,7 +1526,9 @@ public sealed class AgentMcpSessionHostTests
             bool isEnabled = true,
             int profileCount = 1,
             bool omitWorkingDirectory = false,
-            TimeSpan? shutdownGracePeriod = null)
+            TimeSpan? shutdownGracePeriod = null,
+            McpServerTransport? transport = null,
+            Func<Uri, HttpMessageHandler?>? streamableHttpHandlerFactory = null)
         {
             var assemblyPath = Assembly.GetExecutingAssembly().Location;
             var dotnetPath = Environment.ProcessPath
@@ -1513,23 +1574,31 @@ public sealed class AgentMcpSessionHostTests
             var storedProfiles = Enumerable.Range(0, profileCount)
                 .Select(index =>
                 {
-                    var profile = new McpServerProfile(
-                        ProfileId(index),
-                        McpServerProfile.CurrentSchemaVersion,
-                        $"Test MCP {index + 1}",
-                        dotnetPath,
-                        [
-                            assemblyPath,
-                            "--mcp-test-host",
-                            mode,
-                            .. (hostArguments ?? []),
-                        ],
-                        omitWorkingDirectory
-                            ? null
-                            : Path.GetDirectoryName(assemblyPath),
-                        environment,
-                        enabledTools ?? ["control"],
-                        isEnabled);
+                    var profile = transport is null
+                        ? new McpServerProfile(
+                            ProfileId(index),
+                            McpServerProfile.CurrentSchemaVersion,
+                            $"Test MCP {index + 1}",
+                            dotnetPath,
+                            [
+                                assemblyPath,
+                                "--mcp-test-host",
+                                mode,
+                                .. (hostArguments ?? []),
+                            ],
+                            omitWorkingDirectory
+                                ? null
+                                : Path.GetDirectoryName(assemblyPath),
+                            environment,
+                            enabledTools ?? ["control"],
+                            isEnabled)
+                        : new McpServerProfile(
+                            ProfileId(index),
+                            McpServerProfile.CurrentSchemaVersion,
+                            $"Test MCP {index + 1}",
+                            transport,
+                            enabledTools ?? ["control"],
+                            isEnabled);
                     return new StoredDefinition<McpServerProfile>(
                         profile,
                         Revision: ProfileRevision,
@@ -1613,7 +1682,7 @@ public sealed class AgentMcpSessionHostTests
                 new AgentMcpToolCallActionComposer(),
                 new FixedTimeProvider(Now),
                 new FixedApprovalPrincipal(Human()),
-                new McpStdioClientOptions
+                new McpSessionOptions
                 {
                     MaxTools = 128,
                     MaxToolSchemaBytes =
@@ -1625,7 +1694,8 @@ public sealed class AgentMcpSessionHostTests
                     ShutdownGracePeriod =
                         shutdownGracePeriod
                             ?? TimeSpan.FromMilliseconds(50),
-                });
+                },
+                streamableHttpHandlerFactory);
             return new HostFixture(
                 host,
                 broker,

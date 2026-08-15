@@ -50,6 +50,99 @@ public sealed partial class NativeAgentSessionTests
     }
 
     [Fact]
+    public async Task ProviderMetadataCommitsAtomicallyWithTheAssistantMessage()
+    {
+        var session = CreateSession();
+        var usage = new AgentTokenUsage(
+            inputTokens: 90,
+            outputTokens: 25,
+            cachedInputTokens: 40,
+            reasoningTokens: 8);
+        var provider = new SequenceProvider(
+            new AgentProviderEvent.ResponseStarted(),
+            new AgentProviderEvent.ReasoningSummaryDelta(
+                "Inspected the bounded context."),
+            new AgentProviderEvent.TextDelta("The service is healthy."),
+            new AgentProviderEvent.Usage(usage),
+            new AgentProviderEvent.ResponseCompleted(
+                AgentProviderStopReason.EndTurn));
+
+        var result = await session.RunTurnAsync(
+            "Check the service",
+            [],
+            provider,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var assistant = session.Snapshot().Conversation[^1];
+        Assert.Equal(
+            "Inspected the bounded context.",
+            assistant.ReasoningSummary);
+        Assert.Same(usage, assistant.Usage);
+        Assert.Equal("The service is healthy.", assistant.Content);
+        var events = await ReadCurrentEventBatchAsync(session);
+        var reasoningEvent = Assert.Single(events, agentEvent =>
+            agentEvent.Kind
+                == AgentRunEventKind.ProvisionalReasoningSummary);
+        Assert.Equal(
+            "Inspected the bounded context.",
+            reasoningEvent.ProvisionalReasoningSummary);
+        Assert.True(reasoningEvent.ContainsUntrustedContent);
+    }
+
+    [Fact]
+    public async Task RequestedReasoningEffortReachesTheProviderBoundary()
+    {
+        var session = CreateSession();
+        var provider = TextProvider("done");
+
+        var result = await session.RunTurnAsync(
+            "Think carefully",
+            [],
+            AgentReasoningEffort.High,
+            provider,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(
+            AgentReasoningEffort.High,
+            Assert.IsType<AgentProviderRequest>(provider.LastRequest).ReasoningEffort);
+        Assert.Equal(
+            AgentReasoningEffort.High,
+            session.Snapshot().Conversation[^1].RequestedReasoningEffort);
+    }
+
+    [Fact]
+    public async Task ImageOnlyTurnCopiesBoundedImageToTheProviderBoundary()
+    {
+        var session = CreateSession();
+        var provider = TextProvider("described");
+        var image = new AgentImageAttachment(
+            "sample.png",
+            "image/png",
+            new byte[]
+            {
+                0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+                0x01,
+            });
+
+        var result = await session.RunTurnAsync(
+            string.Empty,
+            [image],
+            [],
+            AgentReasoningEffort.Automatic,
+            provider,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var user = Assert.IsType<AgentProviderRequest>(provider.LastRequest)
+            .Messages[^1];
+        Assert.Empty(user.Content);
+        Assert.Same(image, Assert.Single(user.Images));
+        Assert.Same(image, Assert.Single(session.Snapshot().Conversation[0].Images));
+    }
+
+    [Fact]
     public async Task PartialToolCallFollowedByProviderFailureCommitsNothing()
     {
         var session = CreateSession();
@@ -73,6 +166,25 @@ public sealed partial class NativeAgentSessionTests
         Assert.Empty(snapshot.Conversation);
         Assert.Empty(snapshot.PendingToolProposals);
         Assert.Equal(NativeAgentSessionState.Failed, snapshot.State);
+    }
+
+    [Fact]
+    public async Task ProviderSafeFailureIsReturnedWithoutLeakingExceptionDetails()
+    {
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Respond",
+            [],
+            new SafeFailingProvider(),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(AgentTurnErrorCode.ProviderFailure, result.ErrorCode);
+        var failure = Assert.IsType<AgentProviderFailure>(result.ProviderFailure);
+        Assert.Equal("ai_provider_model_unavailable", failure.StableCode);
+        Assert.Equal("The configured AI model is unavailable.", failure.Message);
+        Assert.DoesNotContain("private transport detail", failure.Message);
     }
 
     [Fact]
@@ -1604,6 +1716,53 @@ public sealed partial class NativeAgentSessionTests
     }
 
     [Fact]
+    public async Task TokenBudgetCompactionUsesPiThresholdAndKeepsRecentWholeTurn()
+    {
+        ImmutableArray<AgentMessage> initial =
+        [
+            new(AgentMessageRole.User, new string('a', 120)),
+            new(AgentMessageRole.Assistant, new string('b', 120)),
+            new(AgentMessageRole.User, new string('c', 80)),
+            new(AgentMessageRole.Assistant, new string('d', 80)),
+        ];
+        var session = CreateSession(initial);
+        var compactor = new ImmediateCompactor(
+            new AgentMessage(AgentMessageRole.Summary, "summary"));
+
+        var result = await session.CompactAsync(
+            contextWindowTokens: 100,
+            new AgentCompactionSettings(reserveTokens: 16, keepRecentTokens: 20),
+            compactor,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(compactor.LastRequest);
+        Assert.Equal(initial[..2].ToArray(), compactor.LastRequest.Messages.ToArray());
+        Assert.Collection(
+            session.Snapshot().Conversation,
+            message => Assert.Equal(AgentMessageRole.Summary, message.Role),
+            message => Assert.Same(initial[2], message),
+            message => Assert.Same(initial[3], message));
+    }
+
+    [Fact]
+    public async Task TokenBudgetCompactionDoesNothingBelowReservedThreshold()
+    {
+        var session = CreateSession(ConversationFixture());
+        var compactor = new ImmediateCompactor(
+            new AgentMessage(AgentMessageRole.Summary, "unused"));
+
+        var result = await session.CompactAsync(
+            contextWindowTokens: 1_000,
+            new AgentCompactionSettings(reserveTokens: 100, keepRecentTokens: 100),
+            compactor,
+            CancellationToken.None);
+
+        Assert.Equal(AgentCompactionErrorCode.NothingToCompact, result.ErrorCode);
+        Assert.Null(compactor.LastRequest);
+    }
+
+    [Fact]
     public async Task RetainingEveryTurnDoesNotCallTheCompactor()
     {
         var session = CreateSession(ConversationFixture());
@@ -1719,6 +1878,29 @@ public sealed partial class NativeAgentSessionTests
             throw new InvalidOperationException("Provider failure detail must not escape.");
         }
     }
+
+    private sealed class SafeFailingProvider : IAgentProvider
+    {
+        public async IAsyncEnumerable<AgentProviderEvent> StreamAsync(
+            AgentProviderRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            throw new TestProviderException(
+                "ai_provider_model_unavailable",
+                "The configured AI model is unavailable.",
+                new InvalidOperationException("private transport detail"));
+#pragma warning disable CS0162
+            yield break;
+#pragma warning restore CS0162
+        }
+    }
+
+    private sealed class TestProviderException(
+        string stableCode,
+        string publicMessage,
+        Exception innerException)
+        : AgentProviderException(stableCode, publicMessage, innerException);
 
     private sealed class NonCooperativeProvider(
         bool throwOnCancellation = false,

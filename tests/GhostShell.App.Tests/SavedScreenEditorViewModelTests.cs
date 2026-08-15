@@ -100,6 +100,72 @@ public sealed class SavedScreenEditorViewModelTests
     }
 
     [Fact]
+    public void AgentPolicySelectsIndependentCompactionAndTitleModels()
+    {
+        var connection = LocalConnection("local");
+        var primary = Provider("provider-primary", "Primary", "primary-model", order: 0);
+        var secondary = Provider(
+            "provider-secondary",
+            "Secondary",
+            "secondary-model",
+            order: 1);
+        using var editor = Editor(
+            Screen(connection.Id),
+            3,
+            [connection],
+            aiProviders: [primary, secondary]);
+        editor.AgentPolicy.IsEnabled = true;
+        editor.AgentPolicy.SelectedCompactionModel = editor.AgentPolicy
+            .AgentTaskModelOptions
+            .Single(option => option.Selection == new AgentModelSelection(
+                secondary.Id.Value,
+                secondary.DefaultModel));
+        editor.AgentPolicy.SelectedTitleModel = editor.AgentPolicy
+            .TitleModelOptions
+            .Single(option => option.Selection == new AgentModelSelection(
+                primary.Id.Value,
+                primary.DefaultModel));
+
+        var saved = Assert.IsType<AgentPolicy>(
+            editor.CreateSaveRequest().Definition.AgentPolicyOverride);
+
+        Assert.Equal(
+            new AgentModelSelection(secondary.Id.Value, secondary.DefaultModel),
+            saved.CompactionModel);
+        Assert.Equal(
+            new AgentModelSelection(primary.Id.Value, primary.DefaultModel),
+            saved.TitleModel);
+    }
+
+    [Fact]
+    public void AgentPolicyUsesPrimaryModelForTitlesInsteadOfOfferingFirstMessageSentinel()
+    {
+        var connection = LocalConnection("local");
+        var provider = Provider("provider", "Provider", "model");
+        using var editor = Editor(
+            Screen(connection.Id),
+            3,
+            [connection],
+            aiProviders: [provider]);
+        editor.AgentPolicy.IsEnabled = true;
+        editor.AgentPolicy.SelectedCompactionModel =
+            editor.AgentPolicy.AgentTaskModelOptions[0];
+        editor.AgentPolicy.SelectedTitleModel =
+            editor.AgentPolicy.TitleModelOptions[0];
+
+        var saved = Assert.IsType<AgentPolicy>(
+            editor.CreateSaveRequest().Definition.AgentPolicyOverride);
+
+        Assert.Null(saved.CompactionModel);
+        Assert.DoesNotContain(
+            editor.AgentPolicy.TitleModelOptions,
+            option => option.Selection is null);
+        Assert.Equal(
+            new AgentModelSelection(provider.Id.Value, provider.DefaultModel),
+            saved.TitleModel);
+    }
+
+    [Fact]
     public void MissingSavedPolicyProviderRemainsVisibleAndFailsClosedUntilRepaired()
     {
         var connection = LocalConnection("local");

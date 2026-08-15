@@ -220,19 +220,27 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(
             "{Binding !IsAgentPanelDocked}",
             AttributeValue(agentWorkspace, "Classes.floating"));
+        Assert.Equal(
+            "{Binding IsAgentPanelDocked}",
+            AttributeValue(agentWorkspace, "Classes.edgeResizable"));
+        Assert.Equal(
+            "{Binding IsAgentPanelDocked}",
+            AttributeValue(agentWorkspace, "Classes.edgeRight"));
+        Assert.Equal(
+            "{Binding #AgentWorkspaceSurface.Bounds.Width}",
+            AttributeValue(agentDockSpacer, "Width"));
         var agentStates = root.Descendants()
             .Where(element => element.Name.LocalName == "Style")
             .ToDictionary(
                 element => AttributeValue(element, "Selector") ?? string.Empty,
                 element => element);
-        // Docked geometry is the spacer's slot: the base style carries the
-        // exact width the spacer reserves.
+        // The base style supplies the initial width. Once the docked resize
+        // edge changes it, the spacer follows the surface's live bounds.
         var agentBase = agentStates["views|AgentWorkspaceView"];
         Assert.Contains(
             agentBase.Descendants(),
             setter => AttributeValue(setter, "Property") == "Width"
-                && AttributeValue(setter, "Value")
-                    == AttributeValue(agentDockSpacer, "Width"));
+                && AttributeValue(setter, "Value") == "352");
         Assert.True(agentStates.ContainsKey("views|AgentWorkspaceView.floating"));
         // Floating wears the sidebar's own swatch as glass over the blurred
         // snapshot of what it covers, ringed by the flyout shadow — spread on
@@ -510,7 +518,7 @@ public sealed class WorkspaceViewContractTests
             StringComparison.Ordinal);
         Assert.Contains("ViewModel.MoveTabAsync(", mainWindowCode, StringComparison.Ordinal);
         Assert.Contains("RunCloseFlowAsync(", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains("AgentYoloConfirmationDialog(", mainWindowCode, StringComparison.Ordinal);
+        Assert.DoesNotContain("AgentYoloConfirmationDialog(", mainWindowCode, StringComparison.Ordinal);
         Assert.Contains("control.Classes.Contains(\"RuntimeTabActivator\")", mainWindowCode, StringComparison.Ordinal);
         Assert.Contains("control.Classes.Contains(\"RuntimePanelFocusTarget\")", mainWindowCode, StringComparison.Ordinal);
         Assert.Contains(".OfType<TerminalPresentationHost>()", mainWindowCode, StringComparison.Ordinal);

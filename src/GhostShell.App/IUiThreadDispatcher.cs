@@ -4,6 +4,8 @@ namespace GhostShell.App;
 
 public interface IUiThreadDispatcher
 {
+    bool RequiresFramePacing => false;
+
     /// <summary>
     /// Fails when presentation-owned state is being touched away from Avalonia's
     /// UI thread. Headless consumers have no Avalonia application, so there is
@@ -27,6 +29,8 @@ internal sealed class AvaloniaUiThreadDispatcher : IUiThreadDispatcher
     private AvaloniaUiThreadDispatcher()
     {
     }
+
+    public bool RequiresFramePacing => true;
 
     public async Task InvokeAsync(Action action, CancellationToken cancellationToken)
     {

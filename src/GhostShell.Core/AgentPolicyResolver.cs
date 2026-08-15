@@ -50,7 +50,18 @@ public static class AgentPolicyResolver
         return new AgentPolicy(
             mostSpecific.Provider.Trim(),
             mostSpecific.Model.Trim(),
-            permissions);
+            permissions)
+        {
+            CompactionModel = ResolveModelSelection(
+                layers,
+                policy => policy.CompactionModel,
+                global),
+            TitleModel = ResolveModelSelection(
+                layers,
+                policy => policy.TitleModel,
+                fallback: null),
+            SystemPrompt = ResolveSystemPrompt(layers),
+        };
     }
 
     /// <summary>
@@ -86,7 +97,13 @@ public static class AgentPolicyResolver
         var first = normalized[0];
         if (normalized.Any(policy =>
                 !string.Equals(policy.Provider, first.Provider, StringComparison.Ordinal)
-                || !string.Equals(policy.Model, first.Model, StringComparison.Ordinal)))
+                || !string.Equals(policy.Model, first.Model, StringComparison.Ordinal)
+                || policy.CompactionModel != first.CompactionModel
+                || policy.TitleModel != first.TitleModel
+                || !string.Equals(
+                    policy.SystemPrompt,
+                    first.SystemPrompt,
+                    StringComparison.Ordinal)))
         {
             throw new ArgumentException(
                 "A broad agent scope cannot combine different providers or models.",
@@ -98,7 +115,12 @@ public static class AgentPolicyResolver
             capability => normalized
                 .Select(policy => policy.GetPermission(capability))
                 .Aggregate(MoreRestrictive));
-        return new AgentPolicy(first.Provider, first.Model, permissions);
+        return new AgentPolicy(first.Provider, first.Model, permissions)
+        {
+            CompactionModel = first.CompactionModel,
+            TitleModel = first.TitleModel,
+            SystemPrompt = first.SystemPrompt,
+        };
     }
 
     public static AgentPolicyDecision Evaluate(
@@ -142,6 +164,39 @@ public static class AgentPolicyResolver
         }
 
         return AgentPermission.Off;
+    }
+
+    private static AgentModelSelection? ResolveModelSelection(
+        IReadOnlyList<AgentPolicy?> layers,
+        Func<AgentPolicy, AgentModelSelection?> selector,
+        AgentPolicy? fallback)
+    {
+        for (var index = layers.Count - 1; index >= 0; index--)
+        {
+            if (layers[index] is { } layer && selector(layer) is { } selection)
+            {
+                return new AgentModelSelection(
+                    selection.Provider.Trim(),
+                    selection.Model.Trim());
+            }
+        }
+
+        return fallback is null
+            ? null
+            : new AgentModelSelection(fallback.Provider.Trim(), fallback.Model.Trim());
+    }
+
+    private static string? ResolveSystemPrompt(IReadOnlyList<AgentPolicy?> layers)
+    {
+        for (var index = layers.Count - 1; index >= 0; index--)
+        {
+            if (layers[index]?.SystemPrompt is { } prompt)
+            {
+                return prompt.Trim();
+            }
+        }
+
+        return null;
     }
 
     private static AgentPermission MoreRestrictive(

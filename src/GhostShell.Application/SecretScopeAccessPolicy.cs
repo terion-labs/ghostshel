@@ -51,6 +51,7 @@ public sealed class SecretScopeAccessPolicy : ISecretAccessPolicy
         SecretUseKind.ConnectionEnvironment => SecretScopeKind.Connection,
         SecretUseKind.AiProviderAuthentication => SecretScopeKind.AiProvider,
         SecretUseKind.McpServerEnvironment => SecretScopeKind.McpServer,
+        SecretUseKind.McpServerHttpHeader => SecretScopeKind.McpServer,
         SecretUseKind.BrowserProfileAuthentication => SecretScopeKind.BrowserProfile,
         SecretUseKind.FileProviderAuthentication => SecretScopeKind.FileProvider,
         SecretUseKind.DatabaseConnectionAuthentication => SecretScopeKind.DatabaseConnection,

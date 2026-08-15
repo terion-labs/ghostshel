@@ -1,7 +1,8 @@
-# ADR 0038: Governed native .NET MCP stdio boundary
+# ADR 0038: Governed native .NET MCP transport boundary
 
 - Status: Accepted
 - Date: 2026-07-25
+- Extended: 2026-08-13 for Streamable HTTP
 - Extends:
   [ADR 0017](0017-native-dotnet-agent-runtime.md),
   [ADR 0018](0018-native-ai-provider-and-chat-boundary.md), and
@@ -11,15 +12,17 @@
 - Protocol basis:
   [MCP 2025-11-25 lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),
   [stdio transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#stdio),
+  [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http),
   and [tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
 ## Context
 
 MCP is useful only if it does not become a second, less-governed execution
-path. A configured server is an external process that can expose changing
-tool names and schemas, emit hostile metadata and results, receive secrets in
-its environment, and complete a side effect after its client loses the
-response. Passing SDK tool objects directly to the provider would bypass
+path. A configured server is an external process or remote HTTP service that
+can expose changing tool names and schemas, emit hostile metadata and results,
+receive explicitly delegated secrets, and complete a side effect after its
+client loses the response. Passing SDK tool objects directly to the provider
+would bypass
 GhostSHELL's target, policy, approval, one-action authorization, cancellation,
 and audit boundaries.
 
@@ -35,13 +38,13 @@ server-to-client feature, or draft revision.
 
 ## Decision
 
-GhostSHELL adds a native .NET, stdio-only MCP client boundary in
-`GhostShell.Mcp`. It pins the official `ModelContextProtocol.Core` SDK at
+GhostSHELL adds a native .NET MCP client boundary for stdio and Streamable HTTP
+in `GhostShell.Mcp`. It pins the official `ModelContextProtocol.Core` SDK at
 `1.3.0`. The SDK's `McpClient`, initialization options, protocol DTOs, typed
 tool requests, JSON-RPC correlation, and lifecycle handling remain private to
 that project. Application and runtime callers receive only closed GhostSHELL
 contracts. `AgentMcpSessionHost` is the only exported production type from the
-assembly; the low-level client, launch object, plaintext environment,
+assembly; the low-level client, launch object, plaintext transport secrets,
 transport options, and result DTOs are internal and cannot form a second
 in-process execution path.
 
@@ -51,45 +54,62 @@ ambient process environment and then augments it, and it does not expose the
 pre-deserialization message, JSON-shape, and retained-stderr bounds required by
 this boundary. `GhostShell.Mcp` instead supplies an internal bounded
 `IClientTransport`/`ITransport` implementation to the official `McpClient`.
-That transport owns direct process launch, environment clearing, newline
+The stdio transport owns direct process launch, environment clearing, newline
 framing, strict UTF-8 and JSON-shape validation, bounded stderr draining, and
 bounded shutdown. This is a transport adapter, not a second MCP lifecycle or
 tools implementation.
+
+For remote servers, GhostSHELL wraps the SDK's `HttpClientTransport` in forced
+`StreamableHttp` mode. The wrapper rejects redirects, permits requests only to
+the configured endpoint's scheme/IDN-host/effective-port origin, disables
+ambient cookies, proxy use, and automatic decompression, bounds response
+headers and response-body bytes, and validates bounded printable
+`MCP-Session-Id` response headers before SDK parsing. The SDK owns the POST
+JSON/SSE exchange, `Accept: application/json, text/event-stream`,
+`MCP-Session-Id`, and `MCP-Protocol-Version` protocol behavior. GhostSHELL does
+not enable legacy SSE fallback.
 
 The first slice supports the stable MCP `2025-11-25` lifecycle:
 
 - direct subprocess launch without a shell, through the GhostSHELL transport;
 - bounded newline-delimited UTF-8 JSON-RPC over stdin/stdout, parsed into the
   official SDK protocol types;
+- Streamable HTTP POST exchanges returning either JSON or SSE, with exact
+  origin, no redirects, bounded responses, session identity, and pinned
+  protocol-version headers;
 - a cumulative incoming control-message budget applied to initialization and
-  reset for each tool-list page and tool call; exceeding it closes the transport instead of
-  allowing notifications or server requests to starve the expected response;
+  reset for each tool-list page and tool call; exceeding it closes the
+  transport instead of allowing notifications or server requests to starve
+  the expected response;
 - `initialize`, `notifications/initialized`, paged `tools/list`, and
   `tools/call`;
 - protocol ping handling supplied by the SDK; and
 - bounded, count-only stderr diagnostics.
 
 Roots, resources, prompts, sampling, elicitation, tasks, server-initiated
-application actions, notifications that expand authority, Streamable HTTP,
-legacy SSE, and draft protocol revisions are not advertised or accepted by
-this slice.
+application actions, notifications that expand authority, legacy SSE
+fallback, and draft protocol revisions are not advertised or accepted by this
+slice.
 
 ### Durable server profile
 
-One immutable `McpServerProfile` contains:
+One immutable schema-two `McpServerProfile` contains:
 
 - a random `McpServerProfileId`, schema version, revisioned durable identity,
   name, and enabled state;
-- one direct executable plus an ordered bounded argument list;
-- an optional working directory;
-- environment-variable names whose values are only opaque `SecretRef`
-  references; and
+- one discriminated transport: either a direct executable, ordered bounded
+  arguments, optional working directory, and environment-name-to-`SecretRef`
+  bindings; or one bounded absolute HTTP(S) endpoint, an explicit insecure
+  transport acknowledgement for HTTP, and header-name-to-`SecretRef` bindings;
 - an exact case-sensitive allowlist of enabled MCP tool names.
 
-There are no literal environment values, shell command strings, redirections,
-pipelines, command substitution, startup scripts, or ambient secret values in
-the definition. Credential-shaped literal material is rejected from profile
-text, argv, secret-reference IDs, enabled-tool names, and tool-call arguments.
+There are no literal environment or HTTP-header values, shell command strings,
+redirections, pipelines, command substitution, startup scripts, URI userinfo,
+or ambient secret values in the definition. Credential-shaped literal
+material is rejected from profile text, argv, endpoint text, secret-reference
+IDs, enabled-tool names, and tool-call arguments. HTTP header names must be
+bounded RFC 9110 tokens and cannot replace Host, content negotiation, framing,
+origin, session, protocol-version, or SSE-resume headers owned by the transport.
 Imported MCP profiles are always quarantined as disabled and require the same
 explicit trust review as a newly enabled profile. The child process starts
 with environment inheritance disabled. GhostSHELL supplies only the profile's
@@ -98,30 +118,48 @@ explicitly configured, vault-resolved values; a server that needs `PATH`,
 secret reference. Each reference is resolved at process creation with
 `SecretScopeKind.McpServer` and `SecretUseKind.McpServerEnvironment` for that
 exact profile ID. Per-value, aggregate UTF-8, and cross-platform environment
-block budgets are enforced before launch. Values, arguments derived from
-values, and child environment contents never enter definitions, import/export,
+block budgets are enforced before launch. Remote header references are
+resolved with `SecretUseKind.McpServerHttpHeader`; their UTF-8 values are
+bounded and reject null or control characters before the first request. Values
+and child environment/header contents never enter definitions, import/export,
 recovery, diagnostics, action audit, or normal logs.
 
-Adding a profile, changing its executable, arguments, working directory, or
-environment bindings, and expanding the enabled-tool allowlist requires a
+Released schema-one stdio payloads are accepted only at the infrastructure
+read/import boundary, strictly deserialized into their old closed shape, and
+immediately converted in memory to schema two with a `stdio` transport. Saving
+or importing emits schema two. Unknown versions and unmapped legacy fields
+remain rejected; migration never interprets a legacy executable string as an
+HTTP endpoint.
+
+Adding a profile, changing its transport configuration or secret bindings,
+and expanding the enabled-tool allowlist requires a
 separate authenticated confirmation in Settings. Disabling, removing, or
 narrowing a profile does not require expansion confirmation but invalidates
 new discovery. Any MCP profile add, edit, disable, remove, import, or reload
 rotates a host-owned catalog generation. Runs pinned to an absent, disabled, or
-different revision are synchronously marked closing and their directly
-launched processes are disposed asynchronously under the normal cleanup bound.
+different revision are synchronously marked closing and their transport
+sessions are disposed asynchronously under the normal cleanup bound.
+
+The Settings editor authors both schema-two transports through an explicit
+transport selector. Streamable HTTP authoring accepts HTTPS endpoints and uses
+Core's explicit insecure acknowledgement only for exact loopback hosts; it maps bounded,
+non-reserved HTTP header names to opaque profile-scoped `SecretRef` values.
+Header values never enter the editor or trust presentation. Switching
+transport, changing an endpoint or header binding, and adding a remote profile
+all enter the same authority-expansion confirmation path as stdio launch
+changes. Existing schema-one profiles remain stdio after migration and edit.
 
 The Settings **Test** operation requires the composition-owned authenticated
 human principal, an enabled profile, and the exact current profile revision.
 It serializes one probe under the caller's deadline, capped at 30 seconds,
-resolves that profile's environment `SecretRef` values, starts the bounded
-child, performs initialization and complete bounded tool discovery, reports
+resolves that profile's transport `SecretRef` values, opens the bounded
+transport, performs initialization and complete bounded tool discovery, reports
 only discovered and enabled counts, and explicitly disposes the probe session
 before returning. Server-chosen tool identifiers are withheld. It does not
 call a server tool, create broker or agent-action authority, retain stderr or
-log content, reconnect, or establish persistent health polling.
+log content, resume a prior session, or establish persistent health polling.
 
-Schema one does not persist trust provenance separately from enablement.
+Schema two does not persist trust provenance separately from enablement.
 Consequently, a trusted-but-disabled profile cannot yet be probed, because
 allowing Test for every disabled profile would also make an imported,
 unreviewed executable launchable. Separating those states is a later schema
@@ -132,10 +170,10 @@ decision.
 MCP is available to a governed run only when its effective `McpTools`
 permission is `Ask` or `Auto` and no YOLO overlay is active. `Off` starts no
 server and advertises no MCP tool. `Auto` still requires human approval
-because every first-slice MCP call is conservatively classified as a
+because every supported MCP call is conservatively classified as a
 mutation. `YOLO` never authorizes an MCP call.
 
-Before catalog, vault, or process access, the MCP boundary acquires a
+Before catalog, vault, or transport access, the MCP boundary acquires a
 broker-issued launch lease for the exact registered run, agent actor, live
 policy generation, and `Ask`/`Auto` MCP permission. Suspension, cancellation,
 YOLO activation, policy replacement, or actor/run mismatch revokes or denies
@@ -144,6 +182,8 @@ eligible enabled profile, lists all bounded pages, intersects the result with
 the configured exact allowlist, and freezes:
 
 - profile ID and durable revision;
+- transport kind and exact executable/effective working directory or remote
+  endpoint;
 - negotiated protocol and server identity;
 - the approved allowlist spelling for display, or an opaque redacted label
   when that spelling collides with a resolved secret;
@@ -193,8 +233,8 @@ fingerprint, actor, policy generation, and action deadline into:
   identity, schema digest, and canonical arguments; and
 - a human approval presentation containing trusted server identity, the
   allowlisted tool display name or explicit redacted-label state, the exact
-  effective process working directory, and the complete reversible bounded
-  arguments.
+  exact executable plus effective working directory or exact remote endpoint,
+  and the complete reversible bounded arguments.
 
 The broker evaluates `mcp.call` as `McpTools` plus `Mutation`. After explicit
 human approval, the MCP execution host freshly verifies the profile revision
@@ -207,7 +247,7 @@ There is no automatic retry. Calling the SDK is the conservative dispatch
 commit point because the public client API cannot prove whether a failed or
 cancelled request reached the server. Cancellation before that point is a
 normal cancellation. Any timeout, transport failure, process exit, malformed
-response, or cancellation after dispatch returns
+response, HTTP disconnect, or cancellation after dispatch returns
 `mcp_tool_outcome_unknown`, completion-audits that result, revokes the run,
 and prevents provider continuation. An unconfirmed completion audit follows
 the existing `agent_completion_audit_unavailable` quarantine path and never
@@ -225,24 +265,24 @@ labels the envelope:
 content_origin=untrusted_mcp
 ```
 
-The projection does not include executable paths, working directories,
-environment names or values, profile secret references, stderr, server
-instructions, protocol IDs, action/approval/authorization IDs, or raw
+The projection does not include executable paths, remote endpoint, working
+directories, environment/header names or values, profile secret references,
+stderr, server instructions, protocol IDs, action/approval/authorization IDs, or raw
 exceptions. Audit records only trusted action identity, exact digests, stable
 outcome, timing, and bounded counts. The first slice drains stderr but retains
 only count, truncation, and read-failure metadata; it does not retain stderr
 text. A later diagnostic surface requires a separate decision before it can
 retain or display any bounded, redacted tail.
 
-### Lifetime and future transports
+### Lifetime and deferred protocol surfaces
 
 Stop, Clear, disposal, run cancellation, and the runtime's fail-closed run
-termination close each directly launched run-owned MCP process. Durable MCP
+termination close each run-owned MCP transport session. Durable MCP
 catalog changes proactively revoke and dispose every affected idle or active
 run; tool-list, policy, or target drift is also rejected at the next relevant
 runtime or host check and follows the same run-termination path.
-Process shutdown is bounded; the transport may request best-effort process-tree
-termination for a non-cooperative owned root after its grace period. If root
+Stdio process shutdown is bounded; the transport may request best-effort
+process-tree termination for a non-cooperative owned root after its grace period. If root
 cleanup cannot be confirmed, a sticky circuit breaker prevents later Settings
 tests and run launches for the lifetime of that host.
 
@@ -255,8 +295,13 @@ ambient values but cannot constrain an intentionally malicious executable. An
 MCP process is never treated as software installed on, or authority delegated
 to, the remote machine behind a terminal.
 
-Per-server scope selection, HTTP transport, reconnect after a dispatched
-call, resources, prompts, sampling, notifications, tasks, per-tool risk
+Remote sessions are not durably resumed. The SDK is configured for two bounded
+SSE reconnection attempts within a live Streamable HTTP session, but
+GhostSHELL never retries a dispatched `tools/call` and never treats a
+reconnection as proof that a failed call did not commit.
+
+Per-server scope selection, durable session resume, resources, prompts,
+sampling, notifications, tasks, per-tool risk
 tuning, and headless/ACP/A2A decision routing require later ADR extensions.
 The existing global/workspace/screen/run policy chain already scopes the
 first-slice `McpTools` capability; no future non-desktop client may infer
@@ -274,7 +319,9 @@ approval from the absence of the desktop UI.
   convenience for deterministic authority and no accidental replay.
 - The official SDK owns MCP initialization, JSON-RPC correlation, lifecycle,
   and typed tool message semantics. GhostSHELL's SDK transport owns subprocess
-  launch, framing bounds, environment isolation, stderr draining, and cleanup;
+  launch, framing bounds, environment isolation, stderr draining and cleanup;
+  its HTTP boundary owns origin/redirect/header/response limits while the SDK
+  owns Streamable HTTP message and SSE semantics;
   the rest of GhostSHELL owns configuration trust, secret resolution, manifest
   pinning, policy, authorization, audit, and result projection.
 
@@ -288,9 +335,9 @@ approval from the absence of the desktop UI.
   credentials and configuration.
 - Retrying a timed-out or disconnected `tools/call` could repeat an already
   committed side effect.
-- Supporting HTTP, sampling, resources, prompts, tasks, and list-change
-  expansion in the first slice would create authority surfaces without a
-  product decision or UI.
+- Supporting resources, prompts, sampling, tasks, durable HTTP session resume,
+  legacy SSE fallback, and list-change expansion would create authority
+  surfaces without a product decision or implementation.
 - Hand-writing a parallel MCP lifecycle/tools client would duplicate a
   maintained official native .NET SDK at a security-sensitive boundary. A
   small custom SDK transport is retained because the built-in process transport

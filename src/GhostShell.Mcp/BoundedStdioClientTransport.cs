@@ -17,7 +17,7 @@ namespace GhostShell.Mcp;
 /// </remarks>
 internal sealed class BoundedStdioClientTransport(
     McpStdioServerLaunch launch,
-    McpStdioClientOptions options) : IClientTransport, IAsyncDisposable
+    McpSessionOptions options) : IMcpClientTransportBoundary
 {
     private BoundedStdioSessionTransport? _session;
     private int _cleanupUncertain;
@@ -31,7 +31,7 @@ internal sealed class BoundedStdioClientTransport(
         Volatile.Read(ref _cleanupUncertain) != 0
         || _session?.CleanupUncertain == true;
 
-    internal void ResetIncomingMessageBudget()
+    public void ResetIncomingMessageBudget()
     {
         var session = _session
             ?? throw new InvalidOperationException(
@@ -138,7 +138,7 @@ internal sealed class BoundedStdioSessionTransport : ITransport
 {
     private static readonly byte[] Newline = [(byte)'\n'];
     private readonly Process _process;
-    private readonly McpStdioClientOptions _options;
+    private readonly McpSessionOptions _options;
     private readonly McpStderrMonitor _stderr;
     private readonly Channel<JsonRpcMessage> _messages;
     private readonly CancellationTokenSource _shutdown = new();
@@ -150,7 +150,7 @@ internal sealed class BoundedStdioSessionTransport : ITransport
     private int _cleanupUncertain;
     private int _remainingIncomingMessages;
 
-    public BoundedStdioSessionTransport(Process process, McpStdioClientOptions options)
+    public BoundedStdioSessionTransport(Process process, McpSessionOptions options)
     {
         _process = process;
         _options = options;

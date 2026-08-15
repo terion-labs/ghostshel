@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -181,4 +182,42 @@ public sealed partial class GovernedAgentRuntime
             or BuiltInAgentTools.WorkspaceInspect
             or BuiltInAgentTools.TabList
             or BuiltInAgentTools.PanelList;
+
+    private sealed class WorkspaceGraphToolContribution(
+        GovernedAgentRuntime runtime) : IAgentToolContribution
+    {
+        public ImmutableArray<AgentToolDefinition> BuildTools(
+            AgentToolBuildContext context) =>
+            runtime._agentWorkspaceGraphHost is not null
+                && runtime._workspaceGraphComposer is not null
+                    ? WorkspaceGraphAgentToolSet.For(context.StructuralContext)
+                    : [];
+
+        public ResolvedAgentToolContribution? Resolve(string toolName) =>
+            IsWorkspaceGraphTool(toolName)
+                ? new ResolvedAgentToolContribution(
+                    toolName,
+                    ExecuteAsync)
+                : null;
+
+        private async ValueTask<AgentToolResult> ExecuteAsync(
+            AgentToolExecutionRequest request,
+            CancellationToken cancellationToken)
+        {
+            var structuralContext = request.TargetContexts.Structural;
+            if (!runtime.MatchesPinnedGraphStructure(structuralContext))
+            {
+                return CreateRejectedResult(
+                    request.Proposal,
+                    "target_changed");
+            }
+
+            return await runtime.ExecuteWorkspaceGraphProposalAsync(
+                    request.Proposal,
+                    request.Descriptor,
+                    structuralContext,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
 }

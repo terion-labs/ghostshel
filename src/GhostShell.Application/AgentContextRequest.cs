@@ -4,8 +4,8 @@ namespace GhostShell.Application;
 
 public sealed record AgentContextRequest
 {
-    public const int DefaultMaximumPanelCount = 64;
-    public const int MaximumAllowedPanelCount = 256;
+    public const int DefaultMaximumPanelCount = WorkspaceInstance.MaximumPanelCount;
+    public const int MaximumAllowedPanelCount = WorkspaceInstance.MaximumPanelCount;
 
     public AgentContextRequest(
         AgentTarget target,

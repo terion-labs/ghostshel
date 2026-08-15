@@ -74,6 +74,36 @@ public sealed class RuntimeTabPolicyLineageTests
         _ = RuntimeWorkspaceRecoveryCodec.Serialize(workspace);
     }
 
+    [Fact]
+    public void Workspace_override_inherits_global_conversation_maintenance_models()
+    {
+        var compaction = new AgentModelSelection("global", "compact-model");
+        var title = new AgentModelSelection("global", "title-model");
+        var global = AgentPolicy.Default with
+        {
+            Provider = "global",
+            Model = "default-model",
+            CompactionModel = compaction,
+            TitleModel = title,
+        };
+        var workspace = AgentPolicy.Default with
+        {
+            Provider = "workspace",
+            Model = "workspace-model",
+            CompactionModel = null,
+            TitleModel = null,
+        };
+        var provenance = new RuntimeAgentPolicyProvenance(global).WithOverride(
+            workspace,
+            new DefinitionKey(WorkspaceDefinition.Kind, "workspace"),
+            revision: 1);
+
+        Assert.Equal("workspace", provenance.EffectivePolicy.Provider);
+        Assert.Equal("workspace-model", provenance.EffectivePolicy.Model);
+        Assert.Equal(compaction, provenance.EffectivePolicy.CompactionModel);
+        Assert.Equal(title, provenance.EffectivePolicy.TitleModel);
+    }
+
     private static RuntimeAgentPolicyProvenance WorkspaceLineage() =>
         new(
             AgentPolicy.Default,

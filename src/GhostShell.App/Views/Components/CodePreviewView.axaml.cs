@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -62,7 +64,11 @@ public sealed partial class CodePreviewView : UserControl
         // viewport in its vertical extent, so scrolling to the end can leave the
         // final line stranded at the top above a screenful of empty canvas.
         Editor.Options.AllowScrollBelowDocument = false;
-        ActualThemeVariantChanged += (_, _) => ApplyTheme();
+        ActualThemeVariantChanged += (_, _) =>
+        {
+            ApplyTheme();
+            ApplyTypography();
+        };
 
         // Wrapped text is only as tall as its width allows, so a height
         // measured once — before the panel had settled on a width — is wrong
@@ -122,7 +128,7 @@ public sealed partial class CodePreviewView : UserControl
         base.OnAttachedToVisualTree(e);
         // Text set hard against the line-number column reads as one run-on
         // column; a few pixels separate the two.
-        Editor.TextArea.TextView.Margin = new Thickness(8, 0, 0, 0);
+        ApplyTypography();
         SyncDocument();
         RequestHighlighting();
     }
@@ -278,8 +284,28 @@ public sealed partial class CodePreviewView : UserControl
         _textMate.SetTheme(_registryOptions.LoadTheme(CurrentThemeName()));
     }
 
+    private void ApplyTypography()
+    {
+        Editor.TextArea.TextView.Margin = new Thickness(8, 0, 0, 0);
+        if (this.TryFindResource("ShellDataFontFamily", ActualThemeVariant, out var family)
+            && family is Avalonia.Media.FontFamily fontFamily)
+        {
+            Editor.FontFamily = fontFamily;
+        }
+
+        if (this.TryFindResource("ShellFontSize11", ActualThemeVariant, out var size)
+            && size is double fontSize)
+        {
+            Editor.FontSize = fontSize;
+            return;
+        }
+
+        Editor.FontSize = 13;
+    }
+
     private ThemeName CurrentThemeName() =>
         ActualThemeVariant == ThemeVariant.Light
             ? ThemeName.LightPlus
             : ThemeName.DarkPlus;
+
 }

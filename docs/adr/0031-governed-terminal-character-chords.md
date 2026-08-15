@@ -44,8 +44,8 @@ multiple runes, raw controls, bytes, escape sequences, key codes, and
 modifier arrays are unrepresentable.
 
 An exact panel/session schema contains only `character` and `modifier`. A
-broader tab/workspace/selected-terminal schema additionally requires one
-host-generated `panel_id` from the current eligible-panel enum. The parser
+broader Workspace schema or internal `OpenTab`/selected-terminal schema
+additionally requires one host-generated `panel_id` from the current eligible-panel enum. The parser
 independently enforces the same closed shape and never falls back to text,
 paste, interrupt, or `terminal.send_keys`.
 

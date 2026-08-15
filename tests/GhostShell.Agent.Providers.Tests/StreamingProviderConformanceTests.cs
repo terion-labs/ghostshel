@@ -575,6 +575,257 @@ public sealed class StreamingProviderConformanceTests
             });
     }
 
+    [Fact]
+    public async Task AnthropicContinuationReplaysSignedThinkingBeforeItsToolSlot()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = CreateLoopbackProfile(AiProviderKind.Anthropic);
+        var responseNumber = 0;
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(
+                Interlocked.Increment(ref responseNumber) == 1
+                    ? AnthropicSignedThinkingToolStream()
+                    : AnthropicTextStream("handled"))));
+        using var factory = new AiProviderFactory(vault, handler);
+        var provider = factory.Create(profile, "claude-sonnet-5");
+        var session = CreateSession();
+        var tools = ImmutableArray.Create(ReadFileTool());
+        var first = await session.RunTurnAsync(
+            "Inspect the file.",
+            [],
+            tools,
+            AgentReasoningEffort.High,
+            provider,
+            CancellationToken.None);
+        var proposal = Assert.Single(first.ToolProposals);
+
+        var continuation = await session.SubmitToolResultsAsync(
+            proposal.Generation,
+            [new AgentToolResult(
+                proposal,
+                AgentToolResultStatus.Succeeded,
+                "ok",
+                AgentToolResultValue.FromText("contents"))],
+            tools,
+            tools,
+            provider,
+            CancellationToken.None);
+
+        Assert.True(continuation.Succeeded);
+        using var body = JsonDocument.Parse(handler.Requests[1].Body);
+        var assistant = body.RootElement
+            .GetProperty("messages")
+            .EnumerateArray()
+            .Single(message => message.GetProperty("role").GetString() == "assistant");
+        Assert.Collection(
+            assistant.GetProperty("content").EnumerateArray(),
+            block =>
+            {
+                Assert.Equal("thinking", block.GetProperty("type").GetString());
+                Assert.Equal("Safe summary.", block.GetProperty("thinking").GetString());
+                Assert.Equal("opaque-signature", block.GetProperty("signature").GetString());
+            },
+            block =>
+            {
+                Assert.Equal("tool_use", block.GetProperty("type").GetString());
+                Assert.Equal("tool-1", block.GetProperty("id").GetString());
+            });
+    }
+
+    [Fact]
+    public async Task AnthropicModelSwitchKeepsVisibleTranscriptAndDropsSignedThinking()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = CreateLoopbackProfile(AiProviderKind.Anthropic);
+        var responseNumber = 0;
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(
+                Interlocked.Increment(ref responseNumber) == 1
+                    ? AnthropicSignedThinkingToolStream()
+                    : AnthropicTextStream("handled"))));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+        var tools = ImmutableArray.Create(ReadFileTool());
+        var first = await session.RunTurnAsync(
+            "Inspect the file.",
+            [],
+            tools,
+            AgentReasoningEffort.High,
+            factory.Create(profile, "claude-sonnet-5"),
+            CancellationToken.None);
+        var proposal = Assert.Single(first.ToolProposals);
+
+        var continuation = await session.SubmitToolResultsAsync(
+            proposal.Generation,
+            [new AgentToolResult(
+                proposal,
+                AgentToolResultStatus.Succeeded,
+                "ok",
+                AgentToolResultValue.FromText("contents"))],
+            tools,
+            tools,
+            factory.Create(profile, "claude-sonnet-5-fast"),
+            CancellationToken.None);
+
+        Assert.True(continuation.Succeeded);
+        Assert.Equal(2, handler.Requests.Count);
+        using var body = JsonDocument.Parse(handler.Requests[1].Body);
+        Assert.Equal(
+            "claude-sonnet-5-fast",
+            body.RootElement.GetProperty("model").GetString());
+        var assistant = body.RootElement
+            .GetProperty("messages")
+            .EnumerateArray()
+            .Single(message => message.GetProperty("role").GetString() == "assistant");
+        var toolUse = Assert.Single(assistant.GetProperty("content").EnumerateArray());
+        Assert.Equal("tool_use", toolUse.GetProperty("type").GetString());
+        Assert.DoesNotContain(
+            "opaque-signature",
+            handler.Requests[1].Body,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnthropicReplayBoundToAnotherCredentialReferenceFailsBeforeHttp()
+    {
+        using var vault = new InMemorySecretVault();
+        var endpoint = new Uri("http://127.0.0.1:4242/v1/");
+        var firstProfile = await CreateAuthenticatedProfileAsync(
+            vault,
+            AiProviderKind.Anthropic,
+            endpoint,
+            "claude-sonnet-5",
+            "secret-anthropic-first");
+        var replacementProfile = await CreateAuthenticatedProfileAsync(
+            vault,
+            AiProviderKind.Anthropic,
+            endpoint,
+            "claude-sonnet-5",
+            "secret-anthropic-replacement");
+        var responseNumber = 0;
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(
+                Interlocked.Increment(ref responseNumber) == 1
+                    ? AnthropicSignedThinkingToolStream()
+                    : AnthropicTextStream("must not be sent"))));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+        var tools = ImmutableArray.Create(ReadFileTool());
+        var first = await session.RunTurnAsync(
+            "Inspect the file.",
+            [],
+            tools,
+            AgentReasoningEffort.High,
+            factory.Create(firstProfile, "claude-sonnet-5"),
+            CancellationToken.None);
+        var proposal = Assert.Single(first.ToolProposals);
+
+        var continuation = await session.SubmitToolResultsAsync(
+            proposal.Generation,
+            [new AgentToolResult(
+                proposal,
+                AgentToolResultStatus.Succeeded,
+                "ok",
+                AgentToolResultValue.FromText("contents"))],
+            tools,
+            tools,
+            factory.Create(replacementProfile, "claude-sonnet-5"),
+            CancellationToken.None);
+
+        Assert.False(continuation.Succeeded);
+        Assert.Equal(AgentTurnErrorCode.ProviderFailure, continuation.ErrorCode);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task AnthropicToolTurnWithUnsignedThinkingFailsWithoutAProposal()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = CreateLoopbackProfile(AiProviderKind.Anthropic);
+        var unsigned = AnthropicSignedThinkingToolStream().Replace(
+            "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"opaque-signature\"}}\n\n",
+            string.Empty,
+            StringComparison.Ordinal);
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(unsigned)));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Inspect the file.",
+            [],
+            [ReadFileTool()],
+            AgentReasoningEffort.High,
+            factory.Create(profile, "claude-sonnet-5"),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(AgentTurnErrorCode.ProviderFailure, result.ErrorCode);
+        Assert.Empty(result.ToolProposals);
+        Assert.Equal(NativeAgentSessionState.Failed, session.Snapshot().State);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task AnthropicRejectsOverlappingContentBlocks()
+    {
+        var builder = new StringBuilder();
+        AppendAnthropicEvent(builder, "message_start", "{\"type\":\"message_start\"}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_start",
+            "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_start",
+            "{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}");
+
+        var result = await RunAnthropicStreamAsync(builder.ToString());
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(AgentTurnErrorCode.ProviderFailure, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AnthropicRejectsDeltasForOpaqueRedactedThinking()
+    {
+        var builder = new StringBuilder();
+        AppendAnthropicEvent(builder, "message_start", "{\"type\":\"message_start\"}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_start",
+            "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"redacted_thinking\",\"data\":\"opaque\"}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_delta",
+            "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"must-not-be-accepted\"}}");
+
+        var result = await RunAnthropicStreamAsync(builder.ToString());
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(AgentTurnErrorCode.ProviderFailure, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AnthropicRejectsAnEmptyFinalTextBlock()
+    {
+        var builder = new StringBuilder();
+        AppendAnthropicEvent(builder, "message_start", "{\"type\":\"message_start\"}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_start",
+            "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_stop",
+            "{\"type\":\"content_block_stop\",\"index\":0}");
+
+        var result = await RunAnthropicStreamAsync(builder.ToString());
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(AgentTurnErrorCode.ProviderFailure, result.ErrorCode);
+    }
+
     [Theory]
     [InlineData(
         AiProviderKind.OpenAiCompatible,
@@ -955,6 +1206,277 @@ public sealed class StreamingProviderConformanceTests
         Assert.DoesNotContain(sentinel, exception.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AnthropicProjectsAdaptiveReasoningSummaryAndUsage()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateAuthenticatedProfileAsync(
+            vault,
+            AiProviderKind.Anthropic,
+            new Uri("https://anthropic.example/v1/"),
+            "claude-sonnet-5");
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(AnthropicMetadataStream())));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Solve it.",
+            [],
+            AgentReasoningEffort.Medium,
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var assistant = session.Snapshot().Conversation[^1];
+        Assert.Equal("Answer.", assistant.Content);
+        Assert.Equal("Checked safely.", assistant.ReasoningSummary);
+        Assert.Equal(15, assistant.Usage!.InputTokens);
+        Assert.Equal(6, assistant.Usage.OutputTokens);
+        Assert.Equal(4, assistant.Usage.CachedInputTokens);
+        Assert.Equal(2, assistant.Usage.ReasoningTokens);
+        using var body = JsonDocument.Parse(handler.LastRequest!.Body);
+        var root = body.RootElement;
+        Assert.Equal("adaptive", root.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.Equal(
+            "summarized",
+            root.GetProperty("thinking").GetProperty("display").GetString());
+        Assert.Equal(
+            "medium",
+            root.GetProperty("output_config").GetProperty("effort").GetString());
+    }
+
+    [Fact]
+    public async Task AnthropicAdaptive46ConsumesRawThinkingWithoutExposingItAsSummary()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateAuthenticatedProfileAsync(
+            vault,
+            AiProviderKind.Anthropic,
+            new Uri("https://anthropic.example/v1/"),
+            "claude-sonnet-4-6");
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(AnthropicMetadataStream())));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Solve it.",
+            [],
+            AgentReasoningEffort.Medium,
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var assistant = session.Snapshot().Conversation[^1];
+        Assert.Equal("Answer.", assistant.Content);
+        Assert.Null(assistant.ReasoningSummary);
+        using var body = JsonDocument.Parse(handler.LastRequest!.Body);
+        var thinking = body.RootElement.GetProperty("thinking");
+        Assert.Equal("adaptive", thinking.GetProperty("type").GetString());
+        Assert.False(thinking.TryGetProperty("display", out _));
+        Assert.Equal(
+            "medium",
+            body.RootElement.GetProperty("output_config").GetProperty("effort").GetString());
+    }
+
+    [Theory]
+    [InlineData("claude-opus-4-6", "max")]
+    [InlineData("claude-opus-4-7", "xhigh")]
+    public async Task AnthropicMapsExtraHighToTheExactModelNativeEffort(
+        string model,
+        string expectedEffort)
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateAuthenticatedProfileAsync(
+            vault,
+            AiProviderKind.Anthropic,
+            new Uri("https://anthropic.example/v1/"),
+            model);
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(AnthropicMetadataStream())));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Solve it.",
+            [],
+            AgentReasoningEffort.ExtraHigh,
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        using var body = JsonDocument.Parse(handler.LastRequest!.Body);
+        Assert.Equal(
+            expectedEffort,
+            body.RootElement.GetProperty("output_config").GetProperty("effort").GetString());
+    }
+
+    [Fact]
+    public async Task AnthropicModelThatCannotDisableThinkingRejectsOffBeforeHttp()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateAuthenticatedProfileAsync(
+            vault,
+            AiProviderKind.Anthropic,
+            new Uri("https://anthropic.example/v1/"),
+            "claude-fable-5");
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => throw new InvalidOperationException("HTTP must not run."));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Solve it.",
+            [],
+            AgentReasoningEffort.Off,
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task CompatibleStreamProjectsStandardUsageButRejectsUnportableEffort()
+    {
+        const string stream = """
+            data: {"choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}
+
+            data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":3},"completion_tokens_details":{"reasoning_tokens":1}}}
+
+            data: [DONE]
+
+            """ + "\n\n";
+        using var vault = new InMemorySecretVault();
+        var profile = CreateLoopbackProfile(AiProviderKind.OpenAiCompatible);
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(stream)));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Respond.",
+            [],
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        var usage = session.Snapshot().Conversation[^1].Usage!;
+        Assert.Equal((10L, 4L, 3L, 1L),
+            (usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, usage.ReasoningTokens));
+
+        using var rejectedHandler = new StubHttpMessageHandler(
+            (_, _) => throw new InvalidOperationException("HTTP must not run."));
+        using var rejectedFactory = new AiProviderFactory(vault, rejectedHandler);
+        var rejectedSession = CreateSession();
+        var rejected = await rejectedSession.RunTurnAsync(
+            "Respond.",
+            [],
+            AgentReasoningEffort.High,
+            rejectedFactory.Create(profile),
+            CancellationToken.None);
+        Assert.False(rejected.Succeeded);
+        Assert.Empty(rejectedHandler.Requests);
+    }
+
+    [Theory]
+    [InlineData(AiProviderKind.Anthropic)]
+    [InlineData(AiProviderKind.OpenAiCompatible)]
+    public async Task ProviderSerializesImageUsingItsNativeWireShape(
+        AiProviderKind providerKind)
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateAuthenticatedProfileAsync(
+            vault,
+            providerKind,
+            providerKind == AiProviderKind.Anthropic
+                ? new Uri("https://anthropic.example/v1/")
+                : new Uri("https://compatible.example/v1/"));
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(
+                providerKind == AiProviderKind.Anthropic
+                    ? AnthropicTextStream("seen")
+                    : OpenAiTextStream("seen"))));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+        var image = TinyPng();
+
+        var result = await session.RunTurnAsync(
+            "Describe it.",
+            [image],
+            [],
+            AgentReasoningEffort.Automatic,
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        using var body = JsonDocument.Parse(handler.LastRequest!.Body);
+        var content = Assert.Single(
+                body.RootElement.GetProperty("messages").EnumerateArray())
+            .GetProperty("content")
+            .EnumerateArray()
+            .ToArray();
+        var imagePart = providerKind == AiProviderKind.Anthropic
+            ? content[0]
+            : content[1];
+        if (providerKind == AiProviderKind.Anthropic)
+        {
+            Assert.Equal("image", imagePart.GetProperty("type").GetString());
+            Assert.Equal(
+                Convert.ToBase64String(image.Content),
+                imagePart.GetProperty("source").GetProperty("data").GetString());
+        }
+        else
+        {
+            Assert.Equal("image_url", imagePart.GetProperty("type").GetString());
+            Assert.StartsWith(
+                "data:image/png;base64,",
+                imagePart.GetProperty("image_url").GetProperty("url").GetString(),
+                StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task ProviderWithoutImageCapabilityFailsBeforeHttp()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateAuthenticatedProfileAsync(
+            vault,
+            AiProviderKind.DeepSeek,
+            new Uri("https://api.deepseek.com/v1/"));
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => throw new InvalidOperationException("HTTP must not run."));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+
+        var result = await session.RunTurnAsync(
+            "Describe it.",
+            [TinyPng()],
+            [],
+            AgentReasoningEffort.Automatic,
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(handler.Requests);
+    }
+
+    private static async Task<AgentTurnResult> RunAnthropicStreamAsync(string stream)
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = CreateLoopbackProfile(AiProviderKind.Anthropic);
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(stream)));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession();
+        return await session.RunTurnAsync(
+            "Continue.",
+            [],
+            factory.Create(profile),
+            CancellationToken.None);
+    }
+
     private static NativeAgentSession CreateSession(params AgentMessage[] initialMessages) =>
         new(new AgentRunId("provider-conformance-run"), initialMessages);
 
@@ -971,7 +1493,13 @@ public sealed class StreamingProviderConformanceTests
                   },
                   "required": ["path"]
                 }
-                """));
+            """));
+
+    private static AgentImageAttachment TinyPng() =>
+        new(
+            "capture.png",
+            "image/png",
+            new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a });
 
     private static AiProviderProfile CreateLoopbackProfile(AiProviderKind providerKind) =>
         new(
@@ -987,12 +1515,14 @@ public sealed class StreamingProviderConformanceTests
     private static async Task<AiProviderProfile> CreateAuthenticatedProfileAsync(
         InMemorySecretVault vault,
         AiProviderKind providerKind,
-        Uri endpoint)
+        Uri endpoint,
+        string model = Model,
+        string? secretReference = null)
     {
         var profileId = new AiProviderProfileId(
             $"profile-{providerKind.ToString().ToLowerInvariant()}");
         var reference = new SecretRef(
-            $"secret-{providerKind.ToString().ToLowerInvariant()}");
+            secretReference ?? $"secret-{providerKind.ToString().ToLowerInvariant()}");
         var scope = new SecretScope(SecretScopeKind.AiProvider, profileId.Value);
         var purpose = new SecretUsePurpose(
             SecretUseKind.AiProviderAuthentication,
@@ -1015,7 +1545,7 @@ public sealed class StreamingProviderConformanceTests
             providerKind,
             endpoint,
             new AiProviderAuthentication.ApiKey(reference),
-            Model,
+            model,
             order: 0);
     }
 
@@ -1155,6 +1685,80 @@ public sealed class StreamingProviderConformanceTests
         AppendAnthropicEvent(builder, "message_stop", "{\"type\":\"message_stop\"}");
         return builder.ToString();
     }
+
+    private static string AnthropicSignedThinkingToolStream()
+    {
+        var builder = new StringBuilder();
+        AppendAnthropicEvent(builder, "message_start", "{\"type\":\"message_start\"}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_start",
+            "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_delta",
+            "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"Safe summary.\"}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_delta",
+            "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"opaque-signature\"}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_stop",
+            "{\"type\":\"content_block_stop\",\"index\":0}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_start",
+            "{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool-1\",\"name\":\"read_file\",\"input\":{}}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_delta",
+            "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"/tmp/input.txt\\\"}\"}}");
+        AppendAnthropicEvent(
+            builder,
+            "content_block_stop",
+            "{\"type\":\"content_block_stop\",\"index\":1}");
+        AppendAnthropicEvent(
+            builder,
+            "message_delta",
+            "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}");
+        AppendAnthropicEvent(builder, "message_stop", "{\"type\":\"message_stop\"}");
+        return builder.ToString();
+    }
+
+    private static string AnthropicMetadataStream() =>
+        """
+        event: message_start
+        data: {"type":"message_start","message":{"usage":{"input_tokens":10,"cache_creation_input_tokens":1,"cache_read_input_tokens":4}}}
+
+        event: content_block_start
+        data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
+
+        event: content_block_delta
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Checked safely."}}
+
+        event: content_block_delta
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"opaque-signature"}}
+
+        event: content_block_stop
+        data: {"type":"content_block_stop","index":0}
+
+        event: content_block_start
+        data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+        event: content_block_delta
+        data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Answer."}}
+
+        event: content_block_stop
+        data: {"type":"content_block_stop","index":1}
+
+        event: message_delta
+        data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":6,"output_tokens_details":{"thinking_tokens":2}}}
+
+        event: message_stop
+        data: {"type":"message_stop"}
+
+        """ + "\n\n";
 
     private static void AppendAnthropicToolDelta(StringBuilder builder, string value) =>
         AppendAnthropicEvent(

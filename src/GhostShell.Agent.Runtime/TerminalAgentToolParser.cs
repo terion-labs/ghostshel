@@ -647,16 +647,7 @@ internal static class TerminalAgentToolParser
     }
 
     private static bool IsKnownTool(string toolName) =>
-        toolName is
-            BuiltInAgentTools.TerminalReadScreen
-            or BuiltInAgentTools.TerminalSendText
-            or BuiltInAgentTools.TerminalPaste
-            or BuiltInAgentTools.TerminalSendKeys
-            or BuiltInAgentTools.TerminalSendChord
-            or BuiltInAgentTools.TerminalSendMouse
-            or BuiltInAgentTools.TerminalWait
-            or BuiltInAgentTools.TerminalInterrupt
-            or BuiltInAgentTools.TerminalResize;
+        TerminalAgentToolSet.IsToolName(toolName);
 
     private static TerminalAgentIntentResult UnknownTool() =>
         new TerminalAgentIntentResult.Rejected(

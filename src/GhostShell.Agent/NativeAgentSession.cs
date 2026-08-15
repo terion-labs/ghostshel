@@ -26,6 +26,7 @@ public sealed partial class NativeAgentSession
     private long _generation;
     private long _revision;
     private long _sequence;
+    private string? _conversationTitle;
 
     public NativeAgentSession(
         AgentRunId runId,
@@ -69,6 +70,60 @@ public sealed partial class NativeAgentSession
 
     public AgentRunId RunId { get; }
 
+    public bool HasGeneratedTitle
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _conversationTitle is not null;
+            }
+        }
+    }
+
+    public bool TrySetConversationTitle(string title)
+    {
+        ArgumentNullException.ThrowIfNull(title);
+        var normalized = NormalizeConversationTitle(title);
+        lock (_gate)
+        {
+            if (_state != NativeAgentSessionState.Ready
+                || _activeTurn is not null
+                || _pendingToolProposals.Length > 0
+                || _activeCompaction is not null)
+            {
+                return false;
+            }
+
+            if (string.Equals(_conversationTitle, normalized, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            _conversationTitle = normalized;
+            AppendEventUnsafe(AgentRunEventKind.ConversationTitleChanged, _generation);
+            return true;
+        }
+    }
+
+    private static string NormalizeConversationTitle(string title)
+    {
+        const int maximumLength = 72;
+        var normalized = string.Join(
+            ' ',
+            title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (normalized.Length == 0 || normalized.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                "A conversation title must contain bounded printable text.",
+                nameof(title));
+        }
+
+        return normalized.Length <= maximumLength
+            ? normalized
+            : string.Concat(normalized.AsSpan(0, maximumLength - 1), "…");
+    }
+
     public AgentSessionSnapshot Snapshot()
     {
         lock (_gate)
@@ -81,13 +136,62 @@ public sealed partial class NativeAgentSession
         string userMessage,
         ImmutableArray<AgentToolDefinition> tools,
         IAgentProvider provider,
+        CancellationToken cancellationToken) =>
+        await RunTurnAsync(
+            userMessage,
+            [],
+            tools,
+            AgentReasoningEffort.Automatic,
+            provider,
+            cancellationToken).ConfigureAwait(false);
+
+    public async ValueTask<AgentTurnResult> RunTurnAsync(
+        string userMessage,
+        ImmutableArray<AgentToolDefinition> tools,
+        AgentReasoningEffort reasoningEffort,
+        IAgentProvider provider,
+        CancellationToken cancellationToken) =>
+        await RunTurnAsync(
+            userMessage,
+            [],
+            tools,
+            reasoningEffort,
+            provider,
+            cancellationToken).ConfigureAwait(false);
+
+    public async ValueTask<AgentTurnResult> RunTurnAsync(
+        string userMessage,
+        ImmutableArray<AgentImageAttachment> images,
+        ImmutableArray<AgentToolDefinition> tools,
+        AgentReasoningEffort reasoningEffort,
+        IAgentProvider provider,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(userMessage);
+        ArgumentNullException.ThrowIfNull(userMessage);
+        if (images.IsDefault)
+        {
+            throw new ArgumentException(
+                "The image collection is required.",
+                nameof(images));
+        }
+
+        if (string.IsNullOrWhiteSpace(userMessage) && images.Length == 0)
+        {
+            throw new ArgumentException(
+                "A turn requires text or an image.",
+                nameof(userMessage));
+        }
+
         ArgumentNullException.ThrowIfNull(provider);
         if (tools.IsDefault)
         {
             throw new ArgumentException("The tool collection is required.", nameof(tools));
+        }
+
+
+        if (!Enum.IsDefined(reasoningEffort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(reasoningEffort));
         }
 
         if (cancellationToken.IsCancellationRequested)
@@ -95,11 +199,11 @@ public sealed partial class NativeAgentSession
             return AgentTurnResult.Failure(AgentTurnErrorCode.Cancelled);
         }
 
-        var user = new AgentMessage(AgentMessageRole.User, userMessage);
+        var user = new AgentMessage(AgentMessageRole.User, userMessage, images);
         Dictionary<string, string> toolNamesByProviderName;
         try
         {
-            ValidateMessageBytes(user, _limits.MaximumAssistantTextBytes);
+            ValidateMessageBounds(user, _limits.MaximumUserTextBytes);
             toolNamesByProviderName = ValidateTools(tools);
         }
         catch (AgentLimitException)
@@ -179,6 +283,7 @@ public sealed partial class NativeAgentSession
                 _conversation,
                 [user],
                 tools,
+                reasoningEffort,
                 ActiveTurnKind.InitialUser);
             _activeTurn = activeTurn;
             _providerOperationsInFlight = checked(_providerOperationsInFlight + 1);
@@ -187,7 +292,8 @@ public sealed partial class NativeAgentSession
                 RunId,
                 generation,
                 requestConversation,
-                tools);
+                tools,
+                reasoningEffort);
             AppendEventUnsafe(AgentRunEventKind.TurnStarted, generation);
         }
 
@@ -225,7 +331,8 @@ public sealed partial class NativeAgentSession
                 RunId,
                 replacement.Generation,
                 replacement.BaseConversation.AddRange(replacement.InputMessages),
-                replacement.Tools);
+                replacement.Tools,
+                replacement.ReasoningEffort);
         }
     }
 
@@ -265,8 +372,11 @@ public sealed partial class NativeAgentSession
             return CommitTurn(
                 activeTurn,
                 reducedTurn.AssistantText,
+                reducedTurn.ReasoningSummary,
+                reducedTurn.Usage,
                 reducedTurn.StopReason,
-                proposals);
+                proposals,
+                reducedTurn.ProviderReplayState);
         }
         catch (OperationCanceledException)
             when (activeTurn.Token.IsCancellationRequested || !IsActive(activeTurn))
@@ -287,6 +397,17 @@ public sealed partial class NativeAgentSession
 
             activeTurn.TryCancel();
             return AgentTurnResult.Failure(errorCode);
+        }
+        catch (AgentProviderException exception)
+        {
+            if (!FailGeneration(activeTurn, AgentTurnErrorCode.ProviderFailure))
+            {
+                return AgentTurnResult.Failure(AgentTurnErrorCode.Cancelled);
+            }
+
+            return AgentTurnResult.Failure(
+                AgentTurnErrorCode.ProviderFailure,
+                exception);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -489,7 +610,7 @@ public sealed partial class NativeAgentSession
         ImmutableArray<AgentMessage> replacement;
         try
         {
-            ValidateMessageBytes(summary, _limits.MaximumAssistantTextBytes);
+            ValidateMessageBounds(summary, _limits.MaximumAssistantTextBytes);
             replacement =
             [
                 .. capture.Conversation[..capture.SystemMessageCount],
@@ -528,6 +649,152 @@ public sealed partial class NativeAgentSession
             AppendEventUnsafe(AgentRunEventKind.ConversationCompacted, _generation);
             return AgentCompactionResult.Success();
         }
+    }
+
+    public AgentContextUsage EstimateContextUsage()
+    {
+        lock (_gate)
+        {
+            return EstimateContextUsage(_conversation);
+        }
+    }
+
+    public ValueTask<AgentCompactionResult> CompactAsync(
+        int contextWindowTokens,
+        AgentCompactionSettings settings,
+        IAgentConversationCompactor compactor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(compactor);
+        if (contextWindowTokens <= settings.ReserveTokens)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(contextWindowTokens),
+                "The context window must exceed the reserved completion budget.");
+        }
+
+        if (!settings.Enabled)
+        {
+            return ValueTask.FromResult(AgentCompactionResult.Failure(
+                AgentCompactionErrorCode.NothingToCompact));
+        }
+
+        int retainedTurns;
+        lock (_gate)
+        {
+            var usage = EstimateContextUsage(_conversation);
+            if (usage.EstimatedTokens
+                <= contextWindowTokens - settings.ReserveTokens)
+            {
+                return ValueTask.FromResult(AgentCompactionResult.Failure(
+                    AgentCompactionErrorCode.NothingToCompact));
+            }
+
+            var bodyStart = CountLeadingSystemMessages(_conversation);
+            if (bodyStart < _conversation.Length
+                && _conversation[bodyStart].Role == AgentMessageRole.Summary)
+            {
+                bodyStart++;
+            }
+
+            var turnStarts = _conversation
+                .Select((message, index) => (message, index))
+                .Where(item => item.index >= bodyStart
+                    && item.message.Role == AgentMessageRole.User)
+                .Select(item => item.index)
+                .ToImmutableArray();
+            if (turnStarts.Length < 2)
+            {
+                return ValueTask.FromResult(AgentCompactionResult.Failure(
+                    AgentCompactionErrorCode.NothingToCompact));
+            }
+
+            long recentTokens = 0;
+            retainedTurns = 0;
+            for (var turn = turnStarts.Length - 1; turn >= 0; turn--)
+            {
+                var end = turn + 1 < turnStarts.Length
+                    ? turnStarts[turn + 1]
+                    : _conversation.Length;
+                for (var index = turnStarts[turn]; index < end; index++)
+                {
+                    recentTokens = checked(
+                        recentTokens + EstimateMessageTokens(_conversation[index]));
+                }
+
+                retainedTurns++;
+                if (recentTokens >= settings.KeepRecentTokens)
+                {
+                    break;
+                }
+            }
+
+            retainedTurns = Math.Min(retainedTurns, turnStarts.Length - 1);
+        }
+
+        return CompactAsync(retainedTurns, compactor, cancellationToken);
+    }
+
+    private static AgentContextUsage EstimateContextUsage(
+        ImmutableArray<AgentMessage> conversation)
+    {
+        // A compacted transcript invalidates usage attached to retained old
+        // messages, because that usage describes the pre-compaction prompt.
+        var hasSummary = conversation.Any(message =>
+            message.Role == AgentMessageRole.Summary);
+        if (!hasSummary)
+        {
+            for (var index = conversation.Length - 1; index >= 0; index--)
+            {
+                if (conversation[index].Usage is not { } usage)
+                {
+                    continue;
+                }
+
+                long trailing = 0;
+                for (var trailingIndex = index + 1;
+                     trailingIndex < conversation.Length;
+                     trailingIndex++)
+                {
+                    trailing = checked(
+                        trailing + EstimateMessageTokens(conversation[trailingIndex]));
+                }
+
+                return new AgentContextUsage(
+                    checked(usage.TotalTokens + trailing),
+                    UsesProviderReportedUsage: true);
+            }
+        }
+
+        long estimated = 0;
+        foreach (var message in conversation)
+        {
+            estimated = checked(estimated + EstimateMessageTokens(message));
+        }
+
+        return new AgentContextUsage(estimated, UsesProviderReportedUsage: false);
+    }
+
+    private static long EstimateMessageTokens(AgentMessage message)
+    {
+        long characters = message.Content.Length;
+        characters += message.ReasoningSummary?.Length ?? 0;
+        characters += message.Images.Length * 4_800L;
+        foreach (var toolCall in message.ToolCalls)
+        {
+            characters += toolCall.ToolName.Length;
+            characters += toolCall.Arguments.GetRawText().Length;
+        }
+
+        if (message.ToolResult is { } result)
+        {
+            characters += result.Value.Content.Length;
+        }
+
+        // PI uses a deliberately conservative four-characters-per-token
+        // fallback when the provider has not reported an exact context size.
+        return Math.Max(1, (characters + 3) / 4);
     }
 
     public async IAsyncEnumerable<AgentRunStreamItem> WatchAsync(
@@ -636,6 +903,22 @@ public sealed partial class NativeAgentSession
                             provisionalText: textDelta.Value);
                     }
                 }
+                else if (providerEvent
+                    is AgentProviderEvent.ReasoningSummaryDelta reasoningDelta)
+                {
+                    lock (_gate)
+                    {
+                        if (!IsActiveUnsafe(activeTurn))
+                        {
+                            throw new OperationCanceledException(activeTurn.Token);
+                        }
+
+                        AppendEventUnsafe(
+                            AgentRunEventKind.ProvisionalReasoningSummary,
+                            activeTurn.Generation,
+                            provisionalReasoningSummary: reasoningDelta.Value);
+                    }
+                }
             }
 
             if (!IsActive(activeTurn))
@@ -701,10 +984,19 @@ public sealed partial class NativeAgentSession
     private AgentTurnResult CommitTurn(
         ActiveTurn activeTurn,
         string assistantText,
+        string? reasoningSummary,
+        AgentTokenUsage? usage,
         AgentProviderStopReason stopReason,
-        ImmutableArray<AgentToolProposal> proposals)
+        ImmutableArray<AgentToolProposal> proposals,
+        AgentProviderReplayState? providerReplayState)
     {
-        var assistant = AgentMessage.Assistant(assistantText, proposals);
+        var assistant = AgentMessage.Assistant(
+            assistantText,
+            proposals,
+            reasoningSummary,
+            usage,
+            providerReplayState,
+            activeTurn.ReasoningEffort);
         ImmutableArray<AgentMessage> replacement;
         try
         {
@@ -761,7 +1053,8 @@ public sealed partial class NativeAgentSession
             _pendingToolTurn = proposals.Length > 0
                 ? new PendingToolTurn(
                     activeTurn.BaseConversation,
-                    activeTurn.Tools)
+                    activeTurn.Tools,
+                    activeTurn.ReasoningEffort)
                 : null;
             _pendingToolProposals = proposals;
             _activeTurn = null;
@@ -1013,6 +1306,8 @@ public sealed partial class NativeAgentSession
                 throw new AgentConversationException();
             }
 
+            ValidateImageBounds(message);
+
             byteCount += MessageByteCount(message);
             if (byteCount > _limits.MaximumConversationBytes)
             {
@@ -1045,7 +1340,26 @@ public sealed partial class NativeAgentSession
                 throw new AgentConversationException();
             }
 
+            ValidateImageBounds(message);
             var messageBytes = MessageByteCount(message);
+            if (message.ReasoningSummary is { } reasoningSummary
+                && Encoding.UTF8.GetByteCount(reasoningSummary)
+                    > _limits.MaximumReasoningSummaryBytes)
+            {
+                throw new AgentLimitException();
+            }
+
+            if (message.ProviderReplayState is { } replayState)
+            {
+                var replayToolCount = replayState.Items.Count(item =>
+                    item.ToolIndex.HasValue);
+                if (replayToolCount != message.ToolCalls.Length
+                    || !replayState.MatchesMessage(message))
+                {
+                    throw new AgentConversationException();
+                }
+            }
+
             byteCount += messageBytes;
             if (byteCount > _limits.MaximumConversationBytes)
             {
@@ -1081,7 +1395,8 @@ public sealed partial class NativeAgentSession
         {
             var user = conversation[index];
             if (user.Role != AgentMessageRole.User
-                || string.IsNullOrWhiteSpace(user.Content)
+                || (string.IsNullOrWhiteSpace(user.Content)
+                    && user.Images.Length == 0)
                 || !IsPlainMessage(user))
             {
                 throw new AgentConversationException();
@@ -1220,6 +1535,38 @@ public sealed partial class NativeAgentSession
                 + Encoding.UTF8.GetByteCount(result.StableCode));
         }
 
+        if (message.ReasoningSummary is { } reasoningSummary)
+        {
+            byteCount = checked(
+                byteCount + Encoding.UTF8.GetByteCount(reasoningSummary));
+        }
+
+        if (message.ProviderReplayState is { } replayState)
+        {
+            byteCount = checked(
+                byteCount
+                + Encoding.UTF8.GetByteCount(replayState.Binding.ProfileId.Value)
+                + Encoding.UTF8.GetByteCount(replayState.Binding.Model)
+                + Encoding.UTF8.GetByteCount(
+                    replayState.Binding.Endpoint.AbsoluteUri)
+                + Encoding.UTF8.GetByteCount(
+                    replayState.Binding.RouteIdentity));
+            foreach (var item in replayState.Items)
+            {
+                byteCount = checked(
+                    byteCount + Encoding.UTF8.GetByteCount(item.PayloadJson));
+            }
+        }
+
+        foreach (var image in message.Images)
+        {
+            byteCount = checked(
+                byteCount
+                + Encoding.UTF8.GetByteCount(image.FileName)
+                + Encoding.UTF8.GetByteCount(image.MediaType)
+                + image.Content.Length);
+        }
+
         return byteCount;
     }
 
@@ -1236,11 +1583,31 @@ public sealed partial class NativeAgentSession
         return count;
     }
 
-    private static void ValidateMessageBytes(AgentMessage message, int maximumBytes)
+    private void ValidateMessageBounds(AgentMessage message, int maximumBytes)
     {
         if (Encoding.UTF8.GetByteCount(message.Content) > maximumBytes)
         {
             throw new AgentLimitException();
+        }
+
+        ValidateImageBounds(message);
+    }
+
+    private void ValidateImageBounds(AgentMessage message)
+    {
+        if (message.Images.Length > _limits.MaximumImagesPerMessage)
+        {
+            throw new AgentLimitException();
+        }
+
+        long totalImageBytes = 0;
+        foreach (var image in message.Images)
+        {
+            totalImageBytes = checked(totalImageBytes + image.Content.Length);
+            if (totalImageBytes > _limits.MaximumTotalImageBytesPerMessage)
+            {
+                throw new AgentLimitException();
+            }
         }
     }
 
@@ -1258,6 +1625,7 @@ public sealed partial class NativeAgentSession
         AgentRunEventKind kind,
         long generation,
         string? provisionalText = null,
+        string? provisionalReasoningSummary = null,
         AgentTurnErrorCode? errorCode = null,
         int toolProposalCount = 0)
     {
@@ -1273,6 +1641,7 @@ public sealed partial class NativeAgentSession
             kind,
             _timeProvider.GetUtcNow(),
             provisionalText,
+            provisionalReasoningSummary,
             errorCode,
             toolProposalCount));
         if (_events.Count > _limits.MaximumRetainedEvents)
@@ -1300,6 +1669,7 @@ public sealed partial class NativeAgentSession
             ImmutableArray<AgentMessage> baseConversation,
             ImmutableArray<AgentMessage> inputMessages,
             ImmutableArray<AgentToolDefinition> tools,
+            AgentReasoningEffort reasoningEffort,
             ActiveTurnKind kind)
         {
             Generation = generation;
@@ -1307,6 +1677,7 @@ public sealed partial class NativeAgentSession
             BaseConversation = baseConversation;
             InputMessages = inputMessages;
             Tools = tools;
+            ReasoningEffort = reasoningEffort;
             Kind = kind;
             Token = _cancellation.Token;
         }
@@ -1320,6 +1691,8 @@ public sealed partial class NativeAgentSession
         public ImmutableArray<AgentMessage> InputMessages { get; }
 
         public ImmutableArray<AgentToolDefinition> Tools { get; }
+
+        public AgentReasoningEffort ReasoningEffort { get; }
 
         public ActiveTurnKind Kind { get; }
 
@@ -1357,7 +1730,8 @@ public sealed partial class NativeAgentSession
 
     private sealed record PendingToolTurn(
         ImmutableArray<AgentMessage> BaseConversation,
-        ImmutableArray<AgentToolDefinition> Tools);
+        ImmutableArray<AgentToolDefinition> Tools,
+        AgentReasoningEffort ReasoningEffort);
 
     private enum ConversationTail
     {

@@ -31,7 +31,7 @@ internal sealed record AiProviderSecretFormInput(
     string Value);
 
 internal sealed record McpServerSecretFormInput(
-    McpEnvironmentSecretTargetViewModel? Target,
+    McpServerSecretTargetViewModel? Target,
     SecretKind? Kind,
     string Label,
     string Value);
@@ -157,6 +157,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? SaveTerminalProfileRequested;
 
+    public event EventHandler<RoutedEventArgs>? SaveDefaultAgentPolicyRequested;
+
     public event EventHandler<RoutedEventArgs>? SelectTerminalPaletteRequested;
 
     public event EventHandler<RoutedEventArgs>? SecretsSettingsRequested;
@@ -245,8 +247,8 @@ public sealed partial class SettingsView : UserControl
 
     internal McpServerSecretFormInput CaptureMcpServerSecretForm() =>
         new(
-            McpEnvironmentSecretTargetPicker.SelectedItem
-                as McpEnvironmentSecretTargetViewModel,
+            McpServerSecretTargetPicker.SelectedItem
+                as McpServerSecretTargetViewModel,
             McpServerSecretKindPicker.SelectedItem is SecretKind kind ? kind : null,
             McpServerSecretLabelInput.Text ?? string.Empty,
             McpServerSecretValueInput.Text ?? string.Empty);
@@ -314,6 +316,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnAgentSettingsClick(object? sender, RoutedEventArgs e) =>
         AgentSettingsRequested?.Invoke(sender, e);
+
+    private void OnSaveDefaultAgentPolicyClick(object? sender, RoutedEventArgs e) =>
+        SaveDefaultAgentPolicyRequested?.Invoke(sender, e);
 
     private void OnAppearanceSettingsClick(object? sender, RoutedEventArgs e) =>
         AppearanceSettingsRequested?.Invoke(sender, e);

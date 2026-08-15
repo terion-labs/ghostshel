@@ -48,7 +48,7 @@
           Tone="Notice"
           ShowsGlyph="False"
           Title="Storage metadata unavailable"
-          Text="The bounded inventory could not be completed. No additional files will be removed automatically; use Refresh to try again."
+          Text="The storage scan could not be completed. No additional files will be removed automatically; use Refresh to try again."
           IsVisible="{Binding HasError}" />
 
       <ItemsControl

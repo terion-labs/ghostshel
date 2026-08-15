@@ -32,10 +32,19 @@ public interface IAgentProviderBinding
     /// </summary>
     bool IsCurrent { get; }
 
+    int? ContextWindowTokens(string model) => null;
+
     /// <summary>
     /// Returns a binding-owned, request-scoped adapter for the exact requested
     /// model. The runtime does not dispose it because a cancellation-fenced
     /// stream may still be unwinding.
     /// </summary>
     IAgentProvider CreateProvider(string model);
+
+    IAgentProvider CreateProvider(
+        string model,
+        AgentServiceTier serviceTier) =>
+        serviceTier == AgentServiceTier.Automatic
+            ? CreateProvider(model)
+            : throw new ArgumentOutOfRangeException(nameof(serviceTier));
 }

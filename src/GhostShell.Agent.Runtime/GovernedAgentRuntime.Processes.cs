@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -257,4 +258,58 @@ public sealed partial class GovernedAgentRuntime
             toolName,
             BuiltInAgentTools.ProcessesList,
             StringComparison.Ordinal);
+
+    private sealed class ProcessToolContribution(
+        GovernedAgentRuntime runtime) : IAgentToolContribution
+    {
+        public ImmutableArray<AgentToolDefinition> BuildTools(
+            AgentToolBuildContext context)
+        {
+            if (runtime._agentProcessHost is null
+                || runtime._processComposer is null)
+            {
+                return [];
+            }
+
+            var eligiblePanels = context.OperationalContext.Panels
+                .Where(ProcessAgentToolSet.Supports)
+                .ToArray();
+            if (eligiblePanels.Length == 0)
+            {
+                return [];
+            }
+
+            return context.HasExactTarget
+                ? ProcessAgentToolSet.For(eligiblePanels[0])
+                : ProcessAgentToolSet.For(eligiblePanels);
+        }
+
+        public ResolvedAgentToolContribution? Resolve(string toolName) =>
+            IsProcessTool(toolName)
+                ? new ResolvedAgentToolContribution(
+                    toolName,
+                    ExecuteAsync)
+                : null;
+
+        private ValueTask<AgentToolResult> ExecuteAsync(
+            AgentToolExecutionRequest request,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteOperationalToolContributionAsync(
+                request,
+                ExecuteBoundAsync,
+                cancellationToken);
+
+        private ValueTask<AgentToolResult> ExecuteBoundAsync(
+            AgentToolExecutionRequest request,
+            OperationalAgentToolContext context,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteProcessProposalAsync(
+                request.Proposal,
+                request.Descriptor,
+                context.Context,
+                context.ResizeEligiblePanelIds,
+                context.BrowserEligiblePanelIds,
+                context.FileMetadata,
+                cancellationToken);
+    }
 }

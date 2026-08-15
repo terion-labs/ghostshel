@@ -620,6 +620,65 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Active_agent_chat_is_owned_by_the_runtime_workspace()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            agentRuntimeFactory: factory);
+
+        Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+        var browserWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var browserChat = Assert.IsType<AgentChatViewModel>(viewModel.AgentChat);
+
+        Assert.True(await viewModel.OpenLocalMonitorWorkspaceAsync(PanelKind.Statistics));
+        var statisticsWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var statisticsChat = Assert.IsType<AgentChatViewModel>(viewModel.AgentChat);
+
+        Assert.NotEqual(browserWorkspace.Id, statisticsWorkspace.Id);
+        Assert.NotSame(browserChat, statisticsChat);
+        Assert.Equal(
+            [browserWorkspace.Id, statisticsWorkspace.Id],
+            factory.CreatedWorkspaceIds);
+    }
+
+    [Fact]
+    public async Task Reopened_saved_workspace_reuses_its_conversation_scope()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            agentRuntimeFactory: factory);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var firstRuntimeId = viewModel.RuntimeWorkspace!.Id;
+        viewModel.RemoveRuntimeWorkspace(firstRuntimeId);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var secondRuntimeId = viewModel.RuntimeWorkspace!.Id;
+
+        Assert.NotEqual(firstRuntimeId, secondRuntimeId);
+        Assert.Equal(2, factory.CreatedScopes.Count);
+        Assert.Equal(factory.CreatedScopes[0], factory.CreatedScopes[1]);
+        Assert.StartsWith(
+            "definition:",
+            factory.CreatedScopes[0].Value,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Opening_workspace_accepts_host_reconciled_session_links()
     {
         var linkedSessionId = SessionId.New();
@@ -2803,7 +2862,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
-    public async Task Quick_terminal_agent_targets_its_own_workspace_and_active_panel()
+    public async Task Quick_terminal_agent_targets_its_own_workspace_by_default()
     {
         var provider = CreateAgentProvider();
         using var agentRuntime = new RecordingGovernedAgentRuntime();
@@ -2818,18 +2877,102 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentRuntime,
             aiProfiles);
         await quickTerminal.Initialization;
-        var tab = Assert.IsType<QuickTerminalTabViewModel>(quickTerminal.ActiveTab);
+        _ = Assert.IsType<QuickTerminalTabViewModel>(quickTerminal.ActiveTab);
         quickTerminal.AgentChat!.Prompt = "Inspect Quick Terminal.";
 
         await quickTerminal.SendAgentPromptAsync();
 
         var request = Assert.IsType<GovernedAgentPrompt>(agentRuntime.LastRequest);
-        var target = Assert.IsType<AgentTarget.Panel>(request.Target);
+        var target = Assert.IsType<AgentTarget.Workspace>(request.Target);
         Assert.Equal(quickTerminal.WindowId, target.WindowId);
         Assert.Equal(quickTerminal.WorkspaceId, target.WorkspaceId);
-        Assert.Equal(tab.Id, target.TabId);
-        Assert.Equal(tab.PanelId, target.PanelId);
+        Assert.Equal(AgentRunScopeKind.Workspace, quickTerminal.SelectedAgentRunScope.Kind);
         Assert.NotEqual(mainWindow.WindowId, target.WindowId);
+    }
+
+    [Fact]
+    public async Task Quick_terminal_agent_uses_the_saved_global_ai_policy()
+    {
+        var provider = CreateAgentProvider();
+        using var agentRuntime = new RecordingGovernedAgentRuntime();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var store = new MemoryAgentPolicyStore();
+        var coordinator = new AgentPolicyCoordinator(store);
+        var policy = AgentPolicy.Default with
+        {
+            Provider = provider.Id.Value,
+            Model = provider.DefaultModel,
+            CompactionModel = new AgentModelSelection(
+                provider.Id.Value,
+                provider.DefaultModel),
+            TitleModel = new AgentModelSelection(
+                provider.Id.Value,
+                provider.DefaultModel),
+        };
+        Assert.True((await coordinator.SaveAsync(
+            policy,
+            CancellationToken.None)).IsSuccess);
+        var snapshot = CreateCatalogSnapshot();
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime(),
+            agentRuntime,
+            aiProfiles,
+            agentPolicyCoordinator: coordinator);
+        await quickTerminal.Initialization;
+        quickTerminal.AgentChat!.Prompt = "Inspect Quick Terminal.";
+
+        await quickTerminal.SendAgentPromptAsync();
+
+        var request = Assert.IsType<GovernedAgentPrompt>(agentRuntime.LastRequest);
+        var requestedPolicy = Assert.IsType<AgentPolicy>(request.Policy);
+        Assert.Equal(policy.Provider, requestedPolicy.Provider);
+        Assert.Equal(policy.Model, requestedPolicy.Model);
+        Assert.Equal(policy.CompactionModel, requestedPolicy.CompactionModel);
+        Assert.Equal(policy.TitleModel, requestedPolicy.TitleModel);
+        Assert.Equal(
+            policy.Permissions.OrderBy(item => item.Key),
+            requestedPolicy.Permissions.OrderBy(item => item.Key));
+    }
+
+    [Fact]
+    public async Task Quick_terminal_agent_chat_is_not_the_main_workspace_chat()
+    {
+        var provider = CreateAgentProvider();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var snapshot = CreateCatalogSnapshot();
+        var catalog = CreateFixedCatalog(snapshot);
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(
+            client,
+            catalog,
+            aiProfiles: aiProfiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            agentRuntimeFactory: factory);
+        Assert.True(await mainWindow.OpenLocalBrowserWorkspaceAsync());
+        var mainChat = Assert.IsType<AgentChatViewModel>(mainWindow.AgentChat);
+
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            catalog,
+            new SuccessfulConnectionRuntime(),
+            aiProviderRuntime: aiProfiles,
+            agentRuntimeFactory: factory);
+
+        Assert.NotSame(mainChat, quickTerminal.AgentChat);
+        Assert.NotEqual(mainWindow.RuntimeWorkspace!.Id, quickTerminal.WorkspaceId);
+        Assert.Equal(
+            [mainWindow.RuntimeWorkspace.Id, quickTerminal.WorkspaceId],
+            factory.CreatedWorkspaceIds);
+        Assert.EndsWith(
+            mainWindow.RuntimeWorkspace.Id.Value,
+            factory.CreatedScopes[0].Value,
+            StringComparison.Ordinal);
+        Assert.Equal("quick-terminal", factory.CreatedScopes[1].Value);
     }
 
     [Fact]
@@ -2889,6 +3032,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
         var tab = Assert.IsType<RuntimeTabViewModel>(workspace.ActiveTab);
         var panel = Assert.IsType<TerminalRuntimePanelViewModel>(tab.ActivePanel);
+        viewModel.SelectedAgentRunScope = Assert.Single(
+            viewModel.AgentRunScopeOptions,
+            option => option.Kind == AgentRunScopeKind.ActivePanel);
         viewModel.AgentChat!.Prompt = "Inspect the active terminal.";
 
         await viewModel.SendAgentPromptAsync();
@@ -2896,7 +3042,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var request = Assert.IsType<GovernedAgentPrompt>(agentRuntime.LastRequest);
         var target = Assert.IsType<AgentTarget.Panel>(request.Target);
         Assert.Equal(provider.Id, request.ProviderId);
-        Assert.Null(request.Policy);
+        Assert.Equal(provider.Id.Value, request.Policy?.Provider);
+        Assert.Equal(provider.DefaultModel, request.Policy?.Model);
         Assert.Equal("Inspect the active terminal.", request.Message);
         Assert.Equal(viewModel.WindowId, target.WindowId);
         Assert.Equal(workspace.Id, target.WorkspaceId);
@@ -3219,6 +3366,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 panel => panel.Kind == PanelKind.Browser));
         Assert.NotNull(browser.SessionRequest);
         Assert.True(await viewModel.ActivatePanelAsync(browser.Id));
+        viewModel.SelectedAgentRunScope = Assert.Single(
+            viewModel.AgentRunScopeOptions,
+            option => option.Kind == AgentRunScopeKind.ActivePanel);
         viewModel.AgentChat!.Prompt = "Inspect the active browser.";
 
         await viewModel.SendAgentPromptAsync();
@@ -3255,6 +3405,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var processMonitor = Assert.IsType<ProcessMonitorRuntimePanelViewModel>(
             tab.ActivePanel);
         await WaitForAsync(() => processMonitor.HasHostedSession);
+        viewModel.SelectedAgentRunScope = Assert.Single(
+            viewModel.AgentRunScopeOptions,
+            option => option.Kind == AgentRunScopeKind.ActivePanel);
         viewModel.AgentChat!.Prompt = "Inspect the bounded local process list.";
 
         await viewModel.SendAgentPromptAsync();
@@ -3267,6 +3420,45 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(workspace.Id, target.WorkspaceId);
         Assert.Equal(tab.Id, target.TabId);
         Assert.Equal(processMonitor.Id, target.PanelId);
+    }
+
+    [Fact]
+    public async Task Agent_active_panel_scope_routes_hosted_local_statistics()
+    {
+        var provider = CreateAgentProvider();
+        using var agentRuntime = new RecordingGovernedAgentRuntime();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptStatisticsSessions = true;
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            agentRuntime: agentRuntime,
+            aiProfiles: aiProfiles);
+
+        Assert.True(await viewModel.OpenLocalMonitorWorkspaceAsync(
+            PanelKind.Statistics));
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(workspace.ActiveTab);
+        var statistics = Assert.IsType<StatisticsRuntimePanelViewModel>(
+            tab.ActivePanel);
+        await WaitForAsync(() => statistics.HasHostedSession);
+        viewModel.SelectedAgentRunScope = Assert.Single(
+            viewModel.AgentRunScopeOptions,
+            option => option.Kind == AgentRunScopeKind.ActivePanel);
+        viewModel.AgentChat!.Prompt = "Inspect the bounded local statistics.";
+
+        await viewModel.SendAgentPromptAsync();
+
+        var request = Assert.IsType<GovernedAgentPrompt>(agentRuntime.LastRequest);
+        var target = Assert.IsType<AgentTarget.Panel>(request.Target);
+        Assert.Equal(provider.Id, request.ProviderId);
+        Assert.Equal("Inspect the bounded local statistics.", request.Message);
+        Assert.Equal(viewModel.WindowId, target.WindowId);
+        Assert.Equal(workspace.Id, target.WorkspaceId);
+        Assert.Equal(tab.Id, target.TabId);
+        Assert.Equal(statistics.Id, target.PanelId);
     }
 
     [Fact]
@@ -3406,59 +3598,20 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
-    public async Task Agent_selected_terminals_refuses_a_sixty_fifth_choice()
+    public async Task Opening_a_workspace_with_sixty_five_panels_fails_without_registration()
     {
-        var provider = CreateAgentProvider();
-        using var agentRuntime = new RecordingGovernedAgentRuntime();
-        using var aiProfiles = new FixedAiProfileRuntime([provider]);
-        var (client, _) = CreateSessionClient();
-        var snapshot = CreateAgentSelectionLimitCatalogSnapshot();
+        var (client, recorder) = CreateSessionClient();
+        var snapshot = CreateWorkspacePanelLimitCatalogSnapshot();
         Assert.True(LayoutValidator.Validate(snapshot.Layouts[0].Value).IsValid);
         Assert.True(WorkspaceValidator.Validate(snapshot.Workspaces[0].Value).IsValid);
-        using var viewModel = CreateViewModel(
-            client,
-            snapshot,
-            agentRuntime: agentRuntime,
-            aiProfiles: aiProfiles);
-        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
-        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
-            viewModel.RuntimeWorkspace);
-        await AwaitTerminalPanelPlansAsync(workspace);
-        Assert.Empty(viewModel.AgentTerminalSelectionOptions);
+        using var viewModel = CreateViewModel(client, snapshot);
 
-        ObserveTerminalPanelsActive(workspace);
-
+        Assert.False(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.Null(viewModel.RuntimeWorkspace);
+        Assert.Empty(recorder.Registrations);
         Assert.Equal(
-            AgentTarget.SelectedPanels.MaximumPanelCount + 1,
-            viewModel.AgentTerminalSelectionOptions.Count);
-        var validChoices = viewModel.AgentTerminalSelectionOptions
-            .Take(AgentTarget.SelectedPanels.MaximumPanelCount)
-            .ToArray();
-        foreach (var choice in validChoices)
-        {
-            choice.IsSelected = true;
-        }
-
-        var validSelection = validChoices
-            .Select(choice => (choice.TabId, choice.PanelId))
-            .ToHashSet();
-        var sixtyFifth = viewModel.AgentTerminalSelectionOptions[^1];
-        sixtyFifth.IsSelected = true;
-
-        Assert.False(sixtyFifth.IsSelected);
-        Assert.Equal(
-            AgentTarget.SelectedPanels.MaximumPanelCount,
-            viewModel.AgentSelectedTerminalCount);
-        Assert.Equal(
-            validSelection,
-            viewModel.AgentTerminalSelectionOptions
-                .Where(choice => choice.IsSelected)
-                .Select(choice => (choice.TabId, choice.PanelId))
-                .ToHashSet());
-        Assert.True(viewModel.HasAgentTerminalSelectionError);
-        Assert.Equal(
-            $"Select no more than {AgentTarget.SelectedPanels.MaximumPanelCount} terminals.",
-            viewModel.AgentTerminalSelectionStatus);
+            $"A workspace can contain at most {WorkspaceInstance.MaximumPanelCount} panels.",
+            viewModel.OperationError);
     }
 
     [Fact]
@@ -3660,12 +3813,17 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentRuntime: agentRuntime,
             aiProfiles: aiProfiles);
         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.AddDatabaseTabAsync());
         var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
-        var nonTerminalTab = workspace.Tabs[1];
-        Assert.DoesNotContain(
-            nonTerminalTab.Panels,
-            panel => panel.Kind == PanelKind.Terminal);
-        Assert.True(await viewModel.ActivateTabAsync(nonTerminalTab.Id));
+        var databaseTab = Assert.IsType<RuntimeTabViewModel>(workspace.ActiveTab);
+        var databasePanel = Assert.IsAssignableFrom<RuntimePanelViewModel>(
+            databaseTab.ActivePanel);
+        Assert.Equal(
+            PanelKind.DatabaseViewer,
+            databasePanel.Kind);
+        viewModel.SelectedAgentRunScope = Assert.Single(
+            viewModel.AgentRunScopeOptions,
+            option => option.Kind == AgentRunScopeKind.ActivePanel);
         viewModel.AgentChat!.Prompt = "Try to target a non-agent panel.";
 
         await viewModel.SendAgentPromptAsync();
@@ -3673,8 +3831,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(0, agentRuntime.SendCount);
         Assert.Equal("Try to target a non-agent panel.", viewModel.AgentChat.Prompt);
         Assert.Equal(
-            "Select an active terminal, browser, File Viewer, or hosted "
-            + "Process Monitor panel, or choose a broader agent scope.",
+            "Select an active terminal, browser, File Viewer, hosted Statistics, "
+            + "or hosted Process Monitor panel, or choose a broader agent scope.",
             viewModel.AgentChat.Status);
     }
 
@@ -3881,7 +4039,6 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             viewModel.IsSecretsSettingsVisible,
             viewModel.IsDiagnosticsSettingsVisible,
             viewModel.IsAgentSettingsVisible,
-            viewModel.IsMcpSettingsVisible,
             viewModel.IsAboutSettingsVisible,
         }.Count(isVisible => isVisible);
 
@@ -3905,7 +4062,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IConnectionRuntime? connectionRuntime = null,
         IFilePanelClient? filePanelClient = null,
         IFileTransferQueueClient? fileTransferQueueClient = null,
-        IDockerEngineClient? dockerEngineClient = null) =>
+        IDockerEngineClient? dockerEngineClient = null,
+        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -3917,7 +4075,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             connectionRuntime,
             filePanelClient,
             fileTransferQueueClient,
-            dockerEngineClient);
+            dockerEngineClient,
+            agentRuntimeFactory);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -3930,7 +4089,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IConnectionRuntime? connectionRuntime = null,
         IFilePanelClient? filePanelClient = null,
         IFileTransferQueueClient? fileTransferQueueClient = null,
-        IDockerEngineClient? dockerEngineClient = null)
+        IDockerEngineClient? dockerEngineClient = null,
+        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null)
     {
         var files = new EmptyFileClients();
         return new MainWindowViewModel(
@@ -3946,7 +4106,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentChatRuntime: agentRuntime,
             agentApprovalPrincipal: approvalPrincipal,
             browserRendererViewFactory: browserRendererFactory,
-            dockerEngineClient: dockerEngineClient);
+            dockerEngineClient: dockerEngineClient,
+            agentRuntimeFactory: agentRuntimeFactory);
     }
 
     private sealed class SingleContainerDockerClient : IDockerEngineClient
@@ -4343,7 +4504,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             []);
     }
 
-    private static DefinitionCatalogSnapshot CreateAgentSelectionLimitCatalogSnapshot()
+    private static DefinitionCatalogSnapshot CreateWorkspacePanelLimitCatalogSnapshot()
     {
         var layout = new LayoutDefinition(
             new LayoutId("agent-selection-limit-layout"),
@@ -4803,6 +4964,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public bool AcceptProcessMonitorSessions { get; set; }
 
+        public bool AcceptStatisticsSessions { get; set; }
+
         public bool WorkspaceQueryTokenWasCancellationRequestedOnEntry { get; private set; }
 
         public SessionId? NextRegistrationSessionId { get; set; }
@@ -4920,8 +5083,13 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     when args is [ActivateWorkspacePanelRequest request, OperationContext context, ..] =>
                     ActivatePanel(request, context),
                 nameof(ISessionHostClient.EnsureStatisticsSessionAsync)
-                    when args is [EnsureStatisticsSessionRequest, ..] =>
-                    RejectStatisticsSession(),
+                    when args is
+                    [
+                        EnsureStatisticsSessionRequest request,
+                        ..,
+                        CancellationToken cancellationToken,
+                    ] =>
+                    ResolveStatisticsSession(request, cancellationToken),
                 nameof(ISessionHostClient.EnsureProcessMonitorSessionAsync)
                     when args is
                     [
@@ -5120,14 +5288,39 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             }
         }
 
-        private ValueTask<HostResult<SessionSnapshot>> RejectStatisticsSession()
+        private ValueTask<HostResult<SessionSnapshot>> ResolveStatisticsSession(
+            EnsureStatisticsSessionRequest request,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _statisticsEnsureCount);
-            return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
-                HostError.Create(
-                    HostErrorCode.CapabilityNotSupported,
-                    "The test host does not provide statistics samples."),
-                0));
+            if (!AcceptStatisticsSessions)
+            {
+                return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
+                    HostError.Create(
+                        HostErrorCode.CapabilityNotSupported,
+                        "The test host does not provide statistics samples."),
+                    0));
+            }
+
+            var descriptor = new SessionDescriptor(
+                request.SessionId,
+                PanelKind.Statistics,
+                SessionLifecycle.Active,
+                SessionHealth.Healthy,
+                request.Owner,
+                new CapabilitySet(
+                [
+                    SessionCapabilities.AttachRead,
+                    SessionCapabilities.StatisticsRead,
+                ]),
+                Revision: 1,
+                HasActiveWork: false,
+                StatusDetail: "Ready");
+            return ValueTask.FromResult(
+                HostResult<SessionSnapshot>.Succeed(
+                    new SessionSnapshot(descriptor, 1, [], null),
+                    resultingRevision: 1));
         }
 
         private ValueTask<HostResult<SessionSnapshot>> ResolveProcessMonitorSession(
@@ -5635,6 +5828,23 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
+    private sealed class RecordingAgentWorkspaceRuntimeFactory
+        : IAgentWorkspaceRuntimeFactory
+    {
+        public List<WorkspaceInstanceId> CreatedWorkspaceIds { get; } = [];
+
+        public List<AgentConversationScopeId> CreatedScopes { get; } = [];
+
+        public IGovernedAgentRuntime Create(
+            WorkspaceInstanceId workspaceId,
+            AgentConversationScopeId conversationScopeId)
+        {
+            CreatedWorkspaceIds.Add(workspaceId);
+            CreatedScopes.Add(conversationScopeId);
+            return new RecordingGovernedAgentRuntime();
+        }
+    }
+
     private sealed class FixedAiProfileRuntime(
         IReadOnlyList<AiProviderProfileDescriptor> profiles)
         : IAiProviderProfileRuntime
@@ -5862,6 +6072,29 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         public ValueTask<SecretVaultResult<SecretMetadata>> GetMetadataAsync(
             GetSecretMetadataRequest request,
             CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class MemoryAgentPolicyStore : IAgentPolicyPreferenceStore
+    {
+        public AgentPolicy? Policy { get; private set; }
+
+        public ValueTask<ApplicationRunResult<AgentPolicy?>> ReadAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                ApplicationRunResult<AgentPolicy?>.Success(Policy));
+        }
+
+        public ValueTask<ApplicationRunResult<Unit>> WriteAsync(
+            AgentPolicy policy,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Policy = policy;
+            return ValueTask.FromResult(
+                ApplicationRunResult<Unit>.Success(Unit.Value));
+        }
     }
 
     private sealed class SuccessfulAuditStore : IAuditStore

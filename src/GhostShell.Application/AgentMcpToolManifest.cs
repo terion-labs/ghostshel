@@ -37,17 +37,68 @@ public sealed record AgentMcpToolManifest
         JsonElement inputSchema,
         AgentActionDigest opaqueToolIdentity,
         bool toolNameRedacted = false)
+        : this(
+            profileId,
+            profileRevision,
+            profileName,
+            McpServerTransportKind.Stdio,
+            executable,
+            workingDirectory,
+            serverName,
+            serverVersion,
+            protocolVersion,
+            toolName,
+            inputSchema,
+            opaqueToolIdentity,
+            toolNameRedacted)
+    {
+    }
+
+    public AgentMcpToolManifest(
+        McpServerProfileId profileId,
+        long profileRevision,
+        string profileName,
+        McpServerTransportKind transportKind,
+        string transportTarget,
+        string? workingDirectory,
+        string serverName,
+        string serverVersion,
+        string protocolVersion,
+        string toolName,
+        JsonElement inputSchema,
+        AgentActionDigest opaqueToolIdentity,
+        bool toolNameRedacted = false)
     {
         RequireText(profileId.Value, 256, nameof(profileId));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(profileRevision);
         ProfileId = profileId;
         ProfileRevision = profileRevision;
         ProfileName = RequireText(profileName, 128, nameof(profileName));
-        Executable = RequireText(executable, 2 * 1024, nameof(executable));
-        WorkingDirectory = RequireText(
-            workingDirectory,
-            AgentApprovalPresentation.MaximumWorkingDirectoryBytes,
-            nameof(workingDirectory));
+        if (!Enum.IsDefined(transportKind))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(transportKind),
+                transportKind,
+                null);
+        }
+
+        TransportKind = transportKind;
+        TransportTarget = RequireText(
+            transportTarget,
+            McpServerProfile.MaximumEndpointBytes,
+            nameof(transportTarget));
+        WorkingDirectory = transportKind switch
+        {
+            McpServerTransportKind.Stdio => RequireText(
+                workingDirectory!,
+                AgentApprovalPresentation.MaximumWorkingDirectoryBytes,
+                nameof(workingDirectory)),
+            McpServerTransportKind.StreamableHttp
+                when workingDirectory is null => null,
+            _ => throw new ArgumentException(
+                "A remote MCP manifest cannot define a process working directory.",
+                nameof(workingDirectory)),
+        };
         ServerName = RequireText(serverName, 256, nameof(serverName));
         ServerVersion = RequireText(serverVersion, 256, nameof(serverVersion));
         ProtocolVersion = RequireText(
@@ -78,9 +129,15 @@ public sealed record AgentMcpToolManifest
 
     public string ProfileName { get; }
 
-    public string Executable { get; }
+    public McpServerTransportKind TransportKind { get; }
 
-    public string WorkingDirectory { get; }
+    public string TransportTarget { get; }
+
+    public string Executable => TransportKind == McpServerTransportKind.Stdio
+        ? TransportTarget
+        : string.Empty;
+
+    public string? WorkingDirectory { get; }
 
     public string ServerName { get; }
 
@@ -222,8 +279,9 @@ public sealed record AgentMcpToolManifest
             manifest.ProfileRevision.ToString(
                 System.Globalization.CultureInfo.InvariantCulture));
         AppendCanonical(hash, manifest.ProfileName);
-        AppendCanonical(hash, manifest.Executable);
-        AppendCanonical(hash, manifest.WorkingDirectory);
+        AppendCanonical(hash, manifest.TransportKind.ToString());
+        AppendCanonical(hash, manifest.TransportTarget);
+        AppendCanonical(hash, manifest.WorkingDirectory ?? string.Empty);
         AppendCanonical(hash, manifest.ServerName);
         AppendCanonical(hash, manifest.ServerVersion);
         AppendCanonical(hash, manifest.ProtocolVersion);

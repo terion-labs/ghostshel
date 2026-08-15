@@ -70,16 +70,21 @@ closed.
 
 For an exact panel or connection-session target, the provider schema omits
 `panel_id`; the host-owned target supplies that identity. For a broader
-current-tab or workspace scope, every browser schema requires `panel_id`, even
-when only one browser is currently eligible. Its enum contains only fresh
-active browser panels that support that operation. The runtime parses against a
-fresh resolution and the composer narrows the action to one exact
-panel/session before approval.
+internal `OpenTab` target or Workspace target, every browser schema requires
+`panel_id`, even when only one browser is currently eligible. Its enum contains
+only fresh active browser panels that support that operation. The runtime
+parses against a fresh resolution and the composer narrows the action to one
+exact panel/session before approval.
 
-Current-tab and workspace runs pin their initial ordered mixed membership of
-supported terminal and browser panels. Membership drift, session replacement,
-or capability loss fails closed rather than shrinking or retargeting the run.
-`Selected terminals` remains an explicitly terminal-only subset.
+Workspace and internal `OpenTab` runs pin their enclosing identity rather than
+their initial mixed panel membership. The runtime refreshes eligible browser
+topology and rebuilds tool schemas between provider rounds. Once a proposal
+selects a current browser, its narrowed panel/session and attachment binding is
+freshly revalidated through authorization and dispatch; disappearance,
+replacement, or capability loss during that action fails closed. Exact and
+selected-terminal targets remain internal fixed-membership contracts, and the
+selected variant remains terminal-only. Workspace is the only visible desktop
+scope.
 
 The session host requires one exact current interactive browser attachment
 owned by the authenticated desktop client that approves the action. It captures
@@ -178,8 +183,9 @@ application and session-host ports.
   embedded browser the user sees. Snapshot, click, fill, and check contracts remain
   continuously tested without being advertised by production.
 - Browser data and navigation can be configured and audited independently.
-- Broad scopes remain explicit at the provider schema and are narrowed before
-  approval.
+- Broad Workspace and internal `OpenTab` scopes remain explicit at the provider
+  schema, refresh eligible topology between rounds, and are narrowed to one
+  freshly bound exact panel/session before approval.
 - Automatic navigation is deliberately conservative when the destination
   origin cannot be known, even though the current broker already escalates all
   browser navigation mutations to exact human approval.

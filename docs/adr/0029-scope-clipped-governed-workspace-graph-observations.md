@@ -12,16 +12,18 @@
 
 The built-in agent needs to understand the tabs and panels that the user has
 already placed inside a run's target. Giving it an ambient workspace browser
-would widen exact panel, connection-session, tab, and selected-panel scopes,
+would widen exact panel, connection-session, `OpenTab`, and selected-panel scopes,
 leak sibling topology, and turn provider-chosen identifiers into discovery
 authority.
 
 The host graph also changes for two different reasons. Membership, order,
-ownership, and panel kind are authorization-relevant structure. Titles, focus,
-visibility, lifecycle, graph revision, and sequence are observations that can
-refresh without changing which objects the run owns. Treating both classes as
-one fingerprint would either accept structural drift or unnecessarily stop a
-run for a presentation-only refresh.
+ownership, and panel kind are authorization-relevant structure for one action;
+titles, focus, visibility, lifecycle, graph revision, and sequence are
+observations. Workspace and `OpenTab` targets deliberately accept a new live
+eligible topology between provider rounds while retaining their enclosing
+identity. Exact and selected targets retain fixed membership. Treating all
+graph change as either permanently pinned or permanently fluid would therefore
+reject legitimate Workspace evolution or accept unsafe action retargeting.
 
 ## Decision
 
@@ -42,11 +44,13 @@ and the agent runtime cannot call the host without this path.
 
 The host resolves the original immutable `AgentTarget` and projects only graph
 objects already inside it. A panel or current connection-session scope contains
-one exact current graph panel. An open-tab scope contains that tab's current
-panels. A workspace scope contains that one workspace. A selected-panel scope
-contains only the exact selected set. `workspace.list` therefore returns the
-workspace shell already implied by the target; it is not ambient workspace
-discovery.
+one exact current graph panel. An internal `OpenTab` scope contains that exact
+tab's current panels. A Workspace scope contains that one exact workspace. An
+internal selected-panel scope contains only the exact selected set.
+`workspace.list` therefore returns the workspace shell already implied by the
+target; it is not ambient workspace discovery. Workspace is the only target
+choice exposed by the current desktop UI; the other variants remain closed
+internal/testable contracts.
 
 Graph observations include registered Terminal, Browser, File Viewer,
 Statistics, and Process Monitor panels. They require every in-scope panel to be
@@ -69,12 +73,20 @@ out-of-scope count from which sibling topology could be inferred.
 
 ### Structural binding and refresh
 
-Preparation binds the run target to the ordered, scope-relative sequence of
-`window/workspace/tab/panel/kind` identities. SessionHost reconstructs the same
-clipped graph while holding its graph gate, consumes the one-action permit, and
-compares the fresh structural binding before projection. In-scope addition,
-removal, reordering, ownership change, or kind change fails closed as
-`target_changed`.
+Preparation for one graph action binds its current ordered, scope-relative
+sequence of `window/workspace/tab/panel/kind` identities. SessionHost
+reconstructs the same clipped graph while holding its graph gate, consumes the
+one-action permit, and compares the fresh structural binding before projection.
+Addition, removal, reordering, ownership change, or kind change during that
+one-action authorization window fails closed as `target_changed`.
+
+Across provider rounds, Workspace and internal `OpenTab` targets keep only
+their exact enclosing identity pinned. The runtime re-inspects their current
+eligible topology, replaces its context projection, and rebuilds contributed
+tool schemas. A graph change completed before that refresh is accepted as the
+new action-preparation baseline; it does not require a new run. Exact panel,
+connection-session, and selected-set targets instead keep their complete
+ordered structural binding for the run and fail closed on membership drift.
 
 Raw global tab and panel ordinals are deliberately absent from this binding.
 Adding or reordering a sibling outside an exact or otherwise clipped scope
@@ -86,12 +98,16 @@ projection because they are global clocks that would otherwise disclose
 unrelated sibling activity. They are returned only when the run target is the
 complete workspace.
 
-The governed runtime pins this structural sequence independently from its
-operational session binding. Title, focus, visibility, lifecycle, workspace
-revision, and graph-sequence refreshes are allowed. Graph observation can
-therefore continue while an otherwise unchanged session moves from `Active` to
-`Starting` or `Closing`; terminal, browser, and File Viewer operations still
-require their exact usable operational binding and fail closed.
+For exact and selected targets, the governed runtime pins the structural
+sequence independently from operational session state. For Workspace and
+`OpenTab`, it retains the per-action sequence only long enough to prevent a
+time-of-check/time-of-use retarget, then accepts the next round's freshly
+resolved sequence. Title, focus, visibility, lifecycle, workspace revision,
+and graph-sequence refreshes remain non-structural within one action. Graph
+observation can therefore continue while an otherwise unchanged session moves
+from `Active` to `Starting` or `Closing`; terminal, browser, and File Viewer
+operations still require their exact usable operational binding and fail
+closed.
 
 ### Bounded hostile metadata
 
@@ -114,10 +130,12 @@ excluded from durable audit.
 
 - The agent can reason about the user's current layout, including non-session
   panels, without acquiring ambient workspace discovery.
-- Exact and clipped scopes remain stable across unrelated sibling changes and
-  presentation-only refreshes.
-- Structural drift, session supersession, missing graph registration,
-  malformed input, and oversized or unsafe output fail closed.
+- Exact and selected scopes remain stable across unrelated sibling changes and
+  presentation-only refreshes. Workspace and `OpenTab` retain enclosing
+  identity while accepting current eligible topology at round boundaries.
+- Structural drift during one action, fixed-target membership drift, session
+  supersession, missing graph registration, malformed input, and oversized or
+  unsafe output fail closed.
 - Fixed paging covers at most the first 64 tabs or panels. Search, filters,
   arbitrary continuation, cross-window discovery, and graph mutation remain
   outside this observation slice.

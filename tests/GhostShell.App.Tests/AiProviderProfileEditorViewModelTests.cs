@@ -125,6 +125,32 @@ public sealed class AiProviderProfileEditorViewModelTests
     }
 
     [Fact]
+    public async Task Configuration_only_test_does_not_claim_a_live_provider_connection()
+    {
+        using var runtime = new StubRuntime
+        {
+            Result = new AiProviderTestResult(
+                true,
+                "ai_provider_test_configuration_valid",
+                "The configured OAuth session is readable.",
+                [new AiProviderModelDescriptor("model", "Model")]),
+        };
+        var editor = new AiProviderProfileEditorViewModel(runtime, [])
+        {
+            Name = "Local",
+            Kind = AiProviderKind.OpenAiCompatible,
+            Endpoint = "http://localhost:11434/v1/",
+            DefaultModel = "model",
+            UseNoAuthentication = true,
+        };
+
+        await editor.TestAsync(CancellationToken.None);
+
+        Assert.Equal("Configuration valid", editor.TestStatus);
+        Assert.DoesNotContain("connected", editor.TestStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Existing_scoped_secret_is_the_only_reusable_option()
     {
         using var runtime = new StubRuntime();
@@ -147,6 +173,298 @@ public sealed class AiProviderProfileEditorViewModelTests
 
         Assert.Contains(editor.SecretOptions, option => option.Reference == own.Reference);
         Assert.DoesNotContain(editor.SecretOptions, option => option.Reference == other.Reference);
+    }
+
+    [Fact]
+    public void Provider_catalog_drives_display_defaults_and_authentication_choices()
+    {
+        using var runtime = new StubRuntime();
+        var editor = new AiProviderProfileEditorViewModel(runtime, []);
+
+        Assert.Equal(AiProviderCatalog.Definitions.Count, editor.ProviderOptions.Count);
+        Assert.Contains(editor.ProviderOptions, option =>
+            option.Kind == AiProviderKind.MoonshotAi
+            && option.DisplayName == "Moonshot AI");
+
+        editor.Kind = AiProviderKind.GitHubCopilot;
+
+        Assert.Equal("gpt-5.6-terra", editor.DefaultModel);
+        Assert.Equal(AiProviderProtocol.GitHubCopilot.ToString(), editor.ProviderProtocol);
+        Assert.Equal(
+            AiProviderEditorAuthenticationMode.OAuthDevice,
+            editor.SelectedAuthentication!.Mode);
+        Assert.Single(editor.AuthenticationOptions);
+
+        editor.Kind = AiProviderKind.Bedrock;
+        Assert.Equal(
+            AiProviderEditorAuthenticationMode.AwsCredentialChain,
+            editor.SelectedAuthentication!.Mode);
+    }
+
+    [Fact]
+    public void Editor_distinguishes_single_values_from_selectable_options()
+    {
+        using var runtime = new StubRuntime();
+        var editor = new AiProviderProfileEditorViewModel(runtime, []);
+
+        Assert.True(editor.HasMultipleAuthenticationOptions);
+        Assert.False(editor.HasSingleAuthenticationOption);
+        Assert.True(editor.HasSingleCredentialOption);
+        Assert.False(editor.HasMultipleCredentialOptions);
+
+        editor.Kind = AiProviderKind.GitHubCopilot;
+
+        Assert.True(editor.HasSingleAuthenticationOption);
+        Assert.False(editor.HasMultipleAuthenticationOptions);
+    }
+
+    [Fact]
+    public async Task Changing_authentication_method_cancels_the_old_attempt_and_enables_device_flow()
+    {
+        var completion = new TaskCompletionSource<AiProviderAuthenticationResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var runtime = new StubRuntime();
+        using var authentication = new StubAuthenticationRuntime
+        {
+            Completion = completion.Task,
+        };
+        var editor = new AiProviderProfileEditorViewModel(
+            runtime,
+            [],
+            authenticationRuntime: authentication);
+        editor.SelectedAuthentication = editor.AuthenticationOptions.Single(option =>
+            option.Mode == AiProviderEditorAuthenticationMode.OAuthBrowser);
+
+        var browserLaunch = Assert.IsType<AiProviderAuthenticationLaunch>(
+            await editor.BeginAuthenticationAsync(CancellationToken.None));
+
+        Assert.True(editor.IsAuthenticating);
+        Assert.False(editor.CanAuthenticate);
+        editor.SelectedAuthentication = editor.AuthenticationOptions.Single(option =>
+            option.Mode == AiProviderEditorAuthenticationMode.OAuthDevice);
+
+        Assert.True(authentication.LastCancellationToken.IsCancellationRequested);
+        Assert.False(editor.IsAuthenticating);
+        Assert.True(editor.CanAuthenticate);
+        Assert.Equal(
+            "Ready to start interactive authentication.",
+            editor.AuthenticationStatus);
+
+        completion.SetResult(AiProviderAuthenticationResult.Failure(
+            "ai_provider_authentication_denied",
+            "The old attempt failed."));
+        await browserLaunch.Completion;
+
+        Assert.True(editor.CanAuthenticate);
+        Assert.Equal(
+            "Ready to start interactive authentication.",
+            editor.AuthenticationStatus);
+    }
+
+    [Fact]
+    public async Task Completed_oauth_flow_saves_only_the_vault_session_reference()
+    {
+        using var runtime = new StubRuntime();
+        using var authentication = new StubAuthenticationRuntime();
+        var editor = new AiProviderProfileEditorViewModel(
+            runtime,
+            [],
+            authenticationRuntime: authentication)
+        {
+            Name = "OpenAI OAuth",
+        };
+        editor.SelectedAuthentication = editor.AuthenticationOptions.Single(option =>
+            option.Mode == AiProviderEditorAuthenticationMode.OAuthBrowser);
+
+        var launch = Assert.IsType<AiProviderAuthenticationLaunch>(
+            await editor.BeginAuthenticationAsync(CancellationToken.None));
+        await launch.Completion;
+        var request = editor.CreateSaveRequest();
+
+        Assert.Equal(new Uri("https://auth.example.test/authorize"), launch.AuthorizationUri);
+        var oauth = Assert.IsType<AiProviderAuthentication.OAuth>(
+            request.Profile.Authentication);
+        Assert.Equal(authentication.Session, oauth.Session);
+        Assert.Equal(AiProviderOAuthFlow.Browser, oauth.Flow);
+        Assert.DoesNotContain(
+            "raw-access-token",
+            System.Text.Json.JsonSerializer.Serialize(request.Profile),
+            StringComparison.Ordinal);
+        Assert.Equal(
+            "Connected. The token session is stored in the OS vault.",
+            editor.AuthenticationStatus);
+    }
+
+    [Fact]
+    public async Task Token_exchange_failure_is_presented_with_a_safe_actionable_reason()
+    {
+        using var runtime = new StubRuntime();
+        using var authentication = new StubAuthenticationRuntime
+        {
+            Completion = Task.FromResult(AiProviderAuthenticationResult.Failure(
+                "ai_provider_oauth_token_exchange_invalid_response",
+                "provider detail must not be displayed")),
+        };
+        var editor = new AiProviderProfileEditorViewModel(
+            runtime,
+            [],
+            authenticationRuntime: authentication);
+        editor.SelectedAuthentication = editor.AuthenticationOptions.Single(option =>
+            option.Mode == AiProviderEditorAuthenticationMode.OAuthDevice);
+
+        var launch = Assert.IsType<AiProviderAuthenticationLaunch>(
+            await editor.BeginAuthenticationAsync(CancellationToken.None));
+        await launch.Completion;
+
+        Assert.False(editor.IsAuthenticating);
+        Assert.Equal(
+            "OpenAI returned an invalid OAuth token response.",
+            editor.AuthenticationStatus);
+        Assert.DoesNotContain("provider detail", editor.AuthenticationStatus);
+    }
+
+    [Fact]
+    public async Task Authentication_start_failure_is_normalized_without_exception_or_detail_leakage()
+    {
+        using var runtime = new StubRuntime();
+        using var authentication = new StubAuthenticationRuntime
+        {
+            StartFailure = new InvalidOperationException("sensitive-provider-detail"),
+        };
+        var editor = new AiProviderProfileEditorViewModel(
+            runtime,
+            [],
+            authenticationRuntime: authentication)
+        {
+            Kind = AiProviderKind.GitHubCopilot,
+            Name = "Copilot",
+        };
+
+        var launch = await editor.BeginAuthenticationAsync(CancellationToken.None);
+
+        Assert.Null(launch);
+        Assert.False(editor.IsAuthenticating);
+        Assert.Equal("Authentication could not be started.", editor.AuthenticationStatus);
+        Assert.DoesNotContain(
+            "sensitive-provider-detail",
+            editor.AuthenticationStatus,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Missing_GhostShell_GitHub_client_id_disables_connect_with_precise_reason()
+    {
+        using var runtime = new StubRuntime();
+        using var authentication = new StubAuthenticationRuntime
+        {
+            Availability = new AiProviderAuthenticationAvailability(
+                false,
+                "ai_provider_github_client_id_unavailable",
+                "GitHub device authorization requires "
+                + "GHOSTSHELL_GITHUB_OAUTH_CLIENT_ID."),
+        };
+        var editor = new AiProviderProfileEditorViewModel(
+            runtime,
+            [],
+            authenticationRuntime: authentication)
+        {
+            Kind = AiProviderKind.GitHubCopilot,
+        };
+
+        var launch = await editor.BeginAuthenticationAsync(CancellationToken.None);
+
+        Assert.False(editor.IsInteractiveAuthenticationAvailable);
+        Assert.False(editor.CanAuthenticate);
+        Assert.Null(launch);
+        Assert.Equal(0, authentication.StartCount);
+        Assert.Contains(
+            "GHOSTSHELL_GITHUB_OAUTH_CLIENT_ID",
+            editor.AuthenticationStatus,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OAuth_editor_pins_and_locks_the_provider_endpoint()
+    {
+        using var runtime = new StubRuntime();
+        using var authentication = new StubAuthenticationRuntime();
+        var profile = new AiProviderProfile(
+            new AiProviderProfileId("copilot-oauth-endpoint"),
+            AiProviderProfile.CurrentSchemaVersion,
+            "Copilot",
+            AiProviderKind.GitHubCopilot,
+            new Uri("https://attacker.example.test/steal/"),
+            new AiProviderAuthentication.OAuth(
+                new SecretRef("copilot-oauth-session"),
+                AiProviderOAuthFlow.Device),
+            "gpt-5.3-codex",
+            order: 0);
+
+        var editor = new AiProviderProfileEditorViewModel(
+            runtime,
+            [],
+            profile,
+            expectedRevision: 1,
+            authenticationRuntime: authentication);
+
+        Assert.False(editor.IsEndpointEditable);
+        Assert.Contains("pinned", editor.EndpointPolicy, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.GitHubCopilot).AbsoluteUri,
+            editor.Endpoint);
+        Assert.Equal(
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.GitHubCopilot),
+            editor.CreateSaveRequest().Profile.Endpoint);
+    }
+
+    [Fact]
+    public async Task Unexpected_authentication_completion_fault_is_normalized()
+    {
+        using var runtime = new StubRuntime();
+        using var authentication = new StubAuthenticationRuntime
+        {
+            Completion = Task.FromException<AiProviderAuthenticationResult>(
+                new InvalidOperationException("sensitive-provider-detail")),
+        };
+        var editor = new AiProviderProfileEditorViewModel(
+            runtime,
+            [],
+            authenticationRuntime: authentication)
+        {
+            Name = "OpenAI OAuth",
+        };
+        editor.SelectedAuthentication = editor.AuthenticationOptions.Single(option =>
+            option.Mode == AiProviderEditorAuthenticationMode.OAuthBrowser);
+
+        var launch = Assert.IsType<AiProviderAuthenticationLaunch>(
+            await editor.BeginAuthenticationAsync(CancellationToken.None));
+        await launch.Completion;
+
+        Assert.False(editor.IsAuthenticating);
+        Assert.Equal("Authentication failed.", editor.AuthenticationStatus);
+    }
+
+    [Theory]
+    [InlineData(AiProviderKind.Google)]
+    [InlineData(AiProviderKind.Bedrock)]
+    public async Task Cataloged_native_protocol_without_runtime_is_visibly_fail_closed(
+        AiProviderKind kind)
+    {
+        using var runtime = new StubRuntime();
+        var editor = new AiProviderProfileEditorViewModel(runtime, [])
+        {
+            Kind = kind,
+            Name = kind.ToString(),
+        };
+
+        await editor.TestAsync(CancellationToken.None);
+
+        Assert.False(editor.IsProviderRuntimeSupported);
+        Assert.False(editor.CanTest);
+        Assert.Contains("not implemented", editor.ProviderAvailability);
+        Assert.Equal("Provider unavailable", editor.TestStatus);
+        Assert.Null(runtime.LastProfile);
+        Assert.Throws<ArgumentException>(editor.CreateSaveRequest);
     }
 
     private static AiProviderProfile Profile(
@@ -206,6 +524,70 @@ public sealed class AiProviderProfileEditorViewModelTests
             cancellationToken.ThrowIfCancellationRequested();
             ProfilesChanged?.Invoke(this, EventArgs.Empty);
             return ValueTask.CompletedTask;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class StubAuthenticationRuntime : IAiProviderAuthenticationRuntime
+    {
+        public SecretRef Session { get; } = new("oauth-session-reference");
+
+        public Exception? StartFailure { get; init; }
+
+        public Task<AiProviderAuthenticationResult>? Completion { get; init; }
+
+        public AiProviderAuthenticationAvailability Availability { get; init; } =
+            AiProviderAuthenticationAvailability.Available;
+
+        public int StartCount { get; private set; }
+
+        public CancellationToken LastCancellationToken { get; private set; }
+
+        public AiProviderAuthenticationAvailability GetAvailability(
+            AiProviderKind provider,
+            AiProviderOAuthFlow flow) => Availability;
+
+        public ValueTask<AiProviderBrowserAuthorization> StartBrowserAsync(
+            AiProviderProfileId profileId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastCancellationToken = cancellationToken;
+            StartCount++;
+            if (StartFailure is not null)
+            {
+                throw StartFailure;
+            }
+
+            return ValueTask.FromResult(new AiProviderBrowserAuthorization(
+                new Uri("https://auth.example.test/authorize"),
+                Completion
+                ?? Task.FromResult(AiProviderAuthenticationResult.Success(Session))));
+        }
+
+        public ValueTask<AiProviderDeviceAuthorization> StartDeviceAsync(
+            AiProviderProfileId profileId,
+            AiProviderKind provider,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastCancellationToken = cancellationToken;
+            StartCount++;
+            if (StartFailure is not null)
+            {
+                throw StartFailure;
+            }
+
+            return ValueTask.FromResult(new AiProviderDeviceAuthorization(
+                new Uri("https://auth.example.test/device"),
+                "TEST-CODE",
+                TimeSpan.FromSeconds(5),
+                DateTimeOffset.UtcNow.AddMinutes(5),
+                Completion
+                ?? Task.FromResult(AiProviderAuthenticationResult.Success(Session))));
         }
 
         public void Dispose()

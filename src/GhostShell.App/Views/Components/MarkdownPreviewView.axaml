@@ -1,5 +1,6 @@
 <UserControl
     x:Class="GhostShell.App.Views.Components.MarkdownPreviewView"
+    x:Name="Root"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
@@ -13,12 +14,10 @@
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
   </UserControl.Styles>
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-    <StackPanel
-        x:Name="Blocks"
-        Margin="{controls:Inset Lg}"
-        MaxWidth="820"
-        HorizontalAlignment="Left"
-        Spacing="{DynamicResource ShellSpaceSm}" />
-  </ScrollViewer>
+  <StackPanel
+      x:Name="Blocks"
+      Margin="{Binding Padding, ElementName=Root}"
+      MaxWidth="820"
+      HorizontalAlignment="Stretch"
+      Spacing="{DynamicResource ShellSpaceSm}" />
 </UserControl>

@@ -612,7 +612,7 @@ public sealed class RuntimePanelViewContractTests
             processMonitor.Descendants(),
             element => element.Name.LocalName == "ListBox"
                 && AttributeValue(element, "AutomationProperties.Name")
-                    == "Bounded process list");
+                    == "Process list");
         Assert.Equal("{controls:Inset Xs}", AttributeValue(processList, "Margin"));
     }
 

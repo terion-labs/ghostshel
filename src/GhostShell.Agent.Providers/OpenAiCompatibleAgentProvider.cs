@@ -12,7 +12,8 @@ internal sealed class OpenAiCompatibleAgentProvider(
     AiProviderProfile profile,
     string model,
     AiProviderHttpTransport transport,
-    AiProviderRuntimeLimits limits) : IAgentProvider
+    AiProviderRuntimeLimits limits,
+    AgentServiceTier serviceTier = AgentServiceTier.Automatic) : IAgentProvider
 {
     public async IAsyncEnumerable<AgentProviderEvent> StreamAsync(
         AgentProviderRequest request,
@@ -69,6 +70,15 @@ internal sealed class OpenAiCompatibleAgentProvider(
             "text/event-stream",
             body,
             cancellationToken).ConfigureAwait(false);
+        if (profile.Identity == AiProviderKind.GitHubCopilot)
+        {
+            var initiatedByAgent = request.Messages.LastOrDefault()?.Role
+                == AgentMessageRole.Tool;
+            httpRequest.Headers.TryAddWithoutValidation(
+                "X-Initiator",
+                initiatedByAgent ? "agent" : "user");
+        }
+
         using var response = await transport
             .SendAsync(profile, httpRequest, cancellationToken)
             .ConfigureAwait(false);
@@ -133,8 +143,46 @@ internal sealed class OpenAiCompatibleAgentProvider(
             limits.MaximumRequestBytes,
             writer =>
             {
+                if (request.Messages.Any(message => message.ProviderReplayState is not null))
+                {
+                    throw AiProviderClientException.Create(
+                        AiProviderRuntimeErrorCode.InvalidConfiguration);
+                }
+
+                if (!profile.Capabilities.SupportsImageInput
+                    && request.Messages.Any(message => message.Images.Length > 0))
+                {
+                    throw AiProviderClientException.Create(
+                        AiProviderRuntimeErrorCode.InvalidConfiguration);
+                }
+
+                if (request.ReasoningEffort != AgentReasoningEffort.Automatic)
+                {
+                    // This protocol is implemented by unrelated providers with
+                    // incompatible reasoning controls. Never silently reinterpret
+                    // a user-selected effort as a vendor-specific extension.
+                    throw AiProviderClientException.Create(
+                        AiProviderRuntimeErrorCode.InvalidConfiguration);
+                }
+
                 writer.WriteStartObject();
                 writer.WriteString("model", model);
+                if (serviceTier != AgentServiceTier.Automatic)
+                {
+                    AiProviderServiceTierPolicy.EnsureSupported(
+                        profile,
+                        model,
+                        serviceTier);
+                    writer.WriteString(
+                        "service_tier",
+                        serviceTier switch
+                        {
+                            AgentServiceTier.Default => "default",
+                            AgentServiceTier.Priority => "priority",
+                            _ => throw AiProviderClientException.Create(
+                                AiProviderRuntimeErrorCode.InvalidConfiguration),
+                        });
+                }
                 writer.WriteBoolean("stream", true);
                 writer.WriteStartArray("messages");
                 foreach (var message in request.Messages)
@@ -178,7 +226,34 @@ internal sealed class OpenAiCompatibleAgentProvider(
                 break;
             case AgentMessageRole.User:
                 writer.WriteString("role", "user");
-                writer.WriteString("content", message.Content);
+                if (message.Images.Length == 0)
+                {
+                    writer.WriteString("content", message.Content);
+                    break;
+                }
+
+                writer.WriteStartArray("content");
+                if (message.Content.Length > 0)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "text");
+                    writer.WriteString("text", message.Content);
+                    writer.WriteEndObject();
+                }
+
+                foreach (var image in message.Images)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "image_url");
+                    writer.WriteStartObject("image_url");
+                    writer.WriteString(
+                        "url",
+                        $"data:{image.MediaType};base64,{Convert.ToBase64String(image.Content)}");
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndArray();
                 break;
             case AgentMessageRole.Assistant:
                 writer.WriteString("role", "assistant");
@@ -235,20 +310,27 @@ internal sealed class OpenAiCompatibleAgentProvider(
     {
         private readonly List<OpenAiToolCall> _toolCalls = [];
         private AgentProviderStopReason? _stopReason;
+        private AgentTokenUsage? _usage;
         private bool _done;
 
         public IReadOnlyList<AgentProviderEvent> Apply(JsonElement root)
         {
-            if (_done
-                || _stopReason is not null
-                || root.ValueKind != JsonValueKind.Object)
+            if (_done || root.ValueKind != JsonValueKind.Object)
             {
                 throw ProtocolError();
             }
 
+            var hasUsage = ReadUsage(root);
             var choices = AiProviderJson.RequiredArray(root, "choices");
             using var enumerator = choices.EnumerateArray();
             if (!enumerator.MoveNext())
+            {
+                return hasUsage && _stopReason is not null
+                    ? []
+                    : throw ProtocolError();
+            }
+
+            if (_stopReason is not null)
             {
                 throw ProtocolError();
             }
@@ -343,8 +425,87 @@ internal sealed class OpenAiCompatibleAgentProvider(
                 toolCall.Complete(events);
             }
 
+            if (_usage is not null)
+            {
+                events.Add(new AgentProviderEvent.Usage(_usage));
+            }
+
             events.Add(new AgentProviderEvent.ResponseCompleted(_stopReason.Value));
             return events;
+        }
+
+        private bool ReadUsage(JsonElement root)
+        {
+            if (!root.TryGetProperty("usage", out var usage)
+                || usage.ValueKind == JsonValueKind.Null)
+            {
+                return false;
+            }
+
+            if (_usage is not null || usage.ValueKind != JsonValueKind.Object)
+            {
+                throw ProtocolError();
+            }
+
+            var input = RequiredTokenCount(usage, "prompt_tokens");
+            var output = RequiredTokenCount(usage, "completion_tokens");
+            var cached = OptionalDetailTokenCount(
+                usage,
+                "prompt_tokens_details",
+                "cached_tokens");
+            var reasoning = OptionalDetailTokenCount(
+                usage,
+                "completion_tokens_details",
+                "reasoning_tokens");
+            if (cached > input || reasoning > output)
+            {
+                throw ProtocolError();
+            }
+
+            _usage = new AgentTokenUsage(input, output, cached, reasoning);
+            return true;
+        }
+
+        private static long OptionalDetailTokenCount(
+            JsonElement usage,
+            string detailName,
+            string tokenName)
+        {
+            if (!usage.TryGetProperty(detailName, out var details)
+                || details.ValueKind == JsonValueKind.Null)
+            {
+                return 0;
+            }
+
+            if (details.ValueKind != JsonValueKind.Object
+                || !details.TryGetProperty(tokenName, out var value))
+            {
+                throw ProtocolError();
+            }
+
+            return TokenCount(value);
+        }
+
+        private static long RequiredTokenCount(JsonElement usage, string name)
+        {
+            if (!usage.TryGetProperty(name, out var value))
+            {
+                throw ProtocolError();
+            }
+
+            return TokenCount(value);
+        }
+
+        private static long TokenCount(JsonElement value)
+        {
+            if (value.ValueKind != JsonValueKind.Number
+                || !value.TryGetInt64(out var count)
+                || count is < 0 or > AgentTokenUsage.MaximumTokenCount)
+            {
+                throw ProtocolError();
+            }
+
+            return count;
         }
 
         private void AppendText(

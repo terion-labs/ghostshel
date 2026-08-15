@@ -44,7 +44,9 @@ public sealed class McpServerProfileTests
             ["issues.list", "repositories.read"],
             restored.EnabledTools);
         Assert.Equal(secret, restored.Environment[1].Reference);
+        Assert.IsType<McpServerTransport.Stdio>(restored.Transport);
         Assert.False(restored.IsEnabled);
+        Assert.Contains("\"$type\":\"stdio\"", json, StringComparison.Ordinal);
         Assert.Contains(secret.Value, json, StringComparison.Ordinal);
         Assert.DoesNotContain("secretValue", json, StringComparison.OrdinalIgnoreCase);
     }
@@ -190,6 +192,111 @@ public sealed class McpServerProfileTests
                     't',
                     McpServerProfile.MaximumToolNameBytes + 1),
             ]));
+    }
+
+    [Fact]
+    public void StreamableHttpRoundTripsEndpointAndOpaqueHeaderReferences()
+    {
+        var authorization = new SecretRef("vault-mcp-authorization");
+        var headers = new[]
+        {
+            new McpServerHttpHeader("X-Tenant", new SecretRef("vault-tenant")),
+            new McpServerHttpHeader("Authorization", authorization),
+        };
+        var profile = new McpServerProfile(
+            new McpServerProfileId("mcp.remote"),
+            McpServerProfile.CurrentSchemaVersion,
+            "Remote MCP",
+            new McpServerTransport.StreamableHttp(
+                new Uri("https://mcp.example.test/rpc"),
+                headers),
+            ["issues.list"]);
+
+        headers[0] = new McpServerHttpHeader(
+            "X-Replaced",
+            new SecretRef("vault-replaced"));
+        var json = JsonSerializer.Serialize(profile);
+        var restored = JsonSerializer.Deserialize<McpServerProfile>(json);
+
+        var transport = Assert.IsType<McpServerTransport.StreamableHttp>(
+            restored!.Transport);
+        Assert.Equal("https://mcp.example.test/rpc", transport.Endpoint.AbsoluteUri);
+        Assert.Equal(
+            ["Authorization", "X-Tenant"],
+            transport.Headers.Select(header => header.Name));
+        Assert.Equal(authorization, transport.Headers[0].Reference);
+        Assert.False(transport.AllowInsecureTransport);
+        Assert.Contains(
+            "\"$type\":\"streamable-http\"",
+            json,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Bearer ", json, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("http://mcp.example.test/rpc")]
+    [InlineData("https://user@mcp.example.test/rpc")]
+    [InlineData("https://mcp.example.test/rpc#fragment")]
+    public void StreamableHttpRejectsUnsafeEndpoints(string endpoint)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new McpServerTransport.StreamableHttp(
+                new Uri(endpoint),
+                []));
+    }
+
+    [Fact]
+    public void PlaintextStreamableHttpRequiresExplicitAcknowledgement()
+    {
+        var transport = new McpServerTransport.StreamableHttp(
+            new Uri("http://127.0.0.1:3000/mcp"),
+            [],
+            allowInsecureTransport: true);
+
+        Assert.True(transport.AllowInsecureTransport);
+    }
+
+    [Theory]
+    [InlineData("http://mcp.example.test/rpc")]
+    [InlineData("http://192.168.1.20:3000/mcp")]
+    public void PlaintextStreamableHttpRejectsNonLoopbackEvenWhenAcknowledged(
+        string endpoint)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new McpServerTransport.StreamableHttp(
+                new Uri(endpoint),
+                [],
+                allowInsecureTransport: true));
+    }
+
+    [Theory]
+    [InlineData("Accept")]
+    [InlineData("Content-Type")]
+    [InlineData("MCP-Session-Id")]
+    [InlineData("MCP-Protocol-Version")]
+    [InlineData("Bad Header")]
+    public void StreamableHttpRejectsReservedOrInvalidHeaderNames(
+        string name)
+    {
+        Assert.Throws<ArgumentException>(() => new McpServerHttpHeader(
+            name,
+            new SecretRef("vault-header")));
+    }
+
+    [Fact]
+    public void StreamableHttpRejectsDuplicateHeaderNamesIgnoringCase()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new McpServerTransport.StreamableHttp(
+                new Uri("https://mcp.example.test/rpc"),
+                [
+                    new McpServerHttpHeader(
+                        "Authorization",
+                        new SecretRef("vault-one")),
+                    new McpServerHttpHeader(
+                        "authorization",
+                        new SecretRef("vault-two")),
+                ]));
     }
 
     private static McpServerProfile CreateProfile(

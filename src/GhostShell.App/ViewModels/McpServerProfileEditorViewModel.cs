@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Net;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -16,12 +17,14 @@ public enum McpServerCredentialReviewState
 }
 
 public sealed record McpServerCredentialTrustReviewEntry(
-    string VariableName,
+    string BindingName,
     SecretRef Reference,
     string CredentialLabel,
     string CredentialKind,
     McpServerCredentialReviewState State)
 {
+    public string VariableName => BindingName;
+
     public string ReferenceValue => Reference.Value;
 
     public string MetadataSummary => State == McpServerCredentialReviewState.Missing
@@ -45,18 +48,87 @@ public sealed record McpServerCredentialTrustReviewEntry(
     public bool HasWarning => State != McpServerCredentialReviewState.Available;
 
     public string AutomationName =>
-        $"{VariableName} vault binding: {MetadataSummary}; {StateSummary}";
+        $"{BindingName} vault binding: {MetadataSummary}; {StateSummary}";
 }
 
-public sealed record McpServerTrustReview(
-    string ServerName,
-    string Executable,
-    string WorkingDirectory,
-    IReadOnlyList<string> Changes,
-    IReadOnlyList<McpServerTrustReviewEntry> Arguments,
-    IReadOnlyList<McpServerCredentialTrustReviewEntry> Environment,
-    IReadOnlyList<string> EnabledTools)
+public sealed record McpServerTrustReview
 {
+    public McpServerTrustReview(
+        string serverName,
+        string executable,
+        string workingDirectory,
+        IReadOnlyList<string> changes,
+        IReadOnlyList<McpServerTrustReviewEntry> arguments,
+        IReadOnlyList<McpServerCredentialTrustReviewEntry> environment,
+        IReadOnlyList<string> enabledTools)
+        : this(
+            serverName,
+            McpServerTransportKind.Stdio,
+            executable,
+            workingDirectory,
+            endpoint: string.Empty,
+            transportSecurity: "Local process",
+            changes,
+            arguments,
+            environment,
+            httpHeaders: [],
+            enabledTools)
+    {
+    }
+
+    public McpServerTrustReview(
+        string serverName,
+        McpServerTransportKind transportKind,
+        string executable,
+        string workingDirectory,
+        string endpoint,
+        string transportSecurity,
+        IReadOnlyList<string> changes,
+        IReadOnlyList<McpServerTrustReviewEntry> arguments,
+        IReadOnlyList<McpServerCredentialTrustReviewEntry> environment,
+        IReadOnlyList<McpServerCredentialTrustReviewEntry> httpHeaders,
+        IReadOnlyList<string> enabledTools)
+    {
+        ServerName = serverName;
+        TransportKind = transportKind;
+        Executable = executable;
+        WorkingDirectory = workingDirectory;
+        Endpoint = endpoint;
+        TransportSecurity = transportSecurity;
+        Changes = changes;
+        Arguments = arguments;
+        Environment = environment;
+        HttpHeaders = httpHeaders;
+        EnabledTools = enabledTools;
+    }
+
+    public string ServerName { get; }
+
+    public McpServerTransportKind TransportKind { get; }
+
+    public string Executable { get; }
+
+    public string WorkingDirectory { get; }
+
+    public string Endpoint { get; }
+
+    public string TransportSecurity { get; }
+
+    public IReadOnlyList<string> Changes { get; }
+
+    public IReadOnlyList<McpServerTrustReviewEntry> Arguments { get; }
+
+    public IReadOnlyList<McpServerCredentialTrustReviewEntry> Environment { get; }
+
+    public IReadOnlyList<McpServerCredentialTrustReviewEntry> HttpHeaders { get; }
+
+    public IReadOnlyList<string> EnabledTools { get; }
+
+    public bool IsStdio => TransportKind == McpServerTransportKind.Stdio;
+
+    public bool IsStreamableHttp =>
+        TransportKind == McpServerTransportKind.StreamableHttp;
+
     public bool HasArguments => Arguments.Count > 0;
 
     public bool HasNoArguments => !HasArguments;
@@ -65,10 +137,19 @@ public sealed record McpServerTrustReview(
 
     public bool HasNoEnvironment => !HasEnvironment;
 
+    public bool HasHttpHeaders => HttpHeaders.Count > 0;
+
+    public bool HasNoHttpHeaders => !HasHttpHeaders;
+
     public bool HasEnabledTools => EnabledTools.Count > 0;
 
     public bool HasNoEnabledTools => !HasEnabledTools;
 }
+
+public sealed record McpServerTransportOption(
+    McpServerTransportKind Kind,
+    string Name,
+    string Description);
 
 /// <summary>
 /// Carries the immutable profile reviewed by the user. Production callers
@@ -195,6 +276,58 @@ public sealed class McpEnvironmentBindingEditorItemViewModel : ObservableObject
     }
 }
 
+public sealed class McpHttpHeaderBindingEditorItemViewModel : ObservableObject
+{
+    private int _position;
+    private string _name;
+    private string _secretReference;
+
+    internal McpHttpHeaderBindingEditorItemViewModel(
+        int position,
+        string name,
+        string secretReference)
+    {
+        _position = position;
+        _name = name;
+        _secretReference = secretReference;
+    }
+
+    public int Position => _position;
+
+    public string NameAccessibleName =>
+        $"HTTP header binding {Position} name";
+
+    public string SecretReferenceAccessibleName =>
+        $"HTTP header binding {Position} secret reference";
+
+    public string RemoveAccessibleName =>
+        $"Remove HTTP header binding {Position}";
+
+    public string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, value ?? string.Empty);
+    }
+
+    public string SecretReference
+    {
+        get => _secretReference;
+        set => SetProperty(ref _secretReference, value ?? string.Empty);
+    }
+
+    internal void UpdatePosition(int position)
+    {
+        if (!SetProperty(ref _position, position, nameof(Position)))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(NameAccessibleName));
+        OnPropertyChanged(nameof(SecretReferenceAccessibleName));
+        OnPropertyChanged(nameof(RemoveAccessibleName));
+    }
+}
+
 public sealed class McpEnabledToolEditorItemViewModel : ObservableObject
 {
     private int _position;
@@ -231,11 +364,24 @@ public sealed class McpEnabledToolEditorItemViewModel : ObservableObject
 }
 
 /// <summary>
-/// Edits one direct stdio MCP process definition. Command, argv, and vault
-/// references stay structurally separate so the UI cannot imply shell parsing.
+/// Edits one stdio or Streamable HTTP MCP definition. Transport-specific
+/// authority and vault references remain structurally separate.
 /// </summary>
 public sealed class McpServerProfileEditorViewModel : ObservableObject
 {
+    private static readonly IReadOnlyList<McpServerTransportOption>
+        AvailableTransports =
+        [
+            new(
+                McpServerTransportKind.Stdio,
+                "Local process (stdio)",
+                "Launch one fully qualified executable directly."),
+            new(
+                McpServerTransportKind.StreamableHttp,
+                "Remote server (Streamable HTTP)",
+                "Connect to one HTTPS endpoint; plaintext is limited to loopback."),
+        ];
+
     private readonly McpServerProfileId _id;
     private readonly int _schemaVersion;
     private readonly McpServerProfile? _original;
@@ -243,6 +389,8 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
     private string _name = string.Empty;
     private string _executable = string.Empty;
     private string _workingDirectory = string.Empty;
+    private string _endpoint = string.Empty;
+    private McpServerTransportOption _selectedTransport = AvailableTransports[0];
     private bool _isEnabled = true;
 
     public McpServerProfileEditorViewModel(
@@ -268,22 +416,38 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         }
 
         _name = existing.Name;
-        _executable = existing.Executable;
-        _workingDirectory = existing.WorkingDirectory ?? string.Empty;
+        _selectedTransport = AvailableTransports.Single(option =>
+            option.Kind == existing.Transport.Kind);
         _isEnabled = existing.IsEnabled;
-        foreach (var argument in existing.Arguments)
+        if (existing.Transport is McpServerTransport.Stdio stdio)
         {
-            Arguments.Add(new McpArgumentEditorItemViewModel(
-                Arguments.Count + 1,
-                argument));
-        }
+            _executable = stdio.Executable;
+            _workingDirectory = stdio.WorkingDirectory ?? string.Empty;
+            foreach (var argument in stdio.Arguments)
+            {
+                Arguments.Add(new McpArgumentEditorItemViewModel(
+                    Arguments.Count + 1,
+                    argument));
+            }
 
-        foreach (var binding in existing.Environment)
+            foreach (var binding in stdio.Environment)
+            {
+                Environment.Add(new McpEnvironmentBindingEditorItemViewModel(
+                    Environment.Count + 1,
+                    binding.Name,
+                    binding.Reference.Value));
+            }
+        }
+        else if (existing.Transport is McpServerTransport.StreamableHttp http)
         {
-            Environment.Add(new McpEnvironmentBindingEditorItemViewModel(
-                Environment.Count + 1,
-                binding.Name,
-                binding.Reference.Value));
+            _endpoint = http.Endpoint.AbsoluteUri;
+            foreach (var header in http.Headers)
+            {
+                HttpHeaders.Add(new McpHttpHeaderBindingEditorItemViewModel(
+                    HttpHeaders.Count + 1,
+                    header.Name,
+                    header.Reference.Value));
+            }
         }
 
         foreach (var tool in existing.EnabledTools)
@@ -301,6 +465,29 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
     public string EditorTitle => IsEditing ? "Edit MCP server" : "New MCP server";
 
     public string ProfileId => _id.Value;
+
+    public IReadOnlyList<McpServerTransportOption> TransportOptions =>
+        AvailableTransports;
+
+    public McpServerTransportOption SelectedTransport
+    {
+        get => _selectedTransport;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (SetProperty(ref _selectedTransport, value))
+            {
+                OnPropertyChanged(nameof(IsStdio));
+                OnPropertyChanged(nameof(IsStreamableHttp));
+            }
+        }
+    }
+
+    public bool IsStdio =>
+        SelectedTransport.Kind == McpServerTransportKind.Stdio;
+
+    public bool IsStreamableHttp =>
+        SelectedTransport.Kind == McpServerTransportKind.StreamableHttp;
 
     public string Name
     {
@@ -320,6 +507,12 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         set => SetProperty(ref _workingDirectory, value);
     }
 
+    public string Endpoint
+    {
+        get => _endpoint;
+        set => SetProperty(ref _endpoint, value ?? string.Empty);
+    }
+
     public bool IsEnabled
     {
         get => _isEnabled;
@@ -329,6 +522,8 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
     public ObservableCollection<McpArgumentEditorItemViewModel> Arguments { get; } = [];
 
     public ObservableCollection<McpEnvironmentBindingEditorItemViewModel> Environment { get; } = [];
+
+    public ObservableCollection<McpHttpHeaderBindingEditorItemViewModel> HttpHeaders { get; } = [];
 
     public ObservableCollection<McpEnabledToolEditorItemViewModel> EnabledTools { get; } = [];
 
@@ -390,6 +585,28 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         }
     }
 
+    public void AddHttpHeaderBinding()
+    {
+        EnsureRoom(
+            HttpHeaders.Count,
+            McpServerProfile.MaximumHttpHeaderCount,
+            "HTTP header bindings");
+        HttpHeaders.Add(new McpHttpHeaderBindingEditorItemViewModel(
+            HttpHeaders.Count + 1,
+            NextHttpHeaderName(),
+            SecretRef.New().Value));
+    }
+
+    public void RemoveHttpHeaderBinding(
+        McpHttpHeaderBindingEditorItemViewModel binding)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        if (HttpHeaders.Remove(binding))
+        {
+            RefreshHttpHeaderPositions();
+        }
+    }
+
     public void AddEnabledTool()
     {
         EnsureRoom(
@@ -412,6 +629,33 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
 
     public McpServerProfileSaveRequest CreateSaveRequest()
     {
+        McpServerTransport transport = SelectedTransport.Kind switch
+        {
+            McpServerTransportKind.Stdio => CreateStdioTransport(),
+            McpServerTransportKind.StreamableHttp =>
+                CreateStreamableHttpTransport(),
+            _ => throw new InvalidOperationException(
+                "The selected MCP transport is unavailable."),
+        };
+        var profile = new McpServerProfile(
+            _id,
+            _schemaVersion,
+            Required(Name, "Server name"),
+            transport,
+            EnabledTools.Select(tool => Required(tool.Name, "Enabled tool name"))
+                .ToArray(),
+            IsEnabled);
+        var review = CreateTrustReview(profile);
+        return new McpServerProfileSaveRequest(
+            profile,
+            ExpectedRevision,
+            review.Changes.Count > 0,
+            isTrustConfirmed: false,
+            review);
+    }
+
+    private McpServerTransport.Stdio CreateStdioTransport()
+    {
         var executable = Required(Executable, "Executable");
         if (!Path.IsPathFullyQualified(executable))
         {
@@ -429,10 +673,7 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
                 "Working directory must be a fully qualified local path.");
         }
 
-        var profile = new McpServerProfile(
-            _id,
-            _schemaVersion,
-            Required(Name, "Server name"),
+        return new McpServerTransport.Stdio(
             executable,
             Arguments.Select(argument => argument.Value).ToArray(),
             workingDirectory,
@@ -441,17 +682,37 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
                 new SecretRef(Required(
                     binding.SecretReference,
                     "Environment secret reference"))))
+                .ToArray());
+    }
+
+    private McpServerTransport.StreamableHttp CreateStreamableHttpTransport()
+    {
+        var endpointText = Required(Endpoint, "Streamable HTTP endpoint");
+        if (!Uri.TryCreate(endpointText, UriKind.Absolute, out var endpoint))
+        {
+            throw new ArgumentException(
+                "Streamable HTTP endpoint must be an absolute HTTPS URI.");
+        }
+
+        var isPlaintext = string.Equals(
+            endpoint.Scheme,
+            Uri.UriSchemeHttp,
+            StringComparison.OrdinalIgnoreCase);
+        if (isPlaintext && !IsLoopback(endpoint))
+        {
+            throw new ArgumentException(
+                "Streamable HTTP endpoint must use HTTPS; plaintext HTTP is allowed only for an exact loopback host.");
+        }
+
+        return new McpServerTransport.StreamableHttp(
+            endpoint,
+            HttpHeaders.Select(binding => new McpServerHttpHeader(
+                Required(binding.Name, "HTTP header name"),
+                new SecretRef(Required(
+                    binding.SecretReference,
+                    "HTTP header secret reference"))))
                 .ToArray(),
-            EnabledTools.Select(tool => Required(tool.Name, "Enabled tool name"))
-                .ToArray(),
-            IsEnabled);
-        var review = CreateTrustReview(profile);
-        return new McpServerProfileSaveRequest(
-            profile,
-            ExpectedRevision,
-            review.Changes.Count > 0,
-            isTrustConfirmed: false,
-            review);
+            allowInsecureTransport: isPlaintext);
     }
 
     private McpServerTrustReview CreateTrustReview(McpServerProfile profile)
@@ -459,41 +720,30 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         var changes = new List<string>();
         if (_original is null)
         {
-            changes.Add("Add a new local MCP server process");
+            changes.Add(profile.Transport.Kind == McpServerTransportKind.Stdio
+                ? "Add a new local MCP server process"
+                : "Add a new remote Streamable HTTP MCP server");
         }
         else
         {
-            if (!string.Equals(
-                    profile.Executable,
-                    _original.Executable,
-                    StringComparison.Ordinal))
+            if (profile.Transport.Kind != _original.Transport.Kind)
             {
-                changes.Add("Change the executable");
+                changes.Add("Change the MCP server transport");
             }
-
-            if (!profile.Arguments.SequenceEqual(
-                    _original.Arguments,
-                    StringComparer.Ordinal))
+            else if (profile.Transport is McpServerTransport.Stdio stdio
+                     && _original.Transport is McpServerTransport.Stdio originalStdio)
             {
-                changes.Add("Change the ordered argument list");
+                AddStdioAuthorityChanges(changes, stdio, originalStdio);
             }
-
-            if (!string.Equals(
-                    profile.WorkingDirectory,
-                    _original.WorkingDirectory,
-                    StringComparison.Ordinal))
+            else if (profile.Transport is McpServerTransport.StreamableHttp http
+                     && _original.Transport is McpServerTransport.StreamableHttp originalHttp)
             {
-                changes.Add("Change the working directory");
-            }
-
-            if (!profile.Environment.SequenceEqual(_original.Environment))
-            {
-                changes.Add("Change environment-to-vault bindings");
+                AddHttpAuthorityChanges(changes, http, originalHttp);
             }
 
             if (profile.IsEnabled && !_original.IsEnabled)
             {
-                changes.Add("Enable this server for future governed agent runs");
+                changes.Add("Enable this server");
             }
 
             var addedTools = profile.EnabledTools
@@ -507,31 +757,99 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
             }
         }
 
+        var stdioTransport = profile.Transport as McpServerTransport.Stdio;
+        var httpTransport = profile.Transport as McpServerTransport.StreamableHttp;
         return new McpServerTrustReview(
             profile.Name,
-            profile.Executable,
-            profile.WorkingDirectory ?? "Executable directory",
+            profile.Transport.Kind,
+            stdioTransport?.Executable ?? string.Empty,
+            stdioTransport?.WorkingDirectory ?? "Executable directory",
+            httpTransport?.Endpoint.AbsoluteUri ?? string.Empty,
+            httpTransport is null
+                ? "Local process"
+                : httpTransport.AllowInsecureTransport
+                    ? "Plaintext loopback · explicitly acknowledged"
+                    : "HTTPS · TLS required",
             changes.AsReadOnly(),
-            profile.Arguments
+            (stdioTransport?.Arguments ?? [])
                 .Select((argument, index) => new McpServerTrustReviewEntry(
                     $"Argument {index + 1}",
                     argument.Length == 0 ? "(empty argument)" : argument))
                 .ToArray(),
-            profile.Environment
+            (stdioTransport?.Environment ?? [])
                 .Select(binding => CreateCredentialTrustReviewEntry(
                     profile.Id,
-                    binding))
+                    binding.Name,
+                    binding.Reference))
+                .ToArray(),
+            (httpTransport?.Headers ?? [])
+                .Select(binding => CreateCredentialTrustReviewEntry(
+                    profile.Id,
+                    binding.Name,
+                    binding.Reference))
                 .ToArray(),
             profile.EnabledTools.ToArray());
+    }
+
+    private static void AddStdioAuthorityChanges(
+        ICollection<string> changes,
+        McpServerTransport.Stdio transport,
+        McpServerTransport.Stdio original)
+    {
+        if (!string.Equals(
+                transport.Executable,
+                original.Executable,
+                StringComparison.Ordinal))
+        {
+            changes.Add("Change the executable");
+        }
+
+        if (!transport.Arguments.SequenceEqual(
+                original.Arguments,
+                StringComparer.Ordinal))
+        {
+            changes.Add("Change the ordered argument list");
+        }
+
+        if (!string.Equals(
+                transport.WorkingDirectory,
+                original.WorkingDirectory,
+                StringComparison.Ordinal))
+        {
+            changes.Add("Change the working directory");
+        }
+
+        if (!transport.Environment.SequenceEqual(original.Environment))
+        {
+            changes.Add("Change environment-to-vault bindings");
+        }
+    }
+
+    private static void AddHttpAuthorityChanges(
+        ICollection<string> changes,
+        McpServerTransport.StreamableHttp transport,
+        McpServerTransport.StreamableHttp original)
+    {
+        if (transport.Endpoint != original.Endpoint
+            || transport.AllowInsecureTransport != original.AllowInsecureTransport)
+        {
+            changes.Add("Change the remote endpoint");
+        }
+
+        if (!transport.Headers.SequenceEqual(original.Headers))
+        {
+            changes.Add("Change HTTP-header-to-vault bindings");
+        }
     }
 
     private McpServerCredentialTrustReviewEntry
         CreateCredentialTrustReviewEntry(
             McpServerProfileId profileId,
-            McpServerEnvironmentVariable binding)
+            string bindingName,
+            SecretRef reference)
     {
         var matchingReference = _secrets
-            .Where(secret => secret.Reference == binding.Reference)
+            .Where(secret => secret.Reference == reference)
             .ToArray();
         var available = matchingReference.FirstOrDefault(secret =>
             secret.SecretScope.Kind == SecretScopeKind.McpServer
@@ -542,8 +860,8 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         if (available is not null)
         {
             return new McpServerCredentialTrustReviewEntry(
-                binding.Name,
-                binding.Reference,
+                bindingName,
+                reference,
                 available.Label,
                 available.Kind,
                 McpServerCredentialReviewState.Available);
@@ -552,14 +870,14 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         var wrongScope = matchingReference.FirstOrDefault();
         return wrongScope is null
             ? new McpServerCredentialTrustReviewEntry(
-                binding.Name,
-                binding.Reference,
+                bindingName,
+                reference,
                 "Not found",
                 "Unavailable",
                 McpServerCredentialReviewState.Missing)
             : new McpServerCredentialTrustReviewEntry(
-                binding.Name,
-                binding.Reference,
+                bindingName,
+                reference,
                 wrongScope.Label,
                 wrongScope.Kind,
                 McpServerCredentialReviewState.WrongScope);
@@ -588,6 +906,51 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         throw new InvalidOperationException("No environment binding name is available.");
     }
 
+    private string NextHttpHeaderName()
+    {
+        var existing = HttpHeaders
+            .Select(binding => binding.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!existing.Contains("Authorization"))
+        {
+            return "Authorization";
+        }
+
+        const string baseName = "X-MCP-Secret";
+        if (!existing.Contains(baseName))
+        {
+            return baseName;
+        }
+
+        for (var suffix = 2;
+             suffix <= McpServerProfile.MaximumHttpHeaderCount;
+             suffix++)
+        {
+            var candidate = $"{baseName}-{suffix}";
+            if (!existing.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException(
+            "No HTTP header binding name is available.");
+    }
+
+    private static bool IsLoopback(Uri endpoint)
+    {
+        if (string.Equals(
+                endpoint.Host,
+                "localhost",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return IPAddress.TryParse(endpoint.Host, out var address)
+            && IPAddress.IsLoopback(address);
+    }
+
     private void RefreshArgumentPositions()
     {
         for (var index = 0; index < Arguments.Count; index++)
@@ -602,6 +965,14 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         for (var index = 0; index < Environment.Count; index++)
         {
             Environment[index].UpdatePosition(index + 1);
+        }
+    }
+
+    private void RefreshHttpHeaderPositions()
+    {
+        for (var index = 0; index < HttpHeaders.Count; index++)
+        {
+            HttpHeaders[index].UpdatePosition(index + 1);
         }
     }
 

@@ -13,6 +13,158 @@ namespace GhostShell.Agent.Runtime.Tests;
 public sealed partial class GovernedAgentRuntimeTests
 {
     [Fact]
+    public async Task WorkspaceBoundRuntimeRejectsAnotherWorkspaceBeforeProviderUse()
+    {
+        var provider = ProviderRound.AnswerEveryTurn();
+        await using var fixture = new RuntimeFixture(
+            provider,
+            workspaceId: new WorkspaceInstanceId("workspace-bound"));
+        var target = fixture.Target;
+        var request = new GovernedAgentPrompt(
+            new AiProviderProfileId("provider-1"),
+            "Inspect the terminal.",
+            new AgentTarget.Panel(
+                target.WindowId,
+                new WorkspaceInstanceId("workspace-other"),
+                target.TabId,
+                target.PanelId));
+
+        var result = await fixture.Runtime.SendAsync(request, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("agent_workspace_mismatch", result.Code);
+        Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
+    public async Task Selected_service_tier_is_forwarded_to_the_pinned_provider_binding()
+    {
+        await using var fixture = new RuntimeFixture(ProviderRound.AnswerEveryTurn());
+        var prompt = new GovernedAgentPrompt(
+            new AiProviderProfileId("provider-1"),
+            "Respond quickly.",
+            fixture.Target,
+            [],
+            AgentReasoningEffort.Automatic,
+            AgentServiceTier.Priority);
+
+        var result = await fixture.Runtime.SendAsync(prompt, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            AgentServiceTier.Priority,
+            fixture.ProviderResolver.Binding.RequestedServiceTier);
+    }
+
+    [Fact]
+    public async Task First_prompt_registers_preselected_full_access_against_the_run_target()
+    {
+        await using var fixture = new RuntimeFixture(ProviderRound.AnswerEveryTurn());
+        var baseline = new AgentPolicy(
+            "provider-1",
+            "provider-default-model",
+            AgentPolicy.Default.Permissions);
+        var prompt = new GovernedAgentPrompt(
+            new AiProviderProfileId("provider-1"),
+            "Inspect the terminal.",
+            fixture.Target,
+            [],
+            AgentReasoningEffort.Automatic,
+            AgentServiceTier.Automatic,
+            baseline,
+            AgentApprovalMode.FullAccess);
+
+        var result = await fixture.Runtime.SendAsync(prompt, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            AgentPermission.Yolo,
+            fixture.Runtime.Snapshot.TerminalMutationPermission);
+        Assert.Equal(fixture.Target, fixture.Runtime.Snapshot.YoloAuthority!.Target);
+        Assert.Equal(
+            fixture.Runtime.Snapshot.RunId,
+            fixture.Runtime.Snapshot.YoloAuthority.RunId);
+        Assert.Equal(
+            AgentYoloConfirmation.RunLifetimeExpiry,
+            fixture.Runtime.Snapshot.YoloAuthority.ExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task Full_access_mode_remains_active_until_it_is_changed()
+    {
+        await using var fixture = new RuntimeFixture(ProviderRound.AnswerEveryTurn());
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("Start the conversation."),
+            CancellationToken.None)).IsSuccess);
+
+        var enabled = await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None);
+
+        Assert.True(enabled.IsAccepted);
+        Assert.Equal(
+            AgentYoloConfirmation.RunLifetimeExpiry,
+            fixture.Runtime.Snapshot.YoloAuthority!.ExpiresAtUtc);
+
+        var disabled = await fixture.Runtime.DisableYoloAsync(
+            CancellationToken.None);
+
+        Assert.True(disabled.IsAccepted);
+        Assert.Null(fixture.Runtime.Snapshot.YoloAuthority);
+        Assert.Equal(
+            AgentPermission.Ask,
+            fixture.Runtime.Snapshot.TerminalMutationPermission);
+    }
+
+    [Fact]
+    public async Task CompletedTurnsAutomaticallyCompactAtTheModelContextThreshold()
+    {
+        var provider = new ProviderRound((call, _) => call switch
+        {
+            1 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta("First answer"),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            2 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta("Second answer"),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(4_900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            3 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta(
+                    "## Goal\nContinue testing.\n\n## Critical Context\n- First turn summarized."),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            _ => throw new InvalidOperationException("Unexpected provider call."),
+        });
+        await using var fixture = new RuntimeFixture(provider);
+        fixture.ProviderResolver.Binding.ContextWindowTokenLimit = 20_000;
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("First question"),
+            CancellationToken.None)).IsSuccess);
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("Second question"),
+            CancellationToken.None)).IsSuccess);
+
+        Assert.Equal(3, provider.Requests.Count);
+        Assert.Collection(
+            fixture.Runtime.Snapshot.Messages,
+            message => Assert.Equal("Second question", message.Content),
+            message => Assert.Equal("Second answer", message.Content));
+        Assert.Contains(
+            "## Critical Context",
+            provider.Requests.ToArray()[2].Messages[^1].Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ReadToolIsInjectedAuthorizedExecutedRedactedAndContinued()
     {
         await using var fixture = new RuntimeFixture(
@@ -412,6 +564,92 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
+    public async Task SubmittedConversationAppearsInHistoryBeforeProviderCompletes()
+    {
+        var provider = ProviderRound.Blocking();
+        await using var fixture = new RuntimeFixture(
+            provider,
+            checkpointStore: new InMemoryCheckpointStore());
+
+        var sending = fixture.Runtime.SendAsync(
+            fixture.Prompt("History must be immediate."),
+            CancellationToken.None).AsTask();
+        await provider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var pending = Assert.Single(fixture.Runtime.Snapshot.Conversations);
+        Assert.Equal("History must be immediate.", pending.Title);
+        Assert.Equal(fixture.Runtime.Snapshot.RunId, pending.RunId);
+
+        Assert.True((await fixture.Runtime.StopAsync(CancellationToken.None)).WasRunning);
+        _ = await sending.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task MessageAfterIdleStopResumesTheRetainedConversation()
+    {
+        var provider = ProviderRound.AnswerEveryTurn();
+        await using var fixture = new RuntimeFixture(provider);
+
+        var first = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Hello."),
+            CancellationToken.None);
+        var stopped = await fixture.Runtime.StopAsync(CancellationToken.None);
+        fixture.Context.PanelTitle = "Renamed operations terminal";
+        var second = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Tell me a story."),
+            CancellationToken.None);
+
+        Assert.True(first.IsSuccess);
+        Assert.True(stopped.WasRunning);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Collection(
+            fixture.Runtime.Snapshot.Messages,
+            message =>
+            {
+                Assert.Equal(AgentChatMessageRole.User, message.Role);
+                Assert.Equal("Hello.", message.Content);
+            },
+            message =>
+            {
+                Assert.Equal(AgentChatMessageRole.Assistant, message.Role);
+                Assert.Equal("Completed.", message.Content);
+            },
+            message =>
+            {
+                Assert.Equal(AgentChatMessageRole.User, message.Role);
+                Assert.Equal("Tell me a story.", message.Content);
+            },
+            message =>
+            {
+                Assert.Equal(AgentChatMessageRole.Assistant, message.Role);
+                Assert.Equal("Completed.", message.Content);
+            });
+
+        var requests = provider.Requests.ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.Contains(
+            requests[1].Messages,
+            message => message.Role == AgentMessageRole.User
+                && message.Content == "Hello.");
+        Assert.Contains(
+            requests[1].Messages,
+            message => message.Role == AgentMessageRole.Assistant
+                && message.Content == "Completed.");
+        var currentSystemPrompt = Assert.Single(
+            requests[1].Messages,
+            message => message.Role == AgentMessageRole.System);
+        Assert.Contains(
+            "Renamed operations terminal",
+            currentSystemPrompt.Content,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Operations terminal",
+            currentSystemPrompt.Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AsyncDisposalRevokesRegisteredBrokerAuthority()
     {
         await using var fixture = new RuntimeFixture(
@@ -448,6 +686,41 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
+    public async Task ConfiguredSystemPromptIsAppendedToInvariantRuntimeInstructions()
+    {
+        var policy = AgentPolicy.Default with
+        {
+            Provider = "provider-1",
+            Model = "model-1",
+            SystemPrompt = "Use the repository's existing naming conventions.",
+        };
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.AnswerEveryTurn(),
+            configuredPolicy: policy);
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Continue.", policy),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var system = Assert.Single(
+            fixture.Provider.Requests.Single().Messages,
+            message => message.Role == AgentMessageRole.System);
+        Assert.Contains(
+            "Use the repository's existing naming conventions.",
+            system.Content,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Never request, echo, reconstruct",
+            system.Content,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Fenced mermaid diagrams are rendered",
+            system.Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ProviderFailureRequiresClearInsteadOfRetryingInvalidTranscript()
     {
         await using var fixture = new RuntimeFixture(
@@ -467,6 +740,164 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Single(fixture.Provider.Requests);
         Assert.True(await fixture.Runtime.ClearAsync(CancellationToken.None));
         Assert.True(fixture.Runtime.Snapshot.CanSend);
+    }
+
+    [Fact]
+    public async Task ProviderSafeFailureCodeAndMessageReachTheDesktopBoundary()
+    {
+        await using var fixture = new RuntimeFixture(
+            new ProviderRound((_, _) => throw new TestProviderException(
+                "ai_provider_model_unavailable",
+                "The configured AI model is unavailable.")));
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Start."),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("ai_provider_model_unavailable", result.Code);
+        Assert.Equal("The configured AI model is unavailable.", result.Message);
+        Assert.Equal(result.Message, fixture.Runtime.Snapshot.Status);
+    }
+
+    [Fact]
+    public async Task CompletedConversationIsSavedRestoredAndContinued()
+    {
+        var checkpoints = new InMemoryCheckpointStore();
+        await using (var first = new RuntimeFixture(
+                         ProviderRound.AnswerEveryTurn(),
+                         checkpointStore: checkpoints))
+        {
+            var sent = await first.Runtime.SendAsync(
+                first.Prompt("first"),
+                CancellationToken.None);
+
+            Assert.True(sent.IsSuccess);
+            Assert.Single(checkpoints.Values);
+            var summary = Assert.Single(first.Runtime.Snapshot.Conversations);
+            Assert.Equal(new AiProviderProfileId("provider-1"), summary.ProviderId);
+            Assert.Equal("provider-default-model", summary.Model);
+        }
+
+        await using var restored = new RuntimeFixture(
+            ProviderRound.AnswerEveryTurn(),
+            checkpointStore: checkpoints);
+        await restored.Runtime.RestoreLatestConversationAsync(CancellationToken.None);
+
+        Assert.Equal(
+            ["first", "Completed."],
+            restored.Runtime.Snapshot.Messages.Select(message => message.Content));
+        Assert.Equal(
+            new AiProviderProfileId("provider-1"),
+            Assert.Single(restored.Runtime.Snapshot.Conversations).ProviderId);
+        Assert.Equal(
+            "provider-default-model",
+            Assert.Single(restored.Runtime.Snapshot.Conversations).Model);
+
+        restored.Context.PanelTitle = "Recovered operations terminal";
+        var continued = await restored.Runtime.SendAsync(
+            restored.Prompt("second"),
+            CancellationToken.None);
+
+        Assert.True(continued.IsSuccess);
+        Assert.Equal(
+            ["first", "Completed.", "second", "Completed."],
+            restored.Runtime.Snapshot.Messages.Select(message => message.Content));
+        var continuedRequest = restored.Provider.Requests.ToArray()[0];
+        Assert.Contains(
+            "Recovered operations terminal",
+            Assert.Single(
+                continuedRequest.Messages,
+                message => message.Role == AgentMessageRole.System).Content,
+            StringComparison.Ordinal);
+        Assert.Single(checkpoints.Values);
+    }
+
+    [Fact]
+    public async Task ConversationCatalogPreservesOpensAndDeletesSeparateConversations()
+    {
+        var checkpoints = new InMemoryCheckpointStore();
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.AnswerEveryTurn(),
+            checkpointStore: checkpoints);
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("first conversation"),
+            CancellationToken.None)).IsSuccess);
+        var firstRun = fixture.Runtime.Snapshot.Conversations
+            .Single(item => item.Title == "first conversation")
+            .RunId;
+
+        Assert.True(await fixture.Runtime.StartNewConversationAsync(
+            CancellationToken.None));
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("second conversation"),
+            CancellationToken.None)).IsSuccess);
+
+        Assert.Equal(2, checkpoints.Values.Count);
+        Assert.Equal(2, fixture.Runtime.Snapshot.Conversations.Length);
+        Assert.True(await fixture.Runtime.OpenConversationAsync(
+            firstRun,
+            CancellationToken.None));
+        Assert.Equal(
+            ["first conversation", "Completed."],
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+
+        var secondRun = fixture.Runtime.Snapshot.Conversations
+            .Single(item => item.Title == "second conversation")
+            .RunId;
+        Assert.True(await fixture.Runtime.DeleteConversationAsync(
+            secondRun,
+            CancellationToken.None));
+        Assert.Single(fixture.Runtime.Snapshot.Conversations);
+        Assert.Single(checkpoints.Values);
+    }
+
+    [Fact]
+    public async Task ForkConversationPreservesOriginalAndContinuesFromSelectedAssistantTurn()
+    {
+        var checkpoints = new InMemoryCheckpointStore();
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.AnswerEveryTurn(),
+            checkpointStore: checkpoints);
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("first"),
+            CancellationToken.None)).IsSuccess);
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("second"),
+            CancellationToken.None)).IsSuccess);
+
+        var original = Assert.Single(checkpoints.Values);
+        var firstAssistant = fixture.Runtime.Snapshot.Messages[1];
+        var forkPoint = Assert.IsType<AgentConversationForkPoint>(
+            firstAssistant.ForkPoint);
+
+        Assert.False(await fixture.Runtime.ForkConversationAsync(
+            new AgentConversationForkPoint(4),
+            CancellationToken.None));
+        Assert.Equal(4, fixture.Runtime.Snapshot.Messages.Count);
+
+        Assert.True(await fixture.Runtime.ForkConversationAsync(
+            forkPoint,
+            CancellationToken.None));
+        Assert.Equal(
+            ["first", "Completed."],
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+        Assert.Equal(2, checkpoints.Values.Count);
+        Assert.Contains(checkpoints.Values, checkpoint => checkpoint.RunId == original.RunId);
+
+        var retained = NativeAgentSession.RestoreCheckpoint(original);
+        Assert.True(retained.Succeeded);
+        Assert.Equal(5, retained.Session!.Snapshot().Conversation.Length);
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("branched"),
+            CancellationToken.None)).IsSuccess);
+        Assert.Equal(
+            ["first", "Completed.", "branched", "Completed."],
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+        Assert.Equal(2, checkpoints.Values.Count);
     }
 
     [Fact]
@@ -697,7 +1128,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task RunPinsItsFirstTrustedPolicyUntilClear()
+    public async Task RunPinsProviderAndPermissionsButAllowsModelSwitches()
     {
         await using var fixture = new RuntimeFixture(
             ProviderRound.AnswerEveryTurn());
@@ -707,7 +1138,11 @@ public sealed partial class GovernedAgentRuntimeTests
             AgentPolicy.Capabilities.ToImmutableDictionary(
                 capability => capability,
                 _ => AgentPermission.Ask));
-        var secondPolicy = new AgentPolicy(
+        var secondModel = new AgentPolicy(
+            "provider-1",
+            "second-model",
+            firstPolicy.Permissions);
+        var changedPermissions = new AgentPolicy(
             "provider-1",
             "second-model",
             AgentPolicy.Capabilities.ToImmutableDictionary(
@@ -721,20 +1156,28 @@ public sealed partial class GovernedAgentRuntimeTests
         var missingOverride = await fixture.Runtime.SendAsync(
             fixture.Prompt("Drop the explicit policy."),
             CancellationToken.None);
+        var switched = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Continue with another model.", secondModel) with
+            {
+                Model = "second-model",
+            },
+            CancellationToken.None);
         var rejected = await fixture.Runtime.SendAsync(
-            fixture.Prompt("Use a changed policy.", secondPolicy),
+            fixture.Prompt("Use changed permissions.", changedPermissions),
             CancellationToken.None);
 
         Assert.False(missingOverride.IsSuccess);
         Assert.Equal("agent_policy_changed", missingOverride.Code);
+        Assert.True(switched.IsSuccess);
         Assert.False(rejected.IsSuccess);
         Assert.Equal("agent_policy_changed", rejected.Code);
-        Assert.Single(fixture.Provider.Requests);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
         AssertPolicyEqual(
             firstPolicy,
             Assert.IsType<AgentPolicy>(fixture.Runtime.Snapshot.EffectivePolicy));
+        Assert.Equal("second-model", fixture.Runtime.Snapshot.Model);
         Assert.Equal(
-            firstPolicy.Model,
+            "second-model",
             fixture.ProviderResolver.Binding.RequestedModel);
 
         Assert.True(await fixture.Runtime.ClearAsync(CancellationToken.None));
@@ -742,14 +1185,14 @@ public sealed partial class GovernedAgentRuntimeTests
             AgentPolicy.Default,
             Assert.IsType<AgentPolicy>(fixture.Runtime.Snapshot.EffectivePolicy));
         Assert.True((await fixture.Runtime.SendAsync(
-            fixture.Prompt("Start again.", secondPolicy),
+            fixture.Prompt("Start again.", changedPermissions),
             CancellationToken.None)).IsSuccess);
-        Assert.Equal(2, fixture.Provider.Requests.Count);
+        Assert.Equal(3, fixture.Provider.Requests.Count);
         Assert.Equal(
-            secondPolicy.Model,
+            changedPermissions.Model,
             fixture.ProviderResolver.Binding.RequestedModel);
         AssertPolicyEqual(
-            secondPolicy,
+            changedPermissions,
             Assert.IsType<AgentPolicy>(fixture.Runtime.Snapshot.EffectivePolicy));
     }
 
@@ -2159,12 +2602,99 @@ public sealed partial class GovernedAgentRuntimeTests
             ObjectDisposedException.ThrowIf(_closed, this);
     }
 
+    private sealed class InMemoryCheckpointStore : IAgentSessionCheckpointStore
+    {
+        private readonly Dictionary<AgentRunId, AgentSessionCheckpoint> _values = [];
+
+        public IReadOnlyCollection<AgentSessionCheckpoint> Values => _values.Values;
+
+        public ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveAsync(
+            AgentSessionCheckpoint checkpoint,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _values[checkpoint.RunId] = checkpoint;
+            return ValueTask.FromResult(
+                AgentSessionCheckpointStoreResult<Unit>.Success(Unit.Value));
+        }
+
+        public ValueTask<AgentSessionCheckpointStoreResult<AgentSessionCheckpoint>>
+            LoadAsync(AgentRunId runId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(_values.TryGetValue(runId, out var checkpoint)
+                ? AgentSessionCheckpointStoreResult<AgentSessionCheckpoint>.Success(checkpoint)
+                : AgentSessionCheckpointStoreResult<AgentSessionCheckpoint>.Failure(
+                    new AgentSessionCheckpointStoreError(
+                        AgentSessionCheckpointStoreErrorCode.NotFound,
+                        "not found")));
+        }
+
+        public ValueTask<AgentSessionCheckpointStoreResult<bool>> DeleteAsync(
+            AgentRunId runId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                AgentSessionCheckpointStoreResult<bool>.Success(_values.Remove(runId)));
+        }
+
+        public ValueTask<AgentSessionCheckpointStoreResult<
+            IReadOnlyList<AgentSessionCheckpointSummary>>> ListAsync(
+            int maximumCount,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<AgentSessionCheckpointSummary> summaries = _values.Values
+                .OrderByDescending(checkpoint => checkpoint.UpdatedAt)
+                .Take(maximumCount)
+                .Select(checkpoint => new AgentSessionCheckpointSummary(
+                    checkpoint.RunId,
+                    checkpoint.SchemaVersion,
+                    checkpoint.Generation,
+                    checkpoint.Revision,
+                    checkpoint.UpdatedAt))
+                .ToArray();
+            return ValueTask.FromResult(
+                AgentSessionCheckpointStoreResult<
+                    IReadOnlyList<AgentSessionCheckpointSummary>>.Success(summaries));
+        }
+
+        public ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveAsync(
+            AgentConversationScopeId conversationScopeId,
+            AgentSessionCheckpoint checkpoint,
+            CancellationToken cancellationToken) =>
+            SaveAsync(checkpoint, cancellationToken);
+
+        public ValueTask<AgentSessionCheckpointStoreResult<AgentSessionCheckpoint>>
+            LoadAsync(
+                AgentConversationScopeId conversationScopeId,
+                AgentRunId runId,
+                CancellationToken cancellationToken) =>
+            LoadAsync(runId, cancellationToken);
+
+        public ValueTask<AgentSessionCheckpointStoreResult<bool>> DeleteAsync(
+            AgentConversationScopeId conversationScopeId,
+            AgentRunId runId,
+            CancellationToken cancellationToken) =>
+            DeleteAsync(runId, cancellationToken);
+
+        public ValueTask<AgentSessionCheckpointStoreResult<
+            IReadOnlyList<AgentSessionCheckpointSummary>>> ListAsync(
+            AgentConversationScopeId conversationScopeId,
+            int maximumCount,
+            CancellationToken cancellationToken) =>
+            ListAsync(maximumCount, cancellationToken);
+    }
+
     private sealed class RuntimeFixture : IAsyncDisposable
     {
         public RuntimeFixture(
             ProviderRound provider,
             AgentPolicy? configuredPolicy = null,
-            TimeProvider? timeProvider = null)
+            TimeProvider? timeProvider = null,
+            IAgentSessionCheckpointStore? checkpointStore = null,
+            WorkspaceInstanceId? workspaceId = null)
         {
             timeProvider ??= TimeProvider.System;
             Provider = provider;
@@ -2192,7 +2722,9 @@ public sealed partial class GovernedAgentRuntimeTests
                 ProviderResolver,
                 new TestApprovalPrincipal(ClientId),
                 timeProvider,
-                configuredPolicy ?? AgentPolicy.Default);
+                configuredPolicy ?? AgentPolicy.Default,
+                checkpointStore: checkpointStore,
+                workspaceId: workspaceId);
         }
 
         public ProviderRound Provider { get; }
@@ -2264,11 +2796,26 @@ public sealed partial class GovernedAgentRuntimeTests
 
         public bool IsCurrent { get; set; } = true;
 
+        public int? ContextWindowTokenLimit { get; set; }
+
         public string? RequestedModel { get; private set; }
+
+        public AgentServiceTier RequestedServiceTier { get; private set; }
+
+        public int? ContextWindowTokens(string model) => ContextWindowTokenLimit;
 
         public IAgentProvider CreateProvider(string model)
         {
             RequestedModel = model;
+            return provider;
+        }
+
+        public IAgentProvider CreateProvider(
+            string model,
+            AgentServiceTier serviceTier)
+        {
+            RequestedModel = model;
+            RequestedServiceTier = serviceTier;
             return provider;
         }
     }
@@ -2317,7 +2864,7 @@ public sealed partial class GovernedAgentRuntimeTests
         public ActorDescriptor Actor { get; }
     }
 
-    private sealed class ProviderRound : IAgentProvider
+    private sealed partial class ProviderRound : IAgentProvider
     {
         private readonly Func<int, AgentProviderRequest, AgentProviderEvent[]> _round;
         private int _callCount;
@@ -2638,6 +3185,9 @@ public sealed partial class GovernedAgentRuntimeTests
                 AgentProviderStopReason.EndTurn),
         ];
     }
+
+    private sealed class TestProviderException(string stableCode, string publicMessage)
+        : AgentProviderException(stableCode, publicMessage);
 
     private sealed class ConsumingTerminalHost(
         IAgentCapabilityBroker broker,

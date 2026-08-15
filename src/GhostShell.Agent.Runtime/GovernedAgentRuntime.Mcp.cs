@@ -377,4 +377,49 @@ public sealed partial class GovernedAgentRuntime
 
     internal static bool AllowsMcpDiscovery(AgentPermission permission) =>
         permission is AgentPermission.Ask or AgentPermission.Auto;
+
+    private sealed class McpToolContribution(
+        GovernedAgentRuntime runtime) : IAgentToolContribution
+    {
+        public ImmutableArray<AgentToolDefinition> BuildTools(
+            AgentToolBuildContext context) =>
+            runtime._agentMcpHost is not null
+                && runtime._mcpComposer is not null
+                    ? McpAgentToolSet.For(context.McpManifest)
+                    : [];
+
+        public ResolvedAgentToolContribution? Resolve(string toolName)
+        {
+            var frozenTool = runtime.FindMcpTool(toolName);
+            if (frozenTool is null)
+            {
+                return null;
+            }
+
+            return new ResolvedAgentToolContribution(
+                BuiltInAgentTools.McpCall,
+                (request, cancellationToken) => ExecuteAsync(
+                    request,
+                    frozenTool,
+                    cancellationToken));
+        }
+
+        private ValueTask<AgentToolResult> ExecuteAsync(
+            AgentToolExecutionRequest request,
+            AgentMcpToolManifest frozenTool,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteOperationalToolContributionAsync(
+                request,
+                (boundRequest, context, boundCancellationToken) =>
+                    runtime.ExecuteMcpProposalAsync(
+                        boundRequest.Proposal,
+                        boundRequest.Descriptor,
+                        frozenTool,
+                        context.Context,
+                        context.ResizeEligiblePanelIds,
+                        context.BrowserEligiblePanelIds,
+                        context.FileMetadata,
+                        boundCancellationToken),
+                cancellationToken);
+    }
 }

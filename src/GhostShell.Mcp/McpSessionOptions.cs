@@ -1,6 +1,6 @@
 namespace GhostShell.Mcp;
 
-internal sealed class McpStdioClientOptions
+internal sealed class McpSessionOptions
 {
     public TimeSpan InitializationTimeout { get; init; } = TimeSpan.FromSeconds(15);
 

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -288,4 +289,60 @@ public sealed partial class GovernedAgentRuntime
             or BuiltInAgentTools.BrowserForward
             or BuiltInAgentTools.BrowserReload
             or BuiltInAgentTools.BrowserStop;
+
+    private sealed class BrowserToolContribution(
+        GovernedAgentRuntime runtime) : IAgentToolContribution
+    {
+        public ImmutableArray<AgentToolDefinition> BuildTools(
+            AgentToolBuildContext context)
+        {
+            if (runtime._agentBrowserHost is null
+                || runtime._browserComposer is null)
+            {
+                return [];
+            }
+
+            var eligiblePanels = context.OperationalContext.Panels
+                .Where(panel =>
+                    panel.Kind == PanelKind.Browser
+                    && context.BrowserEligiblePanelIds.Contains(panel.PanelId))
+                .ToArray();
+            if (eligiblePanels.Length == 0)
+            {
+                return [];
+            }
+
+            return context.HasExactTarget
+                ? BrowserAgentToolSet.For(eligiblePanels[0])
+                : BrowserAgentToolSet.For(eligiblePanels);
+        }
+
+        public ResolvedAgentToolContribution? Resolve(string toolName) =>
+            IsBrowserTool(toolName)
+                ? new ResolvedAgentToolContribution(
+                    toolName,
+                    ExecuteAsync)
+                : null;
+
+        private ValueTask<AgentToolResult> ExecuteAsync(
+            AgentToolExecutionRequest request,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteOperationalToolContributionAsync(
+                request,
+                ExecuteBoundAsync,
+                cancellationToken);
+
+        private ValueTask<AgentToolResult> ExecuteBoundAsync(
+            AgentToolExecutionRequest request,
+            OperationalAgentToolContext context,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteBrowserProposalAsync(
+                request.Proposal,
+                request.Descriptor,
+                context.Context,
+                context.ResizeEligiblePanelIds,
+                context.BrowserEligiblePanelIds,
+                context.FileMetadata,
+                cancellationToken);
+    }
 }

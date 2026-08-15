@@ -64,7 +64,7 @@
                   Label="Credential secret reference"
                   Hint="Diagnostics authenticate inside the secure adapter boundary. A terminal claims the stored credential through a one-use, lifetime-bound helper when it starts."
                   IsVisible="{Binding UsesSecretReference}">
-                <TextBox Text="{Binding SecretReference}" PlaceholderText="Opaque secret ID from the OS vault" />
+                <TextBox Text="{Binding SecretReference}" PlaceholderText="Saved credential ID" />
               </controls:LabeledField>
               <controls:LabeledField Label="Passphrase secret reference (optional)" IsVisible="{Binding UsesPassphraseReference}">
                 <TextBox Text="{Binding PassphraseSecretReference}" />
@@ -183,7 +183,7 @@
           <controls:SurfaceCard IsVisible="{Binding IsSftp}">
             <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
               <TextBlock Classes="SectionHeading" Text="SFTP" />
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="SFTP reuses the selected SSH endpoint, authentication reference, and durable host-key trust used by terminal SSH." TextWrapping="Wrap" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="SFTP uses the same SSH connection and credentials as the terminal." TextWrapping="Wrap" />
               <controls:LabeledField Label="SSH connection">
                 <ComboBox ItemsSource="{Binding SshConnections}" SelectedItem="{Binding SelectedSshConnection}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
               </controls:LabeledField>
@@ -261,7 +261,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
               <TextBlock Classes="SectionHeading" Text="OS-vault credential" />
               <ComboBox ItemsSource="{Binding SecretOptions}" SelectedItem="{Binding SelectedCredential}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Only opaque secret references scoped to this profile are selectable. Secret values never enter this editor. S3 credentials use JSON fields accessKeyId, secretAccessKey, and optional sessionToken." TextWrapping="Wrap" />
+              <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="Choose a credential saved for this connection. S3 credentials use JSON fields accessKeyId, secretAccessKey, and optional sessionToken." TextWrapping="Wrap" />
             </StackPanel>
           </controls:SurfaceCard>
 

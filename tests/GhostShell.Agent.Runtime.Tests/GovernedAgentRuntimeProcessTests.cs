@@ -723,6 +723,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         ExactPanel,
         ExactTerminal,
         MixedOpenTab,
+        ExactStatistics,
+        MixedStatisticsOpenTab,
     }
 
     private sealed class ProcessRuntimeFixture : IAsyncDisposable
@@ -732,6 +734,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ProcessRuntimeContextProxy context,
             ScriptedProvider provider,
             AgentPolicy policy,
+            bool statisticsEnabled,
             McpRuntimeHost? mcpHost = null)
         {
             Context = context;
@@ -749,6 +752,15 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 Broker,
                 processComposer,
                 context);
+            var statisticsComposer = statisticsEnabled
+                ? new AgentStatisticsReadActionComposer()
+                : null;
+            Statistics = statisticsComposer is null
+                ? null
+                : new ConsumingStatisticsHost(
+                    Broker,
+                    statisticsComposer,
+                    context);
             Runtime = new GovernedAgentRuntime(
                 sessionHost,
                 Broker,
@@ -768,7 +780,9 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 agentMcpHost: mcpHost,
                 mcpComposer: mcpHost is null
                     ? null
-                    : new AgentMcpToolCallActionComposer());
+                    : new AgentMcpToolCallActionComposer(),
+                agentStatisticsHost: Statistics,
+                statisticsComposer: statisticsComposer);
         }
 
         public ProcessRuntimeContextProxy Context { get; }
@@ -782,6 +796,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         public RejectingTerminalHost Terminal { get; }
 
         public ConsumingProcessHost Processes { get; }
+
+        public ConsumingStatisticsHost? Statistics { get; }
 
         public GovernedAgentRuntime Runtime { get; }
 
@@ -802,6 +818,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 context,
                 provider,
                 policy,
+                scope is ProcessScope.ExactStatistics
+                    or ProcessScope.MixedStatisticsOpenTab,
                 mcpHost);
         }
 
@@ -867,6 +885,11 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                     WindowId,
                     WorkspaceId,
                     TabId),
+                ProcessScope.ExactStatistics => ExactStatisticsTarget(),
+                ProcessScope.MixedStatisticsOpenTab => new AgentTarget.OpenTab(
+                    WindowId,
+                    WorkspaceId,
+                    TabId),
                 _ => throw new ArgumentOutOfRangeException(nameof(scope)),
             };
         }
@@ -882,6 +905,19 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             }
 
             return CreateExactContext(target);
+        }
+
+        public AgentContextSnapshot ExactStatisticsContext(AgentTarget target)
+        {
+            if (target is not AgentTarget.Panel panel
+                || panel != ExactStatisticsTarget())
+            {
+                throw new ArgumentException(
+                    "The Statistics host received an unexpected exact target.",
+                    nameof(target));
+            }
+
+            return CreateExactStatisticsContext(target);
         }
 
         protected override object? Invoke(
@@ -922,7 +958,11 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 ProcessScope.ExactTerminal =>
                     CreateExactTerminalContext(request.Target),
                 ProcessScope.MixedOpenTab =>
-                    CreateMixedContext(request.Target),
+                    CreateMixedContext(request.Target, statisticsEnabled: false),
+                ProcessScope.ExactStatistics =>
+                    CreateExactStatisticsContext(request.Target),
+                ProcessScope.MixedStatisticsOpenTab =>
+                    CreateMixedContext(request.Target, statisticsEnabled: true),
                 _ => throw new ArgumentOutOfRangeException(nameof(_scope)),
             };
             return ValueTask.FromResult(
@@ -957,7 +997,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         }
 
         private AgentContextSnapshot CreateMixedContext(
-            AgentTarget target)
+            AgentTarget target,
+            bool statisticsEnabled)
         {
             var processSessionId = CurrentProcessSessionId();
             PanelInstance[] panels =
@@ -1004,7 +1045,10 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                             StatisticsSessionId,
                             StatisticsPanelId,
                             PanelKind.Statistics,
-                            CapabilitySet.Empty)),
+                            statisticsEnabled
+                                ? new CapabilitySet(
+                                    [SessionCapabilities.StatisticsRead])
+                                : CapabilitySet.Empty)),
                 ],
                 DateTimeOffset.UtcNow);
         }
@@ -1034,6 +1078,31 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                             PanelKind.Terminal,
                             CapabilitySet.Empty)),
                 ],
+                DateTimeOffset.UtcNow);
+        }
+
+        private AgentContextSnapshot CreateExactStatisticsContext(
+            AgentTarget target)
+        {
+            var graph = Graph(
+                [new PanelInstance(
+                    StatisticsPanelId,
+                    PanelKind.Statistics,
+                    "Statistics",
+                    StatisticsSessionId)],
+                StatisticsPanelId);
+            return new AgentContextSnapshot(
+                target,
+                [AgentContextPanel.ForGraphPanel(
+                    graph,
+                    TabId,
+                    StatisticsPanelId,
+                    Descriptor(
+                        StatisticsSessionId,
+                        StatisticsPanelId,
+                        PanelKind.Statistics,
+                        new CapabilitySet(
+                            [SessionCapabilities.StatisticsRead])))],
                 DateTimeOffset.UtcNow);
         }
 
@@ -1112,6 +1181,13 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 WorkspaceId,
                 TabId,
                 TerminalPanelId);
+
+        private static AgentTarget.Panel ExactStatisticsTarget() =>
+            new(
+                WindowId,
+                WorkspaceId,
+                TabId,
+                StatisticsPanelId);
     }
 
     private sealed class ConsumingProcessHost(
@@ -1246,6 +1322,127 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             return HostResult<AgentProcessListResult>.Succeed(
                 result,
                 1);
+        }
+    }
+
+    private sealed class ConsumingStatisticsHost(
+        IAgentCapabilityBroker broker,
+        AgentStatisticsReadActionComposer composer,
+        ProcessRuntimeContextProxy context)
+        : IAgentStatisticsSessionHost
+    {
+        private int _callCount;
+
+        public ConcurrentQueue<AgentStatisticsReadAction> Actions { get; } =
+            [];
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int CallCount => Volatile.Read(ref _callCount);
+
+        public bool BlockAfterAuthorization { get; set; }
+
+        public HostError? Failure { get; set; }
+
+        public SystemStatisticsSnapshot Snapshot { get; set; } =
+            new(
+                DateTimeOffset.UnixEpoch,
+                TimeSpan.FromHours(1),
+                4,
+                8,
+                7,
+                12.5,
+                4_096);
+
+        public async ValueTask<HostResult<AgentStatisticsReadResult>>
+            RunAgentStatisticsReadAsync(
+                AgentAuthorizationId authorizationId,
+                AgentStatisticsReadAction action,
+                CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _callCount);
+            var binding = composer.BindForExecution(
+                action,
+                context.ExactStatisticsContext(action.Proposal.Target));
+            var consumed = await broker.ConsumeAsync(
+                authorizationId,
+                binding,
+                cancellationToken);
+            if (consumed is AgentPermitResult.Denied denied)
+            {
+                return HostResult<AgentStatisticsReadResult>.Fail(
+                    new HostError(
+                        HostErrorCode.InvalidRequest,
+                        denied.Error.Code.ToString().ToLowerInvariant(),
+                        "The Statistics authorization was denied."),
+                    1);
+            }
+
+            var permit = ((AgentPermitResult.Granted)consumed).Permit;
+            Actions.Enqueue(action);
+            Started.TrySetResult();
+            if (BlockAfterAuthorization)
+            {
+                try
+                {
+                    await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                    when (cancellationToken.IsCancellationRequested)
+                {
+                    _ = await broker.CompleteAsync(
+                        permit,
+                        new AgentActionCompletion(
+                            AgentActionOutcome.Cancelled,
+                            "caller_cancelled",
+                            DateTimeOffset.UtcNow),
+                        CancellationToken.None);
+                    return HostResult<AgentStatisticsReadResult>.Fail(
+                        new HostError(
+                            HostErrorCode.Cancelled,
+                            "caller_cancelled",
+                            "The Statistics observation was cancelled."),
+                        1);
+                }
+            }
+
+            if (Failure is { } failure)
+            {
+                _ = await broker.CompleteAsync(
+                    permit,
+                    new AgentActionCompletion(
+                        AgentActionOutcome.Failed,
+                        "statistics_capture_failed",
+                        DateTimeOffset.UtcNow),
+                    CancellationToken.None);
+                return HostResult<AgentStatisticsReadResult>.Fail(
+                    failure,
+                    1);
+            }
+
+            var result = composer.Project(action, Snapshot);
+            var completion = await broker.CompleteAsync(
+                permit,
+                new AgentActionCompletion(
+                    AgentActionOutcome.Succeeded,
+                    "statistics_read",
+                    DateTimeOffset.UtcNow,
+                    resultCount: 1),
+                CancellationToken.None);
+            if (completion is not null)
+            {
+                return HostResult<AgentStatisticsReadResult>.Fail(
+                    new HostError(
+                        HostErrorCode.EngineFailed,
+                        AgentActionFailureCodes.CompletionAuditUnavailable,
+                        "The Statistics completion audit is unresolved."),
+                    1);
+            }
+
+            return HostResult<AgentStatisticsReadResult>.Succeed(result, 1);
         }
     }
 

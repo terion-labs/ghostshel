@@ -891,7 +891,7 @@ public sealed class SqliteDefinitionRepositoryTests
 
         Assert.True(primaryResult.IsSuccess, primaryResult.Error?.Message);
         Assert.Equal(DefinitionStoreErrorCode.InvalidDefinition, duplicateResult.Error!.Code);
-        Assert.Contains("fallback order 0", duplicateResult.Error.Message, StringComparison.Ordinal);
+        Assert.Contains("display order 0", duplicateResult.Error.Message, StringComparison.Ordinal);
         Assert.True(fallbackResult.IsSuccess, fallbackResult.Error?.Message);
         var stored = await providers.ListAsync(CancellationToken.None);
         Assert.True(stored.IsSuccess, stored.Error?.Message);

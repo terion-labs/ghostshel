@@ -492,6 +492,36 @@ internal sealed class HostedSession
         }
     }
 
+    public bool CanExecuteAgentStatisticsRead(
+        IStatisticsPanelSession statistics,
+        long expectedSessionRevision,
+        CancellationToken runtimeAuthority)
+    {
+        ArgumentNullException.ThrowIfNull(statistics);
+        lock (_gate)
+        {
+            try
+            {
+                return _descriptor.Lifecycle == SessionLifecycle.Active
+                    && _descriptor.Revision == expectedSessionRevision
+                    && Engine.Kind == PanelKind.Statistics
+                    && ReferenceEquals(Engine, statistics)
+                    && _descriptor.Capabilities.Contains(
+                        SessionCapabilities.StatisticsRead)
+                    && statistics.Capabilities.Contains(
+                        SessionCapabilities.StatisticsRead)
+                    && _runtimeAuthority.Token.Equals(runtimeAuthority)
+                    && !runtimeAuthority.IsCancellationRequested;
+            }
+            catch (Exception)
+            {
+                // A monitor implementation cannot retain execution authority by
+                // throwing while its live capabilities are revalidated.
+                return false;
+            }
+        }
+    }
+
     /// <summary>
     /// Reclaims terminal input for the exact interactive human attachment before a native
     /// renderer delivers one physical input. This method is intentionally synchronous:

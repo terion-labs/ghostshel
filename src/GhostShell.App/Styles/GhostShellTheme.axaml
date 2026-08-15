@@ -210,6 +210,11 @@
     <Setter Property="MinWidth" Value="190" />
   </Style>
 
+  <Style Selector="FlyoutPresenter.AgentModelMenu, FlyoutPresenter.AgentConversationMenu">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
   <Style Selector="MenuFlyoutPresenter">
     <Setter Property="Background" Value="{DynamicResource ShellPopupSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ShellBorderBrush}" />
@@ -241,6 +246,10 @@
   </Style>
 
   <Style Selector="Button.FlyoutMenuItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button.FlyoutMenuItem.current /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
   </Style>
 

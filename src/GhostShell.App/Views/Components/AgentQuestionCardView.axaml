@@ -60,7 +60,7 @@
             IsEnabled="{Binding AgentChat.CanDeclineQuestion}"
             TabIndex="1"
             AutomationProperties.Name="Skip or decline the AI agent question"
-            AutomationProperties.HelpText="Continues without an answer and grants no authority" />
+            AutomationProperties.HelpText="Continue without answering" />
         <Button
             Grid.Column="1"
             Classes="PrimaryButton"

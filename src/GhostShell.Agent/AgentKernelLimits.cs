@@ -1,3 +1,5 @@
+using GhostShell.Core;
+
 namespace GhostShell.Agent;
 
 public sealed class AgentKernelLimits
@@ -5,6 +7,7 @@ public sealed class AgentKernelLimits
     public AgentKernelLimits(
         int maximumProviderTextFragmentBytes = 8 * 1024,
         int maximumAssistantTextBytes = 256 * 1024,
+        int maximumUserTextBytes = 256 * 1024,
         int maximumProviderEventsPerTurn = 4 * 1024,
         int maximumConcurrentProviderOperations = 2,
         int maximumToolCallsPerTurn = 16,
@@ -14,14 +17,18 @@ public sealed class AgentKernelLimits
         int maximumJsonDepth = 32,
         int maximumJsonNodes = 4 * 1024,
         int maximumConversationMessages = 256,
-        int maximumConversationBytes = 2 * 1024 * 1024,
+        int maximumConversationBytes = 8 * 1024 * 1024,
         int maximumRetainedEvents = 512,
         int maximumEventBatchSize = 64,
         int maximumToolResultBytes = 64 * 1024,
         int maximumTotalToolResultBytesPerTurn = 1024 * 1024,
         int maximumToolDefinitions = 128,
         int maximumToolSchemaBytes = 64 * 1024,
-        int maximumTotalToolSchemaBytes = 512 * 1024)
+        int maximumTotalToolSchemaBytes = 512 * 1024,
+        int maximumReasoningSummaryBytes = 256 * 1024,
+        int maximumImagesPerMessage = AgentImageAttachment.MaximumPerMessage,
+        int maximumTotalImageBytesPerMessage =
+            AgentImageAttachment.MaximumTotalBytesPerMessage)
     {
         MaximumProviderTextFragmentBytes = RequireInRange(
             maximumProviderTextFragmentBytes,
@@ -33,6 +40,16 @@ public sealed class AgentKernelLimits
             MaximumProviderTextFragmentBytes,
             2 * 1024 * 1024,
             nameof(maximumAssistantTextBytes));
+        MaximumUserTextBytes = RequireInRange(
+            maximumUserTextBytes,
+            1,
+            2 * 1024 * 1024,
+            nameof(maximumUserTextBytes));
+        MaximumReasoningSummaryBytes = RequireInRange(
+            maximumReasoningSummaryBytes,
+            MaximumProviderTextFragmentBytes,
+            2 * 1024 * 1024,
+            nameof(maximumReasoningSummaryBytes));
         MaximumProviderEventsPerTurn = RequireInRange(
             maximumProviderEventsPerTurn,
             2,
@@ -98,6 +115,16 @@ public sealed class AgentKernelLimits
             MaximumAssistantTextBytes,
             16 * 1024 * 1024,
             nameof(maximumConversationBytes));
+        MaximumImagesPerMessage = RequireInRange(
+            maximumImagesPerMessage,
+            1,
+            16,
+            nameof(maximumImagesPerMessage));
+        MaximumTotalImageBytesPerMessage = RequireInRange(
+            maximumTotalImageBytesPerMessage,
+            AgentImageAttachment.MaximumBytes,
+            16 * 1024 * 1024,
+            nameof(maximumTotalImageBytesPerMessage));
         MaximumRetainedEvents = RequireInRange(
             maximumRetainedEvents,
             1,
@@ -129,6 +156,10 @@ public sealed class AgentKernelLimits
 
     public int MaximumAssistantTextBytes { get; }
 
+    public int MaximumUserTextBytes { get; }
+
+    public int MaximumReasoningSummaryBytes { get; }
+
     public int MaximumProviderEventsPerTurn { get; }
 
     public int MaximumConcurrentProviderOperations { get; }
@@ -154,6 +185,10 @@ public sealed class AgentKernelLimits
     public int MaximumConversationMessages { get; }
 
     public int MaximumConversationBytes { get; }
+
+    public int MaximumImagesPerMessage { get; }
+
+    public int MaximumTotalImageBytesPerMessage { get; }
 
     public int MaximumRetainedEvents { get; }
 

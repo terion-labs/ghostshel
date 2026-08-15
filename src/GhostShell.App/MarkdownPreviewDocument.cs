@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text;
 using Markdig;
+using Markdig.Extensions.Mathematics;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -16,6 +17,7 @@ public enum MarkdownRunStyle
     Italic = 2,
     Code = 4,
     Strikethrough = 8,
+    Math = 16,
 }
 
 /// <summary>
@@ -33,6 +35,7 @@ public enum MarkdownBlockKind
     ListItem,
     ThematicBreak,
     Table,
+    Math,
 }
 
 /// <summary>
@@ -74,6 +77,8 @@ public static class MarkdownPreviewDocument
         .UseEmphasisExtras()
         .UseAutoLinks()
         .UseTaskLists()
+        .UseMathematics()
+        .UseBackslashMathematics()
         // Deliberately no raw-HTML rendering: an HTML block in a Markdown file
         // is shown as the text it is, never interpreted.
         .Build();
@@ -130,6 +135,14 @@ public static class MarkdownPreviewDocument
                     Level = depth,
                     Bullet = bullet,
                     Runs = Inlines(paragraph.Inline),
+                });
+                break;
+            case MathBlock math:
+                blocks.Add(new MarkdownBlock
+                {
+                    Kind = MarkdownBlockKind.Math,
+                    Text = Lines(math),
+                    Runs = [new MarkdownRun(Lines(math), MarkdownRunStyle.Math)],
                 });
                 break;
             case FencedCodeBlock fenced:
@@ -291,6 +304,9 @@ public static class MarkdownPreviewDocument
                     break;
                 case CodeInline code:
                     Append(runs, code.Content, style | MarkdownRunStyle.Code, link);
+                    break;
+                case MathInline math:
+                    Append(runs, math.Content.ToString(), style | MarkdownRunStyle.Math, link);
                     break;
                 case EmphasisInline emphasis:
                     AppendInlines(

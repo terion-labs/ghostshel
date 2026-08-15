@@ -225,7 +225,20 @@ public sealed class AgentRuntimeBoundaryTests
         Assert.All(
             referencedTypes.Where(
                 typeName => typeName.StartsWith("GhostShell.Core.", StringComparison.Ordinal)),
-            typeName => Assert.Equal("GhostShell.Core.AgentRunId", typeName));
+            typeName => Assert.Contains(
+                typeName,
+                new[]
+                {
+                    "GhostShell.Core.AgentImageAttachment",
+                    "GhostShell.Core.AgentReasoningEffort",
+                    "GhostShell.Core.AgentRunId",
+                    "GhostShell.Core.AgentServiceTier",
+                    "GhostShell.Core.AgentSessionCheckpoint",
+                    "GhostShell.Core.AiProviderKind",
+                    "GhostShell.Core.AiProviderProfileId",
+                    "GhostShell.Core.AiProviderProtocol",
+                    "GhostShell.Core.LiteralSecretValidator",
+                }));
         var environmentMembers = metadata.MemberReferences
             .Select(handle => metadata.GetMemberReference(handle))
             .Where(reference => reference.Parent.Kind == HandleKind.TypeReference)
@@ -274,11 +287,19 @@ public sealed class AgentRuntimeBoundaryTests
             new[]
             {
                 nameof(NativeAgentSession.Cancel),
+                nameof(NativeAgentSession.CaptureCheckpoint),
                 nameof(NativeAgentSession.CompactAsync),
+                nameof(NativeAgentSession.CompactAsync),
+                nameof(NativeAgentSession.DescribeConversation),
+                nameof(NativeAgentSession.EstimateContextUsage),
+                nameof(NativeAgentSession.RunTurnAsync),
+                nameof(NativeAgentSession.RunTurnAsync),
                 nameof(NativeAgentSession.RunTurnAsync),
                 nameof(NativeAgentSession.Snapshot),
                 nameof(NativeAgentSession.Steer),
                 nameof(NativeAgentSession.SubmitToolResultsAsync),
+                nameof(NativeAgentSession.TrySetConversationRoute),
+                nameof(NativeAgentSession.TrySetConversationTitle),
                 nameof(NativeAgentSession.WatchAsync),
             },
             typeof(NativeAgentSession)

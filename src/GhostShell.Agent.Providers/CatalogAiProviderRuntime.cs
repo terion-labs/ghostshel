@@ -12,10 +12,23 @@ public sealed class CatalogAiProviderRuntime :
     private const int MaximumPromptLength = 64 * 1024;
     private const string ChatSystemPrompt =
         "You are GhostSHELL's chat-only assistant. You have no tools and no access to terminals, files, processes, browsers, sessions, credentials, or remote machines. Never claim that you performed an action.";
+    private static readonly ImmutableArray<AiProviderModelDescriptor> OpenAiCodexModels =
+    [
+        new("gpt-5.6-sol", "GPT-5.6 Sol", contextWindowTokens: 272_000),
+        new("gpt-5.6-terra", "GPT-5.6 Terra", contextWindowTokens: 272_000),
+        new("gpt-5.6-luna", "GPT-5.6 Luna", contextWindowTokens: 272_000),
+        new("gpt-5.5", "GPT-5.5", contextWindowTokens: 272_000),
+        new("gpt-5.4", "GPT-5.4", contextWindowTokens: 272_000),
+        new("gpt-5.4-mini", "GPT-5.4 mini", contextWindowTokens: 272_000),
+        new("gpt-5.3-codex", "GPT-5.3 Codex", contextWindowTokens: 272_000),
+        new("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark", contextWindowTokens: 128_000),
+    ];
 
     private readonly object _gate = new();
     private readonly IDefinitionCatalog _catalog;
     private readonly AiProviderFactory _factory;
+    private readonly Dictionary<AiProviderProfileId, IReadOnlyList<AiProviderModelDescriptor>>
+        _discoveredModels = [];
     private IReadOnlyList<AiProviderProfileDescriptor> _profiles = [];
     private IReadOnlyList<AiProviderRuntimeDiagnostic> _diagnostics = [];
     private NativeAgentSession _chatSession = CreateChatSession();
@@ -26,12 +39,14 @@ public sealed class CatalogAiProviderRuntime :
     public CatalogAiProviderRuntime(
         IDefinitionCatalog catalog,
         ISecretVault secretVault,
-        AiProviderRuntimeLimits? limits = null)
+        AiProviderRuntimeLimits? limits = null,
+        AiProviderOAuthOptions? oauthOptions = null)
         : this(
             catalog,
             new AiProviderFactory(
                 secretVault ?? throw new ArgumentNullException(nameof(secretVault)),
-                limits))
+                limits,
+                oauthOptions))
     {
     }
 
@@ -90,9 +105,13 @@ public sealed class CatalogAiProviderRuntime :
         ObjectDisposedException.ThrowIf(_disposed, this);
         try
         {
-            var models = await _factory
-                .ListModelsAsync(profile, cancellationToken)
-                .ConfigureAwait(false);
+            var models = profile.Identity == AiProviderKind.OpenAi
+                && profile.Authentication is AiProviderAuthentication.OAuth
+                    ? await _factory.ListOpenAiCodexModelsAsync(
+                        profile,
+                        cancellationToken).ConfigureAwait(false)
+                    : await _factory.ListModelsAsync(profile, cancellationToken)
+                        .ConfigureAwait(false);
             if (!models.Any(model =>
                     string.Equals(
                         model.Id,
@@ -131,6 +150,89 @@ public sealed class CatalogAiProviderRuntime :
         {
             return Failure(AiProviderClientException.Create(
                 AiProviderRuntimeErrorCode.ProviderUnavailable));
+        }
+    }
+
+    public async ValueTask<AiProviderModelDiscoveryResult> DiscoverModelsAsync(
+        AiProviderProfileId profileId,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var profile = _catalog.Snapshot.AiProviderProfiles
+            .Select(stored => stored.Value)
+            .SingleOrDefault(candidate => candidate.Id == profileId);
+        if (profile is null || !profile.IsEnabled)
+        {
+            return new AiProviderModelDiscoveryResult(
+                false,
+                "ai_provider_profile_unavailable",
+                "The selected AI-provider profile is unavailable.",
+                []);
+        }
+
+        try
+        {
+            IReadOnlyList<AiProviderModelDescriptor> models;
+            if (profile.Identity == AiProviderKind.OpenAi
+                && profile.Authentication is AiProviderAuthentication.OAuth)
+            {
+                models = await _factory.ListOpenAiCodexModelsAsync(
+                    profile,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                models = await _factory.ListModelsAsync(profile, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (models.All(model => !string.Equals(
+                    model.Id,
+                    profile.DefaultModel,
+                    StringComparison.Ordinal)))
+            {
+                models = new[]
+                {
+                    new AiProviderModelDescriptor(
+                        profile.DefaultModel,
+                        profile.DefaultModel),
+                }.Concat(models).ToArray();
+            }
+
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _discoveredModels[profile.Id] = Array.AsReadOnly(models.ToArray());
+            }
+
+            Refresh(_catalog.Snapshot);
+            ProfilesChanged?.Invoke(this, EventArgs.Empty);
+            return new AiProviderModelDiscoveryResult(
+                true,
+                "ai_provider_models_discovered",
+                $"{models.Count} model(s) are available.",
+                models);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AiProviderClientException exception)
+        {
+            return new AiProviderModelDiscoveryResult(
+                false,
+                exception.StableCode,
+                exception.Message,
+                []);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            return new AiProviderModelDiscoveryResult(
+                false,
+                "ai_provider_model_discovery_failed",
+                "Models could not be loaded from this provider.",
+                []);
         }
     }
 
@@ -174,7 +276,8 @@ public sealed class CatalogAiProviderRuntime :
     internal IAgentProvider CreateProvider(
         CatalogAiProviderBinding binding,
         AiProviderProfile profile,
-        string? model = null)
+        string? model = null,
+        AgentServiceTier serviceTier = AgentServiceTier.Automatic)
     {
         ArgumentNullException.ThrowIfNull(binding);
         ArgumentNullException.ThrowIfNull(profile);
@@ -192,7 +295,7 @@ public sealed class CatalogAiProviderRuntime :
                 "The pinned AI-provider profile changed and must be rebound.");
         }
 
-        return _factory.Create(profile, model);
+        return _factory.Create(profile, model, serviceTier);
     }
 
     public async ValueTask<AgentChatSendResult> SendAsync(
@@ -467,13 +570,21 @@ public sealed class CatalogAiProviderRuntime :
             .ToArray();
         var diagnostics = snapshot.AiProviderProfiles
             .Select(stored => stored.Value)
-            .Where(profile => !profile.IsEnabled)
+            .Where(profile =>
+                !profile.IsEnabled
+                || !AiProviderCatalog.Get(profile.Identity).IsRuntimeSupported)
             .OrderBy(profile => profile.Order)
-            .Select(profile => new AiProviderRuntimeDiagnostic(
-                profile.Id,
-                AiProviderRuntimeDiagnosticSeverity.Information,
-                "ai_provider_disabled",
-                "This AI-provider profile is disabled and will not be selected."))
+            .Select(profile => profile.IsEnabled
+                ? new AiProviderRuntimeDiagnostic(
+                    profile.Id,
+                    AiProviderRuntimeDiagnosticSeverity.Error,
+                    "ai_provider_runtime_unavailable",
+                    "This AI-provider protocol is not implemented and will not be selected.")
+                : new AiProviderRuntimeDiagnostic(
+                    profile.Id,
+                    AiProviderRuntimeDiagnosticSeverity.Information,
+                    "ai_provider_disabled",
+                    "This AI-provider profile is disabled and will not be selected."))
             .ToArray();
         lock (_gate)
         {
@@ -483,15 +594,97 @@ public sealed class CatalogAiProviderRuntime :
         }
     }
 
-    private static AiProviderProfileDescriptor ToDescriptor(AiProviderProfile profile) => new(
-        profile.Id,
-        profile.Name,
-        profile.ProviderKind,
-        profile.Endpoint,
-        profile.DefaultModel,
-        profile.Order,
-        profile.IsEnabled,
-        profile.Authentication is AiProviderAuthentication.ApiKey);
+    private AiProviderProfileDescriptor ToDescriptor(AiProviderProfile profile)
+    {
+        var models = DiscoveredOrAvailableModels(profile)
+            .Select(model => new AiProviderModelDescriptor(
+                model.Id,
+                model.DisplayName,
+                AiProviderReasoningPolicy.SupportedEfforts(profile, model.Id),
+                AiProviderServiceTierPolicy.SupportedTiers(profile, model.Id),
+                model.ContextWindowTokens ?? ContextWindowTokens(profile, model.Id)))
+            .ToArray();
+        var defaultModel = models.Single(model => string.Equals(
+            model.Id,
+            profile.DefaultModel,
+            StringComparison.Ordinal));
+        return new AiProviderProfileDescriptor(
+            profile.Id,
+            profile.Name,
+            profile.ProviderKind,
+            profile.Endpoint,
+            profile.DefaultModel,
+            profile.Order,
+            profile.IsEnabled
+                && AiProviderCatalog.Get(profile.Identity).IsRuntimeSupported,
+            profile.Authentication is AiProviderAuthentication.ApiKey
+                or AiProviderAuthentication.OAuth,
+            profile.Capabilities.SupportsImageInput
+                && AiProviderCatalog.Get(profile.Identity).IsRuntimeSupported,
+            SupportedReasoningEfforts: defaultModel.SupportedReasoningEfforts,
+            Models: models);
+    }
+
+    private IReadOnlyList<AiProviderModelDescriptor> DiscoveredOrAvailableModels(
+        AiProviderProfile profile)
+    {
+        lock (_gate)
+        {
+            return _discoveredModels.TryGetValue(profile.Id, out var models)
+                ? models
+                : AvailableModels(profile);
+        }
+    }
+
+    private static IReadOnlyList<AiProviderModelDescriptor> AvailableModels(
+        AiProviderProfile profile)
+    {
+        if (profile.Identity == AiProviderKind.OpenAi
+            && profile.Authentication is AiProviderAuthentication.OAuth)
+        {
+            var models = OpenAiCodexModels;
+            if (models.Any(model => string.Equals(
+                    model.Id,
+                    profile.DefaultModel,
+                    StringComparison.Ordinal)))
+            {
+                return models;
+            }
+
+            return models.Insert(
+                0,
+                new AiProviderModelDescriptor(
+                    profile.DefaultModel,
+                    profile.DefaultModel));
+        }
+
+        return
+        [
+            new AiProviderModelDescriptor(
+                profile.DefaultModel,
+                profile.DefaultModel),
+        ];
+    }
+
+    private static int? ContextWindowTokens(
+        AiProviderProfile profile,
+        string modelId)
+    {
+        if (profile.Identity != AiProviderKind.OpenAi
+            || profile.Authentication is not AiProviderAuthentication.OAuth)
+        {
+            return null;
+        }
+
+        return string.Equals(
+            modelId,
+            "gpt-5.3-codex-spark",
+            StringComparison.Ordinal)
+                ? 128_000
+                : modelId.StartsWith("gpt-5", StringComparison.Ordinal)
+                    ? 272_000
+                    : null;
+    }
 
     private static AiProviderTestResult Failure(AiProviderClientException exception) => new(
         false,
@@ -554,7 +747,25 @@ public sealed class CatalogAiProviderRuntime :
                 message.Role == AgentMessageRole.User
                     ? AgentChatMessageRole.User
                     : AgentChatMessageRole.Assistant,
-                message.Content))
+                message.Content,
+                message.ReasoningSummary,
+                message.Usage is { } usage
+                    ? new AgentChatUsage(
+                        usage.InputTokens,
+                        usage.OutputTokens,
+                        usage.CachedInputTokens,
+                        usage.ReasoningTokens,
+                        usage.TotalTokens)
+                    : null,
+                Array.AsReadOnly(message.Images
+                    .Select(image => new AgentChatImage(
+                        image.FileName,
+                        image.MediaType,
+                        image.Content.Length))
+                    .ToArray()) is { Count: > 0 } images
+                    ? images
+                    : null,
+                message.RequestedReasoningEffort))
             .ToArray());
 
     private static NativeAgentSession CreateChatSession() => new(

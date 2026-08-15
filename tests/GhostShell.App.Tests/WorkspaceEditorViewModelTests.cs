@@ -1,10 +1,62 @@
 using GhostShell.App.ViewModels;
+using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.App.Tests;
 
 public sealed class WorkspaceEditorViewModelTests
 {
+    [Fact]
+    public void Workspace_can_enable_and_persist_its_own_agent_configuration()
+    {
+        var profile = new AiProviderProfileDescriptor(
+            new AiProviderProfileId("provider-openai"),
+            "OpenAI",
+            AiProviderKind.OpenAi,
+            new Uri("https://api.openai.com/v1/"),
+            "gpt-5.6-terra",
+            0,
+            IsEnabled: true,
+            RequiresCredential: true);
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([]),
+            3,
+            [],
+            [],
+            [],
+            [],
+            [profile]);
+
+        editor.AgentPolicy.IsEnabled = true;
+        editor.AgentPolicy.SelectedProvider = Assert.Single(
+            editor.AgentPolicy.ProviderOptions);
+        var workspaceModel = editor.AgentPolicy.AgentTaskModelOptions
+            .Single(option => option.Selection == new AgentModelSelection(
+                profile.Id.Value,
+                profile.DefaultModel));
+        editor.AgentPolicy.SelectedCompactionModel = workspaceModel;
+        editor.AgentPolicy.SelectedTitleModel = editor.AgentPolicy.TitleModelOptions
+            .Single(option => option.Selection == workspaceModel.Selection);
+        editor.AgentPolicy.SystemPrompt = "Use this workspace's build conventions.";
+        editor.AgentPolicy.Capabilities.Single(item =>
+            item.Capability == AgentCapability.RunCommands).SelectedPermission =
+            AgentPermission.Auto;
+
+        var saved = editor.CreateSaveRequest().Definition;
+
+        var policy = Assert.IsType<AgentPolicy>(saved.AgentPolicyOverride);
+        Assert.Equal("provider-openai", policy.Provider);
+        Assert.Equal("gpt-5.6-terra", policy.Model);
+        Assert.Equal(workspaceModel.Selection, policy.CompactionModel);
+        Assert.Equal(workspaceModel.Selection, policy.TitleModel);
+        Assert.Equal(
+            "Use this workspace's build conventions.",
+            policy.SystemPrompt);
+        Assert.Equal(
+            AgentPermission.Auto,
+            policy.GetPermission(AgentCapability.RunCommands));
+    }
+
     [Fact]
     public void Save_request_preserves_durable_state_and_mixed_entry_order()
     {
@@ -48,7 +100,15 @@ public sealed class WorkspaceEditorViewModelTests
         Assert.Equal(17, request.ExpectedRevision);
         Assert.Equal(original.Id, request.Definition.Id);
         Assert.Equal(original.SchemaVersion, request.Definition.SchemaVersion);
-        Assert.Same(original.AgentPolicyOverride, request.Definition.AgentPolicyOverride);
+        Assert.Equal(
+            original.AgentPolicyOverride?.Provider,
+            request.Definition.AgentPolicyOverride?.Provider);
+        Assert.Equal(
+            original.AgentPolicyOverride?.Model,
+            request.Definition.AgentPolicyOverride?.Model);
+        Assert.Equal(
+            original.AgentPolicyOverride?.Permissions.OrderBy(pair => pair.Key),
+            request.Definition.AgentPolicyOverride?.Permissions.OrderBy(pair => pair.Key));
         Assert.Equal("server", request.Definition.Icon);
         Assert.Equal("#112233", request.Definition.Accent);
         Assert.Equal(

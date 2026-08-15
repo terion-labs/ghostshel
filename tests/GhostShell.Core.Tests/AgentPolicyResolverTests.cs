@@ -143,6 +143,63 @@ public sealed class AgentPolicyResolverTests
     }
 
     [Fact]
+    public void AuxiliaryModelsInheritIndependentlyAndFallBackToGlobalPrimaryModel()
+    {
+        var global = AgentPolicy.Default with
+        {
+            Provider = "global-provider",
+            Model = "global-model",
+            TitleModel = new AgentModelSelection("title-provider", "title-model"),
+        };
+        var workspace = AgentPolicy.Default with
+        {
+            Provider = "workspace-provider",
+            Model = "workspace-model",
+            CompactionModel = new AgentModelSelection(
+                "compact-provider",
+                "compact-model"),
+        };
+
+        var resolved = AgentPolicyResolver.Resolve(global, workspace);
+
+        Assert.Equal(
+            new AgentModelSelection("compact-provider", "compact-model"),
+            resolved.CompactionModel);
+        Assert.Equal(
+            new AgentModelSelection("title-provider", "title-model"),
+            resolved.TitleModel);
+
+        var legacy = AgentPolicyResolver.Resolve(global with { TitleModel = null });
+        Assert.Equal(
+            new AgentModelSelection("global-provider", "global-model"),
+            legacy.CompactionModel);
+        Assert.Null(legacy.TitleModel);
+    }
+
+    [Fact]
+    public void SystemPromptUsesMostSpecificConfiguredLayer()
+    {
+        var global = AgentPolicy.Default with
+        {
+            SystemPrompt = "Prefer concise answers.",
+        };
+        var workspace = AgentPolicy.Default with
+        {
+            Provider = "workspace-provider",
+            Model = "workspace-model",
+            SystemPrompt = "Follow this workspace's conventions.",
+        };
+        var inherited = workspace with { SystemPrompt = null };
+
+        Assert.Equal(
+            "Follow this workspace's conventions.",
+            AgentPolicyResolver.Resolve(global, workspace).SystemPrompt);
+        Assert.Equal(
+            "Prefer concise answers.",
+            AgentPolicyResolver.Resolve(global, inherited).SystemPrompt);
+    }
+
+    [Fact]
     public void LeastPrivilegeAggregationUsesTheMostRestrictivePermissionPerCapability()
     {
         var allAuto = FullPolicy("provider", "model", AgentPermission.Auto);

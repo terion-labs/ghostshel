@@ -1,7 +1,13 @@
+using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using GhostShell.App.ViewModels;
+using GhostShell.Application;
+using GhostShell.Core;
 using AvaloniaKeyModifiers = Avalonia.Input.KeyModifiers;
 
 namespace GhostShell.App.Views;
@@ -45,6 +51,87 @@ public sealed partial class QuickTerminalWindow
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
+        }
+    }
+
+    private async void OnQueueAgentFollowUpClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is not QuickTerminalViewModel { AgentChat: { } agentChat })
+        {
+            return;
+        }
+
+        try
+        {
+            await agentChat.QueueFollowUpAsync(_lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async void OnAttachAgentImageClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is not QuickTerminalViewModel
+            {
+                AgentChat: { CanAttachImages: true } agentChat,
+            })
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                Title = "Attach an image to the agent prompt",
+                AllowMultiple = false,
+                FileTypeFilter =
+                [
+                    new FilePickerFileType("Images")
+                    {
+                        Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"],
+                        MimeTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"],
+                    },
+                ],
+            });
+        if (files.Count != 1)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await files[0].OpenReadAsync();
+            var bytes = await MainWindow.ReadBoundedImageAsync(stream, _lifetime.Token);
+            agentChat.AddPendingImage(
+                new AgentImageAttachment(
+                    files[0].Name,
+                    MainWindow.DetectImageMediaType(bytes),
+                    bytes));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException
+                or InvalidOperationException
+                or IOException)
+        {
+            agentChat.ReportTargetUnavailable(exception.Message);
+        }
+    }
+
+    private void OnClearAgentImagesClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is QuickTerminalViewModel { AgentChat: { } agentChat })
+        {
+            agentChat.ClearPendingImages();
         }
     }
 
@@ -101,9 +188,122 @@ public sealed partial class QuickTerminalWindow
         await RunAgentActionFromDataContextAsync(
             (agent, token) => agent.ClearAsync(token));
 
+    private async void OnStartNewAgentConversationClick(object? sender, RoutedEventArgs e) =>
+        await RunQuickAgentConversationActionAsync(
+            sender,
+            (agent, token) => agent.StartNewConversationAsync(token));
+
+    private async void OnOpenAgentConversationClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: AgentRunId runId })
+        {
+            await RunQuickAgentConversationActionAsync(
+                sender,
+                (agent, token) => agent.OpenConversationAsync(runId, token));
+        }
+    }
+
+    private async void OnDeleteAgentConversationClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: AgentRunId runId })
+        {
+            await RunQuickAgentConversationActionAsync(
+                sender,
+                (agent, token) => agent.DeleteConversationAsync(runId, token),
+                hideHistoryFlyout: false);
+        }
+    }
+
+    private async void OnCopyAgentMessageClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not Button { Tag: AgentChatMessageViewModel message }
+            || Clipboard is not { } clipboard)
+        {
+            return;
+        }
+
+        try
+        {
+            await clipboard.SetTextAsync(message.Content);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or ObjectDisposedException)
+        {
+        }
+    }
+
+    private async void OnForkAgentConversationClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: AgentConversationForkPoint forkPoint })
+        {
+            await RunQuickAgentConversationActionAsync(
+                sender,
+                (agent, token) => agent.ForkConversationAsync(forkPoint, token),
+                hideHistoryFlyout: false);
+        }
+    }
+
+    private async void OnSelectAgentModelClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: AiProviderModelDescriptor model })
+        {
+            await RunQuickAgentConversationActionAsync(
+                sender,
+                (agent, token) => agent.SelectModelAsync(model, token),
+                hideHistoryFlyout: false);
+            (sender as Control)?.FindAncestorOfType<AgentWorkspaceView>()?
+                .FindControl<Button>("AgentModelPickerButton")?.Flyout?.Hide();
+        }
+    }
+
+    private async void OnRefreshAgentModelsClick(object? sender, RoutedEventArgs e) =>
+        await RunQuickAgentConversationActionAsync(
+            sender,
+            (agent, token) => agent.RefreshModelsAsync(token),
+            hideHistoryFlyout: false);
+
+    private async void OnToggleAgentModelFavoriteClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: AgentModelPickerItemViewModel item })
+        {
+            await RunQuickAgentConversationActionAsync(
+                sender,
+                (agent, token) => agent.ToggleFavoriteModelAsync(item, token),
+                hideHistoryFlyout: false);
+        }
+    }
+
+    private async Task RunQuickAgentConversationActionAsync(
+        object? sender,
+        Func<AgentChatViewModel, CancellationToken, Task> action,
+        bool hideHistoryFlyout = true)
+    {
+        if (DataContext is not QuickTerminalViewModel { AgentChat: { } agent })
+        {
+            return;
+        }
+
+        try
+        {
+            await action(agent, _lifetime.Token);
+            if (hideHistoryFlyout)
+            {
+                (sender as Control)?.FindAncestorOfType<AgentWorkspaceView>()?
+                    .FindControl<Button>("AgentConversationHistoryButton")?.Flyout?.Hide();
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
     private async void OnDisableAgentYoloClick(object? sender, RoutedEventArgs e) =>
         await RunAgentActionFromDataContextAsync(
-            (agent, token) => agent.DisableYoloAsync(token));
+            (agent, token) => agent.SelectAskApprovalAsync(token));
 
     private async void OnApproveAgentActionClick(object? sender, RoutedEventArgs e) =>
         await RunAgentActionFromDataContextAsync(
@@ -127,39 +327,15 @@ public sealed partial class QuickTerminalWindow
         _ = e;
         if (DataContext is not QuickTerminalViewModel
             {
-                AgentChat: { CanEnableYolo: true } agentChat,
+                AgentChat: not null,
             } viewModel)
         {
             return;
         }
 
-        var previousHideOnFocusLoss = HideOnFocusLoss;
-        HideOnFocusLoss = false;
-        TimeSpan? lifetime;
-        try
-        {
-            lifetime = await new AgentYoloConfirmationDialog(
-                    agentChat.TargetTitle,
-                    agentChat.ExactTarget,
-                    agentChat.ConnectionBoundary.Length > 0
-                        ? agentChat.ConnectionBoundary
-                        : "Not reported",
-                    agentChat.WorkingDirectory.Length > 0
-                        ? agentChat.WorkingDirectory
-                        : "Not reported")
-                .ShowDialog<TimeSpan?>(this);
-        }
-        finally
-        {
-            HideOnFocusLoss = previousHideOnFocusLoss;
-        }
-
-        if (lifetime is not null)
-        {
-            await RunAgentActionAsync(
-                viewModel,
-                (agent, token) => agent.EnableYoloAsync(lifetime.Value, token));
-        }
+        await RunAgentActionAsync(
+            viewModel,
+            (agent, token) => agent.SelectFullAccessAsync(token));
     }
 
     private void OnShowAgentSettingsClick(object? sender, RoutedEventArgs e)

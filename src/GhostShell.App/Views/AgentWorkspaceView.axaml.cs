@@ -30,6 +30,11 @@ public sealed partial class AgentWorkspaceView : UserControl
     public AgentWorkspaceView()
     {
         InitializeComponent();
+        AgentChatPromptInput.AddHandler(
+            InputElement.KeyDownEvent,
+            OnAgentPromptKeyDown,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
         _wasFloating = Classes.Contains("floating");
         Classes.CollectionChanged += (_, _) =>
         {
@@ -219,9 +224,31 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? LoadOlderAgentAuditRequested;
 
+    public event EventHandler<RoutedEventArgs>? StartNewAgentConversationRequested;
+
+    public event EventHandler<RoutedEventArgs>? OpenAgentConversationRequested;
+
+    public event EventHandler<RoutedEventArgs>? DeleteAgentConversationRequested;
+
+    public event EventHandler<RoutedEventArgs>? CopyAgentMessageRequested;
+
+    public event EventHandler<RoutedEventArgs>? ForkAgentConversationRequested;
+
+    public event EventHandler<RoutedEventArgs>? SelectAgentModelRequested;
+
+    public event EventHandler<RoutedEventArgs>? ToggleAgentModelFavoriteRequested;
+
+    public event EventHandler<RoutedEventArgs>? RefreshAgentModelsRequested;
+
     public event EventHandler<RoutedEventArgs>? RefreshAgentAuditRequested;
 
     public event EventHandler<RoutedEventArgs>? SendAgentChatRequested;
+
+    public event EventHandler<RoutedEventArgs>? QueueAgentFollowUpRequested;
+
+    public event EventHandler<RoutedEventArgs>? AttachAgentImageRequested;
+
+    public event EventHandler<RoutedEventArgs>? ClearAgentImagesRequested;
 
     public event EventHandler<RoutedEventArgs>? ShowAgentSettingsRequested;
 
@@ -252,6 +279,20 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnAgentQuestionResponseKeyDown(object? sender, KeyEventArgs e) =>
         AgentQuestionResponseKeyDownRequested?.Invoke(sender, e);
+
+    private void OnAgentPromptKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!ShouldSubmitPrompt(e.Key, e.KeyModifiers))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        SendAgentChatRequested?.Invoke(sender, e);
+    }
+
+    internal static bool ShouldSubmitPrompt(Key key, KeyModifiers modifiers) =>
+        key == Key.Enter && modifiers == KeyModifiers.None;
 
     private void OnApproveAgentActionClick(object? sender, RoutedEventArgs e) =>
         ApproveAgentActionRequested?.Invoke(sender, e);
@@ -292,6 +333,15 @@ public sealed partial class AgentWorkspaceView : UserControl
     private void OnSendAgentChatClick(object? sender, RoutedEventArgs e) =>
         SendAgentChatRequested?.Invoke(sender, e);
 
+    private void OnQueueAgentFollowUpClick(object? sender, RoutedEventArgs e) =>
+        QueueAgentFollowUpRequested?.Invoke(sender, e);
+
+    private void OnAttachAgentImageClick(object? sender, RoutedEventArgs e) =>
+        AttachAgentImageRequested?.Invoke(sender, e);
+
+    private void OnClearAgentImagesClick(object? sender, RoutedEventArgs e) =>
+        ClearAgentImagesRequested?.Invoke(sender, e);
+
     private void OnShowAgentSettingsClick(object? sender, RoutedEventArgs e) =>
         ShowAgentSettingsRequested?.Invoke(sender, e);
 
@@ -300,4 +350,28 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnToggleAgentPinClick(object? sender, RoutedEventArgs e) =>
         ToggleAgentPinRequested?.Invoke(sender, e);
+
+    private void OnStartNewConversationClick(object? sender, RoutedEventArgs e) =>
+        StartNewAgentConversationRequested?.Invoke(sender, e);
+
+    private void OnOpenConversationClick(object? sender, RoutedEventArgs e) =>
+        OpenAgentConversationRequested?.Invoke(sender, e);
+
+    private void OnDeleteConversationClick(object? sender, RoutedEventArgs e) =>
+        DeleteAgentConversationRequested?.Invoke(sender, e);
+
+    private void OnCopyAgentMessageClick(object? sender, RoutedEventArgs e) =>
+        CopyAgentMessageRequested?.Invoke(sender, e);
+
+    private void OnForkAgentConversationClick(object? sender, RoutedEventArgs e) =>
+        ForkAgentConversationRequested?.Invoke(sender, e);
+
+    private void OnSelectModelClick(object? sender, RoutedEventArgs e) =>
+        SelectAgentModelRequested?.Invoke(sender, e);
+
+    private void OnToggleFavoriteModelClick(object? sender, RoutedEventArgs e) =>
+        ToggleAgentModelFavoriteRequested?.Invoke(sender, e);
+
+    private void OnRefreshModelsClick(object? sender, RoutedEventArgs e) =>
+        RefreshAgentModelsRequested?.Invoke(sender, e);
 }

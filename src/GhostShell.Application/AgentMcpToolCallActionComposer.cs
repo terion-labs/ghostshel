@@ -94,14 +94,19 @@ public sealed class AgentMcpToolCallActionComposer
         AgentMcpToolCallRequest request)
     {
         var manifest = request.Manifest;
+        var isStdio = manifest.TransportKind
+            == McpServerTransportKind.Stdio;
         return new AgentApprovalPresentation(
             $"MCP server: {manifest.ProfileName}",
-            "Local MCP stdio process",
+            isStdio
+                ? "Local MCP stdio process"
+                : "Remote MCP Streamable HTTP server",
             manifest.WorkingDirectory,
             [
                 new AgentApprovalArgument(
-                    "executable",
-                    EscapeForApproval(manifest.Executable)),
+                    isStdio ? "executable" : "endpoint",
+                    EscapeForApproval(manifest.TransportTarget),
+                    AgentApprovalPresentation.MaximumWorkingDirectoryBytes),
                 new AgentApprovalArgument(
                     "tool",
                     EscapeForApproval(

@@ -23,14 +23,16 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
     private readonly SemaphoreSlim _workspaceGraphGate = new(1, 1);
     private readonly TerminalRenderProfileSnapshot? _renderProfile;
     private readonly TerminalKeymapSnapshot? _keymap;
+    private readonly IGovernedAgentRuntime? _ownedAgentRuntime;
     private QuickTerminalTabViewModel? _activeTab;
-    private AgentRunScopeOption _selectedAgentRunScope = AgentRunScopeOptionsValue[0];
+    private AgentRunScopeOption _selectedAgentRunScope = AgentRunScopeOptionsValue[2];
     private bool _isAgentPanelVisible;
     private bool _isAgentPanelDocked;
     private bool _hasAgentTerminalSelectionError;
     private string _agentTerminalSelectionStatus =
         $"Choose between 1 and {AgentTarget.SelectedPanels.MaximumPanelCount} terminals from this workspace.";
     private bool _restoringRecovery;
+    private readonly AgentPolicyCoordinator? _agentPolicyCoordinator;
     private bool _disposed;
 
     public QuickTerminalViewModel(
@@ -40,23 +42,32 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
         IGovernedAgentRuntime? agentRuntime = null,
         IAiProviderProfileRuntime? aiProviderRuntime = null,
         IAgentRunAuditReader? agentRunAuditReader = null,
-        IUiThreadDispatcher? uiThreadDispatcher = null)
+        IUiThreadDispatcher? uiThreadDispatcher = null,
+        IAgentModelFavoriteStore? agentModelFavoriteStore = null,
+        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null,
+        AgentPolicyCoordinator? agentPolicyCoordinator = null)
     {
         _mainWindow = mainWindow ?? throw new ArgumentNullException(nameof(mainWindow));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _connectionRuntime = connectionRuntime
             ?? throw new ArgumentNullException(nameof(connectionRuntime));
+        _agentPolicyCoordinator = agentPolicyCoordinator;
 
         SessionClient = mainWindow.SessionClient;
         ClientId = mainWindow.ClientId;
         WindowId = WindowInstanceId.New();
         WorkspaceId = WorkspaceInstanceId.New();
-        AgentChat = agentRuntime is not null && aiProviderRuntime is not null
+        _ownedAgentRuntime = agentRuntimeFactory?.Create(
+            WorkspaceId,
+            new AgentConversationScopeId("quick-terminal"));
+        var effectiveAgentRuntime = _ownedAgentRuntime ?? agentRuntime;
+        AgentChat = effectiveAgentRuntime is not null && aiProviderRuntime is not null
             ? new AgentChatViewModel(
-                agentRuntime,
+                effectiveAgentRuntime,
                 aiProviderRuntime,
                 uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance,
-                agentRunAuditReader)
+                agentRunAuditReader,
+                agentModelFavoriteStore)
             : null;
         _mainWindow.PropertyChanged += OnMainWindowPropertyChanged;
 
@@ -496,6 +507,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
         _mainWindow.PropertyChanged -= OnMainWindowPropertyChanged;
         _lifetime.Cancel();
         AgentChat?.Dispose();
+        _ownedAgentRuntime?.Dispose();
         _ = UnregisterWorkspaceGraphAsync();
         _lifetime.Dispose();
     }
@@ -574,7 +586,14 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
                     "The selected agent scope is not supported.");
         }
 
-        await agentChat.SendAsync(target, cancellationToken);
+        if (_agentPolicyCoordinator?.Policy is { } policy)
+        {
+            await agentChat.SendAsync(target, policy, cancellationToken);
+        }
+        else
+        {
+            await agentChat.SendAsync(target, cancellationToken);
+        }
     }
 
     private void AddTabCore(QuickTerminalTabViewModel tab)

@@ -1022,28 +1022,37 @@ public sealed class GovernedAgentRuntimeBrowserTests
     }
 
     [Fact]
-    public async Task YoloRemainsUnavailableForAnExactBrowserRun()
+    public async Task FullAccessModeCanBeSelectedForAnExactBrowserRun()
     {
+        var policy = PolicyWith(
+            AgentCapability.BrowserData,
+            AgentPermission.Auto) with
+        {
+            Provider = "browser-provider",
+            Model = "browser-default-model",
+        };
         await using var fixture = BrowserRuntimeFixture.Create(
             BrowserScope.ExactPanel,
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.BrowserReadState,
                 "{}"),
-            PolicyWith(
-                AgentCapability.BrowserData,
-                AgentPermission.Auto));
+            policy);
 
         Assert.True((await fixture.Runtime.SendAsync(
-            fixture.Prompt("Read the browser."),
+            new GovernedAgentPrompt(
+                new AiProviderProfileId("browser-provider"),
+                "Read the browser.",
+                fixture.Context.Target,
+                [],
+                AgentReasoningEffort.Automatic,
+                AgentServiceTier.Automatic,
+                policy,
+                AgentApprovalMode.FullAccess),
             CancellationToken.None)).IsSuccess);
 
-        var result = await fixture.Runtime.EnableYoloAsync(
-            TimeSpan.FromMinutes(15),
-            CancellationToken.None);
-
-        Assert.False(result.IsAccepted);
-        Assert.Equal("yolo_exact_panel_required", result.Code);
-        Assert.Null(fixture.Runtime.Snapshot.YoloAuthority);
+        Assert.Equal(
+            AgentYoloConfirmation.RunLifetimeExpiry,
+            fixture.Runtime.Snapshot.YoloAuthority?.ExpiresAtUtc);
     }
 
     private static AgentPolicy PolicyWith(

@@ -79,12 +79,14 @@ public sealed record AgentTurnResult
         bool succeeded,
         AgentTurnErrorCode? errorCode,
         AgentProviderStopReason? stopReason,
-        ImmutableArray<AgentToolProposal> toolProposals)
+        ImmutableArray<AgentToolProposal> toolProposals,
+        AgentProviderFailure? providerFailure)
     {
         Succeeded = succeeded;
         ErrorCode = errorCode;
         StopReason = stopReason;
         ToolProposals = toolProposals;
+        ProviderFailure = providerFailure;
     }
 
     public bool Succeeded { get; }
@@ -95,24 +97,39 @@ public sealed record AgentTurnResult
 
     public ImmutableArray<AgentToolProposal> ToolProposals { get; }
 
+    public AgentProviderFailure? ProviderFailure { get; }
+
     internal static AgentTurnResult Success(
         AgentProviderStopReason stopReason,
         ImmutableArray<AgentToolProposal> toolProposals) =>
-        new(true, null, stopReason, toolProposals);
+        new(true, null, stopReason, toolProposals, null);
 
-    internal static AgentTurnResult Failure(AgentTurnErrorCode errorCode) =>
-        new(false, errorCode, null, []);
+    internal static AgentTurnResult Failure(
+        AgentTurnErrorCode errorCode,
+        AgentProviderException? providerException = null) =>
+        new(
+            false,
+            errorCode,
+            null,
+            [],
+            providerException is null
+                ? null
+                : new AgentProviderFailure(
+                    providerException.StableCode,
+                    providerException.PublicMessage));
 }
 
 public enum AgentRunEventKind
 {
     TurnStarted,
     ProvisionalText,
+    ProvisionalReasoningSummary,
     TurnCommitted,
     TurnFailed,
     TurnCancelled,
     ToolProposalsDiscarded,
     ConversationCompacted,
+    ConversationTitleChanged,
     TurnSteered,
 }
 
@@ -126,6 +143,7 @@ public sealed record AgentRunEvent
         AgentRunEventKind kind,
         DateTimeOffset occurredAt,
         string? provisionalText = null,
+        string? provisionalReasoningSummary = null,
         AgentTurnErrorCode? errorCode = null,
         int toolProposalCount = 0)
     {
@@ -136,6 +154,7 @@ public sealed record AgentRunEvent
         Kind = kind;
         OccurredAt = occurredAt;
         ProvisionalText = provisionalText;
+        ProvisionalReasoningSummary = provisionalReasoningSummary;
         ErrorCode = errorCode;
         ToolProposalCount = toolProposalCount;
     }
@@ -154,11 +173,14 @@ public sealed record AgentRunEvent
 
     public string? ProvisionalText { get; }
 
+    public string? ProvisionalReasoningSummary { get; }
+
     public AgentTurnErrorCode? ErrorCode { get; }
 
     public int ToolProposalCount { get; }
 
-    public bool ContainsUntrustedContent => ProvisionalText is not null;
+    public bool ContainsUntrustedContent =>
+        ProvisionalText is not null || ProvisionalReasoningSummary is not null;
 }
 
 public sealed record AgentSessionSnapshot(

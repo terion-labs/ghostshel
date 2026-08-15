@@ -16,9 +16,11 @@ public sealed class QuickTerminalController : IDisposable
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly IDefinitionCatalog _catalog;
     private readonly IConnectionRuntime _connectionRuntime;
-    private readonly IGovernedAgentRuntime _agentRuntime;
+    private readonly IAgentWorkspaceRuntimeFactory _agentRuntimeFactory;
     private readonly IAiProviderProfileRuntime _aiProviderRuntime;
     private readonly IAgentRunAuditReader _agentRunAuditReader;
+    private readonly IAgentModelFavoriteStore? _agentModelFavoriteStore;
+    private readonly AgentPolicyCoordinator? _agentPolicyCoordinator;
     private readonly IHostAccessibilityPreferencesSource _hostAccessibilityPreferences;
     private readonly IActiveWindowBoundsSource _activeWindowBounds;
     private readonly RuntimeRecoveryWriter _runtimeRecoveryWriter;
@@ -52,14 +54,16 @@ public sealed class QuickTerminalController : IDisposable
         MainWindowViewModel mainWindowViewModel,
         IDefinitionCatalog catalog,
         IConnectionRuntime connectionRuntime,
-        IGovernedAgentRuntime agentRuntime,
+        IAgentWorkspaceRuntimeFactory agentRuntimeFactory,
         IAiProviderProfileRuntime aiProviderRuntime,
         IAgentRunAuditReader agentRunAuditReader,
         IHostAccessibilityPreferencesSource hostAccessibilityPreferences,
         IActiveWindowBoundsSource activeWindowBounds,
         RuntimeRecoveryWriter runtimeRecoveryWriter,
         SessionRestoreCoordinator sessionRestoreCoordinator,
-        ApplicationStartupState startupState)
+        ApplicationStartupState startupState,
+        IAgentModelFavoriteStore? agentModelFavoriteStore = null,
+        AgentPolicyCoordinator? agentPolicyCoordinator = null)
     {
         _globalHotkey = globalHotkey ?? throw new ArgumentNullException(nameof(globalHotkey));
         _mainWindowViewModel = mainWindowViewModel
@@ -67,11 +71,14 @@ public sealed class QuickTerminalController : IDisposable
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _connectionRuntime = connectionRuntime
             ?? throw new ArgumentNullException(nameof(connectionRuntime));
-        _agentRuntime = agentRuntime ?? throw new ArgumentNullException(nameof(agentRuntime));
+        _agentRuntimeFactory = agentRuntimeFactory
+            ?? throw new ArgumentNullException(nameof(agentRuntimeFactory));
         _aiProviderRuntime = aiProviderRuntime
             ?? throw new ArgumentNullException(nameof(aiProviderRuntime));
         _agentRunAuditReader = agentRunAuditReader
             ?? throw new ArgumentNullException(nameof(agentRunAuditReader));
+        _agentModelFavoriteStore = agentModelFavoriteStore;
+        _agentPolicyCoordinator = agentPolicyCoordinator;
         _hostAccessibilityPreferences = hostAccessibilityPreferences
             ?? throw new ArgumentNullException(nameof(hostAccessibilityPreferences));
         _activeWindowBounds = activeWindowBounds
@@ -285,10 +292,13 @@ public sealed class QuickTerminalController : IDisposable
             _mainWindowViewModel,
             _catalog,
             _connectionRuntime,
-            _agentRuntime,
+            null,
             _aiProviderRuntime,
             _agentRunAuditReader,
-            AvaloniaUiThreadDispatcher.Instance);
+            AvaloniaUiThreadDispatcher.Instance,
+            _agentModelFavoriteStore,
+            _agentRuntimeFactory,
+            _agentPolicyCoordinator);
         viewModel.RecoveryStateChanged += OnRecoveryStateChanged;
         return viewModel;
     }

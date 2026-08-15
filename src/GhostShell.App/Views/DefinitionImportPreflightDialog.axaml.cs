@@ -22,8 +22,8 @@ public sealed partial class DefinitionImportPreflightDialog : Window
         Summary = $"{plan.DefinitionCount} definitions · {plan.Conflicts.Count} identity conflicts · {plan.Issues.Count(issue => issue.IsBlocking)} blocking issues";
         CommitHint = plan.CanApply
             ? plan.Mode == DefinitionImportMode.ReplaceExisting
-                ? "Matching identities will be replaced in one transaction. Secret values are never accepted in bundles."
-                : "The bundle will be committed in one transaction. Existing definitions remain unchanged."
+                ? "Matching identities will be replaced in one transaction. Bundles never import secret values; AI credential bindings are detached, and AI/MCP profiles are disabled for review."
+                : "The bundle will be committed in one transaction. Existing definitions remain unchanged. AI credential bindings are detached, and AI/MCP profiles are disabled for review."
             : "Resolve blocking issues or choose a different file. This import cannot be applied.";
         CanApply = plan.CanApply;
         Issues = plan.Issues.Select(DefinitionImportIssueItem.From).ToArray();
@@ -84,6 +84,8 @@ public sealed record DefinitionImportIssueItem(string Label, string Heading, str
         DefinitionImportIssueCode.InvalidPayload => "Invalid definition payload",
         DefinitionImportIssueCode.ImportedMcpProfileDisabled =>
             "MCP server disabled for review",
+        DefinitionImportIssueCode.ImportedAiProviderProfileDisabled =>
+            "AI provider disabled for review",
         _ => "Invalid definition bundle",
     };
 }

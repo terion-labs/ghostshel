@@ -17,26 +17,33 @@ public sealed class AiProviderFactory : IDisposable
 
     public AiProviderFactory(
         ISecretVault secretVault,
-        AiProviderRuntimeLimits? limits = null)
-        : this(secretVault, handler: null, limits)
+        AiProviderRuntimeLimits? limits = null,
+        AiProviderOAuthOptions? oauthOptions = null)
+        : this(secretVault, handler: null, limits, oauthOptions)
     {
     }
 
     internal AiProviderFactory(
         ISecretVault secretVault,
         HttpMessageHandler? handler,
-        AiProviderRuntimeLimits? limits = null)
+        AiProviderRuntimeLimits? limits = null,
+        AiProviderOAuthOptions? oauthOptions = null,
+        TimeProvider? timeProvider = null)
     {
         _limits = limits ?? AiProviderRuntimeLimits.Default;
         _transport = new AiProviderHttpTransport(
             secretVault ?? throw new ArgumentNullException(nameof(secretVault)),
-            handler);
+            handler,
+            oauthOptions,
+            oauthHandler: handler,
+            timeProvider);
         _modelDiscovery = new AiProviderModelDiscovery(_transport, _limits);
     }
 
     public IAgentProvider Create(
         AiProviderProfile profile,
-        string? model = null)
+        string? model = null,
+        AgentServiceTier serviceTier = AgentServiceTier.Automatic)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -47,24 +54,52 @@ public sealed class AiProviderFactory : IDisposable
                 nameof(profile));
         }
 
+        EnsureRuntimeSupported(profile);
         var selectedModel = ValidateModel(model ?? profile.DefaultModel);
-        return profile.ProviderKind switch
+        AiProviderServiceTierPolicy.EnsureSupported(
+            profile,
+            selectedModel,
+            serviceTier);
+        if (profile.Identity == AiProviderKind.OpenAi
+            && profile.Authentication is AiProviderAuthentication.OAuth
+            && !IsOpenAiCodexOAuthModel(selectedModel))
         {
-            AiProviderKind.Anthropic => new AnthropicAgentProvider(
+            throw AiProviderClientException.Create(
+                AiProviderRuntimeErrorCode.ModelUnavailable);
+        }
+
+        if (profile.Authentication is AiProviderAuthentication.AwsCredentialChain)
+        {
+            // AWS remains typed but fail-closed until the credential-chain
+            // boundary can sign each Bedrock request with SigV4.
+            throw AiProviderClientException.Create(
+                AiProviderRuntimeErrorCode.InvalidConfiguration);
+        }
+
+        return profile.Protocol switch
+        {
+            AiProviderProtocol.AnthropicMessages => new AnthropicAgentProvider(
                 profile,
                 selectedModel,
                 _transport,
                 _limits),
-            AiProviderKind.OpenAi or AiProviderKind.OpenAiCompatible =>
+            AiProviderProtocol.OpenAiResponses => new OpenAiResponsesAgentProvider(
+                profile,
+                selectedModel,
+                _transport,
+                _limits,
+                serviceTier),
+            AiProviderProtocol.GitHubCopilot =>
+                CreateGitHubCopilotProvider(profile, selectedModel, serviceTier),
+            AiProviderProtocol.OpenAiChatCompletions =>
                 new OpenAiCompatibleAgentProvider(
                     profile,
                     selectedModel,
                     _transport,
-                    _limits),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(profile),
-                profile.ProviderKind,
-                "The AI-provider kind is unsupported."),
+                    _limits,
+                    serviceTier),
+            _ => throw AiProviderClientException.Create(
+                AiProviderRuntimeErrorCode.InvalidConfiguration),
         };
     }
 
@@ -74,7 +109,58 @@ public sealed class AiProviderFactory : IDisposable
     {
         ArgumentNullException.ThrowIfNull(profile);
         ObjectDisposedException.ThrowIf(_disposed, this);
+        EnsureRuntimeSupported(profile);
+        if (profile.Identity == AiProviderKind.OpenAi
+            && profile.Authentication is AiProviderAuthentication.OAuth)
+        {
+            return ValueTask.FromException<IReadOnlyList<AiProviderModelDescriptor>>(
+                AiProviderClientException.Create(
+                    AiProviderRuntimeErrorCode.ModelUnavailable));
+        }
+
         return _modelDiscovery.ListAsync(profile, cancellationToken);
+    }
+
+    internal ValueTask<IReadOnlyList<AiProviderModelDescriptor>> ListOpenAiCodexModelsAsync(
+        AiProviderProfile profile,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (profile.Identity != AiProviderKind.OpenAi
+            || profile.Authentication is not AiProviderAuthentication.OAuth)
+        {
+            return ValueTask.FromException<IReadOnlyList<AiProviderModelDescriptor>>(
+                AiProviderClientException.Create(
+                    AiProviderRuntimeErrorCode.InvalidConfiguration));
+        }
+
+        return _modelDiscovery.ListOpenAiCodexAsync(profile, cancellationToken);
+    }
+
+    internal async ValueTask ValidateAuthenticationAsync(
+        AiProviderProfile profile,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        EnsureRuntimeSupported(profile);
+        var selectedModel = ValidateModel(profile.DefaultModel);
+        if (profile.Identity == AiProviderKind.OpenAi
+            && profile.Authentication is AiProviderAuthentication.OAuth
+            && !IsOpenAiCodexOAuthModel(selectedModel))
+        {
+            throw AiProviderClientException.Create(
+                AiProviderRuntimeErrorCode.ModelUnavailable);
+        }
+
+        using var request = await _transport.CreateRequestAsync(
+            profile,
+            HttpMethod.Post,
+            "responses",
+            "application/json",
+            body: null,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -101,5 +187,53 @@ public sealed class AiProviderFactory : IDisposable
         }
 
         return normalized;
+    }
+
+    private IAgentProvider CreateGitHubCopilotProvider(
+        AiProviderProfile profile,
+        string selectedModel,
+        AgentServiceTier serviceTier) =>
+        UsesGitHubCopilotResponses(selectedModel)
+            ? new OpenAiResponsesAgentProvider(
+                profile,
+                selectedModel,
+                _transport,
+                _limits,
+                serviceTier)
+            : new OpenAiCompatibleAgentProvider(
+                profile,
+                selectedModel,
+                _transport,
+                _limits,
+                serviceTier);
+
+    internal static bool UsesGitHubCopilotResponses(string modelId) =>
+        modelId.Contains("-codex", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsOpenAiCodexOAuthModel(string modelId) => modelId switch
+    {
+        "gpt-5.1-codex-max" or
+        "gpt-5.1-codex-mini" or
+        "gpt-5.1-codex" or
+        "gpt-5.2" or
+        "gpt-5.2-codex" or
+        "gpt-5.3-codex" or
+        "gpt-5.3-codex-spark" or
+        "gpt-5.4-mini" or
+        "gpt-5.5" or
+        "gpt-5.6" or
+        "gpt-5.6-sol" or
+        "gpt-5.6-terra" or
+        "gpt-5.6-luna" => true,
+        _ => false,
+    };
+
+    private static void EnsureRuntimeSupported(AiProviderProfile profile)
+    {
+        if (!AiProviderCatalog.Get(profile.Identity).IsRuntimeSupported)
+        {
+            throw AiProviderClientException.Create(
+                AiProviderRuntimeErrorCode.InvalidConfiguration);
+        }
     }
 }

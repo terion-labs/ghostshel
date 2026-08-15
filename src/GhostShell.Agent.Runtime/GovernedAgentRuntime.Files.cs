@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -317,4 +318,65 @@ public sealed partial class GovernedAgentRuntime
                 "The File Viewer mutation outcome is unknown.",
                 Retryable: false),
             revision);
+
+    private sealed class FileToolContribution(
+        GovernedAgentRuntime runtime) : IAgentToolContribution
+    {
+        public ImmutableArray<AgentToolDefinition> BuildTools(
+            AgentToolBuildContext context)
+        {
+            if (runtime._agentFileHost is null
+                || runtime._fileComposer is null
+                || context.FileMetadata.Count == 0)
+            {
+                return [];
+            }
+
+            var eligiblePanels = context.OperationalContext.Panels
+                .Where(panel =>
+                    panel.Kind == PanelKind.FileViewer
+                    && context.FileMetadata.ContainsKey(panel.PanelId))
+                .ToArray();
+            if (eligiblePanels.Length == 0)
+            {
+                return [];
+            }
+
+            return context.HasExactTarget
+                ? FileAgentToolSet.For(
+                    eligiblePanels[0],
+                    context.FileMetadata[eligiblePanels[0].PanelId])
+                : FileAgentToolSet.For(
+                    eligiblePanels,
+                    context.FileMetadata);
+        }
+
+        public ResolvedAgentToolContribution? Resolve(string toolName) =>
+            IsFileTool(toolName)
+                ? new ResolvedAgentToolContribution(
+                    toolName,
+                    ExecuteAsync)
+                : null;
+
+        private ValueTask<AgentToolResult> ExecuteAsync(
+            AgentToolExecutionRequest request,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteOperationalToolContributionAsync(
+                request,
+                ExecuteBoundAsync,
+                cancellationToken);
+
+        private ValueTask<AgentToolResult> ExecuteBoundAsync(
+            AgentToolExecutionRequest request,
+            OperationalAgentToolContext context,
+            CancellationToken cancellationToken) =>
+            runtime.ExecuteFileProposalAsync(
+                request.Proposal,
+                request.Descriptor,
+                context.Context,
+                context.ResizeEligiblePanelIds,
+                context.BrowserEligiblePanelIds,
+                context.FileMetadata,
+                cancellationToken);
+    }
 }

@@ -5,6 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="GhostShell.Agent.Providers" />
     <InternalsVisibleTo Include="GhostShell.Agent.Tests" />
   </ItemGroup>
 

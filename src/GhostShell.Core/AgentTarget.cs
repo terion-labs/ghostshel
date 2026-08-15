@@ -94,7 +94,7 @@ public abstract record AgentTarget
 
     public sealed record SelectedPanels : AgentTarget
     {
-        public const int MaximumPanelCount = 64;
+        public const int MaximumPanelCount = WorkspaceInstance.MaximumPanelCount;
 
         public SelectedPanels(IEnumerable<Panel> panels)
         {

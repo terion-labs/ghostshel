@@ -85,6 +85,7 @@ public static class DesktopComposition
         services.AddSingleton<AgentBrowserActionComposer>();
         services.AddSingleton<AgentFileActionComposer>();
         services.AddSingleton<AgentProcessListActionComposer>();
+        services.AddSingleton<AgentStatisticsReadActionComposer>();
         services.AddSingleton<AgentMcpToolCallActionComposer>();
         services.AddSingleton<AgentPanelActionComposer>();
         services.AddSingleton<AgentWorkspaceGraphActionComposer>();
@@ -168,8 +169,19 @@ public static class DesktopComposition
         services.AddSingleton<CatalogAiProviderRuntime>();
         services.AddSingleton<IAiProviderProfileRuntime>(provider =>
             provider.GetRequiredService<CatalogAiProviderRuntime>());
+        services.AddSingleton(_ => new AiProviderOAuthOptions(
+            gitHubClientId: Environment.GetEnvironmentVariable(
+                "GHOSTSHELL_GITHUB_OAUTH_CLIENT_ID")));
+        services.AddSingleton<AiProviderAuthenticationRuntime>();
+        services.AddSingleton<IAiProviderAuthenticationRuntime>(provider =>
+            provider.GetRequiredService<AiProviderAuthenticationRuntime>());
         services.AddSingleton<IAgentApprovalPrincipal, DesktopAgentApprovalPrincipal>();
         services.AddSingleton<IAgentProviderResolver, CatalogAgentProviderResolver>();
+        services.AddSingleton<IAgentSessionCheckpointStore, SqliteAgentSessionCheckpointStore>();
+        services.AddSingleton<IAgentModelFavoriteStore, SqliteAgentModelFavoriteStore>();
+        services.AddSingleton<IAgentPolicyPreferenceStore,
+            SqliteAgentPolicyPreferenceStore>();
+        services.AddSingleton<AgentPolicyCoordinator>();
         services.AddSingleton<AgentMcpSessionHost>();
         services.AddSingleton<IAgentMcpSessionHost>(provider =>
             provider.GetRequiredService<AgentMcpSessionHost>());
@@ -177,9 +189,8 @@ public static class DesktopComposition
             provider.GetRequiredService<AgentMcpSessionHost>());
         services.AddSingleton<IMcpCredentialSessionInvalidator>(provider =>
             provider.GetRequiredService<AgentMcpSessionHost>());
-        services.AddSingleton<GovernedAgentRuntime>();
-        services.AddSingleton<IGovernedAgentRuntime>(provider =>
-            provider.GetRequiredService<GovernedAgentRuntime>());
+        services.AddSingleton<IAgentWorkspaceRuntimeFactory,
+            DesktopAgentWorkspaceRuntimeFactory>();
         services.AddSingleton(typeof(IDefinitionRepository<>), typeof(SqliteDefinitionRepository<>));
         services.AddSingleton<ILayoutGraphStore, SqliteLayoutGraphStore>();
         services.AddSingleton<IDefinitionCatalog, DefinitionCatalog>();
@@ -228,6 +239,8 @@ public static class DesktopComposition
         services.AddSingleton<IAgentFileSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentProcessSessionHost>(provider =>
+            provider.GetRequiredService<InMemorySessionHostClient>());
+        services.AddSingleton<IAgentStatisticsSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentPanelSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());

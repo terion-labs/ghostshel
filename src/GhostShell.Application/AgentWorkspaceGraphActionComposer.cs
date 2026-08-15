@@ -135,7 +135,7 @@ public sealed class AgentWorkspaceGraphActionComposer
             > AgentTarget.SelectedPanels.MaximumPanelCount)
         {
             throw new ArgumentException(
-                "A governed graph scope cannot exceed 64 panels.",
+                $"A governed graph scope cannot exceed {WorkspaceInstance.MaximumPanelCount} panels.",
                 nameof(context));
         }
 

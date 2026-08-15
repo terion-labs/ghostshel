@@ -25,6 +25,11 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
     private string _provider;
     private string _model;
     private ProviderOption? _selectedProvider;
+    private IReadOnlyList<ModelOption> _modelOptions = [];
+    private ModelOption? _selectedModel;
+    private AgentTaskModelOption _selectedCompactionModel;
+    private AgentTaskModelOption _selectedTitleModel;
+    private string _systemPrompt;
     private bool _disposed;
 
     public SavedScreenAgentPolicyEditorViewModel(
@@ -46,7 +51,8 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
                 profile.Name,
                 profile.DefaultModel,
                 profile.IsEnabled,
-                IsAvailable: true))
+                IsAvailable: true,
+                BuildProviderModels(profile)))
             .ToList();
         _selectedProvider = providerOptions.SingleOrDefault(option =>
             string.Equals(option.Id.Value, normalized.Provider, StringComparison.Ordinal));
@@ -57,7 +63,8 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
                 normalized.Provider,
                 normalized.Model,
                 IsEnabled: false,
-                IsAvailable: false);
+                IsAvailable: false,
+                [new ModelOption(normalized.Model, normalized.Model)]);
             providerOptions.Add(_selectedProvider);
         }
         else if (policy is null && _requiresAvailableProvider)
@@ -76,6 +83,19 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         }
 
         ProviderOptions = providerOptions.AsReadOnly();
+        AgentTaskModelOptions = BuildAgentTaskModelOptions(providerOptions);
+        TitleModelOptions = BuildTitleModelOptions(
+            policy?.TitleModel,
+            new AgentModelSelection(_provider, _model));
+        _selectedCompactionModel = ResolveAgentTaskModelOption(
+            policy?.CompactionModel,
+            "Use default agent model");
+        _selectedTitleModel = ResolveTitleModelOption(
+            policy?.TitleModel,
+            _provider,
+            _model);
+        _systemPrompt = policy?.SystemPrompt ?? string.Empty;
+        RefreshModelOptions(_model);
         _capabilities = Array.AsReadOnly(
             AgentPolicy.Capabilities
                 .Select(capability => new CapabilityEditorViewModel(
@@ -121,6 +141,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
                     OnPropertyChanged(nameof(SelectedProvider));
                 }
 
+                RefreshModelOptions(_model);
                 OnPropertyChanged(nameof(IsValid));
                 Changed?.Invoke(this, EventArgs.Empty);
             }
@@ -134,6 +155,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         {
             if (SetProperty(ref _model, value))
             {
+                RefreshModelOptions(value);
                 OnPropertyChanged(nameof(IsValid));
                 Changed?.Invoke(this, EventArgs.Empty);
             }
@@ -141,6 +163,108 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
     }
 
     public IReadOnlyList<ProviderOption> ProviderOptions { get; }
+
+    public IReadOnlyList<AgentTaskModelOption> AgentTaskModelOptions { get; }
+
+    public IReadOnlyList<AgentTaskModelOption> TitleModelOptions { get; }
+
+    public bool HasSingleTitleModelOption => TitleModelOptions.Count == 1;
+
+    public bool HasMultipleTitleModelOptions => TitleModelOptions.Count > 1;
+
+    public string SystemPrompt
+    {
+        get => _systemPrompt;
+        set
+        {
+            var normalized = value ?? string.Empty;
+            if (SetProperty(ref _systemPrompt, normalized))
+            {
+                OnPropertyChanged(nameof(SystemPromptUsage));
+                OnPropertyChanged(nameof(IsValid));
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public string SystemPromptUsage =>
+        $"{SystemPrompt.Length} / {AgentPolicy.MaximumSystemPromptLength}";
+
+    public AgentTaskModelOption SelectedCompactionModel
+    {
+        get => _selectedCompactionModel;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!AgentTaskModelOptions.Contains(value))
+            {
+                throw new ArgumentException(
+                    "Choose a configured model for conversation compaction.",
+                    nameof(value));
+            }
+
+            if (SetProperty(ref _selectedCompactionModel, value))
+            {
+                OnPropertyChanged(nameof(IsValid));
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public AgentTaskModelOption SelectedTitleModel
+    {
+        get => _selectedTitleModel;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!TitleModelOptions.Contains(value))
+            {
+                throw new ArgumentException(
+                    "Choose a configured model for conversation titles.",
+                    nameof(value));
+            }
+
+            if (SetProperty(ref _selectedTitleModel, value))
+            {
+                OnPropertyChanged(nameof(IsValid));
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public bool HasSingleProviderOption => ProviderOptions.Count == 1;
+
+    public bool HasMultipleProviderOptions => ProviderOptions.Count > 1;
+
+    public IReadOnlyList<ModelOption> ModelOptions => _modelOptions;
+
+    public bool HasSingleModelOption => ModelOptions.Count == 1;
+
+    public bool HasMultipleModelOptions => ModelOptions.Count > 1;
+
+    public ModelOption? SelectedModel
+    {
+        get => _selectedModel;
+        set
+        {
+            if (value is not null && !ModelOptions.Contains(value))
+            {
+                throw new ArgumentException(
+                    "Choose a model offered by the selected provider profile.",
+                    nameof(value));
+            }
+
+            if (!SetProperty(ref _selectedModel, value))
+            {
+                return;
+            }
+
+            _model = value?.Id ?? string.Empty;
+            OnPropertyChanged(nameof(Model));
+            OnPropertyChanged(nameof(IsValid));
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public ProviderOption? SelectedProvider
     {
@@ -161,6 +285,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
 
             _provider = value?.Id.Value ?? string.Empty;
             _model = value?.DefaultModel ?? string.Empty;
+            RefreshModelOptions(_model);
             OnPropertyChanged(nameof(Provider));
             OnPropertyChanged(nameof(Model));
             OnPropertyChanged(nameof(IsValid));
@@ -174,6 +299,10 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         !IsEnabled
         || AgentPolicy.IsValidProvider(Provider)
         && AgentPolicy.IsValidModel(Model)
+        && AgentTaskModelOptions.Contains(SelectedCompactionModel)
+        && TitleModelOptions.Contains(SelectedTitleModel)
+        && (string.IsNullOrWhiteSpace(SystemPrompt)
+            || AgentPolicy.IsValidSystemPrompt(SystemPrompt))
         && (!_requiresAvailableProvider
             || SelectedProvider is { IsSelectable: true } selected
             && string.Equals(
@@ -192,7 +321,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         {
             throw new ArgumentException(
                 "An enabled saved-screen agent policy requires an available, enabled "
-                + "provider profile and a bounded model identifier without control characters.");
+                + "provider profile and a valid model name.");
         }
 
         var policy = new AgentPolicy(
@@ -200,7 +329,14 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
             Model.Trim(),
             Capabilities.ToImmutableDictionary(
                 capability => capability.Capability,
-                capability => capability.SelectedPermission));
+                capability => capability.SelectedPermission))
+        {
+            CompactionModel = SelectedCompactionModel.Selection,
+            TitleModel = SelectedTitleModel.Selection,
+            SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt)
+                ? null
+                : SystemPrompt.Trim(),
+        };
         if (!policy.IsValidForDurableStorage())
         {
             throw new ArgumentException(
@@ -225,6 +361,157 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         _disposed = true;
     }
 
+    private void RefreshModelOptions(string model)
+    {
+        IReadOnlyList<ModelOption> providerModels = _selectedProvider?.Models ?? [];
+        List<ModelOption> options = [.. providerModels];
+        var selected = options.SingleOrDefault(option =>
+            string.Equals(option.Id, model.Trim(), StringComparison.Ordinal));
+        if (selected is null && AgentPolicy.IsValidModel(model))
+        {
+            selected = new ModelOption(model.Trim(), model.Trim());
+            options.Add(selected);
+        }
+
+        _modelOptions = options.AsReadOnly();
+        _selectedModel = selected;
+        OnPropertyChanged(nameof(ModelOptions));
+        OnPropertyChanged(nameof(SelectedModel));
+        OnPropertyChanged(nameof(HasSingleModelOption));
+        OnPropertyChanged(nameof(HasMultipleModelOptions));
+    }
+
+    private static IReadOnlyList<AgentTaskModelOption> BuildAgentTaskModelOptions(
+        IReadOnlyList<ProviderOption> providers)
+    {
+        List<AgentTaskModelOption> options =
+        [
+            new(null, "Use default agent model", string.Empty),
+        ];
+        options.AddRange(
+            providers
+                .Where(provider => provider.IsSelectable)
+                .SelectMany(provider => provider.Models.Select(model =>
+                    new AgentTaskModelOption(
+                        new AgentModelSelection(provider.Id.Value, model.Id),
+                        model.DisplayName,
+                        provider.Name))));
+        return options.AsReadOnly();
+    }
+
+    private static IReadOnlyList<ModelOption> BuildProviderModels(
+        AiProviderProfileDescriptor profile)
+    {
+        List<ModelOption> models = profile.Models
+            .Select(model => new ModelOption(model.Id, model.DisplayName))
+            .ToList();
+        if (AgentPolicy.IsValidModel(profile.DefaultModel)
+            && models.All(model => !string.Equals(
+                model.Id,
+                profile.DefaultModel,
+                StringComparison.Ordinal)))
+        {
+            models.Insert(0, new ModelOption(profile.DefaultModel, profile.DefaultModel));
+        }
+
+        return models.AsReadOnly();
+    }
+
+    private IReadOnlyList<AgentTaskModelOption> BuildTitleModelOptions(
+        AgentModelSelection? configuredSelection,
+        AgentModelSelection currentSelection)
+    {
+        List<AgentTaskModelOption> options =
+        [.. AgentTaskModelOptions.Where(option => option.Selection is not null)];
+        AddExactTitleModelOption(options, configuredSelection);
+        AddExactTitleModelOption(options, currentSelection);
+        return options.AsReadOnly();
+    }
+
+    private void AddExactTitleModelOption(
+        List<AgentTaskModelOption> options,
+        AgentModelSelection? selection)
+    {
+        if (selection is null
+            || !AgentPolicy.IsValidProvider(selection.Provider)
+            || !AgentPolicy.IsValidModel(selection.Model)
+            || options.Any(option => option.Selection == selection))
+        {
+            return;
+        }
+
+        var provider = ProviderOptions.SingleOrDefault(option =>
+            string.Equals(option.Id.Value, selection.Provider, StringComparison.Ordinal));
+        if (_requiresAvailableProvider && provider is not { IsSelectable: true })
+        {
+            return;
+        }
+
+        options.Add(new AgentTaskModelOption(
+            selection,
+            selection.Model,
+            provider?.Name ?? selection.Provider));
+    }
+
+    private AgentTaskModelOption ResolveAgentTaskModelOption(
+        AgentModelSelection? selection,
+        string fallbackLabel,
+        IReadOnlyList<AgentTaskModelOption>? availableOptions = null)
+    {
+        var options = availableOptions ?? AgentTaskModelOptions;
+        if (selection is null)
+        {
+            return options[0];
+        }
+
+        var option = options.FirstOrDefault(candidate =>
+            candidate.Selection is { } value
+            && string.Equals(value.Provider, selection.Provider, StringComparison.Ordinal)
+            && string.Equals(value.Model, selection.Model, StringComparison.Ordinal));
+        if (option is not null)
+        {
+            return option;
+        }
+
+        return new AgentTaskModelOption(
+            null,
+            fallbackLabel,
+            "Configured model unavailable");
+    }
+
+    private AgentTaskModelOption ResolveTitleModelOption(
+        AgentModelSelection? selection,
+        string defaultProvider,
+        string defaultModel)
+    {
+        var resolvedSelection = selection
+            ?? new AgentModelSelection(defaultProvider, defaultModel);
+        var option = TitleModelOptions.FirstOrDefault(candidate =>
+            candidate.Selection is { } value
+            && string.Equals(
+                value.Provider,
+                resolvedSelection.Provider,
+                StringComparison.Ordinal)
+            && string.Equals(
+                value.Model,
+                resolvedSelection.Model,
+                StringComparison.Ordinal));
+        if (option is not null)
+        {
+            return option;
+        }
+
+        if (TitleModelOptions.Count > 0)
+        {
+            return TitleModelOptions[0];
+        }
+
+        return new AgentTaskModelOption(
+            null,
+            "Configured title model unavailable",
+            string.Empty);
+    }
+
     private void OnCapabilityChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
@@ -242,16 +529,32 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         string Name,
         string DefaultModel,
         bool IsEnabled,
-        bool IsAvailable)
+        bool IsAvailable,
+        IReadOnlyList<ModelOption> Models)
     {
         public bool IsSelectable => IsAvailable && IsEnabled;
 
         public string DisplayName => this switch
         {
             { IsAvailable: false } => $"Unavailable · {Id.Value}",
-            { IsEnabled: false } => $"Disabled · {Name} · {Id.Value}",
-            _ => $"{Name} · {Id.Value}",
+            { IsEnabled: false } => $"Disabled · {Name}",
+            _ => Name,
         };
+    }
+
+    public sealed record ModelOption(string Id, string Name)
+    {
+        public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Id : Name;
+    }
+
+    public sealed record AgentTaskModelOption(
+        AgentModelSelection? Selection,
+        string ModelName,
+        string ProviderName)
+    {
+        public string DisplayName => ProviderName.Length == 0
+            ? ModelName
+            : $"{ModelName} · {ProviderName}";
     }
 
     public sealed class CapabilityEditorViewModel : ObservableObject
@@ -283,11 +586,17 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
                 if (!Options.Contains(value))
                 {
                     throw new ArgumentException(
-                        "The selected permission is not durable.",
+                        "The selected permission cannot be saved.",
                         nameof(value));
                 }
 
-                SetProperty(ref _selectedOption, value);
+                if (SetProperty(ref _selectedOption, value))
+                {
+                    OnPropertyChanged(nameof(SelectedPermission));
+                    OnPropertyChanged(nameof(IsOff));
+                    OnPropertyChanged(nameof(IsAsk));
+                    OnPropertyChanged(nameof(IsAuto));
+                }
             }
         }
 
@@ -295,6 +604,45 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         {
             get => SelectedOption.Permission;
             set => SelectedOption = Options.Single(option => option.Permission == value);
+        }
+
+        public string Description =>
+            AgentPolicyPresentation.CapabilityDescription(Capability);
+
+        public bool IsOff
+        {
+            get => SelectedPermission == AgentPermission.Off;
+            set
+            {
+                if (value)
+                {
+                    SelectedPermission = AgentPermission.Off;
+                }
+            }
+        }
+
+        public bool IsAsk
+        {
+            get => SelectedPermission == AgentPermission.Ask;
+            set
+            {
+                if (value)
+                {
+                    SelectedPermission = AgentPermission.Ask;
+                }
+            }
+        }
+
+        public bool IsAuto
+        {
+            get => SelectedPermission == AgentPermission.Auto;
+            set
+            {
+                if (value)
+                {
+                    SelectedPermission = AgentPermission.Auto;
+                }
+            }
         }
     }
 }

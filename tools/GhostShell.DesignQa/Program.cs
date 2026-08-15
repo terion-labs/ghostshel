@@ -273,6 +273,13 @@ internal sealed class QaApplication : Avalonia.Application
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleConversation();
         }),
+        new("workspace-agent-reasoning", vm =>
+        {
+            vm.ShowWorkspace();
+            vm.ToggleAgentPanel();
+            AgentProfiles.PublishSampleProfile();
+            AgentRuntime.PublishSampleReasoningConversation();
+        }, PrepareCapture: ShowReasoningStart),
         // The same panel pinned: the layout holds a slot for it and the canvas
         // moves aside instead of being covered.
         new("workspace-agent-docked", vm =>
@@ -281,6 +288,13 @@ internal sealed class QaApplication : Avalonia.Application
             _ = vm.ToggleAgentPanelPinAsync(CancellationToken.None);
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleConversation();
+        }),
+        new("workspace-agent-failed", vm =>
+        {
+            vm.ShowWorkspace();
+            _ = vm.ToggleAgentPanelPinAsync(CancellationToken.None);
+            AgentProfiles.PublishSampleProfile();
+            AgentRuntime.PublishSampleFailure();
         }),
         // The one governance decision the panel ever asks. It was the panel's
         // least reviewed surface for exactly that reason.
@@ -521,6 +535,16 @@ internal sealed class QaApplication : Avalonia.Application
             ?? throw new InvalidOperationException(
                 "The main window no longer exposes its internal drag-ghost presentation seam.");
         _ = show.Invoke(window, [payload, new Point(760, 420)]);
+    }
+
+    private static void ShowReasoningStart(MainWindow window)
+    {
+        var transcript = window.GetVisualDescendants()
+            .OfType<ScrollViewer>()
+            .SingleOrDefault(candidate => candidate.Name == "AgentChatTranscript")
+            ?? throw new InvalidOperationException(
+                "The reasoning capture requires the agent transcript.");
+        transcript.Offset = new Vector(0, 0);
     }
 
     /// <summary>
