@@ -680,7 +680,6 @@
                     DismissOperationIssueRequested="OnEmbeddedFileDismissOperationIssueRequested"
                     EntryDoubleTapped="OnEmbeddedFileEntryDoubleTapped"
                     EntrySelectionChanged="OnEmbeddedFileEntrySelectionChanged"
-                    LoadMoreRequested="OnEmbeddedFileLoadMoreRequested"
                     LocationKeyDown="OnEmbeddedFileLocationKeyDown"
                     NavigateUpRequested="OnEmbeddedFileNavigateUpRequested"
                     RefreshRequested="OnEmbeddedFileRefreshRequested" />

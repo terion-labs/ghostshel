@@ -12,6 +12,7 @@ public abstract partial class LocalFileProvider : IFileProvider, ILocalFilePathS
     private const long MaximumReadBytes = 64L * 1024 * 1024;
     private const int MaximumBufferSize = 1024 * 1024;
     private readonly StringComparison _pathComparison;
+    private readonly FilePageCursorStore<LocalPageCursor> _pageCursors = new(maximumEntries: 32);
 
     protected LocalFileProvider(
         LocalFileProviderOptions options,
@@ -400,6 +401,11 @@ public abstract partial class LocalFileProvider : IFileProvider, ILocalFilePathS
         FileLocation Location,
         FilePath StructuredPath,
         string Path);
+
+    private sealed record LocalPageCursor(
+        string Scope,
+        IReadOnlyList<string> Paths,
+        int Offset);
 
     private protected sealed record LocalEntryPresence(FileEntry? Entry);
 }

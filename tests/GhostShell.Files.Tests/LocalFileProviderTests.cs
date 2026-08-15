@@ -158,6 +158,32 @@ public sealed class LocalFileProviderTests
         Assert.Equal(FileProviderErrorCode.InvalidLocation, result.Error!.Code);
     }
 
+    [Fact]
+    public async Task ContinuationPagesUseTheInitialDirectorySnapshot()
+    {
+        using var root = TemporaryDirectory.Create();
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "one.txt"), "1");
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "two.txt"), "2");
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "three.txt"), "3");
+        var provider = CreateProvider(root.Path);
+        var location = Root(provider);
+
+        var first = await provider.ListAsync(
+            new FileListRequest(location, pageSize: 2),
+            CancellationToken.None);
+        Assert.True(first.IsSuccess, first.Error?.Message);
+        Assert.NotNull(first.Value!.ContinuationToken);
+
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "added-later.txt"), "4");
+        var second = await provider.ListAsync(
+            new FileListRequest(location, pageSize: 2, first.Value.ContinuationToken),
+            CancellationToken.None);
+
+        Assert.True(second.IsSuccess, second.Error?.Message);
+        Assert.Single(second.Value!.Items);
+        Assert.Null(second.Value.ContinuationToken);
+    }
+
     private static LocalFileProvider CreateProvider(string rootPath)
     {
         var options = new LocalFileProviderOptions(

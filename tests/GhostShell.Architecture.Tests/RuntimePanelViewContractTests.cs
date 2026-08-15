@@ -1424,7 +1424,6 @@ public sealed class RuntimePanelViewContractTests
             ["EntrySelectionChanged"] = "OnFileEntrySelectionChanged",
             ["EntryTransferDropRequested"] = "OnFileEntryTransferDropRequested",
             ["EntryTransferKeyRequested"] = "OnFileEntryTransferKeyRequested",
-            ["LoadMoreRequested"] = "OnFileLoadMoreClick",
             ["LocationKeyDown"] = "OnFileLocationKeyDown",
             ["NavigateUpRequested"] = "OnFileNavigateUpClick",
             ["RefreshRequested"] = "OnFileRefreshClick",
@@ -1622,11 +1621,16 @@ public sealed class RuntimePanelViewContractTests
                 AttributeValue(element, "Text"),
                 "{Binding LocationText}",
                 StringComparison.Ordinal)));
-        Assert.Equal(
-            "OnLoadMoreClick",
-            AttributeValue(
-                FindUniqueAccessibleElement(root, "Load more files"),
-                "Click"));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "AutomationProperties.Name"),
+                "Load more files",
+                StringComparison.Ordinal));
+        Assert.True(
+            root.Descendants().Count(element =>
+                element.Name.LocalName == "VirtualizingStackPanel") >= 2,
+            "The complete details and list views must virtualize their rows.");
         Assert.DoesNotContain(
             root.Descendants(),
             element => element.Name.LocalName == "TextBlock"

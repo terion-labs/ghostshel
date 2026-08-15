@@ -47,7 +47,8 @@ public sealed class FileEntryViewModel
 
 public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 {
-    private const int DefaultPageSize = 250;
+    private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan ObservationInterval = TimeSpan.FromSeconds(2);
     private const double PreviewMinimumWidth = 220;
     private const double PreviewSplitterThickness = 5;
     private const int DefaultPreviewBytes = 256 * 1024;
@@ -64,10 +65,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private readonly object _initialSelectionGate = new();
     private readonly AsyncActionCommand _retryCommand;
     private readonly List<FilePanelEntry> _allEntries = [];
+    private readonly List<FilePanelEntry> _searchEntries = [];
     private readonly CancellationTokenSource _lifetime = new();
     private Task _initialization = Task.CompletedTask;
     private Task _initialSelection = Task.CompletedTask;
     private CancellationTokenSource? _navigation;
+    private CancellationTokenSource? _search;
+    private CancellationTokenSource? _watch;
     private CancellationTokenSource? _preview;
     private CancellationTokenSource? _metadata;
     private FileProviderProfileDescriptor? _selectedProfile;
@@ -89,6 +93,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private Bitmap? _previewImage;
     private bool _showHidden;
     private bool _isLoading;
+    private bool _isSearchLoading;
     private bool _isPreviewLoading;
     private bool _isMetadataLoading;
     private bool _isPreviewVisible = true;
@@ -106,6 +111,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private bool _hasLoadedListing;
     private volatile bool _initializationStarted;
     private bool _disposed;
+    private Task _searchCompletion = Task.CompletedTask;
 
     private bool _autoDownloadPreviews = true;
     private FileEntryViewModel? _deferredPreviewEntry;
@@ -392,11 +398,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (SetProperty(ref _filter, value))
             {
-                ApplyFilter();
-                UpdateListingStatus();
+                ScheduleSearch();
             }
         }
     }
+
+    /// <summary>The active provider-backed search, exposed so hosts and tests can await it.</summary>
+    public Task SearchCompletion => _searchCompletion;
 
     public FileEntrySortField SortField
     {
@@ -543,7 +551,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (SetProperty(ref _showHidden, value) && CurrentLocation is not null)
             {
-                _ = RefreshAsync();
+                _ = RefreshDiscoveryAsync();
             }
         }
     }
@@ -557,6 +565,20 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             {
                 NotifyFileInteractionStateChanged();
                 OnPropertyChanged(nameof(ShowEmptyState));
+                OnContentPresentationChanged();
+            }
+        }
+    }
+
+    public bool IsSearchLoading
+    {
+        get => _isSearchLoading;
+        private set
+        {
+            if (SetProperty(ref _isSearchLoading, value))
+            {
+                OnPropertyChanged(nameof(ShowNavigationProgress));
+                OnPropertyChanged(nameof(ShowSearchNoResultsState));
                 OnContentPresentationChanged();
             }
         }
@@ -937,13 +959,14 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public bool ShowLoadingState =>
         ContentState == FileBrowserContentState.Loading && !_hasLoadedListing;
 
-    public bool ShowNavigationProgress => IsLoading && _hasLoadedListing;
+    public bool ShowNavigationProgress =>
+        (IsLoading && _hasLoadedListing) || IsSearchLoading;
 
     public bool ShowEmptyLocationState =>
         ContentState == FileBrowserContentState.EmptyLocation;
 
     public bool ShowSearchNoResultsState =>
-        ContentState == FileBrowserContentState.SearchNoResults;
+        ContentState == FileBrowserContentState.SearchNoResults && !IsSearchLoading;
 
     public bool ShowErrorState => ContentPresentation.IsError;
 
@@ -1236,10 +1259,17 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         await NavigateAsync(profile.StartLocation, cancellationToken);
     }
 
-    public Task RefreshAsync(CancellationToken cancellationToken = default) =>
-        CurrentLocation is null
-            ? Task.CompletedTask
-            : NavigateAsync(CurrentLocation, cancellationToken);
+    public async Task RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        if (CurrentLocation is null)
+        {
+            return;
+        }
+
+        CancelSearch(clearResults: true);
+        await LoadListingAsync(CurrentLocation, cancellationToken);
+        ScheduleSearch();
+    }
 
     public Task RetryAsync(CancellationToken cancellationToken = default) =>
         RefreshAsync(cancellationToken);
@@ -1335,16 +1365,6 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         return Task.WhenAll(
             LoadMetadataAsync(selected, cancellationToken),
             LoadPreviewAsync(selected, cancellationToken));
-    }
-
-    public async Task LoadMoreAsync(CancellationToken cancellationToken = default)
-    {
-        if (CurrentLocation is null || string.IsNullOrWhiteSpace(_continuationToken))
-        {
-            return;
-        }
-
-        await LoadPageAsync(CurrentLocation, append: true, cancellationToken);
     }
 
     public async Task<bool> CreateFolderAsync(
@@ -1845,9 +1865,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
         _lifetime.Cancel();
         _navigation?.Cancel();
+        _search?.Cancel();
+        _watch?.Cancel();
         _preview?.Cancel();
         _metadata?.Cancel();
         _navigation?.Dispose();
+        _search?.Dispose();
+        _watch?.Dispose();
         _preview?.Dispose();
         _metadata?.Dispose();
         _lifetime.Dispose();
@@ -2096,10 +2120,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
         SelectedProfile = profile;
         CurrentLocation = normalizedLocation;
-        _continuationToken = null;
+        CancelSearch(clearResults: true);
+        StopObservation();
         SelectedEntry = null;
         ClearPreview();
-        await LoadPageAsync(CurrentLocation, append: false, cancellationToken);
+        await LoadListingAsync(CurrentLocation, cancellationToken);
+        ScheduleSearch();
+        StartObservation();
         if (_initialSelectionPending
             && location.ProviderProfileId == _initialProfileId
             && (_hostedClient is null || _hostedClient.IsInitialized))
@@ -2110,26 +2137,73 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         }
     }
 
-    private async Task LoadPageAsync(
+    private async Task LoadListingAsync(
         FilePanelLocation location,
-        bool append,
         CancellationToken cancellationToken)
     {
         var operation = ReplaceNavigation(cancellationToken);
         IsLoading = true;
         ClearError();
-        Status = append ? "Loading more items…" : "Loading folder…";
-        var pageSize = Math.Min(DefaultPageSize, SelectedProfile?.MaximumPageSize ?? DefaultPageSize);
-        FilePanelResult<FilePanelPage> result;
+        Status = "Loading folder…";
+        var pageSize = SelectedProfile?.MaximumPageSize ?? 250;
+        var firstPage = true;
+        string? continuation = null;
+        var usedContinuations = new HashSet<string>(StringComparer.Ordinal);
         try
         {
-            result = await _client.ListAsync(
-                new FilePanelListRequest(
-                    location,
-                    pageSize,
-                    append ? _continuationToken : null,
-                    ShowHidden),
-                operation.Token);
+            do
+            {
+                var result = await _client.ListAsync(
+                    new FilePanelListRequest(
+                        location,
+                        pageSize,
+                        continuation,
+                        ShowHidden),
+                    operation.Token);
+                if (!ReferenceEquals(_navigation, operation)
+                    || operation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (!result.IsSuccess)
+                {
+                    if (firstPage)
+                    {
+                        ResetListing();
+                    }
+
+                    Status = "Location unavailable";
+                    SetContentIssue(FileOperationIssue.FromProvider(result.Error!));
+                    return;
+                }
+
+                if (firstPage)
+                {
+                    // Preserve the old folder until its replacement arrives, then replace it in
+                    // one UI turn. Later pages extend that same virtualized collection.
+                    ResetListing();
+                    firstPage = false;
+                }
+
+                _allEntries.AddRange(result.Value!.Entries);
+                continuation = result.Value.ContinuationToken;
+                _continuationToken = continuation;
+                _hasLoadedListing = true;
+                OnPropertyChanged(nameof(HasListingSummary));
+                ApplyFilter();
+                Status = $"{_allEntries.Count.ToString(CultureInfo.InvariantCulture)} items loaded…";
+                ShortStatus = $"{_allEntries.Count.ToString(CultureInfo.InvariantCulture)}+";
+                OnPropertyChanged(nameof(HasMore));
+
+                if (continuation is not null && !usedContinuations.Add(continuation))
+                {
+                    SetContentIssue(FileOperationIssue.Unexpected(
+                        "The file provider repeated a continuation token while listing this location."));
+                    return;
+                }
+            }
+            while (continuation is not null);
         }
         catch (OperationCanceledException) when (operation.IsCancellationRequested)
         {
@@ -2139,7 +2213,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (!operation.IsCancellationRequested)
             {
-                if (!append)
+                if (firstPage)
                 {
                     ResetListing();
                 }
@@ -2155,40 +2229,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             if (ReferenceEquals(_navigation, operation))
             {
                 IsLoading = false;
+                UpdateListingStatus();
             }
         }
-
-        if (!ReferenceEquals(_navigation, operation) || operation.IsCancellationRequested)
-        {
-            return;
-        }
-
-        if (!result.IsSuccess)
-        {
-            if (!append)
-            {
-                ResetListing();
-            }
-
-            Status = "Location unavailable";
-            SetContentIssue(FileOperationIssue.FromProvider(result.Error!));
-            return;
-        }
-
-        if (!append)
-        {
-            // Preserve the current folder until the replacement has arrived. Clearing and
-            // repopulating now happens in one UI turn, avoiding a blank loading frame.
-            ResetListing();
-        }
-
-        _allEntries.AddRange(result.Value!.Entries);
-        _continuationToken = result.Value.ContinuationToken;
-        _hasLoadedListing = true;
-        OnPropertyChanged(nameof(HasListingSummary));
-        ApplyFilter();
-        UpdateListingStatus();
-        OnPropertyChanged(nameof(HasMore));
     }
 
     private void NotifyInitialBindingStateChanged()
@@ -2597,12 +2640,205 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         ClearHtmlPreview();
     }
 
+    private async Task RefreshDiscoveryAsync()
+    {
+        try
+        {
+            await RefreshAsync(_lifetime.Token);
+            RestartObservation();
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void ScheduleSearch()
+    {
+        var query = Filter.Trim();
+        CancelSearch(clearResults: true);
+        if (query.Length == 0
+            || CurrentLocation is null
+            || SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Search) != true)
+        {
+            ApplyFilter();
+            UpdateListingStatus();
+            return;
+        }
+
+        var operation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _search = operation;
+        IsSearchLoading = true;
+        ApplyFilter();
+        UpdateListingStatus();
+        _searchCompletion = CompleteSearchAsync(
+            CurrentLocation,
+            query,
+            operation);
+    }
+
+    private async Task CompleteSearchAsync(
+        FilePanelLocation location,
+        string query,
+        CancellationTokenSource operation)
+    {
+        try
+        {
+            await Task.Delay(SearchDebounce, operation.Token);
+            var request = new FilePanelSearchRequest(
+                location,
+                query,
+                FilePanelDiscoveryScope.Subtree,
+                ShowHidden);
+            var pendingPresentation = 0;
+            await foreach (var result in _client.SearchAsync(request, operation.Token))
+            {
+                if (!ReferenceEquals(_search, operation) || operation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (!result.IsSuccess)
+                {
+                    SetOperationIssue(FileOperationIssue.FromProvider(result.Error!));
+                    return;
+                }
+
+                _searchEntries.Add(result.Value!);
+                pendingPresentation++;
+                if (pendingPresentation >= 25)
+                {
+                    pendingPresentation = 0;
+                    ApplyFilter();
+                    UpdateListingStatus();
+                }
+            }
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_search, operation))
+            {
+                SetOperationIssue(FileOperationIssue.Unexpected(
+                    "The file provider failed unexpectedly while searching this location."));
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_search, operation))
+            {
+                _search = null;
+                operation.Dispose();
+                IsSearchLoading = false;
+                ApplyFilter();
+                UpdateListingStatus();
+            }
+        }
+    }
+
+    private void CancelSearch(bool clearResults)
+    {
+        var operation = _search;
+        _search = null;
+        operation?.Cancel();
+        operation?.Dispose();
+        _searchCompletion = Task.CompletedTask;
+        IsSearchLoading = false;
+        if (clearResults)
+        {
+            _searchEntries.Clear();
+        }
+    }
+
+    private void RestartObservation()
+    {
+        StopObservation();
+        StartObservation();
+    }
+
+    private void StartObservation()
+    {
+        if (CurrentLocation is null
+            || SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Watch) != true
+            || _disposed)
+        {
+            return;
+        }
+
+        var operation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _watch = operation;
+        _ = ObserveLocationAsync(
+            new FilePanelWatchRequest(
+                CurrentLocation,
+                FilePanelDiscoveryScope.CurrentDirectory,
+                ShowHidden,
+                ObservationInterval),
+            operation);
+    }
+
+    private async Task ObserveLocationAsync(
+        FilePanelWatchRequest request,
+        CancellationTokenSource operation)
+    {
+        try
+        {
+            await foreach (var result in _client.WatchAsync(request, operation.Token))
+            {
+                if (!ReferenceEquals(_watch, operation) || operation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (!result.IsSuccess)
+                {
+                    if (result.Error?.Retryable != true)
+                    {
+                        SetOperationIssue(FileOperationIssue.FromProvider(result.Error!));
+                    }
+
+                    continue;
+                }
+
+                await RefreshAsync(operation.Token);
+            }
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+        }
+        catch (Exception)
+        {
+            if (ReferenceEquals(_watch, operation))
+            {
+                // Observation is an enhancement over a valid listing, so its failure is operation
+                // feedback rather than a replacement for files already on screen.
+                SetOperationIssue(FileOperationIssue.Unexpected(
+                    "Automatic file updates stopped unexpectedly. Refresh the location to retry."));
+            }
+        }
+    }
+
+    private void StopObservation()
+    {
+        var operation = _watch;
+        _watch = null;
+        operation?.Cancel();
+        operation?.Dispose();
+    }
+
     private void ApplyFilter()
     {
         var query = Filter.Trim();
         var selected = SelectedEntry;
-        var visible = _allEntries
-            .Where(item => query.Length == 0
+        var usesProviderSearch = query.Length > 0
+            && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Search) == true;
+        var source = usesProviderSearch
+            ? _searchEntries
+            : _allEntries;
+        var visible = source
+            .Where(item => usesProviderSearch
+                || query.Length == 0
                 || item.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
             .OrderBy(item => item, Comparer<FilePanelEntry>.Create(CompareEntries))
             .Select(item => selected is not null && ReferenceEquals(selected.Entry, item)
@@ -2630,6 +2866,18 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         {
             Status = "This location is empty";
             ShortStatus = "0";
+            return;
+        }
+
+        var usesProviderSearch = !string.IsNullOrWhiteSpace(Filter)
+            && SelectedProfile?.Capabilities.HasFlag(FilePanelCapability.Search) == true;
+        if (usesProviderSearch)
+        {
+            var resultCount = Entries.Count.ToString(CultureInfo.InvariantCulture);
+            Status = IsSearchLoading
+                ? $"{resultCount} search result(s) found…"
+                : $"{resultCount} search result(s)";
+            ShortStatus = resultCount + (IsSearchLoading ? "+" : string.Empty);
             return;
         }
 

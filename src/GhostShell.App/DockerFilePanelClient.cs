@@ -42,6 +42,8 @@ public sealed class DockerFilePanelClient : IFilePanelClient
             FilePanelCapability.List
             | FilePanelCapability.Stat
             | FilePanelCapability.RangedRead
+            | FilePanelCapability.Search
+            | FilePanelCapability.Watch
             | FilePanelCapability.Pagination,
             MaximumPageSize,
             MaximumPreviewBytes,

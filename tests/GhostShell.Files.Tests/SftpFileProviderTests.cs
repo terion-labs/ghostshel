@@ -82,6 +82,52 @@ public sealed class SftpFileProviderTests
     }
 
     [Fact]
+    public async Task ContinuationPagesReuseOneRemoteDirectorySnapshot()
+    {
+        var sessions = new FakeRemoteSessionFactory
+        {
+            ListingOverride = _ =>
+            [
+                new RemoteFileEntry(
+                    "alpha.txt",
+                    FileEntryKind.File,
+                    1,
+                    DateTimeOffset.UnixEpoch,
+                    "alpha-revision"),
+                new RemoteFileEntry(
+                    "beta.txt",
+                    FileEntryKind.File,
+                    1,
+                    DateTimeOffset.UnixEpoch,
+                    "beta-revision"),
+                new RemoteFileEntry(
+                    "gamma.txt",
+                    FileEntryKind.File,
+                    1,
+                    DateTimeOffset.UnixEpoch,
+                    "gamma-revision"),
+            ],
+        };
+        var provider = new SftpFileProvider(
+            sessions,
+            RemoteProviderTestProfiles.SftpOptions());
+        var root = new FileLocation(provider.ProfileId, provider.Authority, FilePath.Root);
+
+        var first = await provider.ListAsync(
+            new FileListRequest(root, pageSize: 2),
+            CancellationToken.None);
+        var second = await provider.ListAsync(
+            new FileListRequest(root, pageSize: 2, first.Value!.ContinuationToken),
+            CancellationToken.None);
+
+        Assert.True(first.IsSuccess, first.Error?.Message);
+        Assert.True(second.IsSuccess, second.Error?.Message);
+        Assert.Equal(2, first.Value.Items.Length);
+        Assert.Single(second.Value!.Items);
+        Assert.Equal(1, sessions.OpenCount);
+    }
+
+    [Fact]
     public async Task MetadataReconnectRetriesExactlyOnceOnAFreshSession()
     {
         var sessions = new FakeRemoteSessionFactory { FailOpenCount = 1 };

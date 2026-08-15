@@ -15,7 +15,7 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
     private readonly bool _allowBackslashSegments;
     private readonly Func<string, bool>? _additionalNameValidator;
     private readonly RemoteMetadataReconnectPolicy _metadataReconnectPolicy;
-    private readonly FilePageCursorStore<RemotePageCursor> _pageCursors = new();
+    private readonly FilePageCursorStore<RemotePageCursor> _pageCursors = new(maximumEntries: 32);
 
     private protected RemoteHierarchicalFileProvider(
         IRemoteHierarchicalFileSessionFactory sessions,
@@ -452,5 +452,8 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
         string RemotePath,
         IReadOnlyList<string> RelativeSegments);
 
-    private sealed record RemotePageCursor(string Scope, int Offset);
+    private sealed record RemotePageCursor(
+        string Scope,
+        IReadOnlyList<FileEntry> Entries,
+        int Offset);
 }

@@ -1,4 +1,6 @@
 using System.Text;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Avalonia.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
@@ -465,6 +467,90 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal(2, panel.Entries.Count);
         Assert.Equal("2 item(s)", panel.Status);
         Assert.Equal(FileBrowserContentState.Ready, panel.ContentState);
+    }
+
+    [Fact]
+    public async Task InitializationAutomaticallyConsumesEveryListingPage()
+    {
+        var client = new StubFilePanelClient();
+        for (var index = 0; index < 501; index++)
+        {
+            client.Entries.Add(Entry(
+                client.Root,
+                $"file-{index:D3}.txt",
+                FilePanelEntryKind.File,
+                index));
+        }
+
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client);
+
+        await panel.Initialization;
+
+        Assert.Equal(501, panel.Entries.Count);
+        Assert.Equal(2, client.ListCallCount);
+        Assert.False(panel.HasMore);
+        Assert.Contains(panel.Entries, entry => entry.Name == "file-500.txt");
+        Assert.Equal("501 item(s)", panel.Status);
+    }
+
+    [Fact]
+    public async Task SearchUsesProviderResultsOutsideTheMaterializedListing()
+    {
+        var client = new StubFilePanelClient();
+        client.EnableCapabilities(FilePanelCapability.Search);
+        client.Entries.Add(Entry(client.Root, "visible.txt", FilePanelEntryKind.File, 12));
+        var nested = client.Root
+            .Child(new FilePanelPathSegment("nested"))
+            .Child(new FilePanelPathSegment("test.md"));
+        client.SearchEntries.Add(new FilePanelEntry(
+            nested,
+            "test.md",
+            FilePanelEntryKind.File,
+            7,
+            DateTimeOffset.UnixEpoch,
+            false));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client);
+        await panel.Initialization;
+
+        panel.Filter = "test";
+        await panel.SearchCompletion;
+
+        var result = Assert.Single(panel.Entries);
+        Assert.Equal(nested, result.Entry.Location);
+        Assert.Equal("1 search result(s)", panel.Status);
+    }
+
+    [Fact]
+    public async Task ProviderObservationRefreshesTheCurrentListing()
+    {
+        var client = new StubFilePanelClient();
+        client.EnableCapabilities(FilePanelCapability.Watch);
+        client.Entries.Add(Entry(client.Root, "before.txt", FilePanelEntryKind.File, 12));
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client);
+        await panel.Initialization;
+        client.Entries.Add(Entry(client.Root, "after.txt", FilePanelEntryKind.File, 13));
+
+        await client.WatchChanges.Writer.WriteAsync(
+            FilePanelResult<FilePanelChange>.Success(new FilePanelChange(
+                client.Root,
+                FilePanelChangeKind.Changed)));
+
+        for (var attempt = 0; attempt < 100 && panel.Entries.Count != 2; attempt++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(2, panel.Entries.Count);
+        Assert.Contains(panel.Entries, entry => entry.Name == "after.txt");
     }
 
     [Fact]
@@ -2062,6 +2148,11 @@ public sealed class FileRuntimePanelViewModelTests
 
         public List<FilePanelEntry> Entries { get; } = [];
 
+        public List<FilePanelEntry> SearchEntries { get; } = [];
+
+        public Channel<FilePanelResult<FilePanelChange>> WatchChanges { get; } =
+            Channel.CreateUnbounded<FilePanelResult<FilePanelChange>>();
+
         public IReadOnlyList<FileProviderProfileDescriptor> Profiles { get; private set; }
 
         public IReadOnlyList<FileProviderRuntimeDiagnostic> Diagnostics => [];
@@ -2091,6 +2182,24 @@ public sealed class FileRuntimePanelViewModelTests
         public int PreviewCallCount { get; private set; }
 
         public FilePanelDeleteRequest? LastDeleteRequest { get; private set; }
+
+        public void EnableCapabilities(FilePanelCapability capabilities)
+        {
+            var existing = Profiles[0];
+            Profiles =
+            [
+                new FileProviderProfileDescriptor(
+                    existing.Id,
+                    existing.Name,
+                    existing.Family,
+                    existing.Root,
+                    existing.Capabilities | capabilities,
+                    existing.MaximumPageSize,
+                    existing.MaximumPreviewBytes,
+                    existing.StartLocation),
+                .. Profiles.Skip(1),
+            ];
+        }
 
         public FileProviderProfileDescriptor AddProfile(
             string id,
@@ -2129,7 +2238,6 @@ public sealed class FileRuntimePanelViewModelTests
             FilePanelListRequest request,
             CancellationToken cancellationToken)
         {
-            _ = request;
             ListCallCount++;
             if (ListCompletion is not null)
             {
@@ -2137,10 +2245,49 @@ public sealed class FileRuntimePanelViewModelTests
                     ListCompletion.Task.WaitAsync(cancellationToken));
             }
 
-            return ValueTask.FromResult(ListError is null
-                ? FilePanelResult<FilePanelPage>.Success(new FilePanelPage(Entries, null))
-                : FilePanelResult<FilePanelPage>.Failure(ListError));
+            if (ListError is not null)
+            {
+                return ValueTask.FromResult(FilePanelResult<FilePanelPage>.Failure(ListError));
+            }
+
+            var offset = request.ContinuationToken is null
+                ? 0
+                : int.Parse(request.ContinuationToken, System.Globalization.CultureInfo.InvariantCulture);
+            var eligible = Entries
+                .Where(entry => request.ShowHidden || !entry.IsHidden)
+                .ToArray();
+            var listed = eligible
+                .Skip(offset)
+                .Take(request.PageSize)
+                .ToArray();
+            var nextOffset = offset + listed.Length;
+            var continuation = nextOffset < eligible.Length
+                ? nextOffset.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : null;
+            return ValueTask.FromResult(FilePanelResult<FilePanelPage>.Success(
+                new FilePanelPage(listed, continuation)));
         }
+
+        public async IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+            FilePanelSearchRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            foreach (var entry in SearchEntries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if ((request.ShowHidden || !entry.IsHidden)
+                    && entry.Name.Contains(request.Query, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return FilePanelResult<FilePanelEntry>.Success(entry);
+                }
+            }
+        }
+
+        public IAsyncEnumerable<FilePanelResult<FilePanelChange>> WatchAsync(
+            FilePanelWatchRequest request,
+            CancellationToken cancellationToken) =>
+            WatchChanges.Reader.ReadAllAsync(cancellationToken);
 
         public ValueTask<FilePanelResult<FilePanelEntry>> StatAsync(
             FilePanelLocation location,

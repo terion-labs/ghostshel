@@ -93,7 +93,6 @@
           EntryTransferDropRequested="OnFileEntryTransferDropRequested"
           EntryTransferKeyRequested="OnFileEntryTransferKeyRequested"
           GotFocus="OnRuntimePanelGotFocus"
-          LoadMoreRequested="OnFileLoadMoreClick"
           LocationKeyDown="OnFileLocationKeyDown"
           NavigateUpRequested="OnFileNavigateUpClick"
           PointerPressed="OnRuntimePanelPointerPressed"

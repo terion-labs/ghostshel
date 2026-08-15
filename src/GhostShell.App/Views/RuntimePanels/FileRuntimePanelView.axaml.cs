@@ -98,8 +98,6 @@ public sealed partial class FileRuntimePanelView : UserControl
 
     public event EventHandler<KeyEventArgs>? LocationKeyDown;
 
-    public event EventHandler<RoutedEventArgs>? LoadMoreRequested;
-
     public event EventHandler<RoutedEventArgs>? NavigateUpRequested;
 
     public event EventHandler<RoutedEventArgs>? RefreshRequested;
@@ -343,9 +341,6 @@ public sealed partial class FileRuntimePanelView : UserControl
 
     private void OnEntrySelectionChanged(object? sender, SelectionChangedEventArgs e) =>
         EntrySelectionChanged?.Invoke(sender, e);
-
-    private void OnLoadMoreClick(object? sender, RoutedEventArgs e) =>
-        LoadMoreRequested?.Invoke(sender, e);
 
     private void OnLocationKeyDown(object? sender, KeyEventArgs e) =>
         LocationKeyDown?.Invoke(sender, e);

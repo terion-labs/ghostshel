@@ -374,6 +374,11 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
             registration.Family,
             FromProviderLocation(registration.Root),
             MapCapabilities(registration.Provider.Capabilities.Supported)
+                // Search and observation are panel-level discovery operations. Their common
+                // implementations traverse ListAsync, so every listed protocol supports them
+                // even when its wire protocol has no server-side equivalent.
+                | FilePanelCapability.Search
+                | FilePanelCapability.Watch
                 | registration.GovernedMutationCapabilities,
             limits.MaximumListPageSize,
             Math.Min(limits.MaximumReadBytes, MaximumPreviewLength),

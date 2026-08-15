@@ -98,7 +98,7 @@
           </Border>
           <Grid
               Grid.Column="1"
-              ColumnDefinitions="*,Auto,Auto"
+              ColumnDefinitions="*,Auto"
               ColumnSpacing="{DynamicResource ShellSpaceXs}">
             <TextBox
                 FontSize="{DynamicResource ShellFontSize10}"
@@ -117,16 +117,6 @@
                 CompactValue="{Binding ShortStatus}"
                 AutomationProperties.LiveSetting="Polite"
                 AutomationProperties.Name="File Viewer item count" />
-            <Button
-                Grid.Column="2"
-                Padding="{controls:Inset Horizontal=Sm}"
-                MinHeight="24"
-                Classes="TextButton Accent"
-                Click="OnLoadMoreClick"
-                IsVisible="{Binding HasMore}"
-                Content="More"
-                ToolTip.Tip="Load more files"
-                AutomationProperties.Name="Load more files" />
           </Grid>
           <Border
               Grid.Column="2"
@@ -306,6 +296,9 @@
                 DoubleTapped="OnEntryDoubleTapped"
                 IsVisible="{Binding IsDetailsView}"
                 AutomationProperties.Name="Files and folders">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Grid MinHeight="30" Margin="{controls:Inset Horizontal=Md}">
@@ -343,6 +336,9 @@
                 DoubleTapped="OnEntryDoubleTapped"
                 IsVisible="{Binding IsListView}"
                 AutomationProperties.Name="Files and folders, compact list">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Grid MinHeight="30" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">

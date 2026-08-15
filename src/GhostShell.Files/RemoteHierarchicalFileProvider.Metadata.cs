@@ -21,7 +21,6 @@ public abstract partial class RemoteHierarchicalFileProvider
 
         var directory = resolved.Value!;
         var scope = $"{ProfileId.Value}\n{Authority.Value}\n{directory.RemotePath}";
-        var offset = 0;
         if (request.ContinuationToken is { } continuation)
         {
             if (!_pageCursors.TryGet(continuation, out var cursor)
@@ -32,7 +31,11 @@ public abstract partial class RemoteHierarchicalFileProvider
                     $"The {_protocolName} continuation token is invalid for this directory.");
             }
 
-            offset = cursor.Offset;
+            return FileProviderResult<FilePage>.Success(PageFromSnapshot(
+                cursor.Entries,
+                cursor.Offset,
+                request.PageSize,
+                scope));
         }
 
         await using var session = await _sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -110,19 +113,25 @@ public abstract partial class RemoteHierarchicalFileProvider
             converted.Add(entryResult.Value!);
         }
 
-        if (offset < 0 || offset > converted.Count)
-        {
-            return Failure<FilePage>(
-                FileProviderErrorCode.InvalidLocation,
-                $"The {_protocolName} continuation token is stale.");
-        }
+        return FileProviderResult<FilePage>.Success(PageFromSnapshot(
+            converted,
+            offset: 0,
+            request.PageSize,
+            scope));
+    }
 
-        var pageItems = converted.Skip(offset).Take(request.PageSize).ToArray();
+    private FilePage PageFromSnapshot(
+        IReadOnlyList<FileEntry> entries,
+        int offset,
+        int pageSize,
+        string scope)
+    {
+        var pageItems = entries.Skip(offset).Take(pageSize).ToArray();
         var nextOffset = offset + pageItems.Length;
-        FilePageToken? next = nextOffset < converted.Count
-            ? _pageCursors.Add(new RemotePageCursor(scope, nextOffset))
+        FilePageToken? next = nextOffset < entries.Count
+            ? _pageCursors.Add(new RemotePageCursor(scope, entries, nextOffset))
             : null;
-        return FileProviderResult<FilePage>.Success(new FilePage(pageItems, next));
+        return new FilePage(pageItems, next);
     }
 
     private async ValueTask<FileProviderResult<FileEntry>> StatCoreAsync(

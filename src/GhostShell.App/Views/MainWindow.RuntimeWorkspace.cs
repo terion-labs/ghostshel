@@ -2155,15 +2155,6 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void OnFileLoadMoreClick(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (sender is Control { DataContext: FileRuntimePanelViewModel panel })
-        {
-            await panel.LoadMoreAsync(_lifetime.Token);
-        }
-    }
-
     private void OnDismissFileOperationIssueClick(object? sender, RoutedEventArgs e)
     {
         _ = e;

@@ -629,15 +629,6 @@ public sealed partial class DockerRuntimePanelView : UserControl
         }
     }
 
-    private static async void OnEmbeddedFileLoadMoreRequested(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (sender is Control { DataContext: FileRuntimePanelViewModel panel })
-        {
-            await panel.LoadMoreAsync();
-        }
-    }
-
     private static async void OnEmbeddedFileLocationKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter

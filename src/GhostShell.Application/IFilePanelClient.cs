@@ -12,6 +12,24 @@ public interface IFilePanelClient
         FilePanelListRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Searches through provider listings rather than filtering rows already materialized by a
+    /// view. The default implementation gives every protocol the same complete traversal.
+    /// </summary>
+    IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken) =>
+        FilePanelSearch.FindAsync(this, request, cancellationToken);
+
+    /// <summary>
+    /// Observes provider contents through the same listing boundary. Polling is the portable
+    /// baseline for remote protocols; an implementation may replace it with native notifications.
+    /// </summary>
+    IAsyncEnumerable<FilePanelResult<FilePanelChange>> WatchAsync(
+        FilePanelWatchRequest request,
+        CancellationToken cancellationToken) =>
+        FilePanelWatch.ObserveAsync(this, request, cancellationToken);
+
     ValueTask<FilePanelResult<FilePanelEntry>> StatAsync(
         FilePanelLocation location,
         CancellationToken cancellationToken);

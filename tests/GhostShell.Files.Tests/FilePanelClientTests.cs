@@ -22,6 +22,8 @@ public sealed class FilePanelClientTests
         Assert.True(rootAddress.Path.IsRoot);
         Assert.True(profile.Capabilities.HasFlag(FilePanelCapability.List));
         Assert.True(profile.Capabilities.HasFlag(FilePanelCapability.RangedRead));
+        Assert.True(profile.Capabilities.HasFlag(FilePanelCapability.Search));
+        Assert.True(profile.Capabilities.HasFlag(FilePanelCapability.Watch));
         Assert.InRange(profile.MaximumPreviewBytes, 1, 1024 * 1024);
     }
 
